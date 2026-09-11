@@ -33,6 +33,7 @@ import * as os from 'node:os';
 import * as readline from 'node:readline';
 import type { ProxyEvent } from './core/proxy.js';
 import type { TrackEvent } from './core/tracker.js';
+import type { ControlRoomSnapshot } from './control-room/index.js';
 import {
   computeActualInputEffWithCacheTier,
   computeBaselineInputEffWithCacheTier,
@@ -68,6 +69,7 @@ import {
   renderLatestFragment,
   renderSessionsFragment,
   renderStatsTableFragment,
+  renderControlRoomFragment,
   type ContextMapData,
 } from './dashboard/fragments.js';
 import {
@@ -90,6 +92,8 @@ const RECENT_CAP = 50;
  *  RECENT_CAP so every visible recent-requests row can still resolve its
  *  image. Images are never written to disk — this ring is the only store. */
 const IMAGE_RING_CAP = 800;
+
+type ControlRoomProvider = () => ControlRoomSnapshot | null | Promise<ControlRoomSnapshot | null>;
 
 /** One rendered image held in the in-memory ring. `id` is a monotonic
  *  counter (never reused) so a RecentRow can reference its image even after
@@ -571,15 +575,20 @@ export class DashboardState {
    *  writes the `models` key of the config file so chip toggles survive a
    *  restart. Best-effort: failures are the hook's problem, never the API's. */
   private readonly persistModelBases: ((bases: readonly string[]) => void) | undefined;
+  /** Optional metadata-only Control Room provider. Runtime subsystems own the
+   * evidence; the dashboard only renders a pre-built snapshot. */
+  private readonly controlRoomProvider: ControlRoomProvider | undefined;
 
   constructor(
     paths?: SessionsPaths,
     ccMapFn?: () => Promise<Map<string, ClaudeCodeSessionRef>>,
     persistModelBases?: (bases: readonly string[]) => void,
+    controlRoomProvider?: ControlRoomProvider,
   ) {
     this.paths = paths;
     this.ccMapFn = ccMapFn ?? (() => claudeCodeMap());
     this.persistModelBases = persistModelBases;
+    this.controlRoomProvider = controlRoomProvider;
   }
 
   private totalsForModel(model: string | undefined): Totals {
@@ -1518,6 +1527,25 @@ export class DashboardState {
     return htmlResponse(renderPage(port, dashboardHostLabel()));
   }
 
+  private async readControlRoomSnapshot(): Promise<ControlRoomSnapshot | null> {
+    if (!this.controlRoomProvider) return null;
+    try {
+      return await this.controlRoomProvider();
+    } catch {
+      // Provider failures must not leak runtime internals or break the dashboard.
+      return null;
+    }
+  }
+
+  /** GET /api/control-room.json — metadata-only V5 evidence snapshot. */
+  async serveControlRoomJson(): Promise<Response> {
+    const snapshot = await this.readControlRoomSnapshot();
+    if (!snapshot) {
+      return jsonResponse({ status: 'NOT_AVAILABLE' }, 503);
+    }
+    return jsonResponse(snapshot);
+  }
+
   /** GET /fragments/<name> — server-rendered htmx fragments. Each one reuses
    *  the corresponding JSON endpoint's payload (via Response.json()) so the
    *  HTML and JSON surfaces can't drift apart. */
@@ -1587,6 +1615,9 @@ export class DashboardState {
         const res = await this.serveApiStats();
         const p = (await res.json()) as FullStatsPayload;
         return htmlResponse(renderStatsTableFragment(p));
+      }
+      case 'control-room': {
+        return htmlResponse(renderControlRoomFragment(await this.readControlRoomSnapshot()));
       }
       default:
         return new Response('unknown fragment', { status: 404 });
@@ -1712,6 +1743,7 @@ export type DashboardRoute =
   | { kind: 'png' } // /proxy-latest-png
   | { kind: 'api-sessions' } // /api/sessions.json
   | { kind: 'api-stats' } // /api/stats.json
+  | { kind: 'api-control-room' } // /api/control-room.json
   | { kind: 'current-session' } // /api/current-session.json
   | { kind: 'api-compression' } // /api/compression (POST {enabled}) — runtime kill switch
   | { kind: 'api-image-source' } // /api/image-source[?id=N] — source text behind a rendered PNG
@@ -1725,6 +1757,7 @@ export function dashboardPath(pathname: string): DashboardRoute | null {
   if (pathname === '/proxy-latest-png') return { kind: 'png' };
   if (pathname === '/api/sessions.json') return { kind: 'api-sessions' };
   if (pathname === '/api/stats.json') return { kind: 'api-stats' };
+  if (pathname === '/api/control-room.json') return { kind: 'api-control-room' };
   if (pathname === '/api/current-session.json') return { kind: 'current-session' };
   if (pathname === '/api/compression') return { kind: 'api-compression' };
   if (pathname === '/api/image-source') return { kind: 'api-image-source' };
