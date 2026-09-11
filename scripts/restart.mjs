@@ -132,9 +132,10 @@ export function parsePsOutput(stdout) {
 }
 
 /**
- * Parse `Get-CimInstance Win32_Process | ConvertTo-Json` output. PowerShell
- * emits a bare object rather than a one-element array for a single match, and
- * nothing at all for no matches, so both shapes are normalised here.
+ * Parse PowerShell process JSON. PowerShell emits a bare object rather than a
+ * one-element array for a single match, and nothing at all for no matches, so
+ * both shapes are normalised here. The `Id`/`ProcessName` shape is the bounded
+ * fallback used when the richer WMI command is unavailable or times out.
  */
 export function parseWindowsProcessJson(stdout) {
   const text = stdout.trim();
@@ -147,19 +148,25 @@ export function parseWindowsProcessJson(stdout) {
   }
   const rows = Array.isArray(parsed) ? parsed : [parsed];
   return rows
-    .filter((row) => row && Number.isInteger(Number(row.ProcessId)))
+    .filter((row) => row && Number.isInteger(Number(row.ProcessId ?? row.Id)))
     .map((row) => ({
-      pid: Number(row.ProcessId),
-      command: typeof row.CommandLine === 'string' ? row.CommandLine : '',
+      pid: Number(row.ProcessId ?? row.Id),
+      command:
+        typeof row.CommandLine === 'string'
+          ? row.CommandLine
+          : typeof row.ProcessName === 'string'
+            ? row.ProcessName
+            : '',
     }));
 }
 
 /** Run a PowerShell snippet, trying Windows PowerShell then PowerShell 7+. */
-function runPowerShell(script) {
+function runPowerShell(script, { timeoutMs = 5_000 } = {}) {
   for (const exe of ['powershell.exe', 'pwsh.exe']) {
     const res = spawnSync(exe, ['-NoProfile', '-NonInteractive', '-Command', script], {
       encoding: 'utf8',
       windowsHide: true,
+      timeout: timeoutMs,
     });
     if (!res.error && res.status === 0) return res.stdout ?? '';
   }
@@ -172,7 +179,16 @@ export function listProcesses() {
       "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" " +
         '| Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress',
     );
-    return out === null ? [] : parseWindowsProcessJson(out);
+    if (out !== null) return parseWindowsProcessJson(out);
+
+    // WMI can be unavailable or unusually slow on a busy/locked-down runner.
+    // Keep restart bounded and retain the process-table smoke signal, while
+    // leaving command matching to the richer query when it is available.
+    const fallback = runPowerShell(
+      'Get-Process -Name node -ErrorAction SilentlyContinue ' +
+        '| Select-Object Id,ProcessName | ConvertTo-Json -Compress',
+    );
+    return fallback === null ? [] : parseWindowsProcessJson(fallback);
   }
   const res = spawnSync('ps', ['-A', '-o', 'pid=,args='], { encoding: 'utf8' });
   if (res.error || res.status !== 0) return [];
