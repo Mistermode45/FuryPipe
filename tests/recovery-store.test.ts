@@ -243,6 +243,25 @@ describe('Recovery Store', () => {
     expect(new TextDecoder().decode(await reopened.get(handle))).toBe('restart-safe');
   });
 
+  it('recovers from a real killed process and removes atomic temp residue before the next operation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-process-crash-'));
+    roots.push(root);
+
+    const crashed = await runRecoveryWorker({ root, namespace: 'crash', operation: 'crash-temp' });
+    expect(crashed.code).toBe(-1);
+    const { tempPath } = JSON.parse(crashed.stdout) as { tempPath: string };
+    expect(await readFile(tempPath, 'utf8')).toBe('crash-residue');
+
+    const staleLock = join(root, '.recovery.lock');
+    const staleTime = new Date(Date.now() - 120_000);
+    await utimes(staleLock, staleTime, staleTime);
+
+    const reopened = createRecoveryStore(root, { namespace: 'crash' });
+    const handle = await reopened.put(new TextEncoder().encode('after-real-crash'), { source: 'crash-recovery-test' });
+    expect(new TextDecoder().decode(await reopened.get(handle))).toBe('after-real-crash');
+    await expect(readFile(tempPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('serializes real separate-process put/get/delete/backup/restore and rekey operations', async () => {
     const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-process-'));
     const backupRoot = await mkdtemp(join(tmpdir(), 'furypipe-recovery-process-backup-'));
