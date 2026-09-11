@@ -81,6 +81,10 @@
       "types": "./dist/core/provider-fabric.d.ts",
       "import": "./dist/core/provider-fabric.js"
     },
+    "./openclaw": {
+      "types": "./dist/openclaw.d.ts",
+      "import": "./dist/openclaw.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"
@@ -112,6 +116,7 @@
     "docs/MCP.md",
     "docs/CONTEXT_FABRIC.md",
     "docs/PROVIDER_FABRIC.md",
+    "docs/OPENCLAW.md",
     "docs/POLICY.md",
     "docs/RECEIPTS.md",
     "LICENSE"
@@ -166,7 +171,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
-    "gpt-tokenizer": "^4.0.0"
+    "gpt-tokenizer": "^4.0.0",
+    "json5": "^2.2.3"
   },
   "repository": {
     "type": "git",

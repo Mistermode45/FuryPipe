@@ -17,6 +17,9 @@ importers:
       gpt-tokenizer:
         specifier: ^4.0.0
         version: 4.0.0
+      json5:
+        specifier: ^2.2.3
+        version: 2.2.3
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20260911.1
@@ -994,6 +997,11 @@ packages:
   gpt-tokenizer@4.0.0:
     resolution: {integrity: sha512-YAWIyzvuVUHEfW7tFfFAxH8qQb+Q3RU9nYOTy7skMNX5qzU6Q8jxTHZLyO56ug1vYvCR7wndzpd3jwD86/mhjQ==}
 
+  json5@2.2.3:
+    resolution: {integrity: sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==}
+    engines: {node: '>=6'}
+    hasBin: true
+
   kleur@4.1.5:
     resolution: {integrity: sha512-o+NO+8WrRiQEE4/7nwRJhN1HWpVmJm511pBHUxPLtp0BUISzlBplORYSmTclCnJvQq2tKu/sgl3xVpkc7ZWuQQ==}
     engines: {node: '>=6'}
@@ -1904,6 +1912,8 @@ snapshots:
     optional: true
 
   gpt-tokenizer@4.0.0: {}
+
+  json5@2.2.3: {}
 
   kleur@4.1.5: {}
 

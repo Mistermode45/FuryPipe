@@ -151,3 +151,15 @@
 - M7 reste `PARTIAL` : adapters provider, probes live, fallback/canary hébergés
   et contrats cache OpenAI/Google nécessitent encore une implémentation et une
   validation réelles.
+
+## 2026-09-11 — M9 OpenClaw adapter/config discovery
+
+- `src/openclaw.ts` ajoute une découverte read-only des chemins OpenClaw
+  actuels (`OPENCLAW_CONFIG_PATH`, home/state/profile/workspace) et lit le
+  fichier JSON5 sans retourner sa structure ni ses valeurs.
+- Le doctor dérive uniquement des métadonnées bornées : validité, fichier
+  régulier/symlink, workspace, nombre d’agents, bind/auth et chemins de champs
+  sensibles ; les secrets restent absents de toute sortie.
+- Les fixtures couvrent JSON5 avec commentaires/trailing comma, surcharge de
+  chemin, config absente et config invalide. Aucun binaire ou gateway OpenClaw
+  réel n’a été lancé : statut conservé `OPENCLAW_NOT_TESTED`.

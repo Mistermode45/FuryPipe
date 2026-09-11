@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
+import { discoverOpenClaw, type OpenClawDiscovery } from './openclaw.js';
 
 export interface DoctorCheck {
   readonly status: 'available' | 'unavailable' | 'configured' | 'not_configured';
@@ -36,6 +37,7 @@ export interface DoctorReport {
     readonly codex: DoctorCheck;
     readonly openclaw: DoctorCheck;
   };
+  readonly openclaw?: Pick<OpenClawDiscovery, 'format' | 'paths' | 'config' | 'workspace' | 'security'>;
 }
 
 function commandVersion(command: string): DoctorCheck {
@@ -96,6 +98,7 @@ function safeUpstream(value: string | undefined): string {
 export function collectDoctorReport(): DoctorReport {
   const home = os.homedir();
   const port = Number(process.env.PORT ?? 47821);
+  const openclaw = discoverOpenClaw();
   return {
     platform: {
       os: `${os.platform()} ${os.release()}`,
@@ -125,6 +128,13 @@ export function collectDoctorReport(): DoctorReport {
       codex: commandVersion('codex'),
       openclaw: commandVersion('openclaw'),
     },
+    openclaw: {
+      format: openclaw.format,
+      paths: openclaw.paths,
+      config: openclaw.config,
+      workspace: openclaw.workspace,
+      security: openclaw.security,
+    },
   };
 }
 
@@ -147,5 +157,10 @@ export function renderDoctorReport(report: DoctorReport, json = false): string {
     `Claude: ${check(report.tools.claude)}`,
     `Codex: ${check(report.tools.codex)}`,
     `OpenClaw: ${check(report.tools.openclaw)}`,
+    ...(report.openclaw ? [
+      `OpenClaw config: ${report.openclaw.config.status} (${report.openclaw.config.path})`,
+      `OpenClaw workspace: ${report.openclaw.workspace.exists ? 'present' : 'missing'} (${report.openclaw.workspace.path})`,
+      `OpenClaw secret fields: ${report.openclaw.config.secretBearingPaths.length}`,
+    ] : []),
   ].join('\n');
 }
