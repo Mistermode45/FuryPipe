@@ -230,6 +230,7 @@ export {
   AGENT_PHASE_ORDER,
   createHumanLearningPath,
   recordHumanLearningAttempt,
+  createRecoveryAgentLearningStore,
   createInMemoryAgentLearningStore,
   runAgentLearningCycle,
   type AgentLearningCycleHandlers,

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { RecoveryStore } from './core/recovery-store.js';
 
 export type HumanLearningTopicId = string;
 
@@ -395,6 +396,110 @@ export function createInMemoryAgentLearningStore(): AgentLearningStore {
         if (record.taskDigest !== input.taskDigest || (input.memoryClass !== undefined && record.memoryClass !== input.memoryClass)) continue;
         const reused = { ...record, reuseCount: record.reuseCount + 1, evidenceDigests: [...record.evidenceDigests] };
         records.set(record.lessonId, reused);
+        reusable.push(reused);
+      }
+      return reusable;
+    },
+  };
+}
+
+const AGENT_LEARNING_SOURCE = 'agent-learning';
+const AGENT_LEARNING_CONTENT_TYPE = 'application/vnd.furypipe.agent-lesson+json';
+const MAX_LESSON_ID_LENGTH = 128;
+const MAX_LESSON_DIGEST_LENGTH = 256;
+const MAX_CONTENT_HANDLE_LENGTH = 1024;
+const MAX_REUSE_COUNT = 1_000_000;
+
+interface AgentLessonEnvelope {
+  readonly format: 'furypipe-agent-lesson-envelope/v1';
+  readonly record: AgentLearningLessonRecord;
+}
+
+function validateLessonRecord(value: unknown): value is AgentLearningLessonRecord {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Partial<AgentLearningLessonRecord>;
+  return record.format === 'furypipe-agent-lesson/v1'
+    && typeof record.lessonId === 'string' && record.lessonId.length > 0 && record.lessonId.length <= MAX_LESSON_ID_LENGTH && !record.lessonId.includes('\0')
+    && ['Working', 'Episodic', 'Semantic', 'Procedural', 'Project', 'User', 'Skills'].includes(record.memoryClass as string)
+    && typeof record.taskDigest === 'string' && record.taskDigest.length > 0 && record.taskDigest.length <= MAX_LESSON_DIGEST_LENGTH && !record.taskDigest.includes('\0')
+    && typeof record.lessonDigest === 'string' && record.lessonDigest.length > 0 && record.lessonDigest.length <= MAX_LESSON_DIGEST_LENGTH && !record.lessonDigest.includes('\0')
+    && typeof record.contentHandle === 'string' && record.contentHandle.length > 0 && record.contentHandle.length <= MAX_CONTENT_HANDLE_LENGTH && !record.contentHandle.includes('\0')
+    && Array.isArray(record.evidenceDigests) && record.evidenceDigests.length <= AGENT_MAX_EVIDENCE * 2
+    && record.evidenceDigests.every((item) => typeof item === 'string' && item.length > 0 && item.length <= MAX_LESSON_DIGEST_LENGTH && !item.includes('\0'))
+    && record.validation === 'validated'
+    && typeof record.reuseCount === 'number' && Number.isSafeInteger(record.reuseCount) && record.reuseCount >= 0 && record.reuseCount <= MAX_REUSE_COUNT;
+}
+
+function validateLessonQuery(value: string, label: string): void {
+  requireText(value, label, MAX_LESSON_DIGEST_LENGTH);
+}
+
+/**
+ * Recovery-backed validated-lesson store. Each reuse writes a new immutable
+ * revision; readers select the highest revision for each lesson ID. The
+ * lesson payload contains only digests, validation state and an opaque handle.
+ */
+export function createRecoveryAgentLearningStore(store: RecoveryStore): AgentLearningStore {
+  if (typeof store.list !== 'function') throw new Error('Recovery store does not support bounded manifest listing');
+  const listManifests = store.list.bind(store);
+  type StoredHandle = Awaited<ReturnType<NonNullable<RecoveryStore['list']>>>[number];
+  const parse = async (handle: StoredHandle): Promise<AgentLearningLessonRecord> => {
+    let envelope: unknown;
+    try {
+      envelope = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await store.get(handle)));
+    } catch {
+      throw new Error('agent lesson cannot be decoded');
+    }
+    if (!envelope || typeof envelope !== 'object' || (envelope as Partial<AgentLessonEnvelope>).format !== 'furypipe-agent-lesson-envelope/v1'
+      || !validateLessonRecord((envelope as Partial<AgentLessonEnvelope>).record)) {
+      throw new Error('agent lesson record is invalid');
+    }
+    return { ...(envelope as AgentLessonEnvelope).record, evidenceDigests: [...(envelope as AgentLessonEnvelope).record.evidenceDigests] };
+  };
+  const recordsFor = async (metadata: Record<string, string | number>): Promise<Array<{ handle: StoredHandle; record: AgentLearningLessonRecord }>> => {
+    const handles = await listManifests({ limit: 10_000, metadata: { source: AGENT_LEARNING_SOURCE, contentType: AGENT_LEARNING_CONTENT_TYPE, ...metadata } });
+    const records: Array<{ handle: StoredHandle; record: AgentLearningLessonRecord }> = [];
+    for (const handle of handles) {
+      const record = await parse(handle);
+      if (Object.entries(metadata).some(([key, value]) => record[key as keyof AgentLearningLessonRecord] !== value)) continue;
+      records.push({ handle, record });
+    }
+    return records;
+  };
+  const latestByLesson = (entries: readonly { handle: StoredHandle; record: AgentLearningLessonRecord }[]): Map<string, { handle: StoredHandle; record: AgentLearningLessonRecord }> => {
+    const latest = new Map<string, { handle: StoredHandle; record: AgentLearningLessonRecord }>();
+    for (const entry of entries) {
+      const previous = latest.get(entry.record.lessonId);
+      const previousRevision = typeof previous?.handle.metadata?.revision === 'number' ? previous.handle.metadata.revision : 0;
+      const currentRevision = typeof entry.handle.metadata?.revision === 'number' ? entry.handle.metadata.revision : 0;
+      if (previous === undefined || currentRevision > previousRevision || (currentRevision === previousRevision && entry.handle.digest > previous.handle.digest)) latest.set(entry.record.lessonId, entry);
+    }
+    return latest;
+  };
+  const persist = async (record: AgentLearningLessonRecord, revision: number): Promise<void> => {
+    const envelope: AgentLessonEnvelope = { format: 'furypipe-agent-lesson-envelope/v1', record: { ...record, evidenceDigests: [...record.evidenceDigests] } };
+    await store.put(new TextEncoder().encode(JSON.stringify(envelope)), {
+      source: AGENT_LEARNING_SOURCE, contentType: AGENT_LEARNING_CONTENT_TYPE,
+      lessonId: record.lessonId, taskDigest: record.taskDigest, memoryClass: record.memoryClass, revision,
+    });
+  };
+
+  return {
+    async store(record) {
+      if (!validateLessonRecord(record)) throw new Error('only bounded validated lessons may be stored');
+      if ((await recordsFor({ lessonId: record.lessonId })).length > 0) throw new Error('lesson already exists');
+      await persist(record, 0);
+    },
+    async findReusableLessons(input) {
+      validateLessonQuery(input.taskDigest, 'taskDigest');
+      if (input.memoryClass !== undefined) requireAgentMemoryClass(input.memoryClass);
+      const entries = await recordsFor({ taskDigest: input.taskDigest, ...(input.memoryClass === undefined ? {} : { memoryClass: input.memoryClass }) });
+      const reusable: AgentLearningLessonRecord[] = [];
+      for (const { handle, record } of latestByLesson(entries).values()) {
+        if (record.reuseCount >= MAX_REUSE_COUNT) throw new Error('lesson reuse count exceeded');
+        const revision = (typeof handle.metadata?.revision === 'number' ? handle.metadata.revision : record.reuseCount) + 1;
+        const reused = { ...record, reuseCount: record.reuseCount + 1, evidenceDigests: [...record.evidenceDigests] };
+        await persist(reused, revision);
         reusable.push(reused);
       }
       return reusable;

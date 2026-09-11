@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   createHumanLearningPath,
   recordHumanLearningAttempt,
+  createRecoveryAgentLearningStore,
   createInMemoryAgentLearningStore,
   runAgentLearningCycle,
   type HumanLearningTopic,
 } from '../src/learning.js';
+import { createRecoveryStore } from '../src/core/recovery-store.js';
 
 const topics: readonly HumanLearningTopic[] = [
   {
@@ -109,5 +114,30 @@ describe('FuryPipe learning layers', () => {
     expect(result.status).toBe('failed');
     expect(result.failure).toMatchObject({ phase: 'verify', reason: 'context budget exceeded' });
     expect(await store.findReusableLessons({ taskDigest: result.taskDigest })).toEqual([]);
+  });
+
+  it('reopens validated lessons from Recovery and increments reuse through immutable revisions', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-learning-recovery-'));
+    try {
+      const record = {
+        format: 'furypipe-agent-lesson/v1' as const,
+        lessonId: 'durable-lesson', memoryClass: 'Procedural' as const,
+        taskDigest: 'task_digest', lessonDigest: 'lesson_digest', contentHandle: 'opaque://durable-lesson',
+        evidenceDigests: ['evidence_digest'], validation: 'validated' as const, reuseCount: 0,
+      };
+      await createRecoveryAgentLearningStore(createRecoveryStore(root, { namespace: 'learning' })).store(record);
+      const reopened = createRecoveryAgentLearningStore(createRecoveryStore(root, { namespace: 'learning' }));
+      expect(await reopened.findReusableLessons({ taskDigest: 'task_digest', memoryClass: 'Procedural' })).toMatchObject([{ lessonId: 'durable-lesson', reuseCount: 1 }]);
+      const reopenedAgain = createRecoveryAgentLearningStore(createRecoveryStore(root, { namespace: 'learning' }));
+      expect(await reopenedAgain.findReusableLessons({ taskDigest: 'task_digest', memoryClass: 'Procedural' })).toMatchObject([{ lessonId: 'durable-lesson', reuseCount: 2 }]);
+      const store = createRecoveryStore(root, { namespace: 'learning' });
+      const handles = await store.list?.({ metadata: { source: 'agent-learning' } });
+      expect(handles).toHaveLength(3);
+      const payload = new TextDecoder().decode(await store.get(handles![0]!));
+      expect(payload).not.toContain('Improve the recovery invariant.');
+      expect(payload).toContain('opaque://durable-lesson');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
