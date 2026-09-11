@@ -6,7 +6,8 @@
   "bin": {
     "furypipe": "bin/cli.js",
     "pxpipe": "bin/cli.js",
-    "furypipe-mcp": "bin/mcp.js"
+    "furypipe-mcp": "bin/mcp.js",
+    "furypipe-mcp-http": "bin/mcp-http.js"
   },
   "exports": {
     ".": {
@@ -100,6 +101,10 @@
     "./mcp-modern": {
       "types": "./dist/mcp-modern.d.ts",
       "import": "./dist/mcp-modern.js"
+    },
+    "./mcp-http-node": {
+      "types": "./dist/mcp-http-node.d.ts",
+      "import": "./dist/mcp-http-node.js"
     },
     "./node": {
       "types": "./dist/node.d.ts",

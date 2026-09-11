@@ -35,6 +35,28 @@ Exécution locale après build :
 FURYPIPE_RECOVERY_ROOT=<directory> FURYPIPE_TENANT=default furypipe-mcp
 ```
 
+Le binaire `furypipe-mcp-http` monte le même handler sur un vrai listener
+`node:http`. Il est séparé du proxy d’inférence et ne démarre jamais par
+défaut. Le mode CLI fourni est volontairement loopback-only et doit être
+activé explicitement :
+
+```text
+FURYPIPE_MCP_HTTP_ALLOW_UNAUTH_LOOPBACK=1 \
+FURYPIPE_MCP_HTTP_HOST=127.0.0.1 \
+FURYPIPE_MCP_HTTP_PORT=47822 \
+FURYPIPE_RECOVERY_ROOT=<directory> \
+FURYPIPE_TENANT=default \
+furypipe-mcp-http
+```
+
+`FURYPIPE_MCP_HTTP_HOST` et `FURYPIPE_MCP_HTTP_PORT` contrôlent uniquement
+ce listener dédié ; le chemin exposé est `/mcp`. Le listener réel conserve les
+limites, contrôles Host/Origin, médias, Bearer éventuel, annulation et délai
+du handler fetch-native. Pour un bind non loopback, utiliser l’API
+`listenMcpHttpNode()` avec un verifier Bearer OAuth et les allowlists adaptées ;
+le binaire CLI ne transforme pas un token statique en authentification de
+production.
+
 Le module `dist/mcp-modern.js` expose deux surfaces HTTP fetch-native :
 
 - `createModernMcpHandler()` : adaptateur SDK brut, pour un hôte qui possède
@@ -67,7 +89,7 @@ un `Host` réel. Pour un déploiement non loopback, l’allowlist et
 constitue pas un fournisseur OAuth de production.
 
 Cette tranche prouve localement le registre commun, le transport stdio
-dual-era, la frontière HTTP fetch-native et ses rejets négatifs. Elle ne vaut
+dual-era, la frontière HTTP fetch-native, le listener Node réel et ses rejets négatifs. Elle ne vaut
 pas une certification client hébergée, un test réseau multi-processus, ni une
 intégration à un Authorization Server réel. Les limites de taille et de
 validation restent celles de la surface legacy, en plus des validations de

@@ -179,11 +179,38 @@ async function readAndValidateBody(request: Request, maxBytes: number): Promise<
   }
   let bytes: Uint8Array;
   try {
-    bytes = new Uint8Array(await request.clone().arrayBuffer());
+    const body = request.body;
+    if (body === null) {
+      bytes = new Uint8Array();
+    } else {
+      const reader = body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value === undefined) continue;
+          if (value.byteLength > maxBytes - total) {
+            await reader.cancel();
+            return jsonRpcHttpError(413, -32600, 'request body exceeds limit');
+          }
+          chunks.push(value);
+          total += value.byteLength;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      bytes = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+    }
   } catch {
     return jsonRpcHttpError(400, -32700, 'unable to read request body');
   }
-  if (bytes.byteLength > maxBytes) return jsonRpcHttpError(413, -32600, 'request body exceeds limit');
   let value: unknown;
   try {
     value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown;

@@ -142,6 +142,37 @@ describe('production MCP HTTP boundary', () => {
     expect((await mcp.fetch(cancelledRequest)).status).toBe(499);
   });
 
+  it('stops reading a chunked body as soon as the byte limit is crossed', async () => {
+    const mcp = await handler({
+      allowedHostnames: ['localhost'],
+      allowUnauthenticatedLoopback: true,
+      maxRequestBytes: 1024,
+    });
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls === 1) {
+          controller.enqueue(new Uint8Array(1025));
+          return;
+        }
+        throw new Error('body was read past the configured limit');
+      },
+    });
+    const response = await mcp.fetch(new Request('https://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        host: 'localhost',
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+      },
+      body,
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' }));
+    expect(response.status).toBe(413);
+    expect(pulls).toBe(1);
+  });
+
   it('keeps the 2025 stateless fallback available through the secured boundary', async () => {
     const mcp = await handler();
     const response = await mcp.fetch(new Request('https://localhost/mcp', {

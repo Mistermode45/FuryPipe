@@ -246,3 +246,26 @@
   et exporté, mais le listener réseau intégré, l’Authorization Server,
   le verifier OAuth hébergé, la conformance multi-client et le test réseau
   externe restent non livrés.
+
+## 2026-09-11 — M8 listener Node réel
+
+- `src/mcp-http-node.ts` adapte le handler HTTP sécurisé à un listener
+  `node:http` réel, avec route exacte, flux de requête Web, signal d’abandon
+  client, écriture de réponse backpressurée, annulation du body de réponse et
+  fermeture idempotente du serveur et du handler SDK.
+- Le nouveau binaire `furypipe-mcp-http` est opt-in, écoute par défaut sur
+  `127.0.0.1:47822/mcp` et refuse tout démarrage sans
+  `FURYPIPE_MCP_HTTP_ALLOW_UNAUTH_LOOPBACK=1`. Il n’offre pas de faux bearer
+  statique et refuse donc implicitement le bind non loopback en mode CLI.
+- `tests/mcp-http-node.test.ts` exécute une vraie requête HTTP locale via le
+  listener (liste des outils moderne), vérifie l’isolation du chemin ainsi
+  que le rejet de méthode et refuse un bind non loopback sans auth ; `3/3`
+  tests sont verts.
+- Le package smoke vérifie désormais aussi l’export installé
+  `furypipe/mcp-http-node`. Le package contient le binaire
+  `furypipe-mcp-http` dans son champ `bin` ; aucune publication n’a été faite.
+- Après la tranche : suite locale `98` fichiers / `1 299` tests verts,
+  typecheck, build, audit et package smoke verts.
+- M8 reste `PARTIAL` : le listener Node loopback est réellement raccordé,
+  mais l’Authorization Server, le verifier OAuth hébergé, la conformance
+  multi-client et le test réseau externe ne sont pas déclarés livrés.

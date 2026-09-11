@@ -104,9 +104,24 @@
 
 La fusion a intégré le commit parallèle `138f125d45f648c6ba4406b4ce48e13377d4619c`
 sans réécriture d’historique ni force push. Les fichiers réservés à l’autre
-track n’ont pas été modifiés par la tranche M8. La façade HTTP reste un
-handler fetch-native exporté : aucun listener réseau intégré, Authorization
-Server ou conformance externe ne doit être inféré de cette preuve CI.
+track n’ont pas été modifiés par la tranche M8. Au moment de ce checkpoint,
+la façade était encore uniquement fetch-native : aucun Authorization Server
+ou conformance externe ne devait être inféré de la preuve CI.
+
+## M8 listener Node — 2026-09-11
+
+| Élément | Résultat | Mesure / preuve |
+|---|---|---|
+| Listener Node HTTP réel | PASS local | `listenMcpHttpNode()` sur `node:http`, requête `fetch` locale vers `/mcp`, liste moderne reçue |
+| Isolation de route/méthode/bind | PASS local | `tests/mcp-http-node.test.ts` : `3/3` tests ; `/other` = 404, GET `/mcp` = 405 avec `Allow`, bind non loopback sans auth refusé |
+| Authentification CLI | FAIL-CLOSED | `furypipe-mcp-http` exige `FURYPIPE_MCP_HTTP_ALLOW_UNAUTH_LOOPBACK=1` ; aucun token statique accepté |
+| Export package listener | PASS local | `furypipe/mcp-http-node` importé depuis le tarball installé par `scripts/package-smoke.mjs` |
+| Suite complète après listener | PASS local | `98` fichiers ; `1 299` tests ; sortie 0 |
+| Build/typecheck/audit/package smoke | PASS local | sorties 0 ; `furypipe-0.13.2.tgz` contrôlé ; audit `No known vulnerabilities found` |
+
+Cette preuve couvre le montage réseau local du transport MCP. Elle ne couvre
+pas un listener distant authentifié, un Authorization Server, un verifier OAuth
+hébergé, une conformance multi-client ou une validation réseau externe.
 
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le
