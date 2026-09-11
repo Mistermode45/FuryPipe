@@ -80,8 +80,9 @@ jobs:
 
       - name: Generate SPDX SBOM
         run: |
-          npm sbom --sbom-format spdx > sbom.spdx.json
-          node -e "const fs=require('node:fs');const x=JSON.parse(fs.readFileSync('sbom.spdx.json','utf8'));if(x.spdxVersion!=='SPDX-2.3'||!Array.isArray(x.packages))process.exit(1)"
+          pnpm list --json --depth Infinity > dependency-tree.json
+          node scripts/security/generate-sbom.mjs dependency-tree.json sbom.spdx.json
+          node -e "const fs=require('node:fs');const x=JSON.parse(fs.readFileSync('sbom.spdx.json','utf8'));if(x.spdxVersion!=='SPDX-2.3'||!Array.isArray(x.packages)||x.packages.length===0)process.exit(1)"
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
