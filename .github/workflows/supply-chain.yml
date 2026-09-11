@@ -1,0 +1,105 @@
+name: Supply Chain
+
+on:
+  pull_request:
+    branches: [v5-production-hardening]
+  push:
+    branches: [v5-chatgpt-security, v5-production-hardening]
+  schedule:
+    - cron: '43 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-integrity:
+    name: Workflow action pinning
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify immutable action references
+        run: node scripts/security/check-actions-pinning.mjs
+
+  dependency-audit:
+    name: Frozen dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install frozen dependency graph without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Audit all resolved dependencies
+        run: pnpm audit --audit-level high
+
+  dependency-review:
+    name: GitHub dependency review
+    if: github.event_name == 'pull_request' && vars.FURYPIPE_DEPENDENCY_GRAPH_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@284c089a1c4d8e8673b7398cdb8df358a9de47ad
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: never
+
+  sbom:
+    name: SPDX SBOM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install frozen dependency graph without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Generate SPDX SBOM
+        run: |
+          pnpm list --json --depth Infinity > dependency-tree.json
+          node scripts/security/generate-sbom.mjs dependency-tree.json sbom.spdx.json
+          node -e "const fs=require('node:fs');const x=JSON.parse(fs.readFileSync('sbom.spdx.json','utf8'));if(x.spdxVersion!=='SPDX-2.3'||!Array.isArray(x.packages)||x.packages.length===0)process.exit(1)"
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: furypipe-sbom-spdx
+          path: sbom.spdx.json
+          if-no-files-found: error
+          retention-days: 30
