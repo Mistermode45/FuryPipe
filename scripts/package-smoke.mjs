@@ -1,4 +1,4 @@
-import { exec, execFile, spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -6,19 +6,20 @@ import os from 'node:os';
 import path from 'node:path';
 
 const execFileAsync = promisify(execFile);
-const execAsync = promisify(exec);
 const root = process.cwd();
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npmCli = process.platform === 'win32'
+  ? path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
+  : undefined;
 async function run(file, args, cwd) {
   if (process.platform === 'win32' && file.endsWith('.cmd')) {
-    // npm is exposed as a .cmd shim on Windows. Use one quoted command
-    // string so Node does not emit DEP0190 for shell=true plus argv.
-    const quote = (value) => `"${String(value).replaceAll('"', '\\"')}"`;
-    return execAsync([file, ...args.map(quote)].join(' '), {
+    if (!npmCli || !existsSync(npmCli)) throw new Error(`bundled npm CLI not found: ${npmCli ?? '<none>'}`);
+    return execFileAsync(process.execPath, [npmCli, ...args], {
       cwd,
       env: process.env,
       encoding: 'utf8',
       maxBuffer: 2 * 1024 * 1024,
+      shell: false,
     });
   }
   return execFileAsync(file, args, {

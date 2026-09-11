@@ -158,7 +158,21 @@ const BUILTIN_PROVIDERS: readonly ProviderDefinition[] = [
 ];
 
 function normalize(value: string | undefined | null): string {
-  return (value ?? '').trim().toLowerCase().replace(/\[[^\]]*\]/g, '');
+  const source = (value ?? '').trim().toLowerCase();
+  let normalized = '';
+  let bracketed = false;
+  for (const character of source) {
+    if (character === '[') {
+      bracketed = true;
+      continue;
+    }
+    if (bracketed) {
+      if (character === ']') bracketed = false;
+      continue;
+    }
+    normalized += character;
+  }
+  return normalized;
 }
 
 function inferredProviderId(model: string | null | undefined, protocol: ProviderFabricProtocol | undefined): string | undefined {

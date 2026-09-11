@@ -43,6 +43,11 @@ describe('provider/model fabric', () => {
     expect(result.model.aliases).toEqual(['vendor/model-without-profile', 'model-without-profile']);
   });
 
+  it('normalizes hostile bracket input in one linear pass', () => {
+    const result = resolveProviderFabric({ model: `${'['.repeat(10_000)}]vendor/model-without-profile` });
+    expect(result.model.aliases).toEqual(['vendor/model-without-profile', 'model-without-profile']);
+  });
+
   it('does not redirect an unknown explicit route through a model string', () => {
     const result = resolveProviderFabric({
       providerId: 'unregistered-gateway',
