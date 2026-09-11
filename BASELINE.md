@@ -64,6 +64,8 @@
 | Suite complète post-MCP SDK | PASS local | 89 fichiers ; 1 264 tests ; sortie 0 ; 14,41 s |
 | Typecheck/build post-MCP SDK | PASS local | `pnpm run typecheck`, `pnpm run build` ; sortie 0 ; `dist/mcp-modern.js` émis et version CLI `0.13.2` |
 | Package smoke post-MCP SDK | PASS local | tarball réel installé ; CLI, doctor et handshake stdio legacy SDK validés ; `furypipe-0.13.2.tgz` |
+| Matrice CI SDK — run push `34634021388` | PASS | 9/9 jobs : Ubuntu/Windows/macOS × Node 22.23.2/24.21.0/26.8.2 ; package smoke moderne + legacy inclus |
+| Matrice CI SDK — run PR `34634025667` | PASS | 9/9 jobs sur la PR draft #2 ; même matrice et mêmes gates ; aucune fusion effectuée |
 
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le
