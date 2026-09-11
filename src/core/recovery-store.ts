@@ -390,6 +390,32 @@ async function replaceManifestAtomic(path: string, data: string): Promise<void> 
   }
 }
 
+const RECOVERY_TEMP_FILE = /\.[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/u;
+
+async function cleanupRecoveryTemporaryFiles(root: string): Promise<number> {
+  let entries;
+  try {
+    entries = await readdir(root, { withFileTypes: true });
+  } catch (caught) {
+    if (isErrno(caught, 'ENOENT')) return 0;
+    throw caught;
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      removed += await cleanupRecoveryTemporaryFiles(path);
+      continue;
+    }
+    if (entry.isFile() && RECOVERY_TEMP_FILE.test(entry.name)) {
+      await rm(path, { force: true });
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 async function recoverManifestBackups(manifestRoot: string): Promise<void> {
   let entries;
   try {
@@ -543,6 +569,8 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
   const scopedRoot = namespace ? join(storeRoot, 'namespaces', namespace) : storeRoot;
   async function recoverPendingManifestReplacements(): Promise<void> {
     await recoverManifestBackups(join(scopedRoot, 'manifests'));
+    await cleanupRecoveryTemporaryFiles(join(scopedRoot, 'objects'));
+    await cleanupRecoveryTemporaryFiles(join(scopedRoot, 'manifests'));
   }
   let readyPromise: Promise<void> | undefined;
   function ensureReady(): Promise<void> {
