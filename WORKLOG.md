@@ -427,3 +427,12 @@
 - M17 reste `PARTIAL / HARNESS_IMPLEMENTED_BENCHMARK_NON_EXECUTED` : aucun benchmark fournisseur réel n’autorise de claim de performance.
 - M18 est désormais décrit comme partiellement câblé : `doctor --locale=fr` est prouvé, dashboard/browser/MCP/auto-détection OS/RTL visuel restent ouverts.
 - M19 reste `BLOCKED` même si son évaluateur fail-closed est testé : aucun RC, merge de branche par défaut, tag, publication npm ou déploiement n’est autorisé/exécuté.
+
+
+## 2026-09-12 — M4 Recovery : reprise après crash process réel
+
+- Cause racine fermée : un arrêt brutal pouvait laisser les fichiers temporaires atomiques `.<uuid>.tmp` sous `objects/` ou `manifests/`. Ils n'étaient ni publiés ni comptés comme objets valides, mais pouvaient s'accumuler après des crashes répétés.
+- `createRecoveryStore()` nettoie désormais uniquement les résidus correspondant strictement au format UUID généré par FuryPipe, sous le verrou racine inter-processus, lors de la réouverture du store. Les symlinks et fichiers arbitraires ne sont pas suivis/supprimés.
+- La fixture enfant crée un état de crash réaliste (résidu fsync + verrou racine), termine par `SIGKILL`, puis le test vieillit le verrou abandonné et vérifie qu'une nouvelle opération Recovery récupère le store, supprime le résidu et reste lisible.
+- M4 reste `PARTIAL` : ce test ne couvre pas encore un kill injecté à chacune des phases internes de publication/rename, les ACL Windows réelles restent host-managed et aucune décision SQLite n'est inventée.
+- Tranche PR #15 ; CI/CodeQL/security/license/benchmark distants à vérifier avant merge.
