@@ -1,0 +1,459 @@
+{
+  "generatedAt": "2026-07-15T17:01:36.564Z",
+  "model": "gpt-5.6-sol",
+  "live": true,
+  "profile": {
+    "cols": 95,
+    "maxHeightPx": 1932,
+    "style": {
+      "font": "jetbrains-mono-12",
+      "cellWBonus": 0,
+      "cellHBonus": 0,
+      "aa": false,
+      "grid": false,
+      "gridCols": 0,
+      "colorCycle": false,
+      "markerScale": 1,
+      "markerRed": false,
+      "inkDilate": 0,
+      "rgbMultiplex": true
+    }
+  },
+  "image": {
+    "width": 768,
+    "height": 190,
+    "bytes": 8654
+  },
+  "expected": {
+    "red": [
+      "L01 word=amber code=04729",
+      "L04 word=delta code=28486",
+      "L07 word=grove code=52243",
+      "L10 word=jungle code=76000",
+      "L13 word=maple code=99757",
+      "L16 word=pearl code=23514",
+      "L19 word=solar code=47271",
+      "L22 word=violet code=71028",
+      "L25 word=yellow code=94785",
+      "L28 word=bloom code=18542",
+      "L31 word=elm code=42299",
+      "L34 word=hazel code=66056"
+    ],
+    "green": [
+      "L02 word=birch code=12648",
+      "L05 word=ember code=36405",
+      "L08 word=harbor code=60162",
+      "L11 word=karma code=83919",
+      "L14 word=north code=07676",
+      "L17 word=quartz code=31433",
+      "L20 word=tulip code=55190",
+      "L23 word=willow code=78947",
+      "L26 word=zephyr code=02704",
+      "L29 word=coral code=26461",
+      "L32 word=flint code=50218",
+      "L35 word=iris code=73975"
+    ],
+    "blue": [
+      "L03 word=cedar code=20567",
+      "L06 word=fjord code=44324",
+      "L09 word=ivory code=68081",
+      "L12 word=linen code=91838",
+      "L15 word=olive code=15595",
+      "L18 word=river code=39352",
+      "L21 word=umber code=63109",
+      "L24 word=xenon code=86866",
+      "L27 word=acorn code=10623",
+      "L30 word=dune code=34380",
+      "L33 word=glade code=58137",
+      "L36 word=jade code=81894"
+    ]
+  },
+  "rows": [
+    {
+      "arm": "combined",
+      "red": {
+        "exact": 0,
+        "total": 12,
+        "got": [
+          "L02 word=crash code=10649",
+          "L05 word=ember code=26405",
+          "L08 word=harbor code=54012",
+          "L11 word=kernel code=83090",
+          "L14 word=maple code=09778",
+          "L17 word=quartz code=23173",
+          "L20 word=other code=55190",
+          "L23 word=window code=87441",
+          "L26 word=zephyr code=00279",
+          "L29 word=orbit code=26062",
+          "L32 word=flint code=55021",
+          "L35 word=iris code=73075"
+        ]
+      },
+      "green": {
+        "exact": 1,
+        "total": 12,
+        "got": [
+          "L02 word=birch code=28848",
+          "L05 word=cedar code=74045",
+          "L08 word=juniper code=58652",
+          "L11 word=lemon code=50420",
+          "L14 word=monte code=09778",
+          "L17 word=quartz code=23173",
+          "L20 word=tulip code=55190",
+          "L23 word=willow code=87441",
+          "L26 word=zephyr code=00279",
+          "L29 word=orbit code=26062",
+          "L32 word=flint code=55021",
+          "L35 word=iris code=73075"
+        ]
+      },
+      "blue": {
+        "exact": 0,
+        "total": 12,
+        "got": [
+          "L02 word=birch code=10848",
+          "L05 word=ember code=26405",
+          "L08 word=harbor code=54012",
+          "L11 word=lemon code=83090",
+          "L14 word=monte code=09778",
+          "L17 word=quartz code=23173",
+          "L20 word=tulip code=55190",
+          "L23 word=willow code=87441",
+          "L26 word=zephyr code=00279",
+          "L29 word=orbit code=26062",
+          "L32 word=flint code=55021",
+          "L35 word=iris code=73075"
+        ]
+      },
+      "raw": "{\"red\":[\"L02 word=crash code=10649\",\"L05 word=ember code=26405\",\"L08 word=harbor code=54012\",\"L11 word=kernel code=83090\",\"L14 word=maple code=09778\",\"L17 word=quartz code=23173\",\"L20 word=other code=55190\",\"L23 word=window code=87441\",\"L26 word=zephyr code=00279\",\"L29 word=orbit code=26062\",\"L32 word=flint code=55021\",\"L35 word=iris code=73075\"],\"green\":[\"L02 word=birch code=28848\",\"L05 word=cedar code=74045\",\"L08 word=juniper code=58652\",\"L11 word=lemon code=50420\",\"L14 word=monte code=09778\",\"L17 word=quartz code=23173\",\"L20 word=tulip code=55190\",\"L23 word=willow code=87441\",\"L26 word=zephyr code=00279\",\"L29 word=orbit code=26062\",\"L32 word=flint code=55021\",\"L35 word=iris code=73075\"],\"blue\":[\"L02 word=birch code=10848\",\"L05 word=ember code=26405\",\"L08 word=harbor code=54012\",\"L11 word=lemon code=83090\",\"L14 word=monte code=09778\",\"L17 word=quartz code=23173\",\"L20 word=tulip code=55190\",\"L23 word=willow code=87441\",\"L26 word=zephyr code=00279\",\"L29 word=orbit code=26062\",\"L32 word=flint code=55021\",\"L35 word=iris code=73075\"]}",
+      "usage": {
+        "input_tokens": 233,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 399,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 632
+      },
+      "ms": 7951
+    },
+    {
+      "arm": "red-color",
+      "score": {
+        "exact": 12,
+        "total": 12,
+        "got": [
+          "L01 word=amber code=04729",
+          "L04 word=delta code=28486",
+          "L07 word=grove code=52243",
+          "L10 word=jungle code=76000",
+          "L13 word=maple code=99757",
+          "L16 word=pearl code=23514",
+          "L19 word=solar code=47271",
+          "L22 word=violet code=71028",
+          "L25 word=yellow code=94785",
+          "L28 word=bloom code=18542",
+          "L31 word=elm code=42299",
+          "L34 word=hazel code=66056"
+        ]
+      },
+      "raw": "[\"L01 word=amber code=04729\",\"L04 word=delta code=28486\",\"L07 word=grove code=52243\",\"L10 word=jungle code=76000\",\"L13 word=maple code=99757\",\"L16 word=pearl code=23514\",\"L19 word=solar code=47271\",\"L22 word=violet code=71028\",\"L25 word=yellow code=94785\",\"L28 word=bloom code=18542\",\"L31 word=elm code=42299\",\"L34 word=hazel code=66056\"]",
+      "usage": {
+        "input_tokens": 203,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 130,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 333
+      },
+      "ms": 4061
+    },
+    {
+      "arm": "red-white",
+      "score": {
+        "exact": 11,
+        "total": 12,
+        "got": [
+          "L01 word=amber code=04729",
+          "L04 word=delta code=28406",
+          "L07 word=grove code=52243",
+          "L10 word=jungle code=76000",
+          "L13 word=maple code=99757",
+          "L16 word=pearl code=23514",
+          "L19 word=solar code=47271",
+          "L22 word=violet code=71028",
+          "L25 word=yellow code=94785",
+          "L28 word=bloom code=18542",
+          "L31 word=elm code=42299",
+          "L34 word=hazel code=66056"
+        ]
+      },
+      "raw": "[\"L01 word=amber code=04729\",\"L04 word=delta code=28406\",\"L07 word=grove code=52243\",\"L10 word=jungle code=76000\",\"L13 word=maple code=99757\",\"L16 word=pearl code=23514\",\"L19 word=solar code=47271\",\"L22 word=violet code=71028\",\"L25 word=yellow code=94785\",\"L28 word=bloom code=18542\",\"L31 word=elm code=42299\",\"L34 word=hazel code=66056\"]",
+      "usage": {
+        "input_tokens": 203,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 130,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 333
+      },
+      "ms": 4701
+    },
+    {
+      "arm": "green-color",
+      "score": {
+        "exact": 11,
+        "total": 12,
+        "got": [
+          "L02 word=birch code=12648",
+          "L05 word=ember code=36405",
+          "L08 word=harbor code=50162",
+          "L11 word=karma code=83919",
+          "L14 word=north code=07676",
+          "L17 word=quartz code=31433",
+          "L20 word=tulip code=55190",
+          "L23 word=willow code=78947",
+          "L26 word=zephyr code=02704",
+          "L29 word=coral code=26461",
+          "L32 word=flint code=50218",
+          "L35 word=iris code=73975"
+        ]
+      },
+      "raw": "[\"L02 word=birch code=12648\",\"L05 word=ember code=36405\",\"L08 word=harbor code=50162\",\"L11 word=karma code=83919\",\"L14 word=north code=07676\",\"L17 word=quartz code=31433\",\"L20 word=tulip code=55190\",\"L23 word=willow code=78947\",\"L26 word=zephyr code=02704\",\"L29 word=coral code=26461\",\"L32 word=flint code=50218\",\"L35 word=iris code=73975\"]",
+      "usage": {
+        "input_tokens": 203,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 133,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 336
+      },
+      "ms": 3333
+    },
+    {
+      "arm": "green-white",
+      "score": {
+        "exact": 11,
+        "total": 12,
+        "got": [
+          "L02 word=birch code=12648",
+          "L05 word=ember code=36405",
+          "L08 word=harbor code=60142",
+          "L11 word=karma code=83919",
+          "L14 word=north code=07676",
+          "L17 word=quartz code=31433",
+          "L20 word=tulip code=55190",
+          "L23 word=willow code=78947",
+          "L26 word=zephyr code=02704",
+          "L29 word=coral code=26461",
+          "L32 word=flint code=50218",
+          "L35 word=iris code=73975"
+        ]
+      },
+      "raw": "[\"L02 word=birch code=12648\",\"L05 word=ember code=36405\",\"L08 word=harbor code=60142\",\"L11 word=karma code=83919\",\"L14 word=north code=07676\",\"L17 word=quartz code=31433\",\"L20 word=tulip code=55190\",\"L23 word=willow code=78947\",\"L26 word=zephyr code=02704\",\"L29 word=coral code=26461\",\"L32 word=flint code=50218\",\"L35 word=iris code=73975\"]",
+      "usage": {
+        "input_tokens": 203,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 133,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 336
+      },
+      "ms": 7684
+    },
+    {
+      "arm": "blue-color",
+      "score": {
+        "exact": 11,
+        "total": 12,
+        "got": [
+          "L03 word=cedar code=20567",
+          "L06 word=fjord code=44324",
+          "L09 word=ivory code=56931",
+          "L12 word=linen code=91838",
+          "L15 word=olive code=15595",
+          "L18 word=river code=39352",
+          "L21 word=umber code=63109",
+          "L24 word=xenon code=86866",
+          "L27 word=acorn code=10623",
+          "L30 word=dune code=34380",
+          "L33 word=glade code=58137",
+          "L36 word=jade code=81894"
+        ]
+      },
+      "raw": "[\"L03 word=cedar code=20567\",\"L06 word=fjord code=44324\",\"L09 word=ivory code=56931\",\"L12 word=linen code=91838\",\"L15 word=olive code=15595\",\"L18 word=river code=39352\",\"L21 word=umber code=63109\",\"L24 word=xenon code=86866\",\"L27 word=acorn code=10623\",\"L30 word=dune code=34380\",\"L33 word=glade code=58137\",\"L36 word=jade code=81894\"]",
+      "usage": {
+        "input_tokens": 203,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 130,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 333
+      },
+      "ms": 4195
+    },
+    {
+      "arm": "blue-white",
+      "score": {
+        "exact": 10,
+        "total": 12,
+        "got": [
+          "L03 word=cedar code=20567",
+          "L06 word=fjord code=44324",
+          "L09 word=ivory code=68091",
+          "L12 word=linen code=91833",
+          "L15 word=olive code=15595",
+          "L18 word=river code=39352",
+          "L21 word=umber code=63109",
+          "L24 word=xenon code=86866",
+          "L27 word=acorn code=10623",
+          "L30 word=dune code=34380",
+          "L33 word=glade code=58137",
+          "L36 word=jade code=81894"
+        ]
+      },
+      "raw": "[\"L03 word=cedar code=20567\",\"L06 word=fjord code=44324\",\"L09 word=ivory code=68091\",\"L12 word=linen code=91833\",\"L15 word=olive code=15595\",\"L18 word=river code=39352\",\"L21 word=umber code=63109\",\"L24 word=xenon code=86866\",\"L27 word=acorn code=10623\",\"L30 word=dune code=34380\",\"L33 word=glade code=58137\",\"L36 word=jade code=81894\"]",
+      "usage": {
+        "input_tokens": 203,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 130,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 333
+      },
+      "ms": 3972
+    },
+    {
+      "arm": "combined-focus-red",
+      "score": {
+        "exact": 0,
+        "total": 12,
+        "got": [
+          "L02 word=cynch code=20648",
+          "L05 word=enote code=26405",
+          "L08 word=chobac code=57962",
+          "L11 word=kermite code=93090",
+          "L14 word=omate code=09786",
+          "L17 word=quartz code=23123",
+          "L20 word=totap code=55190",
+          "L23 word=vildue code=87947",
+          "L26 word=zephyr code=00276",
+          "L29 word=domatic code=26062",
+          "L32 word=flinto code=55018",
+          "L35 word=hyral code=730756"
+        ]
+      },
+      "raw": "[\"L02 word=cynch code=20648\",\"L05 word=enote code=26405\",\"L08 word=chobac code=57962\",\"L11 word=kermite code=93090\",\"L14 word=omate code=09786\",\"L17 word=quartz code=23123\",\"L20 word=totap code=55190\",\"L23 word=vildue code=87947\",\"L26 word=zephyr code=00276\",\"L29 word=domatic code=26062\",\"L32 word=flinto code=55018\",\"L35 word=hyral code=730756\"]",
+      "usage": {
+        "input_tokens": 214,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 136,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 350
+      },
+      "ms": 3924
+    },
+    {
+      "arm": "combined-focus-green",
+      "score": {
+        "exact": 1,
+        "total": 12,
+        "got": [
+          "L02 word=catch code=76848",
+          "L05 word=ember code=26495",
+          "L08 word=harbor code=54462",
+          "L11 word=kernel code=83696",
+          "L14 word=maple code=09786",
+          "L17 word=quartz code=83173",
+          "L20 word=tulip code=55190",
+          "L23 word=velvet code=87447",
+          "L26 word=zephyr code=00276",
+          "L29 word=orchid code=28662",
+          "L32 word=flint code=59018",
+          "L35 word=iris code=73056"
+        ]
+      },
+      "raw": "[\"L02 word=catch code=76848\",\"L05 word=ember code=26495\",\"L08 word=harbor code=54462\",\"L11 word=kernel code=83696\",\"L14 word=maple code=09786\",\"L17 word=quartz code=83173\",\"L20 word=tulip code=55190\",\"L23 word=velvet code=87447\",\"L26 word=zephyr code=00276\",\"L29 word=orchid code=28662\",\"L32 word=flint code=59018\",\"L35 word=iris code=73056\"]",
+      "usage": {
+        "input_tokens": 214,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 133,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 347
+      },
+      "ms": 3407
+    },
+    {
+      "arm": "combined-focus-blue",
+      "score": {
+        "exact": 0,
+        "total": 12,
+        "got": [
+          "L02 word=birch code=10448",
+          "L05 word=ember code=26485",
+          "L08 word=harbor code=57012",
+          "L11 word=kennel code=83990",
+          "L14 word=north code=09776",
+          "L17 word=quartz code=33173",
+          "L20 word=tulip code=55190",
+          "L23 word=violet code=77647",
+          "L26 word=zephyr code=90276",
+          "L29 word=domain code=26862",
+          "L32 word=flint code=55018",
+          "L35 word=iris code=730756"
+        ]
+      },
+      "raw": "[\"L02 word=birch code=10448\",\"L05 word=ember code=26485\",\"L08 word=harbor code=57012\",\"L11 word=kennel code=83990\",\"L14 word=north code=09776\",\"L17 word=quartz code=33173\",\"L20 word=tulip code=55190\",\"L23 word=violet code=77647\",\"L26 word=zephyr code=90276\",\"L29 word=domain code=26862\",\"L32 word=flint code=55018\",\"L35 word=iris code=730756\"]",
+      "usage": {
+        "input_tokens": 214,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 0
+        },
+        "output_tokens": 133,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 347
+      },
+      "ms": 4938
+    }
+  ]
+}

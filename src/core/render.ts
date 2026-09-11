@@ -1,0 +1,1431 @@
+/**
+ * Text → PNG renderer. Blits atlas glyphs into a grayscale framebuffer, then PNG-encodes.
+ * Iterates by codepoint so East Asian Wide chars (2-cell advance) and surrogate pairs handled correctly.
+ * Pages capped at 1568×728 px (1.14 MP): under both Anthropic tiers' limits, so every
+ * page bills at its raw 28-px patch count with no server-side downscale (WYSIWYG).
+ */
+
+import {
+  ATLAS_CELL_W,
+  ATLAS_CELL_H,
+  ATLAS_ASCENT,
+  ATLAS_PIXELS,
+  ATLAS_OFFSETS,
+  ATLAS_WIDE_FLAGS,
+  atlasRank,
+} from './atlas.js';
+import {
+  ATLAS_GRAY_CELL_W,
+  ATLAS_GRAY_CELL_H,
+  ATLAS_GRAY_ASCENT,
+  ATLAS_GRAY_PIXELS,
+  ATLAS_GRAY_OFFSETS,
+  ATLAS_GRAY_WIDE_FLAGS,
+  atlasGrayRank,
+} from './atlas-gray.js';
+import {
+  ATLAS_CELL_W as JBM10_CELL_W,
+  ATLAS_CELL_H as JBM10_CELL_H,
+  ATLAS_ASCENT as JBM10_ASCENT,
+  ATLAS_PIXELS as JBM10_PIXELS,
+  ATLAS_OFFSETS as JBM10_OFFSETS,
+  ATLAS_WIDE_FLAGS as JBM10_WIDE_FLAGS,
+  atlasRank as jbMono10Rank,
+} from './atlas-jbmono10.js';
+import {
+  ATLAS_GRAY_CELL_W as JBM10_GRAY_CELL_W,
+  ATLAS_GRAY_CELL_H as JBM10_GRAY_CELL_H,
+  ATLAS_GRAY_ASCENT as JBM10_GRAY_ASCENT,
+  ATLAS_GRAY_PIXELS as JBM10_GRAY_PIXELS,
+  ATLAS_GRAY_OFFSETS as JBM10_GRAY_OFFSETS,
+  ATLAS_GRAY_WIDE_FLAGS as JBM10_GRAY_WIDE_FLAGS,
+  atlasGrayRank as jbMono10GrayRank,
+} from './atlas-gray-jbmono10.js';
+import {
+  ATLAS_CELL_W as JBM12_CELL_W,
+  ATLAS_CELL_H as JBM12_CELL_H,
+  ATLAS_ASCENT as JBM12_ASCENT,
+  ATLAS_PIXELS as JBM12_PIXELS,
+  ATLAS_OFFSETS as JBM12_OFFSETS,
+  ATLAS_WIDE_FLAGS as JBM12_WIDE_FLAGS,
+  atlasRank as jbMono12Rank,
+} from './atlas-jbmono12.js';
+import {
+  ATLAS_GRAY_CELL_W as JBM12_GRAY_CELL_W,
+  ATLAS_GRAY_CELL_H as JBM12_GRAY_CELL_H,
+  ATLAS_GRAY_ASCENT as JBM12_GRAY_ASCENT,
+  ATLAS_GRAY_PIXELS as JBM12_GRAY_PIXELS,
+  ATLAS_GRAY_OFFSETS as JBM12_GRAY_OFFSETS,
+  ATLAS_GRAY_WIDE_FLAGS as JBM12_GRAY_WIDE_FLAGS,
+  atlasGrayRank as jbMono12GrayRank,
+} from './atlas-gray-jbmono12.js';
+import {
+  ATLAS_CELL_W as JBM14_CELL_W,
+  ATLAS_CELL_H as JBM14_CELL_H,
+  ATLAS_ASCENT as JBM14_ASCENT,
+  ATLAS_PIXELS as JBM14_PIXELS,
+  ATLAS_OFFSETS as JBM14_OFFSETS,
+  ATLAS_WIDE_FLAGS as JBM14_WIDE_FLAGS,
+  atlasRank as jbMono14Rank,
+} from './atlas-jbmono14.js';
+import {
+  ATLAS_GRAY_CELL_W as JBM14_GRAY_CELL_W,
+  ATLAS_GRAY_CELL_H as JBM14_GRAY_CELL_H,
+  ATLAS_GRAY_ASCENT as JBM14_GRAY_ASCENT,
+  ATLAS_GRAY_PIXELS as JBM14_GRAY_PIXELS,
+  ATLAS_GRAY_OFFSETS as JBM14_GRAY_OFFSETS,
+  ATLAS_GRAY_WIDE_FLAGS as JBM14_GRAY_WIDE_FLAGS,
+  atlasGrayRank as jbMono14GrayRank,
+} from './atlas-gray-jbmono14.js';
+import { encodeGrayPng, encodeRgbPng } from './png.js';
+
+export type RenderFont = 'spleen-5x8' | 'jetbrains-mono-10' | 'jetbrains-mono-12' | 'jetbrains-mono-14';
+export const DEFAULT_RENDER_FONT: RenderFont = 'spleen-5x8';
+
+interface BitAtlas {
+  cellW: number;
+  cellH: number;
+  ascent: number;
+  pixels: Uint8Array;
+  offsets: Uint32Array;
+  wideFlags: Uint8Array;
+  rank: (codepoint: number) => number;
+}
+
+interface GrayAtlas {
+  cellW: number;
+  cellH: number;
+  ascent: number;
+  pixels: Uint8Array;
+  offsets: Uint32Array;
+  wideFlags: Uint8Array;
+  rank: (codepoint: number) => number;
+}
+
+interface AtlasSet {
+  bit: BitAtlas;
+  gray: GrayAtlas;
+}
+
+const DEFAULT_ATLAS: AtlasSet = {
+  bit: {
+    cellW: ATLAS_CELL_W,
+    cellH: ATLAS_CELL_H,
+    ascent: ATLAS_ASCENT,
+    pixels: ATLAS_PIXELS,
+    offsets: ATLAS_OFFSETS,
+    wideFlags: ATLAS_WIDE_FLAGS,
+    rank: atlasRank,
+  },
+  gray: {
+    cellW: ATLAS_GRAY_CELL_W,
+    cellH: ATLAS_GRAY_CELL_H,
+    ascent: ATLAS_GRAY_ASCENT,
+    pixels: ATLAS_GRAY_PIXELS,
+    offsets: ATLAS_GRAY_OFFSETS,
+    wideFlags: ATLAS_GRAY_WIDE_FLAGS,
+    rank: atlasGrayRank,
+  },
+};
+
+const JBM10_ATLAS: AtlasSet = {
+  bit: {
+    cellW: JBM10_CELL_W,
+    cellH: JBM10_CELL_H,
+    ascent: JBM10_ASCENT,
+    pixels: JBM10_PIXELS,
+    offsets: JBM10_OFFSETS,
+    wideFlags: JBM10_WIDE_FLAGS,
+    rank: jbMono10Rank,
+  },
+  gray: {
+    cellW: JBM10_GRAY_CELL_W,
+    cellH: JBM10_GRAY_CELL_H,
+    ascent: JBM10_GRAY_ASCENT,
+    pixels: JBM10_GRAY_PIXELS,
+    offsets: JBM10_GRAY_OFFSETS,
+    wideFlags: JBM10_GRAY_WIDE_FLAGS,
+    rank: jbMono10GrayRank,
+  },
+};
+
+const JBM12_ATLAS: AtlasSet = {
+  bit: {
+    cellW: JBM12_CELL_W,
+    cellH: JBM12_CELL_H,
+    ascent: JBM12_ASCENT,
+    pixels: JBM12_PIXELS,
+    offsets: JBM12_OFFSETS,
+    wideFlags: JBM12_WIDE_FLAGS,
+    rank: jbMono12Rank,
+  },
+  gray: {
+    cellW: JBM12_GRAY_CELL_W,
+    cellH: JBM12_GRAY_CELL_H,
+    ascent: JBM12_GRAY_ASCENT,
+    pixels: JBM12_GRAY_PIXELS,
+    offsets: JBM12_GRAY_OFFSETS,
+    wideFlags: JBM12_GRAY_WIDE_FLAGS,
+    rank: jbMono12GrayRank,
+  },
+};
+
+const JBM14_ATLAS: AtlasSet = {
+  bit: {
+    cellW: JBM14_CELL_W,
+    cellH: JBM14_CELL_H,
+    ascent: JBM14_ASCENT,
+    pixels: JBM14_PIXELS,
+    offsets: JBM14_OFFSETS,
+    wideFlags: JBM14_WIDE_FLAGS,
+    rank: jbMono14Rank,
+  },
+  gray: {
+    cellW: JBM14_GRAY_CELL_W,
+    cellH: JBM14_GRAY_CELL_H,
+    ascent: JBM14_GRAY_ASCENT,
+    pixels: JBM14_GRAY_PIXELS,
+    offsets: JBM14_GRAY_OFFSETS,
+    wideFlags: JBM14_GRAY_WIDE_FLAGS,
+    rank: jbMono14GrayRank,
+  },
+};
+
+function atlasSet(font: RenderFont | undefined): AtlasSet {
+  if (font === 'jetbrains-mono-10') return JBM10_ATLAS;
+  if (font === 'jetbrains-mono-12') return JBM12_ATLAS;
+  if (font === 'jetbrains-mono-14') return JBM14_ATLAS;
+  return DEFAULT_ATLAS;
+}
+
+function bitGlyph(codepoint: number, font: RenderFont | undefined): { atlas: BitAtlas; rank: number } | null {
+  const selected = atlasSet(font).bit;
+  const rank = selected.rank(codepoint);
+  if (rank >= 0) return { atlas: selected, rank };
+  if (selected !== DEFAULT_ATLAS.bit) {
+    const fallbackRank = DEFAULT_ATLAS.bit.rank(codepoint);
+    if (fallbackRank >= 0) return { atlas: DEFAULT_ATLAS.bit, rank: fallbackRank };
+  }
+  return null;
+}
+
+function grayGlyph(codepoint: number, font: RenderFont | undefined): { atlas: GrayAtlas; rank: number } | null {
+  const selected = atlasSet(font).gray;
+  const rank = selected.rank(codepoint);
+  if (rank >= 0) return { atlas: selected, rank };
+  if (selected !== DEFAULT_ATLAS.gray) {
+    const fallbackRank = DEFAULT_ATLAS.gray.rank(codepoint);
+    if (fallbackRank >= 0) return { atlas: DEFAULT_ATLAS.gray, rank: fallbackRank };
+  }
+  return null;
+}
+
+/** Page-height ceiling. Measured (2026-07-01, count_tokens sweep, claude-sonnet-4-5 — see
+ *  /tmp/pxexp/LEVER1-findings.md): the API downscales any image to fit BOTH long-edge ≤1568
+ *  AND ~1.15 MP (≈1,143,750 px), then bills the exact 28-px patch count ⌈w/28⌉×⌈h/28⌉
+ *  (1568×728 = 56×26 = 1456 tokens/image; the old ≈px/750 slope was the 28²=784 approximation).
+ *  The old 1932×1932 page was billed at cap but resampled 0.555× → 5×8 glyphs reached the
+ *  encoder at ~2.8×4.4 px. New page shape 1568×728 = 1,141,504 px fits both bounds →
+ *  WYSIWYG for the vision encoder (also satisfies ≤2000 px/side for >20-image requests). */
+export const MAX_HEIGHT_PX = 728;
+/** Char budget for the static slab (system + tools + CLAUDE.md). Matches physical page
+ *  capacity at 312 cols × 90 rows so image-count estimates track real pagination. */
+export const READABLE_CHARS_PER_IMAGE = 28080;
+/** Char budget for dense content (tool output, collapsed history). 312 cols × 90 rows = 28080
+ *  chars fills the 1568×728 page. NOTE: verbatim recall of imaged text is unreliable at any size. */
+export const DENSE_CONTENT_CHARS_PER_IMAGE = 28080;
+export const DENSE_CONTENT_COLS = 312;
+/** Bare 5×8 cell (no padding). A/B showed 5×8 beats 7×10 on dense JSON (4/5 vs 3/5 reads, 42% fewer tokens).
+ *  Revert to {cellWBonus:2, cellHBonus:2} if misread rates rise. */
+export const DENSE_RENDER_STYLE: RenderStyle = { cellWBonus: 0, cellHBonus: 0, aa: true };
+/** Anthropic static slab uses the same measured 312-column no-resize geometry. */
+export const ANTHROPIC_SLAB_COLS = DENSE_CONTENT_COLS;
+/** Default columns for the static slab. 312 × 5 px + 8 px pad = 1568 px — exactly the API's
+ *  long-edge bound (313 cols = 1573 px would trigger a 0.997× resample, blurring every glyph). */
+const DEFAULT_COLS = ANTHROPIC_SLAB_COLS;
+/** Horizontal padding (left + right each), px. Exported for transform.ts token-cost math. */
+export const PAD_X = 4;
+/** Vertical padding (top + bottom each), px. Exported for transform.ts token-cost math. */
+export const PAD_Y = 4;
+
+/** Production ships bare 5×8 atlas cell (reflow+grayscale+inimage instruction band
+ *  brought 5×8 to 98.95% OCR accuracy on Opus 4.7, matching or beating padded cells).
+ *  RenderStyle.cellWBonus/cellHBonus override per-eval only. */
+export const DEFAULT_CELL_W_BONUS = 0;
+export const DEFAULT_CELL_H_BONUS = 0;
+/** Effective cell pixel dimensions. transform.ts derives image-budget math from these. */
+export const CELL_W = ATLAS_CELL_W + DEFAULT_CELL_W_BONUS;
+export const CELL_H = ATLAS_CELL_H + DEFAULT_CELL_H_BONUS;
+
+/** Visual rows per image: `floor((MAX_HEIGHT_PX − 2·PAD_Y) / CELL_H)`. Derived
+ *  from the cell geometry above so break-even math auto-tracks it. */
+export const LINES_PER_IMAGE = Math.max(1, Math.floor((MAX_HEIGHT_PX - 2 * PAD_Y) / CELL_H));
+
+/** Real char capacity of one page AT A GIVEN COLUMN WIDTH.
+ *
+ *  Lives here, next to the geometry it is derived from, because every caller that
+ *  budgets images must price pages at the width it actually renders at. The
+ *  DENSE_CONTENT_CHARS_PER_IMAGE constant is only correct for DENSE_CONTENT_COLS
+ *  (312×90); using it while rendering at, say, COLS=100 overstates capacity 3.1×,
+ *  so an image budget clears a plan that then emits 3× the images — the request
+ *  blows the API's per-request limit and comes back 500. Always pass the cols the
+ *  renderer will actually use. */
+export function maxCharsPerImage(cols: number): number {
+  return Math.min(Math.max(1, cols) * LINES_PER_IMAGE, READABLE_CHARS_PER_IMAGE);
+}
+
+export interface RenderedImage {
+  png: Uint8Array;
+  width: number;
+  height: number;
+  /** Input codepoints rendered (wide chars count as 1, not 2). */
+  charsRendered: number;
+  /** Codepoints absent from atlas, rendered as blank cells. Surface as telemetry. */
+  droppedChars: number;
+  /** Per-codepoint drop histogram. Empty when droppedChars === 0; never undefined. */
+  droppedCodepoints: Map<number, number>;
+}
+
+/** Optional render-time styling. All fields unset = production default 5×8 cell.
+ *  Eval harness overrides per variant to A/B cell sizes and structure aids. */
+export interface RenderStyle {
+  /** Rasterized font atlas. Alternate atlases fall back to Spleen/Unifont for missing Unicode. */
+  font?: RenderFont;
+  /** Draw faint grey grid rules onto background pixels (zero pixel cost). */
+  grid?: boolean;
+  /** Draw a vertical grid rule every N columns. 0/unset = row rules only. */
+  gridCols?: number;
+  /** Horizontal size multiplier for the ↵ newline marker. 1 = off. */
+  markerScale?: number;
+  /** Render the ↵ marker in red (switches PNG to RGB truecolor). */
+  markerRed?: boolean;
+  /** Extra blank rows above the 8px glyph (cell height = 8 + this). Unset = DEFAULT_CELL_H_BONUS. */
+  cellHBonus?: number;
+  /** Extra blank columns beside the 5px glyph (cell width = 5 + this). Negative overlaps glyphs. Unset = DEFAULT_CELL_W_BONUS. */
+  cellWBonus?: number;
+  /** Use the AA grayscale companion atlas. */
+  aa?: boolean;
+  /** Cycle palette colors per glyph for per-character boundary cues. Forces RGB output. Composes with aa. */
+  colorCycle?: boolean;
+  /** Tint only the structural <user>/<assistant> boundary tags (body stays black)
+   *  so speakers are scannable without recoloring content. Forces RGB. Composes with aa. */
+  colorByRole?: boolean;
+  /** Morphological ink dilate radius in pixels (pre-invert). Thickens glyphs without
+   *  changing cell pitch — pure-image OCR aid at fixed 5×8 density. 0/unset = off. */
+  inkDilate?: number;
+  /** Dilate axis: 'both' (default), 'x', or 'y'. Prefer 'y' at 5×8 so neighbors do not merge. */
+  inkDilateAxis?: 'both' | 'x' | 'y';
+  /** Post-blit polarity. Default true = black ink on white (production). false keeps
+   *  white ink on black (pre-invert canvas). Fixed cell pitch. */
+  invert?: boolean;
+  /**
+   * Post-invert paper gray (0–255). Default 255 = pure white. Mid-light values
+   * (e.g. 230–240) reduce glare and lift faint grid rules without changing cell pitch.
+   * Applied after invert; ink stays near-black via linear remap onto the paper.
+   */
+  paperGray?: number;
+}
+
+export function renderCellWidth(style: RenderStyle = {}): number {
+  const atlas = style.aa === true ? atlasSet(style.font).gray : atlasSet(style.font).bit;
+  return Math.max(1, atlas.cellW + Math.floor(style.cellWBonus ?? DEFAULT_CELL_W_BONUS));
+}
+
+export function renderCellHeight(style: RenderStyle = {}): number {
+  const atlas = style.aa === true ? atlasSet(style.font).gray : atlasSet(style.font).bit;
+  return atlas.cellH + Math.max(0, Math.floor(style.cellHBonus ?? DEFAULT_CELL_H_BONUS));
+}
+
+// --- column-aware wrapping -------------------------------------------------
+
+/** Visual width of a codepoint in cells (1 = Latin, 2 = East Asian Wide).
+ *  Missing codepoints advance 1 cell so wrap math stays stable. */
+function cellsFor(
+  codepoint: number,
+  markerScale: number = 1,
+  font: RenderFont = DEFAULT_RENDER_FONT,
+): number {
+  // Enlarged ↵ occupies markerScale cells of wrap budget instead of 1.
+  if (codepoint === NL_SENTINEL_CP && markerScale > 1) return markerScale;
+  const glyph = bitGlyph(codepoint, font);
+  if (!glyph) return 1;
+  return glyph.atlas.wideFlags[glyph.rank] === 1 ? 2 : 1;
+}
+
+const TAB_WIDTH = 4; // standard 4-space tab stops (logs, code, tool output are all 4-oriented)
+
+/** Strip trailing whitespace per line and collapse 4+ consecutive \n to 3.
+ *  Does NOT touch mid-line spaces or leading indent — structure is preserved. */
+export function minifyForRender(text: string): string {
+  return text
+    .split('\n')
+    .map(trimLineEnd)
+    .join('\n')
+    .replace(/\n{4,}/g, '\n\n\n'); // 4+ \n → 3 \n (max 2 blank lines)
+}
+
+/** Drop trailing spaces and tabs from one line.
+ *  Scanned backwards: /[ \t]+$/ retries from every position in a long run of
+ *  spaces when the line does not end in one, which is quadratic on one very
+ *  long line. */
+function trimLineEnd(line: string): string {
+  let end = line.length;
+  while (end > 0) {
+    const c = line.charCodeAt(end - 1);
+    if (c !== 32 && c !== 9) break;
+    end -= 1;
+  }
+  return end === line.length ? line : line.slice(0, end);
+}
+
+// --- R3 reflow -------------------------------------------------------------
+//
+// Marks each original hard newline with U+21B5 ↵ so the model can distinguish
+// real newlines from soft-wraps. Lossless at the transform level (see dereflow):
+// the only mutation is the minifyForRender pass. Wrap-the-line measured ~99%
+// OCR fidelity vs ~78% for naive dense packing.
+
+/** U+21B5 ↵ sentinel for original hard newlines in reflowed text. In full-bmp atlas via Unifont. */
+export const NL_SENTINEL = '↵';
+
+const NL_SENTINEL_CP = 0x21b5; // precomputed for hot-path comparisons
+
+/** Look-alike (U+23CE ⏎) for a ↵ that was ALREADY in the source content — distinct from
+ *  the U+21B5 ↵ we insert for newlines. reflow() bails when its input already contains the
+ *  sentinel; that's vanishingly rare for normal content but common when the content is about
+ *  pxpipe itself (rendered dumps, OCR, this very transcript). {@link neutralizeSentinel}
+ *  swaps pre-existing sentinels for this glyph in RENDER-PREP only, so reflow can pack
+ *  newlines instead of bailing to a raw, unpacked render. Originals are preserved verbatim
+ *  elsewhere (recordRecoverable / cache-stable history), and reflow()'s own round-trip
+ *  contract — and its tests — are left untouched. */
+export const NL_SENTINEL_LITERAL = '⏎'; // U+23CE
+export function neutralizeSentinel(text: string): string {
+  return text.indexOf(NL_SENTINEL) >= 0
+    ? text.split(NL_SENTINEL).join(NL_SENTINEL_LITERAL)
+    : text;
+}
+
+/** colorCycle palette: four dark ink-on-white hues for per-character boundary cues. */
+const GLYPH_PALETTE: [number, number, number][] = [
+  [20, 20, 20],   // near-black
+  [20, 40, 160],  // dark blue
+  [150, 20, 20],  // dark red
+  [20, 110, 40],  // dark green
+];
+
+/** colorByRole palette, indexed by slot-1. Only the boundary TAGS are tinted;
+ *  body content stays black. [<user> tags, <assistant> tags]. */
+export const ROLE_PALETTE: [number, number, number][] = [
+  [150, 20, 20],   // 1: <user> / </user> — dark red (81.3% contrast on white)
+  [20, 40, 160],   // 2: <assistant> / </assistant> — dark blue (82.6% contrast on white)
+];
+const ROLE_SLOT_USER = 1;
+const ROLE_SLOT_ASSISTANT = 2;
+
+/**
+ * Slot markers for the parallel "slot string" — the structure-through mechanism
+ * that replaces the old parse-back. A slot string is a width-preserving copy of
+ * the rendered text: every structural role-tag character is swapped for one of
+ * these control codes, and every other codepoint is copied verbatim. Because the
+ * markers are width-1 (exactly like the ASCII tag chars they stand in for), the
+ * existing reflow / wrapLines / paging transforms mutate the slot string in lock-
+ * step with the text — only whitespace/newlines move, and those are slot 0 in
+ * both. The renderer then reads role attribution BY POSITION instead of trying to
+ * re-find "<user>" in flattened text (which miscolors a body that literally quotes
+ * a tag). The structure is known at serialize time and carried, never guessed.
+ */
+export const SLOT_MARK_USER = String.fromCharCode(1);
+export const SLOT_MARK_ASSISTANT = String.fromCharCode(2);
+const SLOT_MARK_RE = new RegExp('[' + SLOT_MARK_USER + SLOT_MARK_ASSISTANT + ']', 'g');
+
+/** Map a slot-string codepoint to its color slot (0 = body / black ink). */
+function slotForMarkCp(cp: number | undefined): number {
+  if (cp === 0x0001) return ROLE_SLOT_USER;
+  if (cp === 0x0002) return ROLE_SLOT_ASSISTANT;
+  return 0;
+}
+
+/** Replacement for a literal slot-marker found in body content. Must (a) map to slot 0
+ *  like body (it's not 0x01/0x02), (b) share the markers' width class so wrapLines splits
+ *  the slot identically to the text, and (c) NOT be ' '/'\t' — minifyForRender strips
+ *  trailing spaces/tabs, which would shorten the slot line (where a body \x01 sat) but not
+ *  the text line (\x01 isn't stripped), desyncing the two and smearing role hues. A C0
+ *  control char satisfies all three. */
+const SLOT_NEUTRAL = '\u0003'; // U+0003 ETX — non-marker C0 control
+
+/** Width-preserving slot-0 copy of body text: identical codepoints (so wrap math is
+ *  unchanged) but with any literal slot-marker control char neutralized. These are rare in
+ *  real content but DO occur (e.g. binary-ish tool output that gets collapsed into history),
+ *  so the replacement is width- and strip-equivalent to the marker — never a space, which
+ *  the minifier would strip and misalign. Guarantees body can't forge a role hue. */
+export function slotCopyBody(body: string): string {
+  if (body.indexOf(SLOT_MARK_USER) < 0 && body.indexOf(SLOT_MARK_ASSISTANT) < 0) return body;
+  return body.replace(SLOT_MARK_RE, SLOT_NEUTRAL);
+}
+
+/** Build the slot-string segment for one role-wrapped turn, mirroring the text
+ *  form `<${tag}>\n${body}\n</${tag}>`: marker chars over the open/close tags,
+ *  a verbatim slot-0 copy of the body. `mark` is the role's slot marker. */
+export function roleSlotSegment(tag: string, body: string, mark: string, attr = ''): string {
+  // `attr` (e.g. ` t="37"`) is part of the OPEN tag, so the marker run must cover it too —
+  // the renderer colors by codepoint position, so a short marker run would un-tint the
+  // attribute and break alignment. Width is identical to the text tag by construction.
+  const open = `<${tag}${attr}>`;
+  const close = `</${tag}>`;
+  return `${mark.repeat(open.length)}\n${slotCopyBody(body)}\n${mark.repeat(close.length)}`;
+}
+
+/** Minify + tab-expand + join lines with ↵ sentinel. Returns null if text already
+ *  contains ↵ (caller falls back to non-reflow path; vanishingly rare in practice). */
+export function reflow(text: string): string | null {
+  if (text.indexOf(NL_SENTINEL) >= 0) return null;
+  return minifyForRender(text)
+    .split('\n')
+    .map(expandTabsInLine)
+    .join(NL_SENTINEL);
+}
+
+/** Inverse of reflow: ↵ → '\n'. dereflow(reflow(text)) === minifyForRender(text) with tabs expanded. */
+export function dereflow(reflowed: string): string {
+  return reflowed.split(NL_SENTINEL).join('\n');
+}
+
+// --- atlas-miss escaping -----------------------------------------------------
+//
+// Codepoints absent from the atlas used to render as blank cells (droppedChars
+// telemetry). Emoji and other astral glyphs can't be DRAWN at 5×8 px, but they
+// can be PRESERVED: substitute a deterministic textual escape (`[U+HEX]`) before
+// wrap, so the model reads the codepoint instead of a gap. Applied at the same layer
+// as tab expansion (wrapLines + measureContentCols), so wrap math and canvas
+// measurement stay consistent. Pure string→string ⇒ renders stay deterministic.
+
+/** Pure-ASCII delimiters: `🔥` → `[U+1F525]`. ASCII is the one range guaranteed
+ *  present in BOTH atlases (mathematical white brackets U+27E6/7 were tried first
+ *  and are absent from each — the "full-bmp" note on NL_SENTINEL overstates real
+ *  coverage). ASCII output also makes idempotency structural: an escaped line
+ *  contains no atlas misses, so a second pass is a no-op. `[U+…]` can collide
+ *  with literal source text discussing codepoints; the escape is for model
+ *  legibility, not machine round-trip, so the ambiguity is acceptable. */
+export const GLYPH_ESCAPE_OPEN = '[U+';
+export const GLYPH_ESCAPE_CLOSE = ']';
+
+/** Codepoints that stay DROPPED (blank cell) rather than escaped. Escaping these
+ *  would add noise, not information — they're modifiers/invisibles, not content.
+ *  C0 additionally MUST keep width-1: the parallel slot string carries \x01/\x02
+ *  role markers and \x03 neutral (see SLOT_MARK_*), and escaping them would
+ *  desync slot/text alignment and smear role hues. */
+function isEscapeExempt(cp: number): boolean {
+  if (cp < 0x20) return true; // C0 controls (slot markers; \t is expanded before we run)
+  if (cp >= 0x7f && cp <= 0x9f) return true; // DEL + C1 controls
+  if (cp >= 0x0300 && cp <= 0x036f) return true; // combining diacritics
+  if (cp === 0x200b || cp === 0x200c || cp === 0x200d || cp === 0x2060 || cp === 0xfeff)
+    return true; // zero-width / word-joiner / BOM
+  if (cp >= 0xfe00 && cp <= 0xfe0f) return true; // variation selectors (emoji presentation)
+  if (cp >= 0xe0100 && cp <= 0xe01ef) return true; // variation selectors supplement
+  return false;
+}
+
+/** Replace atlas-missing codepoints with `[U+HEX]` (uppercase hex — e.g.
+ *  🔥 → `[U+1F525]`). Lossless for non-exempt misses (hex → codepoint) and
+ *  idempotent: the escape spells only atlas-present chars, so a second pass is
+ *  a no-op. Fast path allocates nothing when every codepoint is in the atlas. */
+export function escapeMissingGlyphs(line: string): string {
+  let out: string | null = null; // lazily materialized on first miss
+  let i = 0;
+  for (const ch of line) {
+    const cp = ch.codePointAt(0)!;
+    if (atlasRank(cp) < 0 && !isEscapeExempt(cp)) {
+      if (out === null) out = line.slice(0, i);
+      out += GLYPH_ESCAPE_OPEN + cp.toString(16).toUpperCase() + GLYPH_ESCAPE_CLOSE;
+    } else if (out !== null) {
+      out += ch;
+    }
+    i += ch.length;
+  }
+  return out ?? line;
+}
+
+/** Expand \t to U+2192 → + padding to the next TAB_WIDTH stop. Visible marker lets the
+ *  model distinguish indent-spaces from intentional-spaces. Wide CJK chars count as 2 cols.
+ *  U+0009 is absent from the atlas (control codepoint), so without this every tab was a drop. */
+export function expandTabsInLine(line: string): string {
+  if (line.indexOf('\t') < 0) return line; // fast path
+  let out = '';
+  let col = 0;
+  for (const ch of line) {
+    if (ch === '\t') {
+      const span = TAB_WIDTH - (col % TAB_WIDTH);
+      out += '→'; // visible tab marker (1 col)
+      if (span > 1) out += ' '.repeat(span - 1); // pad to next stop
+      col += span;
+    } else {
+      out += ch;
+      col += cellsFor(ch.codePointAt(0)!);
+    }
+  }
+  return out;
+}
+
+/** Visual width of a line in cells. Wide CJK = 2; enlarged ↵ = markerScale. */
+export function measureLineCols(
+  line: string,
+  markerScale: number = 1,
+  font: RenderFont = DEFAULT_RENDER_FONT,
+): number {
+  let w = 0;
+  for (const ch of line) w += cellsFor(ch.codePointAt(0)!, markerScale, font);
+  return w;
+}
+
+/** Always renders at full canvas width. Signature kept for transform.ts compatibility; returns cols unchanged. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function shrinkColsToContent(
+  text: string,
+  cols: number,
+  markerScale: number = 1,
+  font: RenderFont = DEFAULT_RENDER_FONT,
+): number {
+  // Real content-width measurement — delegates to measureContentCols (was historically a
+  // no-op stub). The proxy's cost gate AND renderer both call this, so sizing the canvas to
+  // the widest line here makes the proxy match the SDK/export path (renderTextToImages),
+  // which already uses measureContentCols. Never narrows below the widest line ⇒ row count
+  // (and thus image/paging count) is unchanged; only the canvas WIDTH (pixel cost) drops.
+  return measureContentCols(text, cols, markerScale, font);
+}
+
+/**
+ * Real content-width measurement (the capability `shrinkColsToContent` historically
+ * stubbed out): the display width, in cols, of the widest line in `text`, capped at
+ * `maxCols`. Lets a renderer size a narrow canvas to short-line content (e.g. code)
+ * instead of padding every page to full width. Pure function of (text, maxCols) →
+ * deterministic width → cache-prefix-safe. Tabs are expanded so the measured width
+ * matches what the renderer actually lays out.
+ */
+export function measureContentCols(
+  text: string,
+  maxCols: number,
+  markerScale: number = 1,
+  font: RenderFont = DEFAULT_RENDER_FONT,
+): number {
+  const cap = Math.max(1, maxCols | 0);
+  let widest = 1;
+  let start = 0;
+  for (let i = 0; i <= text.length; i++) {
+    if (i === text.length || text[i] === '\n') {
+      const w = measureLineCols(escapeMissingGlyphs(expandTabsInLine(text.slice(start, i))), markerScale, font);
+      if (w > widest) widest = w;
+      if (widest >= cap) return cap;
+      start = i + 1;
+    }
+  }
+  return Math.min(cap, widest);
+}
+
+export function wrapLines(
+  text: string,
+  cols: number,
+  markerScale: number = 1,
+  font: RenderFont = DEFAULT_RENDER_FONT,
+): string[] {
+  const out: string[] = [];
+  const minified = minifyForRender(text);
+  for (const rawWithTabs of minified.split('\n')) {
+    const raw = escapeMissingGlyphs(expandTabsInLine(rawWithTabs));
+    if (raw.length === 0) {
+      out.push('');
+      continue;
+    }
+    let cur = '';
+    let curCols = 0;
+    // Codepoint iteration handles surrogate pairs as one unit.
+    // ↵ is treated as an inline glyph — it never forces a row break.
+    for (const ch of raw) {
+      const cp = ch.codePointAt(0)!;
+      const w = cellsFor(cp, markerScale, font);
+      if (curCols + w > cols) {
+        out.push(cur);
+        cur = ch;
+        curCols = w;
+      } else {
+        cur += ch;
+        curCols += w;
+      }
+    }
+    if (cur.length > 0) out.push(cur);
+  }
+  return out;
+}
+
+function splitWrappedLinesIntoReadablePages(
+  lines: string[],
+  maxLines: number,
+  maxChars: number = READABLE_CHARS_PER_IMAGE,
+): string[][] {
+  const pages: string[][] = [];
+  let cur: string[] = [];
+  let curChars = 0;
+  const lineLimit = Math.max(1, maxLines | 0);
+  const charLimit = Math.max(1, maxChars | 0);
+
+  for (const line of lines) {
+    const lineChars = line.length + (cur.length > 0 ? 1 : 0);
+    if (
+      cur.length > 0 &&
+      (cur.length >= lineLimit || curChars + lineChars > charLimit)
+    ) {
+      pages.push(cur);
+      cur = [];
+      curChars = 0;
+    }
+    cur.push(line);
+    curChars += line.length + (cur.length > 1 ? 1 : 0);
+  }
+  if (cur.length > 0) pages.push(cur);
+  return pages.length > 0 ? pages : [[]];
+}
+
+function readableLinesPerColumn(cols: number): number {
+  return Math.max(1, Math.floor(READABLE_CHARS_PER_IMAGE / Math.max(1, cols)));
+}
+
+/**
+ * Blit a 1-bit glyph at pixel (x, y). Returns cells advanced (1 or 2), or 0 if absent
+ * from atlas — caller must still advance 1 cell to keep wrap math stable.
+ */
+function blitGlyph(
+  fb: Uint8Array,
+  fbW: number,
+  x: number,
+  y: number,
+  codepoint: number,
+  font: RenderFont = DEFAULT_RENDER_FONT,
+  markerMask: Uint8Array | null = null,
+): number {
+  const glyph = bitGlyph(codepoint, font);
+  if (!glyph) return 0;
+  const { atlas, rank } = glyph;
+  const wide = atlas.wideFlags[rank] === 1;
+  const srcW = wide ? 2 * atlas.cellW : atlas.cellW;
+  // ATLAS_OFFSETS is a bit offset (MSB-first packing). Pixel (gx,gy): byte = bitIdx>>>3, bit = 7-(bitIdx&7).
+  const srcOff = atlas.offsets[rank]!;
+  const yOffset = atlasSet(font).bit.ascent - atlas.ascent;
+  for (let gy = 0; gy < atlas.cellH; gy++) {
+    const dstRow = (y + yOffset + gy) * fbW + x;
+    const bitRowStart = srcOff + gy * srcW;
+    for (let gx = 0; gx < srcW; gx++) {
+      const bitIdx = bitRowStart + gx;
+      const byte = atlas.pixels[bitIdx >>> 3]!;
+      const bit = (byte >>> (7 - (bitIdx & 7))) & 1;
+      if (bit) {
+        fb[dstRow + gx] = 255; // glyphs never overlap in grid layout; set unconditionally
+        if (markerMask) markerMask[dstRow + gx] = 1;
+      }
+    }
+  }
+  return wide ? 2 : 1;
+}
+
+/**
+ * Blit a grayscale atlas glyph at pixel (x, y) using max-blending. Selected by
+ * `style.aa`, which production sets via DENSE_RENDER_STYLE — this is NOT eval-only.
+ * Measured: the gray atlas is bit-identical to the bitmap atlas across all 95 ASCII
+ * glyphs (0/3800 intermediate coverage bytes) because Spleen-5x8.otb is a bitmap font
+ * at its native 8px, so AA has nothing to smooth. Only the Unifont vector fallback
+ * (CJK, box-drawing, accents) carries real grayscale (~48% intermediate bytes).
+ * Consequence: toggling `aa` cannot change a single pixel of ASCII content.
+ * Returns cells advanced (1 or 2), or 0 if absent from the gray atlas.
+ */
+function blitGlyphGray(
+  fb: Uint8Array,
+  fbW: number,
+  x: number,
+  y: number,
+  codepoint: number,
+  font: RenderFont = DEFAULT_RENDER_FONT,
+): number {
+  const glyph = grayGlyph(codepoint, font);
+  if (!glyph) return 0;
+  const { atlas, rank } = glyph;
+  const wide = atlas.wideFlags[rank] === 1;
+  const srcW = wide ? 2 * atlas.cellW : atlas.cellW;
+  // ATLAS_GRAY_OFFSETS is a byte offset (1 byte/pixel, unlike the bit-packed 1-bit atlas).
+  const srcOff = atlas.offsets[rank]!;
+  const yOffset = atlasSet(font).gray.ascent - atlas.ascent;
+  for (let gy = 0; gy < atlas.cellH; gy++) {
+    const dstRow = (y + yOffset + gy) * fbW + x;
+    const srcRow = srcOff + gy * srcW;
+    for (let gx = 0; gx < srcW; gx++) {
+      const coverage = atlas.pixels[srcRow + gx]!;
+      if (coverage > 0) {
+        const idx = dstRow + gx;
+        if (coverage > fb[idx]!) fb[idx] = coverage;
+      }
+    }
+  }
+  return wide ? 2 : 1;
+}
+
+/** Blit a glyph scaled horizontally by scaleX (height unchanged). Used for enlarged ↵:
+ *  horizontal-only avoids corrupting the row below. Returns cells advanced (scaleX or 2*scaleX). */
+function blitGlyphScaled(
+  fb: Uint8Array,
+  markerMask: Uint8Array | null,
+  fbW: number,
+  fbH: number,
+  x: number,
+  y: number,
+  codepoint: number,
+  scaleX: number,
+  font: RenderFont = DEFAULT_RENDER_FONT,
+): number {
+  const glyph = bitGlyph(codepoint, font);
+  if (!glyph) return 0;
+  const { atlas, rank } = glyph;
+  const wide = atlas.wideFlags[rank] === 1;
+  const srcW = wide ? 2 * atlas.cellW : atlas.cellW;
+  const srcOff = atlas.offsets[rank]!;
+  const yOffset = atlasSet(font).bit.ascent - atlas.ascent;
+  for (let gy = 0; gy < atlas.cellH; gy++) {
+    const py = y + yOffset + gy;
+    if (py >= fbH) break;
+    const bitRowStart = srcOff + gy * srcW;
+    for (let gx = 0; gx < srcW; gx++) {
+      const bitIdx = bitRowStart + gx;
+      const byte = atlas.pixels[bitIdx >>> 3]!;
+      if (((byte >>> (7 - (bitIdx & 7))) & 1) === 0) continue;
+      for (let sx = 0; sx < scaleX; sx++) {
+        const px = x + gx * scaleX + sx;
+        if (px >= fbW) break;
+        const idx = py * fbW + px;
+        fb[idx] = 255;
+        if (markerMask) markerMask[idx] = 1;
+      }
+    }
+  }
+  return wide ? 2 * scaleX : scaleX;
+}
+
+/** Dilate ink on the pre-invert framebuffer (nonzero = ink). Radius is pixel
+ *  passes; keeps width/height fixed so 5×8 packing is unchanged.
+ *  axis: 'both' (4-connected), 'x' (horizontal only), 'y' (vertical only).
+ *  Vertical-only thickens strokes without merging neighboring 5px-wide glyphs. */
+function dilateInk(
+  fb: Uint8Array,
+  fbW: number,
+  fbH: number,
+  radius: number,
+  axis: 'both' | 'x' | 'y' = 'both',
+): void {
+  const r = Math.max(0, Math.floor(radius));
+  if (r <= 0) return;
+  const doX = axis === 'both' || axis === 'x';
+  const doY = axis === 'both' || axis === 'y';
+  let src = fb;
+  for (let pass = 0; pass < r; pass++) {
+    const out = new Uint8Array(src.length);
+    out.set(src);
+    for (let y = 0; y < fbH; y++) {
+      for (let x = 0; x < fbW; x++) {
+        const i = y * fbW + x;
+        if (src[i]! > 0) continue;
+        if (
+          (doX && x > 0 && src[i - 1]! > 0) ||
+          (doX && x + 1 < fbW && src[i + 1]! > 0) ||
+          (doY && y > 0 && src[i - fbW]! > 0) ||
+          (doY && y + 1 < fbH && src[i + fbW]! > 0)
+        ) {
+          out[i] = 255;
+        }
+      }
+    }
+    src = out;
+  }
+  if (src !== fb) fb.set(src);
+}
+
+const GRID_INK = 25; // pre-invert → 230 post-invert; distinct from gutter divider (64 → 191)
+
+/** Draw faint grid rules onto background pixels only (glyph ink wins). Zero pixel-cost to image size. */
+function drawGrid(
+  fb: Uint8Array,
+  fbW: number,
+  fbH: number,
+  rows: number,
+  gridCols: number,
+  cellH: number,
+  cellW: number,
+  glyphH: number = ATLAS_CELL_H,
+): void {
+  for (let row = 0; row < rows; row++) {
+    const y = PAD_Y + row * cellH + (glyphH - 1);
+    if (y >= fbH) break;
+    const rowStart = y * fbW;
+    for (let x = 0; x < fbW; x++) {
+      if (fb[rowStart + x] === 0) fb[rowStart + x] = GRID_INK;
+    }
+  }
+  if (gridCols > 0) {
+    for (let col = gridCols; ; col += gridCols) {
+      const x = PAD_X + col * cellW;
+      if (x >= fbW - PAD_X) break;
+      for (let y = 0; y < fbH; y++) {
+        const idx = y * fbW + x;
+        if (fb[idx] === 0) fb[idx] = GRID_INK;
+      }
+    }
+  }
+}
+
+/** Render text to a single PNG (≤ MAX_HEIGHT_PX tall). Wide glyphs occupy 2 consecutive cells. */
+export async function renderChunkToPng(
+  text: string,
+  cols: number = DEFAULT_COLS,
+  style: RenderStyle = {},
+  maxHeightPx: number = MAX_HEIGHT_PX,
+  slotText?: string,
+): Promise<RenderedImage> {
+  const useAA = style.aa === true;
+  const selected = atlasSet(style.font);
+  const atlasH = useAA ? selected.gray.cellH : selected.bit.cellH;
+  const atlasW = useAA ? selected.gray.cellW : selected.bit.cellW;
+  const markerScale = Math.max(1, Math.floor(style.markerScale ?? 1));
+  const cellH = renderCellHeight(style);
+  const cellW = renderCellWidth(style);
+  const lines = wrapLines(text, cols, markerScale, style.font);
+  // Slot string carries role attribution by position. It is width-identical to
+  // `text`, so wrapLines splits it into the exact same rows — fitSlotLines[r] aligns
+  // codepoint-for-codepoint with fitLines[r]. Only built when coloring is on.
+  const slotLines: string[] | null =
+    style.colorByRole === true && slotText !== undefined
+      ? wrapLines(slotText, cols, markerScale, style.font)
+      : null;
+
+  const maxLines = Math.max(1, Math.floor((maxHeightPx - 2 * PAD_Y) / cellH));
+  const fitLines = lines.slice(0, maxLines);
+  const fitSlotLines = slotLines ? slotLines.slice(0, maxLines) : null;
+
+  // charsRendered = input codepoints covered by this image (for..of counts by codepoint, not code unit).
+  let charsRendered: number;
+  if (fitLines.length === lines.length) {
+    let n = 0;
+    for (const _ of text) n++;
+    charsRendered = n;
+  } else {
+    // Partial: sum kept-line codepoints + 1 separator per adjacent pair.
+    let n = 0;
+    for (let i = 0; i < fitLines.length; i++) {
+      for (const _ of fitLines[i]!) n++;
+    }
+    n += Math.max(0, fitLines.length - 1);
+    charsRendered = n;
+  }
+
+  // Widen by overhang when cellW < atlasW so the last glyph stays inside the framebuffer.
+  const width = 2 * PAD_X + cols * cellW + Math.max(0, atlasW - cellW);
+  const height = 2 * PAD_Y + fitLines.length * cellH;
+
+  // Black canvas — inverted to black-on-white after blitting (matches Python proxy convention).
+  const fb = new Uint8Array(width * height);
+  // markerMask: 1 where ↵ glyph was inked; used to recolor those pixels red.
+  const markerMask: Uint8Array | null =
+    style.markerRed ? new Uint8Array(width * height) : null;
+  // colorMask: stores colorSlot per inked pixel (0 = background) for colorCycle / colorByRole RGB output.
+  const useColorCycle = style.colorCycle === true;
+  const useColorByRole = style.colorByRole === true;
+  const colorMask: Uint8Array | null =
+    (useColorCycle || useColorByRole) ? new Uint8Array(width * height) : null;
+  // Ink palette is fixed for the whole page; the composition pass indexes it per pixel.
+  const inkPalette = useColorByRole ? ROLE_PALETTE : GLYPH_PALETTE;
+
+  /** Stamp colorSlot over the inked pixels of one glyph's cell span. Identical
+   *  for every blit path — only the horizontal span differs (scaled markers
+   *  advance in cellW, normal glyphs in atlasW). */
+  const stampColorMask = (baseX: number, baseY: number, spanW: number, colorSlot: number): void => {
+    if (!colorMask) return;
+    for (let gy = 0; gy < atlasH; gy++) {
+      const py = baseY + gy;
+      if (py >= height) break;
+      const rowBase = py * width;
+      for (let gx = 0; gx < spanW; gx++) {
+        const px = baseX + gx;
+        if (px >= width) break;
+        const idx = rowBase + px;
+        if (fb[idx]! > 0) colorMask[idx] = colorSlot;
+      }
+    }
+  };
+
+  let droppedChars = 0;
+  const droppedCodepoints = new Map<number, number>();
+  let glyphIndex = 0; // every cell including spaces/missing
+  for (let row = 0; row < fitLines.length; row++) {
+    const line = fitLines[row]!;
+    const baseY = PAD_Y + row * cellH;
+    let col = 0;
+    // Per-row slot codepoints, aligned 1:1 with `line` (same wrap, width-preserved).
+    const slotRow: string[] | null =
+      fitSlotLines ? Array.from(fitSlotLines[row] ?? '') : null;
+    let charIdx = 0;
+    for (const ch of line) {
+      if (col >= cols) break; // shouldn't happen — wrap prevents this
+      const codepoint = ch.codePointAt(0)!;
+      const baseX = PAD_X + col * cellW;
+      const isMarker = codepoint === NL_SENTINEL_CP;
+      const colorSlot = useColorByRole
+        ? (slotRow ? slotForMarkCp(slotRow[charIdx]?.codePointAt(0)) : 0) // 0 = body (black); only tags carry a role hue
+        : (glyphIndex % GLYPH_PALETTE.length) + 1; // 0 reserved for background in colorMask
+      let advance: number;
+      if (isMarker && markerScale > 1) {
+        advance = blitGlyphScaled(fb, markerMask, width, height, baseX, baseY, codepoint, markerScale, style.font);
+        // Scaled marker occupies whole cells, so its span is in cellW units.
+        if (colorMask) stampColorMask(baseX, baseY, advance * cellW, colorSlot);
+      } else {
+        advance = useAA
+          ? blitGlyphGray(fb, width, baseX, baseY, codepoint, style.font)
+          : blitGlyph(fb, width, baseX, baseY, codepoint, style.font, isMarker ? markerMask : null);
+        if (colorMask && advance > 0) stampColorMask(baseX, baseY, advance * atlasW, colorSlot);
+      }
+      glyphIndex++;
+      charIdx++;
+      if (advance === 0) {
+        droppedChars++;
+        droppedCodepoints.set(codepoint, (droppedCodepoints.get(codepoint) ?? 0) + 1);
+        col += 1; // missing glyph still occupies 1 cell for wrap stability
+      } else {
+        col += advance;
+      }
+    }
+  }
+
+  if (style.grid) {
+    drawGrid(fb, width, height, fitLines.length, Math.max(0, Math.floor(style.gridCols ?? 0)), cellH, cellW, atlasH);
+  }
+
+  // Optional ink dilate (pre-invert): thickens glyphs without changing cell pitch.
+  const dilate = Math.max(0, Math.floor(style.inkDilate ?? 0));
+  if (dilate > 0) {
+    const axis = style.inkDilateAxis === 'x' || style.inkDilateAxis === 'y' ? style.inkDilateAxis : 'both';
+    dilateInk(fb, width, height, dilate, axis);
+  }
+
+  // Invert to black-on-white unless style.invert === false (white-on-black).
+  if (style.invert !== false) {
+    for (let i = 0; i < fb.length; i++) fb[i] = 255 - fb[i]!;
+  }
+
+  // Optional mid-light paper: remap pure white (255) toward paperGray while keeping
+  // black ink at 0. Linear: g' = paper * g / 255. No cell-pitch change.
+  const paper = Math.max(0, Math.min(255, Math.floor(style.paperGray ?? 255)));
+  if (paper < 255) {
+    for (let i = 0; i < fb.length; i++) {
+      const g = fb[i]!;
+      fb[i] = Math.round((paper * g) / 255);
+    }
+  }
+
+  let png: Uint8Array;
+  if (colorMask) {
+    // colorCycle / colorByRole: AA-blend ink onto paper in palette color.
+    const rgb = new Uint8Array(width * height * 3);
+    for (let i = 0; i < fb.length; i++) {
+      const g = fb[i]!; // post-invert (+ optional paper): 0 = ink, paper = background
+      const slot = colorMask[i]!;
+      if (slot > 0) {
+        // coverage relative to paper so AA fringes stay correct on mid-light bg
+        const coverage = paper <= 0 ? 0 : Math.round(((paper - g) * 255) / paper);
+        const cov = Math.max(0, Math.min(255, coverage));
+        const [pr, pg, pb] = inkPalette[(slot - 1) % inkPalette.length]!;
+        // Alpha-blend ink color onto paper: channel = paper - cov*(paper-palette)/255
+        rgb[i * 3]     = Math.round(paper - (cov * (paper - pr!)) / 255);
+        rgb[i * 3 + 1] = Math.round(paper - (cov * (paper - pg!)) / 255);
+        rgb[i * 3 + 2] = Math.round(paper - (cov * (paper - pb!)) / 255);
+      } else {
+        rgb[i * 3]     = g;
+        rgb[i * 3 + 1] = g;
+        rgb[i * 3 + 2] = g;
+      }
+    }
+    png = await encodeRgbPng(rgb, width, height);
+  } else if (markerMask) {
+    // markerRed: ↵ pixels → red, everything else stays greyscale.
+    const rgb = new Uint8Array(width * height * 3);
+    for (let i = 0; i < fb.length; i++) {
+      const g = fb[i]!;
+      if (markerMask[i] === 1 && g < 128) {
+        rgb[i * 3] = 220; // R
+        rgb[i * 3 + 1] = 0; // G
+        rgb[i * 3 + 2] = 0; // B
+      } else {
+        rgb[i * 3] = g;
+        rgb[i * 3 + 1] = g;
+        rgb[i * 3 + 2] = g;
+      }
+    }
+    png = await encodeRgbPng(rgb, width, height);
+  } else {
+    png = await encodeGrayPng(fb, width, height);
+  }
+  return { png, width, height, charsRendered, droppedChars, droppedCodepoints };
+}
+
+/** Reflow-aware variant of renderTextToPngs. Falls back to non-reflow on sentinel collision. */
+export async function renderTextToPngsReflow(
+  text: string,
+  cols: number = DEFAULT_COLS,
+  style: RenderStyle = {},
+): Promise<RenderedImage[]> {
+  const packed = reflow(text);
+  return renderTextToPngs(packed ?? text, cols, style);
+}
+
+/** Split text into N PNGs each ≤ MAX_HEIGHT_PX tall, respecting per-image char budget. */
+// --- rendered-page cache ---------------------------------------------------
+
+/**
+ * Rendering is a pure function of (text, cols, maxCharsPerImage, style, maxHeightPx,
+ * slotText): the atlases are decoded once at module init and never mutated, and no
+ * module-level state feeds the output. So identical inputs can safely return the
+ * identical pages instead of being re-rasterized.
+ *
+ * This is worth a cache because the proxy deliberately re-renders the same bytes every
+ * turn: history chunks are frozen so they stay byte-identical for the upstream prompt
+ * cache (see the cache-stability note in history.ts), which means a long session pays
+ * full render cost for pages that provably did not change. Measured on a real session,
+ * ~134 images cost ~10s of single-threaded CPU per request while the payload hash held
+ * constant across consecutive turns.
+ *
+ * Bounded by total retained bytes. Eviction is LRU via Map's insertion order:
+ * re-inserting on hit moves an entry to the newest position.
+ */
+
+/** 64 MiB holds several turns of a heavy session on a host with real RAM. */
+const RENDER_CACHE_DEFAULT_BYTES_NODE = 64 * 1024 * 1024;
+/** A Workers isolate gets ~128 MiB for everything — the request body, the decoded
+ *  atlases, the framebuffers, and whatever the compressor is holding. Half of that
+ *  spent on retained pages is how an isolate gets killed mid-request, so the edge
+ *  default is an order of magnitude lower and operators opt back up. */
+const RENDER_CACHE_DEFAULT_BYTES_WORKERS = 8 * 1024 * 1024;
+
+/** `typeof process` cannot answer this: `nodejs_compat_v2` defines `process` on
+ *  Workers too. `navigator.userAgent` is the documented probe.
+ *
+ *  Read off `globalThis` through a local shape rather than the ambient `navigator`
+ *  global: this project compiles `@cloudflare/workers-types` and `@types/node`
+ *  together, and `navigator` is absent from Node before 21 while `engines` allows
+ *  20.19. Optional chaining answers "not Workers" for every one of those cases. */
+function isWorkersRuntime(): boolean {
+  const nav = (globalThis as { navigator?: { userAgent?: string } }).navigator;
+  return nav?.userAgent === 'Cloudflare-Workers';
+}
+
+/** Mutable rather than a const: Worker configuration arrives as per-request bindings,
+ *  not as `process.env` at module init, so `src/worker.ts` has to be able to set this
+ *  after the module has already loaded. Node still resolves it once, below. */
+let renderCacheMaxBytesValue = (() => {
+  // Edge-safe: `process` is undefined off-Node.
+  const raw = typeof process !== 'undefined' ? process.env?.PXPIPE_RENDER_CACHE_BYTES : undefined;
+  const parsed = raw !== undefined && raw.trim() !== '' ? Number(raw) : NaN;
+  // 0 disables the cache outright; negative/garbage falls back to the default.
+  if (Number.isFinite(parsed) && parsed >= 0) return Math.floor(parsed);
+  return isWorkersRuntime() ? RENDER_CACHE_DEFAULT_BYTES_WORKERS : RENDER_CACHE_DEFAULT_BYTES_NODE;
+})();
+
+interface RenderCacheEntry {
+  readonly images: readonly RenderedImage[];
+  readonly bytes: number;
+}
+
+const renderCache = new Map<string, RenderCacheEntry>();
+let renderCacheBytes = 0;
+let renderCacheHits = 0;
+let renderCacheMisses = 0;
+let renderCacheEvictions = 0;
+let renderCacheOversized = 0;
+
+/** Observability for the dashboard/tests. `bytes` counts retained PNG payloads plus
+ *  the fixed-width keys.
+ *
+ *  `evictions` and `oversized` answer different questions and a single "the cache is
+ *  not helping" number would conflate them: evictions mean the working set outgrew the
+ *  budget (raise it, or accept the churn), while `oversized` means a single render was
+ *  bigger than the entire budget and was therefore never stored at all — the failure a
+ *  too-small edge budget produces, where hit rate stays at zero no matter how stable
+ *  the input is. */
+export function renderCacheStats(): {
+  entries: number;
+  bytes: number;
+  hits: number;
+  misses: number;
+  evictions: number;
+  oversized: number;
+} {
+  return {
+    entries: renderCache.size,
+    bytes: renderCacheBytes,
+    hits: renderCacheHits,
+    misses: renderCacheMisses,
+    evictions: renderCacheEvictions,
+    oversized: renderCacheOversized,
+  };
+}
+
+/** Current byte budget. Exposed so the dashboard can report utilisation rather than a
+ *  bare byte count the operator has no denominator for. */
+export function renderCacheMaxBytes(): number {
+  return renderCacheMaxBytesValue;
+}
+
+/**
+ * Set the byte budget at runtime and evict down to it immediately.
+ *
+ * Exists for the Worker entrypoint, which cannot use the module-init `process.env`
+ * read: bindings are handed to `fetch(req, env, ctx)`, long after this module
+ * evaluated. Node keeps using the env read.
+ *
+ * `0` disables the cache and drops everything already held. Negative or non-finite
+ * input is ignored rather than obeyed — a broken value must not read as "unbounded".
+ */
+export function setRenderCacheMaxBytes(maxBytes: number): void {
+  if (!Number.isFinite(maxBytes) || maxBytes < 0) return;
+  renderCacheMaxBytesValue = Math.floor(maxBytes);
+  if (renderCacheMaxBytesValue === 0) {
+    // Not clearRenderCache(): shrinking the budget is not a reason to throw away the
+    // hit/miss history an operator is reading.
+    renderCache.clear();
+    renderCacheBytes = 0;
+    return;
+  }
+  evictToBudget();
+}
+
+/** Evict oldest-first until back within budget, optionally pinning one key that must
+ *  survive. Map iteration is insertion order, which the hit path keeps LRU-ordered. */
+function evictToBudget(pinnedKey?: string): void {
+  for (const [k, v] of renderCache) {
+    if (renderCacheBytes <= renderCacheMaxBytesValue) break;
+    if (k === pinnedKey) continue;
+    renderCache.delete(k);
+    renderCacheBytes -= v.bytes;
+    renderCacheEvictions++;
+  }
+}
+
+/** Drop every entry. Tests use this to isolate hit/miss accounting. */
+export function clearRenderCache(): void {
+  renderCache.clear();
+  renderCacheBytes = 0;
+  renderCacheHits = 0;
+  renderCacheMisses = 0;
+  renderCacheEvictions = 0;
+  renderCacheOversized = 0;
+}
+
+/** Stable serialization of RenderStyle. Every field is a primitive (see the interface),
+ *  so String() is unambiguous; sorting keys removes any dependence on literal order.
+ *  Undefined values are skipped so `{}` and `{aa: undefined}` share one entry. */
+function styleCacheKey(style: RenderStyle): string {
+  const src = style as Record<string, unknown>;
+  let out = '';
+  for (const k of Object.keys(src).sort()) {
+    const v = src[k];
+    if (v !== undefined) out += `${k}=${String(v)};`;
+  }
+  return out;
+}
+
+/** Copy the array and each entry's mutable `droppedCodepoints` map so a caller cannot
+ *  mutate cached state. The PNG bytes are shared deliberately — copying multi-MB
+ *  payloads on every hit would defeat the point; callers only base64-encode them. */
+function cloneForCaller(images: readonly RenderedImage[]): RenderedImage[] {
+  return images.map((img) => ({ ...img, droppedCodepoints: new Map(img.droppedCodepoints) }));
+}
+
+/** Domain separator. Keeps these digests from ever being equal to a digest this
+ *  codebase computes over the same bytes for another purpose (`sha8` over the slab,
+ *  `sha256Text` in proxy.ts), and gives the encoding a version to bump if the input
+ *  tuple ever grows a field. */
+const RENDER_CACHE_KEY_DOMAIN = 'pxpipe/render-cache/v1\n';
+
+const renderCacheKeyEncoder = new TextEncoder();
+
+/**
+ * Cache key: a SHA-256 over a canonical encoding of everything the renderer reads.
+ *
+ * #158 keyed on the source text verbatim, arguing that a digest collision would serve
+ * the WRONG image and that a literal key is collision-free by construction. The
+ * literal key is also a guarantee of the opposite kind: every prompt rendered this
+ * process stays in the heap as a plaintext string until evicted, and — the part that
+ * bites operationally — entry size scales with source length, so a budget meant to
+ * bound retained *pages* spends most of itself on copies of the input (#210).
+ *
+ * A full 256-bit digest, not the 32-bit `sha8` used for telemetry elsewhere. At the
+ * entry counts a byte budget permits, collision odds sit far below the failure modes
+ * the pipeline already lives with, and #210 states the trade explicitly: a
+ * cryptographic collision is the smaller risk against guaranteed prompt retention.
+ *
+ * Every free-form field is length-prefixed, so no regrouping of the same characters
+ * can produce one encoding — ("a b", "c") and ("a", "b c") stay distinct, which is the
+ * ambiguity #158's `slotLen` prefix guarded against. `-1` marks an absent `slotText`
+ * and must stay distinct from empty, because renderTextToPngsUncached branches on
+ * `slotText !== undefined` rather than on its length.
+ */
+async function renderCacheKey(
+  text: string,
+  cols: number,
+  maxCharsPerImage: number,
+  maxHeightPx: number,
+  style: RenderStyle,
+  slotText: string | undefined,
+): Promise<string> {
+  const styleKey = styleCacheKey(style);
+  const slotLen = slotText === undefined ? -1 : slotText.length;
+  const canonical =
+    RENDER_CACHE_KEY_DOMAIN +
+    `${cols}|${maxCharsPerImage}|${maxHeightPx}|` +
+    `${styleKey.length}|${styleKey}|` +
+    `${slotLen}|${slotText ?? ''}|` +
+    `${text.length}|${text}`;
+  const digest = await crypto.subtle.digest('SHA-256', renderCacheKeyEncoder.encode(canonical));
+  const bytes = new Uint8Array(digest);
+  let hex = '';
+  for (const b of bytes) hex += b.toString(16).padStart(2, '0');
+  return hex;
+}
+
+export async function renderTextToPngsWithCharLimit(
+  text: string,
+  cols: number = DEFAULT_COLS,
+  maxCharsPerImage: number = READABLE_CHARS_PER_IMAGE,
+  style: RenderStyle = {},
+  maxHeightPx: number = MAX_HEIGHT_PX,
+  slotText?: string,
+): Promise<RenderedImage[]> {
+  if (renderCacheMaxBytesValue === 0) {
+    return renderTextToPngsUncached(text, cols, maxCharsPerImage, style, maxHeightPx, slotText);
+  }
+  const key = await renderCacheKey(text, cols, maxCharsPerImage, maxHeightPx, style, slotText);
+  const hit = renderCache.get(key);
+  if (hit !== undefined) {
+    renderCacheHits++;
+    renderCache.delete(key); // re-insert to refresh LRU position
+    renderCache.set(key, hit);
+    return cloneForCaller(hit.images);
+  }
+  renderCacheMisses++;
+
+  const images = await renderTextToPngsUncached(text, cols, maxCharsPerImage, style, maxHeightPx, slotText);
+
+  // Key strings are UTF-16 in memory; 2 bytes/unit is the honest estimate. The digest
+  // is fixed-width, so this term is now a constant per entry rather than a second copy
+  // of the input — the budget bounds retained pages, which is what it claims to bound.
+  let bytes = key.length * 2;
+  for (const img of images) bytes += img.png.byteLength;
+  // A single render larger than the whole budget is not cacheable — storing it would
+  // evict everything and then itself. Serve it and move on.
+  if (bytes <= renderCacheMaxBytesValue) {
+    // Two concurrent requests can render the same slab: both miss (the lookup
+    // happens before the await), both render, both land here. Without crediting
+    // back the entry being replaced, the second store adds its bytes while the
+    // Map still holds one entry, and the counter drifts upward permanently —
+    // eventually evicting a cache that is nowhere near its budget.
+    const replaced = renderCache.get(key);
+    if (replaced !== undefined) renderCacheBytes -= replaced.bytes;
+    renderCache.set(key, { images, bytes });
+    renderCacheBytes += bytes;
+    evictToBudget(key); // never evict the entry just stored
+  } else {
+    renderCacheOversized++;
+  }
+  return cloneForCaller(images);
+}
+
+async function renderTextToPngsUncached(
+  text: string,
+  cols: number,
+  maxCharsPerImage: number,
+  style: RenderStyle,
+  maxHeightPx: number,
+  slotText?: string,
+): Promise<RenderedImage[]> {
+  const markerScale = Math.max(1, Math.floor(style.markerScale ?? 1));
+  const cellH = renderCellHeight(style);
+  const lines = wrapLines(text, cols, markerScale, style.font);
+  // Width-identical slot rows align 1:1 with `lines`; pages are contiguous slices,
+  // so the same index range gives each page its slot half. Only built when coloring.
+  const slotLines: string[] | null =
+    style.colorByRole === true && slotText !== undefined
+      ? wrapLines(slotText, cols, markerScale, style.font)
+      : null;
+  const hardLinesPerImg = Math.max(1, Math.floor((maxHeightPx - 2 * PAD_Y) / cellH));
+  // Dense pages (DENSE_CONTENT_CHARS_PER_IMAGE) fill the full 1932 px height;
+  // the slab budget (READABLE_CHARS_PER_IMAGE) keeps its shorter row cap.
+  const linesPerImg = Math.min(hardLinesPerImg, Math.max(1, Math.floor(maxCharsPerImage / cols)));
+
+  const images: RenderedImage[] = [];
+  let slotCursor = 0;
+  for (const page of splitWrappedLinesIntoReadablePages(lines, linesPerImg, maxCharsPerImage)) {
+    const chunk = page.join('\n');
+    const slotChunk = slotLines
+      ? slotLines.slice(slotCursor, slotCursor + page.length).join('\n')
+      : undefined;
+    slotCursor += page.length;
+    images.push(await renderChunkToPng(chunk, cols, style, maxHeightPx, slotChunk));
+  }
+  return images;
+}
+
+export async function renderTextToPngs(
+  text: string,
+  cols: number = DEFAULT_COLS,
+  style: RenderStyle = {},
+  maxHeightPx: number = MAX_HEIGHT_PX,
+  slotText?: string,
+): Promise<RenderedImage[]> {
+  return renderTextToPngsWithCharLimit(text, cols, READABLE_CHARS_PER_IMAGE, style, maxHeightPx, slotText);
+}
+
+export interface RenderDensePagesOptions {
+  /** Wrap-width cap in cols. Default DENSE_CONTENT_COLS (384). */
+  readonly cols?: number;
+  /** Shrink the canvas to the widest actual line (default true). `false` keeps the full
+   *  `cols` width — the proxy's eval-backed full-canvas / slab behavior. */
+  readonly shrink?: boolean;
+  /** Reflow (minify + join hard newlines with ↵) before rendering. Default false. Callers
+   *  that pre-reflow (the proxy's maybeReflow / history lockstep) pass false; `pxpipe export`
+   *  passes true so short lines pack into full-width rows. */
+  readonly reflow?: boolean;
+  /** Max source chars per page. Default DENSE_CONTENT_CHARS_PER_IMAGE. */
+  readonly maxCharsPerImage?: number;
+  /** Render style. Default DENSE_RENDER_STYLE. */
+  readonly style?: RenderStyle;
+  /** Max page height in px. Default MAX_HEIGHT_PX. */
+  readonly maxHeightPx?: number;
+}
+
+/**
+ * The single dense-page rendering decision shared by the public SDK primitive
+ * `renderTextToImages` (library.ts → `pxpipe export`) AND the proxy's `textToImageBlocks`
+ * (transform.ts): optionally reflow, measure the content width, then render. Both callers
+ * route through HERE so
+ * export PNGs and proxy image blocks are produced by the exact same code and cannot drift —
+ * `shrinkColsToContent` is `measureContentCols`, so the proxy's old inline path was already
+ * identical at the default 384 cols; this makes it identical at every cols. Returns the raw
+ * rendered pages; each caller packages them (PNG files vs. base64 Anthropic ImageBlocks).
+ *
+ * History (history.ts) deliberately does NOT use this: it reflows a parallel role-slot string
+ * in lockstep with the text and renders with `colorByRole`, which code export has no concept
+ * of — wiring slots through this public surface would bloat it for one internal caller. It
+ * still shares the underlying `reflow()` + `renderTextToPngsWithCharLimit` primitives.
+ */
+export async function renderDensePages(
+  text: string,
+  opts: RenderDensePagesOptions = {},
+): Promise<RenderedImage[]> {
+  const source = opts.reflow ? reflow(text) ?? text : text;
+  const maxCols = Math.max(1, (opts.cols ?? DENSE_CONTENT_COLS) | 0);
+  const cols = opts.shrink === false ? maxCols : measureContentCols(source, maxCols);
+  const style = opts.style ?? DENSE_RENDER_STYLE;
+  const maxChars = opts.maxCharsPerImage ?? DENSE_CONTENT_CHARS_PER_IMAGE;
+  const maxHeightPx = opts.maxHeightPx ?? MAX_HEIGHT_PX;
+  return renderTextToPngsWithCharLimit(source, cols, maxChars, style, maxHeightPx);
+}

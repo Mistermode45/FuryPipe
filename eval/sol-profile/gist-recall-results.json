@@ -1,0 +1,2661 @@
+{
+  "generatedAt": "2026-07-17T17:05:45.802Z",
+  "model": "gpt-5.6-sol",
+  "live": true,
+  "recipe": {
+    "cols": 152,
+    "maxH": 1932,
+    "style": {
+      "font": "spleen-5x8",
+      "cellWBonus": 0,
+      "cellHBonus": 0,
+      "aa": true,
+      "grid": false,
+      "gridCols": 0,
+      "colorCycle": false,
+      "markerScale": 1,
+      "markerRed": false,
+      "inkDilate": 0
+    },
+    "factsheet": true
+  },
+  "answerable": {
+    "correct": 83,
+    "completed": 98,
+    "n": 98
+  },
+  "state": {
+    "correct": 17,
+    "completed": 18,
+    "n": 18
+  },
+  "unanswerable": {
+    "confabulated": 4,
+    "completed": 16,
+    "n": 16
+  },
+  "rows": [
+    {
+      "tier": "work",
+      "session": 0,
+      "type": "decision",
+      "q": "Which package was chosen for the store layer?",
+      "gold": "mobx",
+      "answer": "zustand",
+      "ok": false,
+      "raw": "[\"zustand\",\"7800ms\",\"src/batcher/core.ts\",\"Tobias Okafor\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3456,
+        "input_tokens_details": {
+          "cache_write_tokens": 3453,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3485
+      }
+    },
+    {
+      "tier": "work",
+      "session": 0,
+      "type": "numeric",
+      "q": "What exact value in ms was the retry budget set to?",
+      "gold": "7880",
+      "answer": "7800ms",
+      "ok": false,
+      "raw": "[\"zustand\",\"7800ms\",\"src/batcher/core.ts\",\"Tobias Okafor\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3456,
+        "input_tokens_details": {
+          "cache_write_tokens": 3453,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3485
+      }
+    },
+    {
+      "tier": "work",
+      "session": 0,
+      "type": "path",
+      "q": "In which file path was the double-flush race found?",
+      "gold": "src/batcher/core.ts",
+      "answer": "src/batcher/core.ts",
+      "ok": true,
+      "raw": "[\"zustand\",\"7800ms\",\"src/batcher/core.ts\",\"Tobias Okafor\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3456,
+        "input_tokens_details": {
+          "cache_write_tokens": 3453,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3485
+      }
+    },
+    {
+      "tier": "work",
+      "session": 0,
+      "type": "name",
+      "q": "Who was named as the on-call reviewer for the PR?",
+      "gold": "Tobias Okafor",
+      "answer": "Tobias Okafor",
+      "ok": true,
+      "raw": "[\"zustand\",\"7800ms\",\"src/batcher/core.ts\",\"Tobias Okafor\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3456,
+        "input_tokens_details": {
+          "cache_write_tokens": 3453,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3485
+      }
+    },
+    {
+      "tier": "work",
+      "session": 0,
+      "type": "negation",
+      "q": "Was LEGACY_PINS enabled in prod? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"zustand\",\"7800ms\",\"src/batcher/core.ts\",\"Tobias Okafor\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3456,
+        "input_tokens_details": {
+          "cache_write_tokens": 3453,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3485
+      }
+    },
+    {
+      "tier": "work",
+      "session": 0,
+      "type": "unanswerable",
+      "q": "Which database migration version was rolled back?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"zustand\",\"7800ms\",\"src/batcher/core.ts\",\"Tobias Okafor\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3456,
+        "input_tokens_details": {
+          "cache_write_tokens": 3453,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3485
+      }
+    },
+    {
+      "tier": "work",
+      "session": 1,
+      "type": "decision",
+      "q": "Which package was chosen for the store layer?",
+      "gold": "xstate",
+      "answer": "xstate",
+      "ok": true,
+      "raw": "[\"xstate\",\"3480ms\",\"src/cursor/sync.ts\",\"Farid Moreau\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3496,
+        "input_tokens_details": {
+          "cache_write_tokens": 3493,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3524
+      }
+    },
+    {
+      "tier": "work",
+      "session": 1,
+      "type": "numeric",
+      "q": "What exact value in ms was the retry budget set to?",
+      "gold": "3480",
+      "answer": "3480ms",
+      "ok": true,
+      "raw": "[\"xstate\",\"3480ms\",\"src/cursor/sync.ts\",\"Farid Moreau\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3496,
+        "input_tokens_details": {
+          "cache_write_tokens": 3493,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3524
+      }
+    },
+    {
+      "tier": "work",
+      "session": 1,
+      "type": "path",
+      "q": "In which file path was the double-flush race found?",
+      "gold": "src/cursor/sync.ts",
+      "answer": "src/cursor/sync.ts",
+      "ok": true,
+      "raw": "[\"xstate\",\"3480ms\",\"src/cursor/sync.ts\",\"Farid Moreau\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3496,
+        "input_tokens_details": {
+          "cache_write_tokens": 3493,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3524
+      }
+    },
+    {
+      "tier": "work",
+      "session": 1,
+      "type": "name",
+      "q": "Who was named as the on-call reviewer for the PR?",
+      "gold": "Farid Moreau",
+      "answer": "Farid Moreau",
+      "ok": true,
+      "raw": "[\"xstate\",\"3480ms\",\"src/cursor/sync.ts\",\"Farid Moreau\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3496,
+        "input_tokens_details": {
+          "cache_write_tokens": 3493,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3524
+      }
+    },
+    {
+      "tier": "work",
+      "session": 1,
+      "type": "negation",
+      "q": "Was LEGACY_PINS enabled in prod? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"xstate\",\"3480ms\",\"src/cursor/sync.ts\",\"Farid Moreau\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3496,
+        "input_tokens_details": {
+          "cache_write_tokens": 3493,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3524
+      }
+    },
+    {
+      "tier": "work",
+      "session": 1,
+      "type": "unanswerable",
+      "q": "Which AWS region was the failover assigned to?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"xstate\",\"3480ms\",\"src/cursor/sync.ts\",\"Farid Moreau\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3496,
+        "input_tokens_details": {
+          "cache_write_tokens": 3493,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3524
+      }
+    },
+    {
+      "tier": "work",
+      "session": 2,
+      "type": "decision",
+      "q": "Which package was chosen for the store layer?",
+      "gold": "immer",
+      "answer": "msgpackr",
+      "ok": false,
+      "raw": "[\"msgpackr\",\"9110ms\",\"src/cursor/io.ts\",\"Nadia Costa\",\"OFF\",\"render-v2.1.7\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3513,
+        "input_tokens_details": {
+          "cache_write_tokens": 3510,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3546
+      }
+    },
+    {
+      "tier": "work",
+      "session": 2,
+      "type": "numeric",
+      "q": "What exact value in ms was the retry budget set to?",
+      "gold": "9110",
+      "answer": "9110ms",
+      "ok": true,
+      "raw": "[\"msgpackr\",\"9110ms\",\"src/cursor/io.ts\",\"Nadia Costa\",\"OFF\",\"render-v2.1.7\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3513,
+        "input_tokens_details": {
+          "cache_write_tokens": 3510,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3546
+      }
+    },
+    {
+      "tier": "work",
+      "session": 2,
+      "type": "path",
+      "q": "In which file path was the double-flush race found?",
+      "gold": "src/cursor/io.ts",
+      "answer": "src/cursor/io.ts",
+      "ok": true,
+      "raw": "[\"msgpackr\",\"9110ms\",\"src/cursor/io.ts\",\"Nadia Costa\",\"OFF\",\"render-v2.1.7\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3513,
+        "input_tokens_details": {
+          "cache_write_tokens": 3510,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3546
+      }
+    },
+    {
+      "tier": "work",
+      "session": 2,
+      "type": "name",
+      "q": "Who was named as the on-call reviewer for the PR?",
+      "gold": "Nadia Costa",
+      "answer": "Nadia Costa",
+      "ok": true,
+      "raw": "[\"msgpackr\",\"9110ms\",\"src/cursor/io.ts\",\"Nadia Costa\",\"OFF\",\"render-v2.1.7\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3513,
+        "input_tokens_details": {
+          "cache_write_tokens": 3510,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3546
+      }
+    },
+    {
+      "tier": "work",
+      "session": 2,
+      "type": "negation",
+      "q": "Was ENABLE_SHARDING enabled in prod? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"msgpackr\",\"9110ms\",\"src/cursor/io.ts\",\"Nadia Costa\",\"OFF\",\"render-v2.1.7\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3513,
+        "input_tokens_details": {
+          "cache_write_tokens": 3510,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3546
+      }
+    },
+    {
+      "tier": "work",
+      "session": 2,
+      "type": "unanswerable",
+      "q": "What git tag was the hotfix released under?",
+      "gold": "UNKNOWN",
+      "answer": "render-v2.1.7",
+      "ok": false,
+      "raw": "[\"msgpackr\",\"9110ms\",\"src/cursor/io.ts\",\"Nadia Costa\",\"OFF\",\"render-v2.1.7\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3513,
+        "input_tokens_details": {
+          "cache_write_tokens": 3510,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3546
+      }
+    },
+    {
+      "tier": "work",
+      "session": 3,
+      "type": "decision",
+      "q": "Which package was chosen for the store layer?",
+      "gold": "immer",
+      "answer": "better-sqlite3",
+      "ok": false,
+      "raw": "[\"better-sqlite3\",\"3470ms\",\"src/scheduler/core.ts\",\"Dmitri Berg\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2973,
+        "input_tokens_details": {
+          "cache_write_tokens": 2970,
+          "cached_tokens": 0
+        },
+        "output_tokens": 30,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3003
+      }
+    },
+    {
+      "tier": "work",
+      "session": 3,
+      "type": "numeric",
+      "q": "What exact value in ms was the retry budget set to?",
+      "gold": "3470",
+      "answer": "3470ms",
+      "ok": true,
+      "raw": "[\"better-sqlite3\",\"3470ms\",\"src/scheduler/core.ts\",\"Dmitri Berg\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2973,
+        "input_tokens_details": {
+          "cache_write_tokens": 2970,
+          "cached_tokens": 0
+        },
+        "output_tokens": 30,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3003
+      }
+    },
+    {
+      "tier": "work",
+      "session": 3,
+      "type": "path",
+      "q": "In which file path was the double-flush race found?",
+      "gold": "src/scheduler/core.ts",
+      "answer": "src/scheduler/core.ts",
+      "ok": true,
+      "raw": "[\"better-sqlite3\",\"3470ms\",\"src/scheduler/core.ts\",\"Dmitri Berg\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2973,
+        "input_tokens_details": {
+          "cache_write_tokens": 2970,
+          "cached_tokens": 0
+        },
+        "output_tokens": 30,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3003
+      }
+    },
+    {
+      "tier": "work",
+      "session": 3,
+      "type": "name",
+      "q": "Who was named as the on-call reviewer for the PR?",
+      "gold": "Dmitri Berg",
+      "answer": "Dmitri Berg",
+      "ok": true,
+      "raw": "[\"better-sqlite3\",\"3470ms\",\"src/scheduler/core.ts\",\"Dmitri Berg\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2973,
+        "input_tokens_details": {
+          "cache_write_tokens": 2970,
+          "cached_tokens": 0
+        },
+        "output_tokens": 30,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3003
+      }
+    },
+    {
+      "tier": "work",
+      "session": 3,
+      "type": "negation",
+      "q": "Was HOT_RELOAD_V2 enabled in prod? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"better-sqlite3\",\"3470ms\",\"src/scheduler/core.ts\",\"Dmitri Berg\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2973,
+        "input_tokens_details": {
+          "cache_write_tokens": 2970,
+          "cached_tokens": 0
+        },
+        "output_tokens": 30,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3003
+      }
+    },
+    {
+      "tier": "work",
+      "session": 3,
+      "type": "unanswerable",
+      "q": "Which database migration version was rolled back?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"better-sqlite3\",\"3470ms\",\"src/scheduler/core.ts\",\"Dmitri Berg\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2973,
+        "input_tokens_details": {
+          "cache_write_tokens": 2970,
+          "cached_tokens": 0
+        },
+        "output_tokens": 30,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3003
+      }
+    },
+    {
+      "tier": "work",
+      "session": 4,
+      "type": "decision",
+      "q": "Which package was chosen for the store layer?",
+      "gold": "redux-toolkit",
+      "answer": "moxb",
+      "ok": false,
+      "raw": "[\"moxb\",\"6210ms\",\"src/cursor/io.ts\",\"Tobias Khoury\",\"OFF\",\"eu-central-1\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2989,
+        "input_tokens_details": {
+          "cache_write_tokens": 2986,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3022
+      }
+    },
+    {
+      "tier": "work",
+      "session": 4,
+      "type": "numeric",
+      "q": "What exact value in ms was the retry budget set to?",
+      "gold": "6210",
+      "answer": "6210ms",
+      "ok": true,
+      "raw": "[\"moxb\",\"6210ms\",\"src/cursor/io.ts\",\"Tobias Khoury\",\"OFF\",\"eu-central-1\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2989,
+        "input_tokens_details": {
+          "cache_write_tokens": 2986,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3022
+      }
+    },
+    {
+      "tier": "work",
+      "session": 4,
+      "type": "path",
+      "q": "In which file path was the double-flush race found?",
+      "gold": "src/cursor/io.ts",
+      "answer": "src/cursor/io.ts",
+      "ok": true,
+      "raw": "[\"moxb\",\"6210ms\",\"src/cursor/io.ts\",\"Tobias Khoury\",\"OFF\",\"eu-central-1\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2989,
+        "input_tokens_details": {
+          "cache_write_tokens": 2986,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3022
+      }
+    },
+    {
+      "tier": "work",
+      "session": 4,
+      "type": "name",
+      "q": "Who was named as the on-call reviewer for the PR?",
+      "gold": "Tobias Khoury",
+      "answer": "Tobias Khoury",
+      "ok": true,
+      "raw": "[\"moxb\",\"6210ms\",\"src/cursor/io.ts\",\"Tobias Khoury\",\"OFF\",\"eu-central-1\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2989,
+        "input_tokens_details": {
+          "cache_write_tokens": 2986,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3022
+      }
+    },
+    {
+      "tier": "work",
+      "session": 4,
+      "type": "negation",
+      "q": "Was ASYNC_FSYNC enabled in prod? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"moxb\",\"6210ms\",\"src/cursor/io.ts\",\"Tobias Khoury\",\"OFF\",\"eu-central-1\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2989,
+        "input_tokens_details": {
+          "cache_write_tokens": 2986,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3022
+      }
+    },
+    {
+      "tier": "work",
+      "session": 4,
+      "type": "unanswerable",
+      "q": "Which AWS region was the failover assigned to?",
+      "gold": "UNKNOWN",
+      "answer": "eu-central-1",
+      "ok": false,
+      "raw": "[\"moxb\",\"6210ms\",\"src/cursor/io.ts\",\"Tobias Khoury\",\"OFF\",\"eu-central-1\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 2989,
+        "input_tokens_details": {
+          "cache_write_tokens": 2986,
+          "cached_tokens": 0
+        },
+        "output_tokens": 33,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3022
+      }
+    },
+    {
+      "tier": "work",
+      "session": 5,
+      "type": "decision",
+      "q": "Which package was chosen for the store layer?",
+      "gold": "redux-toolkit",
+      "answer": "redux-toolkit",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"1250ms\",\"src/cursor/io.ts\",\"Lucia Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3208,
+        "input_tokens_details": {
+          "cache_write_tokens": 3205,
+          "cached_tokens": 0
+        },
+        "output_tokens": 27,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3235
+      }
+    },
+    {
+      "tier": "work",
+      "session": 5,
+      "type": "numeric",
+      "q": "What exact value in ms was the retry budget set to?",
+      "gold": "1250",
+      "answer": "1250ms",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"1250ms\",\"src/cursor/io.ts\",\"Lucia Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3208,
+        "input_tokens_details": {
+          "cache_write_tokens": 3205,
+          "cached_tokens": 0
+        },
+        "output_tokens": 27,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3235
+      }
+    },
+    {
+      "tier": "work",
+      "session": 5,
+      "type": "path",
+      "q": "In which file path was the double-flush race found?",
+      "gold": "src/cursor/io.ts",
+      "answer": "src/cursor/io.ts",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"1250ms\",\"src/cursor/io.ts\",\"Lucia Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3208,
+        "input_tokens_details": {
+          "cache_write_tokens": 3205,
+          "cached_tokens": 0
+        },
+        "output_tokens": 27,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3235
+      }
+    },
+    {
+      "tier": "work",
+      "session": 5,
+      "type": "name",
+      "q": "Who was named as the on-call reviewer for the PR?",
+      "gold": "Lucia Costa",
+      "answer": "Lucia Costa",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"1250ms\",\"src/cursor/io.ts\",\"Lucia Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3208,
+        "input_tokens_details": {
+          "cache_write_tokens": 3205,
+          "cached_tokens": 0
+        },
+        "output_tokens": 27,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3235
+      }
+    },
+    {
+      "tier": "work",
+      "session": 5,
+      "type": "negation",
+      "q": "Was HOT_RELOAD_V2 enabled in prod? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"1250ms\",\"src/cursor/io.ts\",\"Lucia Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3208,
+        "input_tokens_details": {
+          "cache_write_tokens": 3205,
+          "cached_tokens": 0
+        },
+        "output_tokens": 27,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3235
+      }
+    },
+    {
+      "tier": "work",
+      "session": 5,
+      "type": "unanswerable",
+      "q": "Which database migration version was rolled back?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"1250ms\",\"src/cursor/io.ts\",\"Lucia Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3208,
+        "input_tokens_details": {
+          "cache_write_tokens": 3205,
+          "cached_tokens": 0
+        },
+        "output_tokens": 27,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3235
+      }
+    },
+    {
+      "tier": "work",
+      "session": 6,
+      "type": "decision",
+      "q": "Which package was chosen for the store layer?",
+      "gold": "immer",
+      "answer": "nanostores",
+      "ok": false,
+      "raw": "[\"nanostores\",\"6290ms\",\"src/scheduler/sync.ts\",\"Tobias\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3470,
+        "input_tokens_details": {
+          "cache_write_tokens": 3467,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3498
+      }
+    },
+    {
+      "tier": "work",
+      "session": 6,
+      "type": "numeric",
+      "q": "What exact value in ms was the retry budget set to?",
+      "gold": "6290",
+      "answer": "6290ms",
+      "ok": true,
+      "raw": "[\"nanostores\",\"6290ms\",\"src/scheduler/sync.ts\",\"Tobias\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3470,
+        "input_tokens_details": {
+          "cache_write_tokens": 3467,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3498
+      }
+    },
+    {
+      "tier": "work",
+      "session": 6,
+      "type": "path",
+      "q": "In which file path was the double-flush race found?",
+      "gold": "src/scheduler/sync.ts",
+      "answer": "src/scheduler/sync.ts",
+      "ok": true,
+      "raw": "[\"nanostores\",\"6290ms\",\"src/scheduler/sync.ts\",\"Tobias\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3470,
+        "input_tokens_details": {
+          "cache_write_tokens": 3467,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3498
+      }
+    },
+    {
+      "tier": "work",
+      "session": 6,
+      "type": "name",
+      "q": "Who was named as the on-call reviewer for the PR?",
+      "gold": "Tobias Khoury",
+      "answer": "Tobias",
+      "ok": false,
+      "raw": "[\"nanostores\",\"6290ms\",\"src/scheduler/sync.ts\",\"Tobias\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3470,
+        "input_tokens_details": {
+          "cache_write_tokens": 3467,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3498
+      }
+    },
+    {
+      "tier": "work",
+      "session": 6,
+      "type": "negation",
+      "q": "Was LEGACY_PINS enabled in prod? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"nanostores\",\"6290ms\",\"src/scheduler/sync.ts\",\"Tobias\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3470,
+        "input_tokens_details": {
+          "cache_write_tokens": 3467,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3498
+      }
+    },
+    {
+      "tier": "work",
+      "session": 6,
+      "type": "unanswerable",
+      "q": "Which AWS region was the failover assigned to?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"nanostores\",\"6290ms\",\"src/scheduler/sync.ts\",\"Tobias\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3470,
+        "input_tokens_details": {
+          "cache_write_tokens": 3467,
+          "cached_tokens": 0
+        },
+        "output_tokens": 28,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3498
+      }
+    },
+    {
+      "tier": "work",
+      "session": 7,
+      "type": "decision",
+      "q": "Which package was chosen for the store layer?",
+      "gold": "xstate",
+      "answer": "nanostores",
+      "ok": false,
+      "raw": "[\"nanostores\",\"7870ms\",\"src/batcher/sync.ts\",\"Priya Tanaka\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3651,
+        "input_tokens_details": {
+          "cache_write_tokens": 3648,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3680
+      }
+    },
+    {
+      "tier": "work",
+      "session": 7,
+      "type": "numeric",
+      "q": "What exact value in ms was the retry budget set to?",
+      "gold": "7870",
+      "answer": "7870ms",
+      "ok": true,
+      "raw": "[\"nanostores\",\"7870ms\",\"src/batcher/sync.ts\",\"Priya Tanaka\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3651,
+        "input_tokens_details": {
+          "cache_write_tokens": 3648,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3680
+      }
+    },
+    {
+      "tier": "work",
+      "session": 7,
+      "type": "path",
+      "q": "In which file path was the double-flush race found?",
+      "gold": "src/batcher/sync.ts",
+      "answer": "src/batcher/sync.ts",
+      "ok": true,
+      "raw": "[\"nanostores\",\"7870ms\",\"src/batcher/sync.ts\",\"Priya Tanaka\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3651,
+        "input_tokens_details": {
+          "cache_write_tokens": 3648,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3680
+      }
+    },
+    {
+      "tier": "work",
+      "session": 7,
+      "type": "name",
+      "q": "Who was named as the on-call reviewer for the PR?",
+      "gold": "Priya Tanaka",
+      "answer": "Priya Tanaka",
+      "ok": true,
+      "raw": "[\"nanostores\",\"7870ms\",\"src/batcher/sync.ts\",\"Priya Tanaka\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3651,
+        "input_tokens_details": {
+          "cache_write_tokens": 3648,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3680
+      }
+    },
+    {
+      "tier": "work",
+      "session": 7,
+      "type": "negation",
+      "q": "Was HOT_RELOAD_V2 enabled in prod? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"nanostores\",\"7870ms\",\"src/batcher/sync.ts\",\"Priya Tanaka\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3651,
+        "input_tokens_details": {
+          "cache_write_tokens": 3648,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3680
+      }
+    },
+    {
+      "tier": "work",
+      "session": 7,
+      "type": "unanswerable",
+      "q": "What was the Docker base image pinned to?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"nanostores\",\"7870ms\",\"src/batcher/sync.ts\",\"Priya Tanaka\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3651,
+        "input_tokens_details": {
+          "cache_write_tokens": 3648,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3680
+      }
+    },
+    {
+      "tier": "work",
+      "session": 8,
+      "type": "decision",
+      "q": "Which package was chosen for the store layer?",
+      "gold": "jotai",
+      "answer": "jotai",
+      "ok": true,
+      "raw": "[\"jotai\",\"7050ms\",\"src/retry/io.ts\",\"Soren Petrov\",\"OFF\",\"8255\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3534,
+        "input_tokens_details": {
+          "cache_write_tokens": 3531,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3563
+      }
+    },
+    {
+      "tier": "work",
+      "session": 8,
+      "type": "numeric",
+      "q": "What exact value in ms was the retry budget set to?",
+      "gold": "7850",
+      "answer": "7050ms",
+      "ok": false,
+      "raw": "[\"jotai\",\"7050ms\",\"src/retry/io.ts\",\"Soren Petrov\",\"OFF\",\"8255\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3534,
+        "input_tokens_details": {
+          "cache_write_tokens": 3531,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3563
+      }
+    },
+    {
+      "tier": "work",
+      "session": 8,
+      "type": "path",
+      "q": "In which file path was the double-flush race found?",
+      "gold": "src/retry/io.ts",
+      "answer": "src/retry/io.ts",
+      "ok": true,
+      "raw": "[\"jotai\",\"7050ms\",\"src/retry/io.ts\",\"Soren Petrov\",\"OFF\",\"8255\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3534,
+        "input_tokens_details": {
+          "cache_write_tokens": 3531,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3563
+      }
+    },
+    {
+      "tier": "work",
+      "session": 8,
+      "type": "name",
+      "q": "Who was named as the on-call reviewer for the PR?",
+      "gold": "Soren Petrov",
+      "answer": "Soren Petrov",
+      "ok": true,
+      "raw": "[\"jotai\",\"7050ms\",\"src/retry/io.ts\",\"Soren Petrov\",\"OFF\",\"8255\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3534,
+        "input_tokens_details": {
+          "cache_write_tokens": 3531,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3563
+      }
+    },
+    {
+      "tier": "work",
+      "session": 8,
+      "type": "negation",
+      "q": "Was ENABLE_SHARDING enabled in prod? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"jotai\",\"7050ms\",\"src/retry/io.ts\",\"Soren Petrov\",\"OFF\",\"8255\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3534,
+        "input_tokens_details": {
+          "cache_write_tokens": 3531,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3563
+      }
+    },
+    {
+      "tier": "work",
+      "session": 8,
+      "type": "unanswerable",
+      "q": "What port number was the staging proxy moved to?",
+      "gold": "UNKNOWN",
+      "answer": "8255",
+      "ok": false,
+      "raw": "[\"jotai\",\"7050ms\",\"src/retry/io.ts\",\"Soren Petrov\",\"OFF\",\"8255\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3534,
+        "input_tokens_details": {
+          "cache_write_tokens": 3531,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3563
+      }
+    },
+    {
+      "tier": "work",
+      "session": 9,
+      "type": "decision",
+      "q": "Which package was chosen for the store layer?",
+      "gold": "redux-toolkit",
+      "answer": "redux-toolkit",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"4540ms\",\"src/cursor/sync.ts\",\"Ingrid Nakamura\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3422,
+        "input_tokens_details": {
+          "cache_write_tokens": 3419,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3451
+      }
+    },
+    {
+      "tier": "work",
+      "session": 9,
+      "type": "numeric",
+      "q": "What exact value in ms was the retry budget set to?",
+      "gold": "4540",
+      "answer": "4540ms",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"4540ms\",\"src/cursor/sync.ts\",\"Ingrid Nakamura\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3422,
+        "input_tokens_details": {
+          "cache_write_tokens": 3419,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3451
+      }
+    },
+    {
+      "tier": "work",
+      "session": 9,
+      "type": "path",
+      "q": "In which file path was the double-flush race found?",
+      "gold": "src/cursor/sync.ts",
+      "answer": "src/cursor/sync.ts",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"4540ms\",\"src/cursor/sync.ts\",\"Ingrid Nakamura\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3422,
+        "input_tokens_details": {
+          "cache_write_tokens": 3419,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3451
+      }
+    },
+    {
+      "tier": "work",
+      "session": 9,
+      "type": "name",
+      "q": "Who was named as the on-call reviewer for the PR?",
+      "gold": "Ingrid Nakamura",
+      "answer": "Ingrid Nakamura",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"4540ms\",\"src/cursor/sync.ts\",\"Ingrid Nakamura\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3422,
+        "input_tokens_details": {
+          "cache_write_tokens": 3419,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3451
+      }
+    },
+    {
+      "tier": "work",
+      "session": 9,
+      "type": "negation",
+      "q": "Was HOT_RELOAD_V2 enabled in prod? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"4540ms\",\"src/cursor/sync.ts\",\"Ingrid Nakamura\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3422,
+        "input_tokens_details": {
+          "cache_write_tokens": 3419,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3451
+      }
+    },
+    {
+      "tier": "work",
+      "session": 9,
+      "type": "unanswerable",
+      "q": "What git tag was the hotfix released under?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"4540ms\",\"src/cursor/sync.ts\",\"Ingrid Nakamura\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 3422,
+        "input_tokens_details": {
+          "cache_write_tokens": 3419,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 3451
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 0,
+      "type": "decision",
+      "q": "What was the FINAL package chosen for the store layer?",
+      "gold": "nanostores",
+      "answer": "nanostores",
+      "ok": true,
+      "raw": "[\"nanostores\",\"7850ms\",\"src/mailbox/core.ts\",\"Aiko Khoury\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8471,
+        "input_tokens_details": {
+          "cache_write_tokens": 8468,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8500
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 0,
+      "type": "numeric",
+      "q": "What exact value in ms was the RETRY BUDGET set to (not the cache TTL)?",
+      "gold": "7850",
+      "answer": "7850ms",
+      "ok": true,
+      "raw": "[\"nanostores\",\"7850ms\",\"src/mailbox/core.ts\",\"Aiko Khoury\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8471,
+        "input_tokens_details": {
+          "cache_write_tokens": 8468,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8500
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 0,
+      "type": "path",
+      "q": "Which file contained the ROOT CAUSE of the double-flush race?",
+      "gold": "src/mailbox/core.ts",
+      "answer": "src/mailbox/core.ts",
+      "ok": true,
+      "raw": "[\"nanostores\",\"7850ms\",\"src/mailbox/core.ts\",\"Aiko Khoury\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8471,
+        "input_tokens_details": {
+          "cache_write_tokens": 8468,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8500
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 0,
+      "type": "name",
+      "q": "Who is the on-call REVIEWER for the PR (not the author)?",
+      "gold": "Aiko Khoury",
+      "answer": "Aiko Khoury",
+      "ok": true,
+      "raw": "[\"nanostores\",\"7850ms\",\"src/mailbox/core.ts\",\"Aiko Khoury\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8471,
+        "input_tokens_details": {
+          "cache_write_tokens": 8468,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8500
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 0,
+      "type": "negation",
+      "q": "In PROD specifically, was LEGACY_PINS enabled? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"nanostores\",\"7850ms\",\"src/mailbox/core.ts\",\"Aiko Khoury\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8471,
+        "input_tokens_details": {
+          "cache_write_tokens": 8468,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8500
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 0,
+      "type": "unanswerable",
+      "q": "Which database migration version was rolled back?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"nanostores\",\"7850ms\",\"src/mailbox/core.ts\",\"Aiko Khoury\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8471,
+        "input_tokens_details": {
+          "cache_write_tokens": 8468,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8500
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 1,
+      "type": "decision",
+      "q": "What was the FINAL package chosen for the store layer?",
+      "gold": "immer",
+      "answer": "lru-cache@11",
+      "ok": false,
+      "raw": "[\"lru-cache@11\",\"1330ms\",\"src/retry/core.ts\",\"Mara Nhouy\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8805,
+        "input_tokens_details": {
+          "cache_write_tokens": 8802,
+          "cached_tokens": 0
+        },
+        "output_tokens": 31,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8836
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 1,
+      "type": "numeric",
+      "q": "What exact value in ms was the RETRY BUDGET set to (not the cache TTL)?",
+      "gold": "1330",
+      "answer": "1330ms",
+      "ok": true,
+      "raw": "[\"lru-cache@11\",\"1330ms\",\"src/retry/core.ts\",\"Mara Nhouy\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8805,
+        "input_tokens_details": {
+          "cache_write_tokens": 8802,
+          "cached_tokens": 0
+        },
+        "output_tokens": 31,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8836
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 1,
+      "type": "path",
+      "q": "Which file contained the ROOT CAUSE of the double-flush race?",
+      "gold": "src/retry/core.ts",
+      "answer": "src/retry/core.ts",
+      "ok": true,
+      "raw": "[\"lru-cache@11\",\"1330ms\",\"src/retry/core.ts\",\"Mara Nhouy\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8805,
+        "input_tokens_details": {
+          "cache_write_tokens": 8802,
+          "cached_tokens": 0
+        },
+        "output_tokens": 31,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8836
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 1,
+      "type": "name",
+      "q": "Who is the on-call REVIEWER for the PR (not the author)?",
+      "gold": "Mara Khoury",
+      "answer": "Mara Nhouy",
+      "ok": false,
+      "raw": "[\"lru-cache@11\",\"1330ms\",\"src/retry/core.ts\",\"Mara Nhouy\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8805,
+        "input_tokens_details": {
+          "cache_write_tokens": 8802,
+          "cached_tokens": 0
+        },
+        "output_tokens": 31,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8836
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 1,
+      "type": "negation",
+      "q": "In PROD specifically, was USE_BROTLI enabled? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"lru-cache@11\",\"1330ms\",\"src/retry/core.ts\",\"Mara Nhouy\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8805,
+        "input_tokens_details": {
+          "cache_write_tokens": 8802,
+          "cached_tokens": 0
+        },
+        "output_tokens": 31,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8836
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 1,
+      "type": "unanswerable",
+      "q": "Which database migration version was rolled back?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"lru-cache@11\",\"1330ms\",\"src/retry/core.ts\",\"Mara Nhouy\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8805,
+        "input_tokens_details": {
+          "cache_write_tokens": 8802,
+          "cached_tokens": 0
+        },
+        "output_tokens": 31,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8836
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 2,
+      "type": "decision",
+      "q": "What was the FINAL package chosen for the store layer?",
+      "gold": "immer",
+      "answer": "sqlite",
+      "ok": false,
+      "raw": "[\"sqlite\",\"4500ms\",\"src/quota/core.ts\",\"Nadia Alvarez\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8407,
+        "input_tokens_details": {
+          "cache_write_tokens": 8404,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8432
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 2,
+      "type": "numeric",
+      "q": "What exact value in ms was the RETRY BUDGET set to (not the cache TTL)?",
+      "gold": "4570",
+      "answer": "4500ms",
+      "ok": false,
+      "raw": "[\"sqlite\",\"4500ms\",\"src/quota/core.ts\",\"Nadia Alvarez\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8407,
+        "input_tokens_details": {
+          "cache_write_tokens": 8404,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8432
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 2,
+      "type": "path",
+      "q": "Which file contained the ROOT CAUSE of the double-flush race?",
+      "gold": "src/quota/core.ts",
+      "answer": "src/quota/core.ts",
+      "ok": true,
+      "raw": "[\"sqlite\",\"4500ms\",\"src/quota/core.ts\",\"Nadia Alvarez\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8407,
+        "input_tokens_details": {
+          "cache_write_tokens": 8404,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8432
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 2,
+      "type": "name",
+      "q": "Who is the on-call REVIEWER for the PR (not the author)?",
+      "gold": "Nadia Alvarez",
+      "answer": "Nadia Alvarez",
+      "ok": true,
+      "raw": "[\"sqlite\",\"4500ms\",\"src/quota/core.ts\",\"Nadia Alvarez\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8407,
+        "input_tokens_details": {
+          "cache_write_tokens": 8404,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8432
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 2,
+      "type": "negation",
+      "q": "In PROD specifically, was ENABLE_SHARDING enabled? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"sqlite\",\"4500ms\",\"src/quota/core.ts\",\"Nadia Alvarez\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8407,
+        "input_tokens_details": {
+          "cache_write_tokens": 8404,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8432
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 2,
+      "type": "unanswerable",
+      "q": "Which database migration version was rolled back?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"sqlite\",\"4500ms\",\"src/quota/core.ts\",\"Nadia Alvarez\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8407,
+        "input_tokens_details": {
+          "cache_write_tokens": 8404,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8432
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 3,
+      "type": "decision",
+      "q": "What was the FINAL package chosen for the store layer?",
+      "gold": "redux-toolkit",
+      "answer": "redux-toolkit",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"6270ms\",\"src/batcher/core.ts\",\"Farid Lindqvist\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8097,
+        "input_tokens_details": {
+          "cache_write_tokens": 8094,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8126
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 3,
+      "type": "numeric",
+      "q": "What exact value in ms was the RETRY BUDGET set to (not the cache TTL)?",
+      "gold": "6270",
+      "answer": "6270ms",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"6270ms\",\"src/batcher/core.ts\",\"Farid Lindqvist\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8097,
+        "input_tokens_details": {
+          "cache_write_tokens": 8094,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8126
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 3,
+      "type": "path",
+      "q": "Which file contained the ROOT CAUSE of the double-flush race?",
+      "gold": "src/batcher/core.ts",
+      "answer": "src/batcher/core.ts",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"6270ms\",\"src/batcher/core.ts\",\"Farid Lindqvist\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8097,
+        "input_tokens_details": {
+          "cache_write_tokens": 8094,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8126
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 3,
+      "type": "name",
+      "q": "Who is the on-call REVIEWER for the PR (not the author)?",
+      "gold": "Farid Lindqvist",
+      "answer": "Farid Lindqvist",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"6270ms\",\"src/batcher/core.ts\",\"Farid Lindqvist\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8097,
+        "input_tokens_details": {
+          "cache_write_tokens": 8094,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8126
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 3,
+      "type": "negation",
+      "q": "In PROD specifically, was ASYNC_FSYNC enabled? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"6270ms\",\"src/batcher/core.ts\",\"Farid Lindqvist\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8097,
+        "input_tokens_details": {
+          "cache_write_tokens": 8094,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8126
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 3,
+      "type": "unanswerable",
+      "q": "What was the Docker base image pinned to?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"redux-toolkit\",\"6270ms\",\"src/batcher/core.ts\",\"Farid Lindqvist\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8097,
+        "input_tokens_details": {
+          "cache_write_tokens": 8094,
+          "cached_tokens": 0
+        },
+        "output_tokens": 29,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8126
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 4,
+      "type": "decision",
+      "q": "What was the FINAL package chosen for the store layer?",
+      "gold": "zustand",
+      "answer": "zustand",
+      "ok": true,
+      "raw": "[\"zustand\",\"9120ms\",\"src/cursor/core.ts\",\"Soren Nakamura\",\"OFF\",\"2026-05-23\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 9308,
+        "input_tokens_details": {
+          "cache_write_tokens": 9305,
+          "cached_tokens": 0
+        },
+        "output_tokens": 32,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 9340
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 4,
+      "type": "numeric",
+      "q": "What exact value in ms was the RETRY BUDGET set to (not the cache TTL)?",
+      "gold": "9120",
+      "answer": "9120ms",
+      "ok": true,
+      "raw": "[\"zustand\",\"9120ms\",\"src/cursor/core.ts\",\"Soren Nakamura\",\"OFF\",\"2026-05-23\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 9308,
+        "input_tokens_details": {
+          "cache_write_tokens": 9305,
+          "cached_tokens": 0
+        },
+        "output_tokens": 32,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 9340
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 4,
+      "type": "path",
+      "q": "Which file contained the ROOT CAUSE of the double-flush race?",
+      "gold": "src/cursor/core.ts",
+      "answer": "src/cursor/core.ts",
+      "ok": true,
+      "raw": "[\"zustand\",\"9120ms\",\"src/cursor/core.ts\",\"Soren Nakamura\",\"OFF\",\"2026-05-23\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 9308,
+        "input_tokens_details": {
+          "cache_write_tokens": 9305,
+          "cached_tokens": 0
+        },
+        "output_tokens": 32,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 9340
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 4,
+      "type": "name",
+      "q": "Who is the on-call REVIEWER for the PR (not the author)?",
+      "gold": "Soren Nakamura",
+      "answer": "Soren Nakamura",
+      "ok": true,
+      "raw": "[\"zustand\",\"9120ms\",\"src/cursor/core.ts\",\"Soren Nakamura\",\"OFF\",\"2026-05-23\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 9308,
+        "input_tokens_details": {
+          "cache_write_tokens": 9305,
+          "cached_tokens": 0
+        },
+        "output_tokens": 32,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 9340
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 4,
+      "type": "negation",
+      "q": "In PROD specifically, was HOT_RELOAD_V2 enabled? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"zustand\",\"9120ms\",\"src/cursor/core.ts\",\"Soren Nakamura\",\"OFF\",\"2026-05-23\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 9308,
+        "input_tokens_details": {
+          "cache_write_tokens": 9305,
+          "cached_tokens": 0
+        },
+        "output_tokens": 32,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 9340
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 4,
+      "type": "unanswerable",
+      "q": "Which database migration version was rolled back?",
+      "gold": "UNKNOWN",
+      "answer": "2026-05-23",
+      "ok": false,
+      "raw": "[\"zustand\",\"9120ms\",\"src/cursor/core.ts\",\"Soren Nakamura\",\"OFF\",\"2026-05-23\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 9308,
+        "input_tokens_details": {
+          "cache_write_tokens": 9305,
+          "cached_tokens": 0
+        },
+        "output_tokens": 32,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 9340
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 5,
+      "type": "decision",
+      "q": "What was the FINAL package chosen for the store layer?",
+      "gold": "immer",
+      "answer": "inner",
+      "ok": false,
+      "raw": "[\"inner\",\"7800ms\",\"src/quota/core.ts\",\"Ingrid Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7868,
+        "input_tokens_details": {
+          "cache_write_tokens": 7865,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7893
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 5,
+      "type": "numeric",
+      "q": "What exact value in ms was the RETRY BUDGET set to (not the cache TTL)?",
+      "gold": "7800",
+      "answer": "7800ms",
+      "ok": true,
+      "raw": "[\"inner\",\"7800ms\",\"src/quota/core.ts\",\"Ingrid Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7868,
+        "input_tokens_details": {
+          "cache_write_tokens": 7865,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7893
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 5,
+      "type": "path",
+      "q": "Which file contained the ROOT CAUSE of the double-flush race?",
+      "gold": "src/quota/core.ts",
+      "answer": "src/quota/core.ts",
+      "ok": true,
+      "raw": "[\"inner\",\"7800ms\",\"src/quota/core.ts\",\"Ingrid Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7868,
+        "input_tokens_details": {
+          "cache_write_tokens": 7865,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7893
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 5,
+      "type": "name",
+      "q": "Who is the on-call REVIEWER for the PR (not the author)?",
+      "gold": "Ingrid Costa",
+      "answer": "Ingrid Costa",
+      "ok": true,
+      "raw": "[\"inner\",\"7800ms\",\"src/quota/core.ts\",\"Ingrid Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7868,
+        "input_tokens_details": {
+          "cache_write_tokens": 7865,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7893
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 5,
+      "type": "negation",
+      "q": "In PROD specifically, was USE_BROTLI enabled? Answer ENABLED or OFF.",
+      "gold": "OFF",
+      "answer": "OFF",
+      "ok": true,
+      "raw": "[\"inner\",\"7800ms\",\"src/quota/core.ts\",\"Ingrid Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7868,
+        "input_tokens_details": {
+          "cache_write_tokens": 7865,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7893
+      }
+    },
+    {
+      "tier": "work2",
+      "session": 5,
+      "type": "unanswerable",
+      "q": "Which database migration version was rolled back?",
+      "gold": "UNKNOWN",
+      "answer": "UNKNOWN",
+      "ok": true,
+      "raw": "[\"inner\",\"7800ms\",\"src/quota/core.ts\",\"Ingrid Costa\",\"OFF\",\"UNKNOWN\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7868,
+        "input_tokens_details": {
+          "cache_write_tokens": 7865,
+          "cached_tokens": 0
+        },
+        "output_tokens": 25,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7893
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 0,
+      "type": "final",
+      "q": "What is the FINAL (locked) value of BATCH_WINDOW_MS at the end of the session?",
+      "gold": "8400",
+      "answer": "8400",
+      "ok": true,
+      "raw": "[\"8400\",\"9600\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7709,
+        "input_tokens_details": {
+          "cache_write_tokens": 7706,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7722
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 0,
+      "type": "first",
+      "q": "What was the FIRST value BATCH_WINDOW_MS was set to at the start?",
+      "gold": "9600",
+      "answer": "9600",
+      "ok": true,
+      "raw": "[\"8400\",\"9600\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7709,
+        "input_tokens_details": {
+          "cache_write_tokens": 7706,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7722
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 0,
+      "type": "count",
+      "q": "How many distinct values was BATCH_WINDOW_MS set to over the whole session? Answer with a number.",
+      "gold": "3",
+      "answer": "3",
+      "ok": true,
+      "raw": "[\"8400\",\"9600\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7709,
+        "input_tokens_details": {
+          "cache_write_tokens": 7706,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7722
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 1,
+      "type": "final",
+      "q": "What is the FINAL (locked) value of BATCH_WINDOW_MS at the end of the session?",
+      "gold": "1200",
+      "answer": "1200",
+      "ok": true,
+      "raw": "[\"1200\",\"5400\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8085,
+        "input_tokens_details": {
+          "cache_write_tokens": 8082,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8098
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 1,
+      "type": "first",
+      "q": "What was the FIRST value BATCH_WINDOW_MS was set to at the start?",
+      "gold": "5400",
+      "answer": "5400",
+      "ok": true,
+      "raw": "[\"1200\",\"5400\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8085,
+        "input_tokens_details": {
+          "cache_write_tokens": 8082,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8098
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 1,
+      "type": "count",
+      "q": "How many distinct values was BATCH_WINDOW_MS set to over the whole session? Answer with a number.",
+      "gold": "3",
+      "answer": "3",
+      "ok": true,
+      "raw": "[\"1200\",\"5400\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8085,
+        "input_tokens_details": {
+          "cache_write_tokens": 8082,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8098
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 2,
+      "type": "final",
+      "q": "What is the FINAL (locked) value of FLUSH_INTERVAL_MS at the end of the session?",
+      "gold": "7200",
+      "answer": "7200",
+      "ok": true,
+      "raw": "[\"7200\",\"2400\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7423,
+        "input_tokens_details": {
+          "cache_write_tokens": 7420,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7436
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 2,
+      "type": "first",
+      "q": "What was the FIRST value FLUSH_INTERVAL_MS was set to at the start?",
+      "gold": "2400",
+      "answer": "2400",
+      "ok": true,
+      "raw": "[\"7200\",\"2400\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7423,
+        "input_tokens_details": {
+          "cache_write_tokens": 7420,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7436
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 2,
+      "type": "count",
+      "q": "How many distinct values was FLUSH_INTERVAL_MS set to over the whole session? Answer with a number.",
+      "gold": "3",
+      "answer": "3",
+      "ok": true,
+      "raw": "[\"7200\",\"2400\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7423,
+        "input_tokens_details": {
+          "cache_write_tokens": 7420,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7436
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 3,
+      "type": "final",
+      "q": "What is the FINAL (locked) value of LEASE_TTL_MS at the end of the session?",
+      "gold": "7200",
+      "answer": "7200",
+      "ok": true,
+      "raw": "[\"7200\",\"2400\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8160,
+        "input_tokens_details": {
+          "cache_write_tokens": 8157,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8173
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 3,
+      "type": "first",
+      "q": "What was the FIRST value LEASE_TTL_MS was set to at the start?",
+      "gold": "2400",
+      "answer": "2400",
+      "ok": true,
+      "raw": "[\"7200\",\"2400\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8160,
+        "input_tokens_details": {
+          "cache_write_tokens": 8157,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8173
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 3,
+      "type": "count",
+      "q": "How many distinct values was LEASE_TTL_MS set to over the whole session? Answer with a number.",
+      "gold": "3",
+      "answer": "3",
+      "ok": true,
+      "raw": "[\"7200\",\"2400\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8160,
+        "input_tokens_details": {
+          "cache_write_tokens": 8157,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8173
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 4,
+      "type": "final",
+      "q": "What is the FINAL (locked) value of BATCH_WINDOW_MS at the end of the session?",
+      "gold": "4800",
+      "answer": "4800",
+      "ok": true,
+      "raw": "[\"4800\",\"7200\",\"2\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8319,
+        "input_tokens_details": {
+          "cache_write_tokens": 8316,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8332
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 4,
+      "type": "first",
+      "q": "What was the FIRST value BATCH_WINDOW_MS was set to at the start?",
+      "gold": "7200",
+      "answer": "7200",
+      "ok": true,
+      "raw": "[\"4800\",\"7200\",\"2\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8319,
+        "input_tokens_details": {
+          "cache_write_tokens": 8316,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8332
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 4,
+      "type": "count",
+      "q": "How many distinct values was BATCH_WINDOW_MS set to over the whole session? Answer with a number.",
+      "gold": "3",
+      "answer": "2",
+      "ok": false,
+      "raw": "[\"4800\",\"7200\",\"2\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 8319,
+        "input_tokens_details": {
+          "cache_write_tokens": 8316,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 8332
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 5,
+      "type": "final",
+      "q": "What is the FINAL (locked) value of BATCH_WINDOW_MS at the end of the session?",
+      "gold": "8400",
+      "answer": "8400",
+      "ok": true,
+      "raw": "[\"8400\",\"3600\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7776,
+        "input_tokens_details": {
+          "cache_write_tokens": 7773,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7789
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 5,
+      "type": "first",
+      "q": "What was the FIRST value BATCH_WINDOW_MS was set to at the start?",
+      "gold": "3600",
+      "answer": "3600",
+      "ok": true,
+      "raw": "[\"8400\",\"3600\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7776,
+        "input_tokens_details": {
+          "cache_write_tokens": 7773,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7789
+      }
+    },
+    {
+      "tier": "work3",
+      "session": 5,
+      "type": "count",
+      "q": "How many distinct values was BATCH_WINDOW_MS set to over the whole session? Answer with a number.",
+      "gold": "3",
+      "answer": "3",
+      "ok": true,
+      "raw": "[\"8400\",\"3600\",\"3\"]",
+      "error": null,
+      "usage": {
+        "input_tokens": 7776,
+        "input_tokens_details": {
+          "cache_write_tokens": 7773,
+          "cached_tokens": 0
+        },
+        "output_tokens": 13,
+        "output_tokens_details": {
+          "reasoning_tokens": 0
+        },
+        "total_tokens": 7789
+      }
+    }
+  ]
+}

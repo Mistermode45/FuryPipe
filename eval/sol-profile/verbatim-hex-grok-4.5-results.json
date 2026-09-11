@@ -1,0 +1,161 @@
+{
+  "generatedAt": "2026-07-23T22:58:38.033Z",
+  "model": "grok-4.5",
+  "live": true,
+  "correct": 0,
+  "completed": 12,
+  "errors": 3,
+  "n": 15,
+  "rows": [
+    {
+      "page": 0,
+      "dur": 4439,
+      "gold": "c9c947f680ec",
+      "got": "",
+      "ok": false,
+      "raw": "c9c417688e",
+      "ms": 51091,
+      "error": null
+    },
+    {
+      "page": 0,
+      "dur": 812,
+      "gold": "851eb3af1bd1",
+      "got": "",
+      "ok": false,
+      "raw": "e81eba41bd",
+      "ms": 78595,
+      "error": null
+    },
+    {
+      "page": 0,
+      "dur": 6150,
+      "gold": "ade34f70fd73",
+      "got": "",
+      "ok": false,
+      "raw": "fetch failed",
+      "ms": null,
+      "error": "fetch failed"
+    },
+    {
+      "page": 1,
+      "dur": 7978,
+      "gold": "c5d68855f46d",
+      "got": "",
+      "ok": false,
+      "raw": "fetch failed",
+      "ms": null,
+      "error": "fetch failed"
+    },
+    {
+      "page": 1,
+      "dur": 8071,
+      "gold": "92abade01aad",
+      "got": "",
+      "ok": false,
+      "raw": "15e6a8b1ac",
+      "ms": 6637,
+      "error": null
+    },
+    {
+      "page": 1,
+      "dur": 3309,
+      "gold": "ffe21785b09d",
+      "got": "",
+      "ok": false,
+      "raw": "a1c1789be91",
+      "ms": 72408,
+      "error": null
+    },
+    {
+      "page": 2,
+      "dur": 7215,
+      "gold": "87cb51eb0e99",
+      "got": "",
+      "ok": false,
+      "raw": "8b2e9ca1d7",
+      "ms": 98843,
+      "error": null
+    },
+    {
+      "page": 2,
+      "dur": 4397,
+      "gold": "93c3ced96dac",
+      "got": "",
+      "ok": false,
+      "raw": "ecc4c0da5b",
+      "ms": 166938,
+      "error": null
+    },
+    {
+      "page": 2,
+      "dur": 4495,
+      "gold": "f152ae9bfb8f",
+      "got": "",
+      "ok": false,
+      "raw": "a9c4ede0b1",
+      "ms": 98745,
+      "error": null
+    },
+    {
+      "page": 3,
+      "dur": 1622,
+      "gold": "5a7373d4187f",
+      "got": "5d7370d381c8",
+      "ok": false,
+      "raw": "5d7370d381c8",
+      "ms": 6716,
+      "error": null
+    },
+    {
+      "page": 3,
+      "dur": 2025,
+      "gold": "44ea8c7aeedd",
+      "got": "",
+      "ok": false,
+      "raw": "4ea0c79aedd",
+      "ms": 195132,
+      "error": null
+    },
+    {
+      "page": 3,
+      "dur": 6533,
+      "gold": "8145b5a0fd46",
+      "got": "",
+      "ok": false,
+      "raw": "fetch failed",
+      "ms": null,
+      "error": "fetch failed"
+    },
+    {
+      "page": 4,
+      "dur": 2921,
+      "gold": "b8fce698f971",
+      "got": "b0fc26bf97f1",
+      "ok": false,
+      "raw": "b0fc26bf97f1",
+      "ms": 5369,
+      "error": null
+    },
+    {
+      "page": 4,
+      "dur": 8475,
+      "gold": "4a8164556b99",
+      "got": "",
+      "ok": false,
+      "raw": "a3f16e55b0a",
+      "ms": 98074,
+      "error": null
+    },
+    {
+      "page": 4,
+      "dur": 8799,
+      "gold": "e53112c4b5a4",
+      "got": "",
+      "ok": false,
+      "raw": "a3e16558ba",
+      "ms": 59686,
+      "error": null
+    }
+  ]
+}

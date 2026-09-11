@@ -1,0 +1,128 @@
+[
+ {
+  "page": 0,
+  "lines": 72,
+  "chars": 9169,
+  "idsTokens": [
+   "12c3202cbcd5",
+   "190f7fb9a6df",
+   "1cf2e3b36326",
+   "1dedc2c15310",
+   "1e72f4a2ca46",
+   "23b9b4f82c57",
+   "23c296f2446c",
+   "266238e62244",
+   "2a66e20fde72",
+   "2aa0f8cb6c9e",
+   "2d8d0538b555",
+   "2e7f71957cc3",
+   "2f3c872127dd",
+   "30247f26b574",
+   "303979dfbf14",
+   "37bbf1585c5a"
+  ],
+  "idsHexCount": 16,
+  "sheetTokenCount": 96,
+  "sheetHexCount": 72,
+  "sheetChars": 1421,
+  "strata": {
+   "ids+sheet": 16,
+   "sheet-only": 56,
+   "uncovered": 0
+  },
+  "dims": {
+   "A": {
+    "w": 648,
+    "h": 728
+   },
+   "P": {
+    "w": 648,
+    "h": 584
+   }
+  }
+ },
+ {
+  "page": 1,
+  "lines": 72,
+  "chars": 9170,
+  "idsTokens": [
+   "016adc8a18be",
+   "01a5ad9cf2d7",
+   "0476ffc03c64",
+   "05c124232adb",
+   "080fee9493ef",
+   "08f0919effa0",
+   "0fc387319a83",
+   "11024c4d126a",
+   "15bb6dd52c4a",
+   "188840290415",
+   "1a396f648666",
+   "20c55ef65d1e",
+   "2231fea910cb",
+   "244bb6cef2d4",
+   "24bbbc43b69f",
+   "29665c38dc6b"
+  ],
+  "idsHexCount": 16,
+  "sheetTokenCount": 96,
+  "sheetHexCount": 72,
+  "sheetChars": 1421,
+  "strata": {
+   "ids+sheet": 16,
+   "sheet-only": 56,
+   "uncovered": 0
+  },
+  "dims": {
+   "A": {
+    "w": 648,
+    "h": 728
+   },
+   "P": {
+    "w": 648,
+    "h": 584
+   }
+  }
+ },
+ {
+  "page": 2,
+  "lines": 72,
+  "chars": 9165,
+  "idsTokens": [
+   "022bf67ef950",
+   "050bf0cfd470",
+   "0ee78636717b",
+   "11bb43b24452",
+   "11e7f0ebdd13",
+   "12a4b80452bf",
+   "14299c46addc",
+   "15e9b16d1b8a",
+   "2343fb217c35",
+   "2665c5acf1e4",
+   "267e57996987",
+   "2730a600dd2a",
+   "28980059a1ca",
+   "2a0fa3550711",
+   "2e5bbe2e6f55",
+   "35660fc6309a"
+  ],
+  "idsHexCount": 16,
+  "sheetTokenCount": 96,
+  "sheetHexCount": 72,
+  "sheetChars": 1421,
+  "strata": {
+   "ids+sheet": 16,
+   "sheet-only": 56,
+   "uncovered": 0
+  },
+  "dims": {
+   "A": {
+    "w": 648,
+    "h": 728
+   },
+   "P": {
+    "w": 648,
+    "h": 584
+   }
+  }
+ }
+]

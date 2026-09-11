@@ -1,0 +1,10 @@
+{
+  "name": "pricing-engine",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Small order-pricing library. Implement src/pricing.js per SPEC.md so the tests pass.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

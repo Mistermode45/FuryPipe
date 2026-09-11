@@ -1,0 +1,720 @@
+{
+  "results": [
+    {
+      "blockIdx": 0,
+      "charCount": 211,
+      "role": "user",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 5,
+            "charAccuracy": 0.976303317535545,
+            "refLen": 211,
+            "hypLen": 211
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 6,
+            "charAccuracy": 0.9715639810426541,
+            "refLen": 211,
+            "hypLen": 210
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 1,
+            "charAccuracy": 0.995260663507109,
+            "refLen": 211,
+            "hypLen": 210
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 1,
+      "charCount": 228,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 2,
+            "charAccuracy": 0.9912280701754386,
+            "refLen": 228,
+            "hypLen": 228
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 12,
+            "charAccuracy": 0.9473684210526316,
+            "refLen": 228,
+            "hypLen": 226
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 1,
+            "charAccuracy": 0.9956140350877193,
+            "refLen": 228,
+            "hypLen": 228
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 2,
+      "charCount": 253,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 9,
+            "charAccuracy": 0.9644268774703557,
+            "refLen": 253,
+            "hypLen": 246
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 16,
+            "charAccuracy": 0.9367588932806324,
+            "refLen": 253,
+            "hypLen": 243
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 5,
+            "charAccuracy": 0.9802371541501976,
+            "refLen": 253,
+            "hypLen": 248
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 3,
+      "charCount": 284,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 8,
+            "charAccuracy": 0.9722222222222222,
+            "refLen": 284,
+            "hypLen": 288
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 25,
+            "charAccuracy": 0.9119718309859155,
+            "refLen": 284,
+            "hypLen": 284
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 3,
+            "charAccuracy": 0.9894366197183099,
+            "refLen": 284,
+            "hypLen": 283
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 4,
+      "charCount": 315,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 8,
+            "charAccuracy": 0.9746031746031746,
+            "refLen": 315,
+            "hypLen": 307
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 46,
+            "charAccuracy": 0.8571428571428572,
+            "refLen": 315,
+            "hypLen": 322
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 0,
+            "charAccuracy": 1,
+            "refLen": 315,
+            "hypLen": 315
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 5,
+      "charCount": 317,
+      "role": "user",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 10,
+            "charAccuracy": 0.9675324675324676,
+            "refLen": 308,
+            "hypLen": 301
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 18,
+            "charAccuracy": 0.941747572815534,
+            "refLen": 308,
+            "hypLen": 309
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 8,
+            "charAccuracy": 0.974025974025974,
+            "refLen": 308,
+            "hypLen": 301
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 6,
+      "charCount": 317,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 6,
+            "charAccuracy": 0.9810126582278481,
+            "refLen": 316,
+            "hypLen": 314
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 55,
+            "charAccuracy": 0.8259493670886076,
+            "refLen": 316,
+            "hypLen": 267
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 6,
+            "charAccuracy": 0.9810126582278481,
+            "refLen": 316,
+            "hypLen": 312
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 7,
+      "charCount": 321,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 12,
+            "charAccuracy": 0.9625,
+            "refLen": 320,
+            "hypLen": 318
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 21,
+            "charAccuracy": 0.934375,
+            "refLen": 320,
+            "hypLen": 309
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 3,
+            "charAccuracy": 0.990625,
+            "refLen": 320,
+            "hypLen": 320
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 8,
+      "charCount": 322,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 1,
+            "charAccuracy": 0.9968944099378882,
+            "refLen": 322,
+            "hypLen": 321
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 23,
+            "charAccuracy": 0.9285714285714286,
+            "refLen": 322,
+            "hypLen": 318
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 3,
+            "charAccuracy": 0.9906832298136646,
+            "refLen": 322,
+            "hypLen": 321
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 9,
+      "charCount": 336,
+      "role": "user",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 9,
+            "charAccuracy": 0.973134328358209,
+            "refLen": 335,
+            "hypLen": 335
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 41,
+            "charAccuracy": 0.8776119402985074,
+            "refLen": 335,
+            "hypLen": 318
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 12,
+            "charAccuracy": 0.9641791044776119,
+            "refLen": 335,
+            "hypLen": 331
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 10,
+      "charCount": 340,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 3,
+            "charAccuracy": 0.9911764705882353,
+            "refLen": 340,
+            "hypLen": 337
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 10,
+            "charAccuracy": 0.9705882352941176,
+            "refLen": 340,
+            "hypLen": 338
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 1,
+            "charAccuracy": 0.9970588235294118,
+            "refLen": 340,
+            "hypLen": 340
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 11,
+      "charCount": 351,
+      "role": "user",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 7,
+            "charAccuracy": 0.98005698005698,
+            "refLen": 351,
+            "hypLen": 346
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 9,
+            "charAccuracy": 0.9745762711864406,
+            "refLen": 351,
+            "hypLen": 354
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 0,
+            "charAccuracy": 1,
+            "refLen": 351,
+            "hypLen": 351
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 12,
+      "charCount": 362,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 6,
+            "charAccuracy": 0.9834254143646409,
+            "refLen": 362,
+            "hypLen": 359
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 22,
+            "charAccuracy": 0.9392265193370166,
+            "refLen": 362,
+            "hypLen": 359
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 6,
+            "charAccuracy": 0.9834254143646409,
+            "refLen": 362,
+            "hypLen": 361
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 13,
+      "charCount": 383,
+      "role": "user",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 4,
+            "charAccuracy": 0.9894179894179894,
+            "refLen": 378,
+            "hypLen": 378
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 12,
+            "charAccuracy": 0.9682539682539683,
+            "refLen": 378,
+            "hypLen": 377
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 2,
+            "charAccuracy": 0.9947089947089947,
+            "refLen": 378,
+            "hypLen": 377
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 14,
+      "charCount": 397,
+      "role": "user",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 7,
+            "charAccuracy": 0.982367758186398,
+            "refLen": 397,
+            "hypLen": 394
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 30,
+            "charAccuracy": 0.924433249370277,
+            "refLen": 397,
+            "hypLen": 396
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 5,
+            "charAccuracy": 0.9874055415617129,
+            "refLen": 397,
+            "hypLen": 397
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 15,
+      "charCount": 405,
+      "role": "user",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 8,
+            "charAccuracy": 0.9801488833746899,
+            "refLen": 403,
+            "hypLen": 398
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 25,
+            "charAccuracy": 0.9382716049382716,
+            "refLen": 403,
+            "hypLen": 405
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 3,
+            "charAccuracy": 0.9925558312655087,
+            "refLen": 403,
+            "hypLen": 400
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 16,
+      "charCount": 415,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 2,
+            "charAccuracy": 0.9951807228915662,
+            "refLen": 415,
+            "hypLen": 414
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 56,
+            "charAccuracy": 0.8650602409638555,
+            "refLen": 415,
+            "hypLen": 415
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 1,
+            "charAccuracy": 0.9975903614457832,
+            "refLen": 415,
+            "hypLen": 415
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 17,
+      "charCount": 423,
+      "role": "user",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 7,
+            "charAccuracy": 0.9830508474576272,
+            "refLen": 413,
+            "hypLen": 410
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 32,
+            "charAccuracy": 0.9225181598062954,
+            "refLen": 413,
+            "hypLen": 411
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 5,
+            "charAccuracy": 0.9878934624697336,
+            "refLen": 413,
+            "hypLen": 412
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 18,
+      "charCount": 429,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 16,
+            "charAccuracy": 0.9627039627039627,
+            "refLen": 429,
+            "hypLen": 427
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 73,
+            "charAccuracy": 0.8298368298368298,
+            "refLen": 429,
+            "hypLen": 416
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 5,
+            "charAccuracy": 0.9883449883449883,
+            "refLen": 429,
+            "hypLen": 428
+          },
+          "imageCount": 1
+        }
+      }
+    },
+    {
+      "blockIdx": 19,
+      "charCount": 436,
+      "role": "assistant",
+      "variants": {
+        "baseline": {
+          "score": {
+            "editDistance": 11,
+            "charAccuracy": 0.9747706422018348,
+            "refLen": 436,
+            "hypLen": 434
+          },
+          "imageCount": 1
+        },
+        "reflow": {
+          "score": {
+            "editDistance": 30,
+            "charAccuracy": 0.9311926605504587,
+            "refLen": 436,
+            "hypLen": 429
+          },
+          "imageCount": 1
+        },
+        "reflow-inimage": {
+          "score": {
+            "editDistance": 0,
+            "charAccuracy": 1,
+            "refLen": 436,
+            "hypLen": 436
+          },
+          "imageCount": 1
+        }
+      }
+    }
+  ],
+  "perVariant": {
+    "baseline": {
+      "agg": {
+        "meanAccuracy": 0.9791078598653536,
+        "medianAccuracy": 0.9801488833746899,
+        "minAccuracy": 0.9625,
+        "totalEdits": 141,
+        "totalChars": 6816,
+        "macroAccuracy": 0.9793133802816901
+      },
+      "imageCount": 20
+    },
+    "reflow": {
+      "agg": {
+        "meanAccuracy": 0.9198509515908148,
+        "medianAccuracy": 0.934375,
+        "minAccuracy": 0.8259493670886076,
+        "totalEdits": 562,
+        "totalChars": 6816,
+        "macroAccuracy": 0.9175469483568075
+      },
+      "imageCount": 20
+    },
+    "reflow-inimage": {
+      "agg": {
+        "meanAccuracy": 0.9895028928349605,
+        "medianAccuracy": 0.9906832298136646,
+        "minAccuracy": 0.9641791044776119,
+        "totalEdits": 70,
+        "totalChars": 6816,
+        "macroAccuracy": 0.9897300469483568
+      },
+      "imageCount": 20
+    }
+  },
+  "dryRun": false
+}

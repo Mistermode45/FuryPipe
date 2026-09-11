@@ -1,0 +1,131 @@
+{
+  "generatedAt": "2026-07-11T16:13:19.865Z",
+  "model": "gpt-5.6-sol",
+  "live": true,
+  "correct": 0,
+  "n": 15,
+  "rows": [
+    {
+      "page": 0,
+      "dur": 4439,
+      "gold": "c9c947f680ec",
+      "got": "b6c13e2c1833",
+      "ok": false,
+      "raw": "b6c13e2c1833"
+    },
+    {
+      "page": 0,
+      "dur": 812,
+      "gold": "851eb3af1bd1",
+      "got": "f51bd3a1bd7b",
+      "ok": false,
+      "raw": "f51bd3a1bd7b"
+    },
+    {
+      "page": 0,
+      "dur": 6150,
+      "gold": "ade34f70fd73",
+      "got": "dfa9724adba5",
+      "ok": false,
+      "raw": "dfa9724adba5"
+    },
+    {
+      "page": 1,
+      "dur": 7978,
+      "gold": "c5d68855f46d",
+      "got": "58f5f6416b7d",
+      "ok": false,
+      "raw": "58f5f6416b7d"
+    },
+    {
+      "page": 1,
+      "dur": 8071,
+      "gold": "92abade01aad",
+      "got": "92abde51a09d",
+      "ok": false,
+      "raw": "92abde51a09d"
+    },
+    {
+      "page": 1,
+      "dur": 3309,
+      "gold": "ffe21785b09d",
+      "got": "a5c8c864aa6c",
+      "ok": false,
+      "raw": "a5c8c864aa6c"
+    },
+    {
+      "page": 2,
+      "dur": 7215,
+      "gold": "87cb51eb0e99",
+      "got": "d9e8e2e6df44",
+      "ok": false,
+      "raw": "d9e8e2e6df44"
+    },
+    {
+      "page": 2,
+      "dur": 4397,
+      "gold": "93c3ced96dac",
+      "got": "93c8ced96dcf",
+      "ok": false,
+      "raw": "93c8ced96dcf"
+    },
+    {
+      "page": 2,
+      "dur": 4495,
+      "gold": "f152ae9bfb8f",
+      "got": "dbbf28c20fb4",
+      "ok": false,
+      "raw": "dbbf28c20fb4"
+    },
+    {
+      "page": 3,
+      "dur": 1622,
+      "gold": "5a7373d4187f",
+      "got": "bdfd5f001877",
+      "ok": false,
+      "raw": "bdfd5f001877"
+    },
+    {
+      "page": 3,
+      "dur": 2025,
+      "gold": "44ea8c7aeedd",
+      "got": "f809682b2d2e",
+      "ok": false,
+      "raw": "f809682b2d2e"
+    },
+    {
+      "page": 3,
+      "dur": 6533,
+      "gold": "8145b5a0fd46",
+      "got": "4254c615b080",
+      "ok": false,
+      "raw": "4254c615b080"
+    },
+    {
+      "page": 4,
+      "dur": 2921,
+      "gold": "b8fce698f971",
+      "got": "b6fce696f971",
+      "ok": false,
+      "raw": "b6fce696f971"
+    },
+    {
+      "page": 4,
+      "dur": 8475,
+      "gold": "4a8164556b99",
+      "got": "ea6194556b9c",
+      "ok": false,
+      "raw": "ea6194556b9c"
+    },
+    {
+      "page": 4,
+      "dur": 8799,
+      "gold": "e53112c4b5a4",
+      "got": "e511c2d15ba1",
+      "ok": false,
+      "raw": "e511c2d15ba1"
+    }
+  ],
+  "completed": 15,
+  "errors": 0
+}

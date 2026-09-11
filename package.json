@@ -1,0 +1,164 @@
+{
+  "name": "furypipe",
+  "version": "0.13.2",
+  "description": "FuryPipe context compiler and provider proxy, derived from pxpipe with exactness and recovery safeguards.",
+  "type": "module",
+  "bin": {
+    "furypipe": "bin/cli.js",
+    "pxpipe": "bin/cli.js",
+    "furypipe-mcp": "bin/mcp.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
+    },
+    "./transform": {
+      "types": "./dist/core/library.d.ts",
+      "import": "./dist/core/library.js"
+    },
+    "./measurement": {
+      "types": "./dist/core/measurement.d.ts",
+      "import": "./dist/core/measurement.js"
+    },
+    "./applicability": {
+      "types": "./dist/core/applicability.d.ts",
+      "import": "./dist/core/applicability.js"
+    },
+    "./proxy": {
+      "types": "./dist/core/proxy.d.ts",
+      "import": "./dist/core/proxy.js"
+    },
+    "./exact-guard": {
+      "types": "./dist/core/exact-guard.d.ts",
+      "import": "./dist/core/exact-guard.js"
+    },
+    "./recovery-store": {
+      "types": "./dist/core/recovery-store.d.ts",
+      "import": "./dist/core/recovery-store.js"
+    },
+    "./context-ir": {
+      "types": "./dist/core/context-ir.d.ts",
+      "import": "./dist/core/context-ir.js"
+    },
+    "./instruction-ledger": {
+      "types": "./dist/core/instruction-ledger.d.ts",
+      "import": "./dist/core/instruction-ledger.js"
+    },
+    "./cache-planner": {
+      "types": "./dist/core/cache-planner.d.ts",
+      "import": "./dist/core/cache-planner.js"
+    },
+    "./policy-engine": {
+      "types": "./dist/core/policy-engine.d.ts",
+      "import": "./dist/core/policy-engine.js"
+    },
+    "./receipt": {
+      "types": "./dist/core/receipt.d.ts",
+      "import": "./dist/core/receipt.js"
+    },
+    "./content-classifier": {
+      "types": "./dist/core/content-classifier.d.ts",
+      "import": "./dist/core/content-classifier.js"
+    },
+    "./source-retrieval": {
+      "types": "./dist/core/source-retrieval.d.ts",
+      "import": "./dist/core/source-retrieval.js"
+    },
+    "./document-compiler": {
+      "types": "./dist/core/document-compiler.d.ts",
+      "import": "./dist/core/document-compiler.js"
+    },
+    "./doctor": {
+      "types": "./dist/doctor.d.ts",
+      "import": "./dist/doctor.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.ts",
+      "import": "./dist/mcp.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    },
+    "./worker": {
+      "types": "./dist/worker.d.ts",
+      "import": "./dist/worker.js"
+    }
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "!dist/**/*.map",
+    "assets/*LICENSE.txt",
+    "README.md",
+    "SECURITY.md",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/SECURITY_MODEL.md",
+    "docs/PXPIPE_GAP_ANALYSIS.md",
+    "docs/CLI.md",
+    "docs/MCP.md",
+    "docs/CONTEXT_FABRIC.md",
+    "docs/POLICY.md",
+    "docs/RECEIPTS.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "audit": "pnpm audit --prod --audit-level high",
+    "build": "node scripts/build.mjs",
+    "build:atlas": "tsx scripts/gen-atlas.ts",
+    "dev:node": "tsx watch src/node.ts",
+    "dev:worker": "wrangler dev",
+    "deploy:worker": "wrangler deploy",
+    "restart": "node scripts/restart.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
+    "vendor:ui": "node scripts/vendor-ui.mjs"
+  },
+  "keywords": [
+    "furypipe",
+    "claude",
+    "claude-code",
+    "anthropic",
+    "fable-5",
+    "proxy",
+    "token-optimization",
+    "prompt-cache",
+    "vision-tokens",
+    "cloudflare-workers"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "packageManager": "pnpm@10.21.0",
+  "pnpm": {
+    "overrides": {
+      "undici": "7.29.0"
+    }
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260911.1",
+    "@napi-rs/canvas": "^1.0.9",
+    "@types/node": "^26.5.1",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0",
+    "wrangler": "^4.131.0"
+  },
+  "dependencies": {
+    "gpt-tokenizer": "^4.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mistermode45/FuryPipe.git"
+  },
+  "homepage": "https://github.com/Mistermode45/FuryPipe#readme",
+  "bugs": {
+    "url": "https://github.com/Mistermode45/FuryPipe/issues"
+  }
+}

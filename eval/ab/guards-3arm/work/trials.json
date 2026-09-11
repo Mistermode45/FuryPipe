@@ -1,0 +1,170 @@
+[
+ {
+  "i": 0,
+  "page": 0,
+  "stratum": "ids+sheet",
+  "dur": 5588,
+  "gold": "2e7f71957cc3"
+ },
+ {
+  "i": 1,
+  "page": 0,
+  "stratum": "ids+sheet",
+  "dur": 3218,
+  "gold": "1cf2e3b36326"
+ },
+ {
+  "i": 2,
+  "page": 0,
+  "stratum": "ids+sheet",
+  "dur": 6563,
+  "gold": "2aa0f8cb6c9e"
+ },
+ {
+  "i": 3,
+  "page": 0,
+  "stratum": "ids+sheet",
+  "dur": 8163,
+  "gold": "1dedc2c15310"
+ },
+ {
+  "i": 4,
+  "page": 0,
+  "stratum": "sheet-only",
+  "dur": 7028,
+  "gold": "7cd052a33d91"
+ },
+ {
+  "i": 5,
+  "page": 0,
+  "stratum": "sheet-only",
+  "dur": 2469,
+  "gold": "bc76c4b48456"
+ },
+ {
+  "i": 6,
+  "page": 0,
+  "stratum": "sheet-only",
+  "dur": 7280,
+  "gold": "42d1903ed28f"
+ },
+ {
+  "i": 7,
+  "page": 0,
+  "stratum": "sheet-only",
+  "dur": 509,
+  "gold": "c4569b7a2549"
+ },
+ {
+  "i": 8,
+  "page": 1,
+  "stratum": "ids+sheet",
+  "dur": 2994,
+  "gold": "2231fea910cb"
+ },
+ {
+  "i": 9,
+  "page": 1,
+  "stratum": "ids+sheet",
+  "dur": 956,
+  "gold": "080fee9493ef"
+ },
+ {
+  "i": 10,
+  "page": 1,
+  "stratum": "ids+sheet",
+  "dur": 7919,
+  "gold": "11024c4d126a"
+ },
+ {
+  "i": 11,
+  "page": 1,
+  "stratum": "ids+sheet",
+  "dur": 5028,
+  "gold": "01a5ad9cf2d7"
+ },
+ {
+  "i": 12,
+  "page": 1,
+  "stratum": "sheet-only",
+  "dur": 8320,
+  "gold": "3be3cfd6c825"
+ },
+ {
+  "i": 13,
+  "page": 1,
+  "stratum": "sheet-only",
+  "dur": 2195,
+  "gold": "b14e41d1395e"
+ },
+ {
+  "i": 14,
+  "page": 1,
+  "stratum": "sheet-only",
+  "dur": 7718,
+  "gold": "3061e20b1ca2"
+ },
+ {
+  "i": 15,
+  "page": 1,
+  "stratum": "sheet-only",
+  "dur": 2617,
+  "gold": "4e55b2ada104"
+ },
+ {
+  "i": 16,
+  "page": 2,
+  "stratum": "ids+sheet",
+  "dur": 1547,
+  "gold": "11e7f0ebdd13"
+ },
+ {
+  "i": 17,
+  "page": 2,
+  "stratum": "ids+sheet",
+  "dur": 2378,
+  "gold": "0ee78636717b"
+ },
+ {
+  "i": 18,
+  "page": 2,
+  "stratum": "ids+sheet",
+  "dur": 5611,
+  "gold": "12a4b80452bf"
+ },
+ {
+  "i": 19,
+  "page": 2,
+  "stratum": "ids+sheet",
+  "dur": 8127,
+  "gold": "11bb43b24452"
+ },
+ {
+  "i": 20,
+  "page": 2,
+  "stratum": "sheet-only",
+  "dur": 9059,
+  "gold": "3f083199338e"
+ },
+ {
+  "i": 21,
+  "page": 2,
+  "stratum": "sheet-only",
+  "dur": 1771,
+  "gold": "8cdd963a7fce"
+ },
+ {
+  "i": 22,
+  "page": 2,
+  "stratum": "sheet-only",
+  "dur": 7052,
+  "gold": "3cdf075e82ba"
+ },
+ {
+  "i": 23,
+  "page": 2,
+  "stratum": "sheet-only",
+  "dur": 6162,
+  "gold": "73e653805c6a"
+ }
+]

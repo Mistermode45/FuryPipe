@@ -1,0 +1,161 @@
+{
+  "generatedAt": "2026-07-18T00:01:42.799Z",
+  "model": "moonshotai/kimi-k3",
+  "live": true,
+  "correct": 0,
+  "completed": 15,
+  "errors": 0,
+  "n": 15,
+  "rows": [
+    {
+      "page": 0,
+      "dur": 4439,
+      "gold": "c9c947f680ec",
+      "got": "",
+      "ok": false,
+      "raw": "",
+      "ms": 300469,
+      "error": null
+    },
+    {
+      "page": 0,
+      "dur": 812,
+      "gold": "851eb3af1bd1",
+      "got": "",
+      "ok": false,
+      "raw": "",
+      "ms": 38209,
+      "error": null
+    },
+    {
+      "page": 0,
+      "dur": 6150,
+      "gold": "ade34f70fd73",
+      "got": "a3f9c0e6b1d8",
+      "ok": false,
+      "raw": "a3f9c0e6b1d8",
+      "ms": 282380,
+      "error": null
+    },
+    {
+      "page": 1,
+      "dur": 7978,
+      "gold": "c5d68855f46d",
+      "got": "",
+      "ok": false,
+      "raw": "",
+      "ms": 300445,
+      "error": null
+    },
+    {
+      "page": 1,
+      "dur": 8071,
+      "gold": "92abade01aad",
+      "got": "",
+      "ok": false,
+      "raw": "",
+      "ms": 187706,
+      "error": null
+    },
+    {
+      "page": 1,
+      "dur": 3309,
+      "gold": "ffe21785b09d",
+      "got": "3d9c7e1a5b28",
+      "ok": false,
+      "raw": "3d9c7e1a5b28",
+      "ms": 57104,
+      "error": null
+    },
+    {
+      "page": 2,
+      "dur": 7215,
+      "gold": "87cb51eb0e99",
+      "got": "",
+      "ok": false,
+      "raw": "",
+      "ms": 300247,
+      "error": null
+    },
+    {
+      "page": 2,
+      "dur": 4397,
+      "gold": "93c3ced96dac",
+      "got": "92e9dc498842",
+      "ok": false,
+      "raw": "92e9dc498842",
+      "ms": 14112,
+      "error": null
+    },
+    {
+      "page": 2,
+      "dur": 4495,
+      "gold": "f152ae9bfb8f",
+      "got": "",
+      "ok": false,
+      "raw": "",
+      "ms": 300300,
+      "error": null
+    },
+    {
+      "page": 3,
+      "dur": 1622,
+      "gold": "5a7373d4187f",
+      "got": "e9a32a7a7980",
+      "ok": false,
+      "raw": "e9a32a7a7980",
+      "ms": 132304,
+      "error": null
+    },
+    {
+      "page": 3,
+      "dur": 2025,
+      "gold": "44ea8c7aeedd",
+      "got": "",
+      "ok": false,
+      "raw": "",
+      "ms": 283222,
+      "error": null
+    },
+    {
+      "page": 3,
+      "dur": 6533,
+      "gold": "8145b5a0fd46",
+      "got": "",
+      "ok": false,
+      "raw": "",
+      "ms": 300748,
+      "error": null
+    },
+    {
+      "page": 4,
+      "dur": 2921,
+      "gold": "b8fce698f971",
+      "got": "7a9f4d2c8b16",
+      "ok": false,
+      "raw": "7a9f4d2c8b16",
+      "ms": 228213,
+      "error": null
+    },
+    {
+      "page": 4,
+      "dur": 8475,
+      "gold": "4a8164556b99",
+      "got": "bb9adff44ffe",
+      "ok": false,
+      "raw": "bb9adff44ffe",
+      "ms": 262684,
+      "error": null
+    },
+    {
+      "page": 4,
+      "dur": 8799,
+      "gold": "e53112c4b5a4",
+      "got": "",
+      "ok": false,
+      "raw": "",
+      "ms": 300454,
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - workerd
+
+# Supply-chain hardening: refuse to install any package version published
+# less than 3 days ago. Catches the typical malicious-package lifecycle
+# (publish → discovered → unpublished within hours/days). Legitimate
+# security patches also wait 3 days; that's a deliberate trade-off for a
+# repo we update manually.
+minimumReleaseAge: 4320  # minutes (= 3 days)
+# minimumReleaseAgeExclude:  # add packages here if a fast follow is needed
+
+overrides:
+  "ws@>=8.0.0 <8.20.1": "^8.20.1"
+  "vite@>=8.0.0 <8.0.16": "^8.0.16"
+  "undici@>=7.0.0 <7.28.0": "^7.28.0"
+  "esbuild@>=0.27.3 <0.28.1": "^0.28.1"
+  # Dependabot #16: sharp <0.35.0 inherits High CVEs from libvips
+  # (CVE-2026-33327/33328/35590/35591). Transitive via wrangler→miniflare.
+  "sharp@<0.35.0": ">=0.35.0"
