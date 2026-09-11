@@ -50,3 +50,23 @@ ChatGPT does not modify:
 - runtime source modules
 
 This keeps MCP / Recovery / FuryPrompt work independent and minimizes merge conflicts.
+
+## Secret scanning
+
+The CI track uses the MIT-licensed `gitleaks/gitleaks` CLI directly rather than `gitleaks/gitleaks-action`.
+
+Pinned evidence:
+
+- CLI version: `8.30.1`;
+- Linux x64 archive SHA-256: `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb`;
+- workflow: `.github/workflows/secret-scan.yml`.
+
+The separate GitHub Action wrapper was reviewed and rejected for this track because its current license is a source-available EULA rather than MIT. The core Gitleaks repository remains MIT.
+
+The workflow scans full git history and fails on findings. Legitimate test fixtures must be handled with narrow, documented allowlists; a broad `continue-on-error` is not acceptable.
+
+## Dependabot policy
+
+Status: `DEFERRED_UNTIL_BRANCH_POLICY_FINAL`.
+
+The repository default branch is currently `v5-codex-review-clean` while active development occurs on `v5-production-hardening`. Dependabot configuration is intentionally deferred until the target/default branch policy is finalized so automated update PRs are not directed at the wrong integration branch.
