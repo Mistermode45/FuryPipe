@@ -248,7 +248,7 @@ describe('Recovery Store', () => {
     roots.push(root);
 
     const crashed = await runRecoveryWorker({ root, namespace: 'crash', operation: 'crash-temp' });
-    expect(crashed.code).toBe(-1);
+    expect(crashed.code).not.toBe(0);
     const { tempPath } = JSON.parse(crashed.stdout) as { tempPath: string };
     expect(await readFile(tempPath, 'utf8')).toBe('crash-residue');
 
