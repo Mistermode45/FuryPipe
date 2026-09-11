@@ -546,6 +546,9 @@ async function dispatchDashboard(
     case 'api-stats':
       if (method !== 'GET') return undefined;
       return dashboard.serveApiStats();
+    case 'api-control-room':
+      if (method !== 'GET') return undefined;
+      return dashboard.serveControlRoomJson();
     case 'current-session':
       if (method !== 'GET') return undefined;
       return dashboard.serveCurrentSessionJson();

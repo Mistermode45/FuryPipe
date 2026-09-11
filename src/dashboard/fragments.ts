@@ -3,6 +3,7 @@
 
 import { HTMX_JS, ALPINE_JS } from './vendor.js';
 import { CACHE_CREATE_RATE, CACHE_READ_RATE } from '../core/baseline.js';
+import type { ControlRoomSnapshot } from '../control-room/index.js';
 import type {
   StatsPayload,
   RecentPayload,
@@ -794,6 +795,47 @@ export function renderSessionsFragment(p: SessionsPayload): string {
   );
 }
 
+// ---- Control Room V5 ------------------------------------------------------
+
+export function renderControlRoomFragment(snapshot: ControlRoomSnapshot | null): string {
+  if (!snapshot) {
+    return (
+      `<div class="status"><strong>Control Room V5 · NOT_AVAILABLE</strong> — no evidence provider is wired to this dashboard.</div>` +
+      `<table class="dtable"><tbody></tbody></table>`
+    );
+  }
+
+  const labels: Readonly<Record<keyof ControlRoomSnapshot['sections'], string>> = {
+    receipts: 'Receipts / ExactGuard',
+    recovery: 'Recovery',
+    agent: 'Agent runtime',
+    learning: 'Learning / Knowledge',
+    mcp: 'MCP',
+    i18n: 'i18n',
+    webStudio: 'Web / Figma Studio',
+    security: 'Security / Supply Chain',
+    benchmarks: 'Benchmarks',
+  };
+
+  const rows = (Object.entries(snapshot.sections) as Array<[
+    keyof ControlRoomSnapshot['sections'],
+    ControlRoomSnapshot['sections'][keyof ControlRoomSnapshot['sections']],
+  ]>).map(([key, section]) =>
+    `<tr><td>${escapeHtml(labels[key])}</td><td class="num">${escapeHtml(section.status)}</td></tr>`
+  ).join('');
+
+  const warnings = Object.values(snapshot.sections)
+    .flatMap((section) => section.warnings)
+    .map((warning) => `<div class="status">⚠ ${escapeHtml(warning)}</div>`)
+    .join('');
+
+  return (
+    `<div class="status"><strong>Control Room V5 · ${escapeHtml(snapshot.overall)}</strong> · commit <code>${escapeHtml(snapshot.sourceCommit.slice(0, 12))}</code></div>` +
+    `<table class="dtable"><tbody>${rows}</tbody></table>` +
+    warnings
+  );
+}
+
 // ---- full-history stats table --------------------------------------------
 
 export function renderStatsTableFragment(p: FullStatsPayload): string {
@@ -1348,6 +1390,15 @@ npx pxpipe-proxy</pre>
   <h2 class="section-head">Top sessions <span class="section-sub">by tokens saved</span></h2>
   <div class="card">
     <div id="frag-sessions" hx-get="/fragments/sessions" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
+  </div>
+</section>
+
+<section class="section">
+  <h2 class="section-head">Control Room V5 <span class="section-sub">runtime evidence · fail-visible status</span></h2>
+  <div class="card">
+    <div id="frag-control-room" hx-get="/fragments/control-room" hx-trigger="load, every 5s" hx-swap="innerHTML">
+      <div class="status">Loading Control Room evidence…</div>
+    </div>
   </div>
 </section>
 
