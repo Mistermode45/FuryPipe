@@ -25,6 +25,7 @@ jobs:
         with:
           node-version: 24.21.0
       - name: Validate result schema JSON
-        run: node -e "JSON.parse(require('node:fs').readFileSync('bench/v5/result.schema.json','utf8')); console.log('result schema JSON: PASS')"
+        run: |
+          node -e "JSON.parse(require('node:fs').readFileSync('bench/v5/result.schema.json','utf8')); console.log('result schema JSON: PASS')"
       - name: Run benchmark contract self-test
         run: node bench/v5/self-test.mjs
