@@ -59,4 +59,21 @@ describe('Recovery Store', () => {
     roots.push(root);
     expect(() => createRecoveryStore(root, { namespace: '..\\outside' })).toThrow('recovery namespace');
   });
+
+  it('enforces object and namespace quotas without replacing existing content', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-quota-'));
+    roots.push(root);
+    const store = createRecoveryStore(root, { namespace: 'quota', maxObjectBytes: 4, maxTotalBytes: 5 });
+    const first = await store.put(new TextEncoder().encode('1234'));
+    await expect(store.put(new TextEncoder().encode('12345'))).rejects.toThrow('object quota');
+    await expect(store.put(new TextEncoder().encode('5678'))).rejects.toThrow('total quota');
+    expect(await store.get(first)).toEqual(new TextEncoder().encode('1234'));
+  });
+
+  it('garbage-collects expired manifests and their immutable objects', async () => {
+    const { store } = await createStoreFixture();
+    const handle = await store.put(new TextEncoder().encode('temporary'), { expiresAt: '2020-01-01T00:00:00.000Z' });
+    expect(await store.gc(new Date('2026-09-11T00:00:00.000Z'))).toMatchObject({ expired: 1, bytesFreed: 9 });
+    expect((await store.verify(handle)).exists).toBe(false);
+  });
 });

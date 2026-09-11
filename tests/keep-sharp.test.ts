@@ -61,6 +61,17 @@ function userBlocks(body: Uint8Array): any[] {
 const BIG = 'x'.repeat(50_000);
 
 describe('keepSharp fidelity hint', () => {
+  it('wires ExactGuard into the lossy decision and preserves protected requests natively', async () => {
+    const source = makeReq([
+      { type: 'tool_result', tool_use_id: 'toolu_exact', content: `${BIG}\nrequest 123e4567-e89b-12d3-a456-426614174000` },
+    ]);
+    const { body, info } = await transformRequest(source, { exactGuard: {} });
+    expect(body).toEqual(source);
+    expect(info.compressed).toBe(false);
+    expect(info.exactGuard).toMatchObject({ action: 'preserve_native' });
+    expect(info.passthroughReasons?.exact_guard).toBe(1);
+  });
+
   it('images a large tool_result by default (baseline, no hint)', async () => {
     const { body, info } = await transformRequest(
       makeReq([{ type: 'tool_result', tool_use_id: 'toolu_a', content: BIG }]),

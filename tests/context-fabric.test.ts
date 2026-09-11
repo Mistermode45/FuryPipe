@@ -41,6 +41,13 @@ describe('Context IR and cache planner', () => {
     expect(verifyContextIRBlockText(ir.blocks[0]!, 'tampered')).toBe(false);
   });
 
+  it('assigns distinct IDs to repeated content in one request', () => {
+    const first = input('repeat');
+    const second = { ...input('repeat'), byteRange: { start: 6, end: 12 } };
+    const ir = createContextIR('req-repeated', [first, second]);
+    expect(ir.blocks[0]?.id).not.toBe(ir.blocks[1]?.id);
+  });
+
   it('forces raw mode for protected blocks and never mutates their order', () => {
     const ir = createContextIR('req-test', [input('first', 'first'), {
       ...input('secret', 'secret'),
@@ -88,5 +95,20 @@ describe('Instruction Ledger', () => {
     };
     expect(validateInstructionLedger(ledger).ok).toBe(false);
   });
-});
 
+  it('keeps one active latest user request per scope and preserves history', () => {
+    let ledger = createInstructionLedger();
+    ledger = appendInstructionEntry(ledger, {
+      category: 'latest_user_request', sourceRole: 'user', scope: 'task', text: 'first',
+      provenance: 'fixture:user:1', logicalTurn: 1, active: true, historical: false,
+    });
+    ledger = appendInstructionEntry(ledger, {
+      category: 'latest_user_request', sourceRole: 'user', scope: 'task', text: 'second',
+      provenance: 'fixture:user:2', logicalTurn: 2, active: true, historical: false,
+    });
+    expect(ledger.entries[0]).toMatchObject({ active: false, historical: true });
+    expect(ledger.entries[1]).toMatchObject({ active: true, historical: false, supersedes: ledger.entries[0]?.id });
+    expect(ledger.latestUserTurnIds?.task).toBe(ledger.entries[1]?.id);
+    expect(validateInstructionLedger(ledger)).toEqual({ ok: true, errors: [] });
+  });
+});

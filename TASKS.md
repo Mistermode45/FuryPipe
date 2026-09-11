@@ -1,20 +1,35 @@
-# FuryPipe — suivi des tâches
+# FuryPipe V5 — matrice centrale des exigences
 
-| ID | Milestone | État | Preuve / limite |
-|---|---|---|---|
-| M0 | Reality check, provenance, recherche, pilotage | DOING | Environnement, upstream et sources initiales vérifiés ; delta V4.3 à compléter |
-| M1 | Fork upstream et baseline reproductible | DONE_LOCAL | SHA épinglé ; install/typecheck/tests/audit/build documentés ; CI multi-OS et provider réel non testés |
-| M2 | Core protocol-safe et pass-through | PARTIAL_UPSTREAM | Routes/proxy upstream couverts par 1 217 tests ; ExactGuard/Context IR ne sont pas encore branchés au transform wire, receipt opt-in seulement |
-| M3 | ExactGuard et Recovery Store | DONE_LOCAL | 13 tests dédiés verts sur ExactGuard, CAS et receipts ; manifests déterministes, CAS SHA-256 namespace-aware et receipt opt-in ; intégration ExactGuard complète au pipeline lossy et BLAKE3/zstd restent ouverts |
-| M4 | Cache planner et cost/token oracles | PARTIAL_LOCAL | Planner consultatif typé ; pas de cost oracle/provider contract |
-| M5 | Stratégies structurées/code/log/tool output | PARTIAL_LOCAL | `src/core/content-classifier.ts` classe JSON/code/log/tool output/Markdown avec ExactGuard et politique `allow`/`guarded`/`deny` ; stratégies de transformation dédiées encore ouvertes ; 3 tests |
-| M6 | Retrieval et document compiler | PARTIAL_LOCAL | Index exact local et compilateur documentaire UTF-8 vers Context IR, avec classification/éligibilité conservatrice sans plaintext ; compilation multi-format et intégration wire encore ouvertes ; 5 tests |
-| M7 | Optical Engine 2.0 | TODO | Non implémenté |
-| M8 | Policy, routing, canary et circuit breaker | PARTIAL_LOCAL | Policy engine décisionnel et contraintes dures ; routing/canary/circuit breaker restent ouverts |
-| M9 | OpenClaw et MCP | PARTIAL_LOCAL | MCP stdio local implémenté et testé ; OpenClaw, MCP HTTP et conformance externes restent bloqués |
-| M10 | Dashboard et observabilité | PARTIAL_UPSTREAM | Dashboard upstream présent ; receipt local vérifiable ajouté, mais vues dashboard ExactGuard/Recovery/receipts FuryPipe non ajoutées |
-| M11 | Sécurité, confidentialité et supply chain | PARTIAL | audit production vert ; matrice licences/SBOM/secrets/CI à compléter |
-| M12 | Benchmarks et comparaisons | TODO | Aucun chiffre FuryPipe publié avant mesure |
-| M13 | Release candidate | BLOCKED | CI multi-OS/arch, publication et artefacts externes non disponibles/autorisation requise ; tarball local dry-run vert |
+Les statuts utilisés ici sont ceux du master V5. Une primitive présente mais
+non atteignable n’est pas marquée DONE.
 
-Les états `DONE` ne sont utilisés qu'avec une preuve répertoriée.
+| Requirement | Implementation | Runtime | Test | CI | Security | Docs | Status | Evidence | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| M0 repository reality, baseline, branch | GitHub cible, baseline exacte, remotes et sources amont relevés | local Git | statique | non exécutée | revue provenance | SOURCE_LEDGER, UPSTREAM | DONE | `git ls-remote` ; branche `v5-production-hardening` à `26a9be93a765576ce338ed5b8d02bbff9f3f76fe` | aucun push |
+| M1 hygiene/provenance/notices | docs de gouvernance, notices et ledger présents | local | statique | non exécutée | audit licence partiel | SOURCE_LEDGER, THIRD_PARTY_NOTICES | TESTED_LOCAL | `git diff --check`, inventaire licences antérieur | SBOM/attestation non produits |
+| M2 duplicate IDs | identité scope/provenance/range/ordinal/hash | `createContextIR` réel | régression répétitive | non exécutée | déterministe, sans secret | ARCHITECTURE, AUDIT | TESTED_LOCAL | `tests/context-fabric.test.ts` | fuzz/property large à compléter |
+| M2 Unicode compiler | segmentation grapheme, byte ranges UTF-8, CRLF | `compileDocument` réel | accents/emoji/combining/CRLF | non exécutée | pas de plaintext conservé dans IR | AUDIT, TESTING | TESTED_LOCAL | `tests/document-compiler.test.ts` | split structure-aware multi-format à compléter |
+| M2 Instruction Ledger | scope, active/historical, supersedes, hash, dernier user | append/validate réels | conflit et historique | non exécutée | validation de provenance | ARCHITECTURE, AUDIT | TESTED_LOCAL | `tests/context-fabric.test.ts` | sérialisation V1 conservée |
+| M3 ExactGuard runtime | gate `TransformOptions.exactGuard` avant lossy | `transformRequest` atteignable | UUID dans tool result, pass-through natif | non exécutée | aucun plaintext dans telemetry | AUDIT, DECISIONS | TESTED_LOCAL | `tests/keep-sharp.test.ts` | externalize/redact non encore exécutés |
+| M4 Recovery core | CAS SHA-256, namespace, atomicité, quotas, TTL/GC | filesystem local | bytes, integrity, isolation, quota, GC | non exécutée | tenant namespace et limites | ARCHITECTURE, SECURITY | TESTED_LOCAL | `tests/recovery-store.test.ts` | backup/restore/chiffrement/ACL à faire |
+| M5 Context Fabric integration | classifier, IR, ledger et retrieval existent séparément | intégration runtime partielle | tests unitaires | non exécutée | provenance partielle | ARCHITECTURE | PARTIAL | modules `src/core/*` | wiring complet à poursuivre |
+| M6 cache/policy | planner et policy typed | consultatif | tests policy | non exécutée | contraintes dures locales | docs/POLICY.md | PARTIAL | `tests/policy-engine.test.ts` | cost oracle/provider contract absent |
+| M7 provider/model fabric | router historique, pas registry V5 complet | provider live non testé | tests historiques | non exécutée | auth route test local | COMPATIBILITY | PARTIAL | `src/core/provider-router.ts` | fallback/capability evidence à compléter |
+| M8 MCP current + legacy | JSON-RPC stdio, 10 outils, alias `fetch_exact` exact bytes | stdio local | handshake/list/call/binary/range/delete | non exécutée | tailles bornées, metadata scalaires | COMPATIBILITY, docs/MCP.md | TESTED_LOCAL | `tests/mcp.test.ts` | HTTP sécurisé/OAuth non implémentés |
+| M9 OpenClaw | aucun adapter actif | non atteignable | aucun runtime | non exécutée | docs seulement | COMPATIBILITY | TODO | aucune | blocker externe/runtime absent |
+| M10 CI cross-platform | workflows présents | Windows local seulement | package/build local | Linux/macOS non vérifiés | audit local | TESTING | PARTIAL | `.github/workflows/ci.yml` | CI distante non consultée |
+| M11 agents/skills/MCP registry | recherches et docs sources seulement | non câblé | aucun harness complet | non exécutée | review manuelle | SOURCE_LEDGER | TODO | sources amont relevées | implémentation à poursuivre |
+| M12 FuryPrompt compiler | non livré | non atteignable | aucun | non exécutée | non évaluée | — | TODO | aucune | scope distinct |
+| M13 learning/knowledge | non livré | non atteignable | aucun | non exécutée | non évaluée | — | TODO | aucune | ne pas confondre memory locale et feature |
+| M14 Web/Figma/Playwright/SEO | non livré | non atteignable | aucun | non exécutée | non évaluée | — | TODO | aucune | outils externes non nécessaires aux P0 |
+| M15 Control Room V5 | dashboard upstream, vues V5 absentes | local partiel | tests historiques | non exécutée | metrics V5 absentes | — | PARTIAL | dashboard existant | exposition honnête à compléter |
+| M16 supply chain/security | audit prod et notices existants | local | audit local antérieur | CodeQL/SBOM non exécutés | hardening partiel | SECURITY, THIRD_PARTY_NOTICES | PARTIAL | `pnpm audit` ; notices | aucun secret affiché |
+| M17 benchmarks | fixtures/bench upstream | non certifié | benchmark V5 non exécuté | non exécutée | non applicable | — | TODO | aucune mesure nouvelle | ne publier aucun gain |
+| M18 docs/i18n | docs FR de cette branche | local | statique | non exécutée | limites documentées | docs racine | TESTED_LOCAL | fichiers documentaires ci-dessus | EN/i18n produit à compléter |
+| M19 release candidate | aucun release candidate | publication interdite | gates finales non rejouées | non vérifiée | release security incomplète | COMPATIBILITY | BLOCKED | absence CI/approbation publication | pas de merge, npm publish ou deploy |
+
+## Ordre de continuation
+
+Après ce checkpoint : intégrer Context Fabric au chemin réel, compléter les
+policies ExactGuard externalize/redact avec Recovery, puis traiter les gates
+M4/M8/M10 avant les surfaces OpenClaw et release.

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -30,6 +30,10 @@ export interface RecoveryVerification {
 
 export interface RecoveryStoreOptions {
   readonly namespace?: string;
+  /** Optional hard limit for one immutable object. */
+  readonly maxObjectBytes?: number;
+  /** Optional hard limit for the namespace's stored object bytes. */
+  readonly maxTotalBytes?: number;
 }
 
 export interface RecoveryStore {
@@ -40,6 +44,7 @@ export interface RecoveryStore {
   verify(handle: RecoveryHandle | string): Promise<RecoveryVerification>;
   manifest(handle: RecoveryHandle | string): Promise<RecoveryHandle & { metadata?: RecoveryMetadata }>;
   delete(handle: RecoveryHandle | string): Promise<boolean>;
+  gc(now?: Date): Promise<{ expired: number; orphaned: number; bytesFreed: number }>;
 }
 
 const HANDLE = /^furypipe-recovery\/v1\/sha256\/([0-9a-f]{64})$/;
@@ -94,6 +99,22 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+async function totalObjectBytes(root: string): Promise<number> {
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    let total = 0;
+    for (const entry of entries) {
+      const path = join(root, entry.name);
+      if (entry.isDirectory()) total += await totalObjectBytes(path);
+      else if (entry.isFile() && !entry.name.endsWith('.tmp')) total += (await stat(path)).size;
+    }
+    return total;
+  } catch (caught) {
+    if ((caught as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+    throw caught;
+  }
+}
+
 /**
  * File-system content-addressed store. SHA-256 and raw bytes are intentional in
  * this portable first slice: Node's standard library has no BLAKE3/zstd API.
@@ -101,14 +122,24 @@ async function exists(path: string): Promise<boolean> {
  */
 export function createRecoveryStore(root: string, options: RecoveryStoreOptions = {}): RecoveryStore {
   const namespace = options.namespace === undefined ? undefined : validateNamespace(options.namespace.trim());
+  const maxObjectBytes = options.maxObjectBytes ?? Number.MAX_SAFE_INTEGER;
+  const maxTotalBytes = options.maxTotalBytes ?? Number.MAX_SAFE_INTEGER;
+  if (!Number.isSafeInteger(maxObjectBytes) || maxObjectBytes < 0) throw new RangeError('maxObjectBytes must be a non-negative safe integer');
+  if (!Number.isSafeInteger(maxTotalBytes) || maxTotalBytes < 0) throw new RangeError('maxTotalBytes must be a non-negative safe integer');
   const scopedRoot = namespace ? join(root, 'namespaces', namespace) : root;
+  let writeChain: Promise<void> = Promise.resolve();
 
   return {
-    async put(bytes, metadata) {
+    put(bytes, metadata) {
+      const operation = writeChain.then(async () => {
       const view = asUint8Array(bytes);
+      if (view.byteLength > maxObjectBytes) throw new Error('recovery object exceeds the configured object quota');
       const digest = digestBytes(view);
       const target = objectPath(scopedRoot, digest);
       const manifest = metadataPath(scopedRoot, digest);
+      if (!(await exists(target)) && (await totalObjectBytes(join(scopedRoot, 'objects'))) + view.byteLength > maxTotalBytes) {
+        throw new Error('recovery namespace exceeds the configured total quota');
+      }
       await mkdir(dirname(target), { recursive: true });
       await mkdir(dirname(manifest), { recursive: true });
       if (!(await exists(target))) {
@@ -133,6 +164,9 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
         }
       }
       return handle;
+      });
+      writeChain = operation.then(() => undefined, () => undefined);
+      return operation;
     },
 
     async get(handle) {
@@ -195,6 +229,35 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
       await rm(object, { force: true });
       await rm(manifest, { force: true });
       return existed;
+    },
+
+    async gc(now = new Date()) {
+      const manifestRoot = join(scopedRoot, 'manifests');
+      let expired = 0;
+      let orphaned = 0;
+      let bytesFreed = 0;
+      try {
+        for (const name of await readdir(manifestRoot)) {
+          if (!name.endsWith('.json')) continue;
+          const file = join(manifestRoot, name);
+          let manifest: RecoveryHandle & { metadata?: RecoveryMetadata };
+          try {
+            manifest = JSON.parse(await readFile(file, 'utf8')) as RecoveryHandle & { metadata?: RecoveryMetadata };
+          } catch {
+            continue;
+          }
+          const expiresAt = manifest.metadata?.expiresAt;
+          if (typeof expiresAt !== 'string' || Number.isNaN(Date.parse(expiresAt)) || Date.parse(expiresAt) > now.getTime()) continue;
+          const object = objectPath(scopedRoot, manifest.digest);
+          try { bytesFreed += (await stat(object)).size; } catch { /* manifest-only corruption */ }
+          await rm(object, { force: true });
+          await rm(file, { force: true });
+          expired += 1;
+        }
+      } catch (caught) {
+        if ((caught as NodeJS.ErrnoException).code !== 'ENOENT') throw caught;
+      }
+      return { expired, orphaned, bytesFreed };
     },
   };
 }

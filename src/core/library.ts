@@ -28,7 +28,7 @@ export type BytesLike = Uint8Array | ArrayBuffer | ArrayBufferView;
 export interface PxpipeOptions
   extends Pick<
     TransformOptions,
-    'charsPerToken' | 'historyAmortizationHorizon' | 'keepSharp' | 'emitRecoverable' | 'emitReceipt'
+    'charsPerToken' | 'historyAmortizationHorizon' | 'keepSharp' | 'emitRecoverable' | 'emitReceipt' | 'exactGuard'
   > {
   /** Test/debug-only bypass. Product hosts should prefer their dashboard setting. */
   readonly compress?: boolean;

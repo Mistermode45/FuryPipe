@@ -14,6 +14,22 @@ describe('document compiler', () => {
     expect(verifyContextIRBlockText(result.ir.blocks[0]!, 'é'.repeat(256))).toBe(true);
   });
 
+  it('does not split Unicode scalar values, grapheme clusters or CRLF', () => {
+    const source = `${'😀'.repeat(256)}\r\n${'e\u0301'.repeat(256)}`;
+    const result = compileDocument({
+      requestId: 'req-doc-unicode', text: source, source: 'unicode.txt', sourceRole: 'user',
+      sourceProviderShape: 'test.text', provenance: 'fixture:unicode', logicalTurn: 1, chunkChars: 256,
+    });
+    const encoded = new TextEncoder().encode(source);
+    const chunks = result.ir.blocks.map((block) => {
+      const range = block.byteRange!;
+      return new TextDecoder().decode(encoded.slice(range.start, range.end));
+    });
+    expect(chunks.join('')).toBe(source);
+    expect(chunks.every((chunk) => !chunk.endsWith('\r'))).toBe(true);
+    expect(new Set(result.ir.blocks.map((block) => block.id)).size).toBe(result.ir.blocks.length);
+  });
+
   it('compiles secret-like chunks as byte-exact and deny', () => {
     const result = compileDocument({
       requestId: 'req-doc-secret', text: 'Authorization: Bearer abc.def.ghi', source: 'tool.log', sourceRole: 'tool',

@@ -58,6 +58,7 @@ import { visionTokens, type VisionPricing } from './vision-cost.js';
 import { CLAUDE_PROFILE } from './claude-model-profiles.js';
 import { resolveGptProfile } from './gpt-model-profiles.js';
 import type { CompressionReceipt } from './receipt.js';
+import { detectProtectedSpans, type ExactGuardOptions } from './exact-guard.js';
 
 /** Per-block descriptor passed to `TransformOptions.keepSharp`. */
 export interface KeepSharpBlock {
@@ -143,6 +144,13 @@ export interface TransformOptions {
   emitRecoverable?: boolean;
   /** When true, the public library wrapper emits a plaintext-free compression receipt. */
   emitReceipt?: boolean;
+  /**
+   * Optional lossiness gate. When enabled, any protected span in a textual
+   * request value keeps the complete request native until an explicit,
+   * reversible representation path is available. This is intentionally opt-in
+   * for compatibility with existing hosts; it is never receipt-only when set.
+   */
+  exactGuard?: ExactGuardOptions | false;
 }
 
 const DEFAULTS: Required<TransformOptions> = {
@@ -167,6 +175,7 @@ const DEFAULTS: Required<TransformOptions> = {
   keepSharp: () => false,
   emitRecoverable: false,
   emitReceipt: false,
+  exactGuard: false,
   // GPT-only knobs; the Anthropic transform ignores them but Required<> needs them.
   collapseHistory: true,
   gptHistory: {},
@@ -531,10 +540,26 @@ export function isCompressionProfitableAmortized(
 /** Increment a passthrough-reason counter on `info`. Lazily allocates `passthroughReasons`. */
 function bumpPassthrough(
   info: TransformInfo,
-  reason: 'below_threshold' | 'not_profitable' | 'kept_sharp' | 'image_budget',
+  reason: 'below_threshold' | 'not_profitable' | 'kept_sharp' | 'image_budget' | 'exact_guard',
 ): void {
   if (!info.passthroughReasons) info.passthroughReasons = {};
   info.passthroughReasons[reason] = (info.passthroughReasons[reason] ?? 0) + 1;
+}
+
+/** Count protected spans without retaining their plaintext in telemetry. */
+function countProtectedRequestSpans(value: unknown, options: ExactGuardOptions, depth = 0): number {
+  if (depth > 8) return 0;
+  if (typeof value === 'string') return detectProtectedSpans(value, options).length;
+  if (!value || typeof value !== 'object') return 0;
+  let count = 0;
+  if (Array.isArray(value)) {
+    for (const item of value) count += countProtectedRequestSpans(item, options, depth + 1);
+  } else {
+    for (const item of Object.values(value as Record<string, unknown>)) {
+      count += countProtectedRequestSpans(item, options, depth + 1);
+    }
+  }
+  return count;
 }
 
 /** Invoke `keepSharp` defensively; a throw or non-`true` return means "image as usual". */
@@ -724,7 +749,9 @@ export interface TransformInfo {
   /** Top dropped codepoints by frequency (`U+HHHH` → count), at most 20 entries. */
   droppedCodepointsTop?: Record<string, number>;
   /** Why blocks passed through without compression. Only present when count > 0. */
-  passthroughReasons?: { below_threshold?: number; not_profitable?: number; kept_sharp?: number; image_budget?: number };
+  passthroughReasons?: { below_threshold?: number; not_profitable?: number; kept_sharp?: number; image_budget?: number; exact_guard?: number };
+  /** ExactGuard runtime decision, when the configured guard found protected values. */
+  exactGuard?: { protectedSpans: number; action: 'preserve_native' };
   /** Slab gate diagnostics — imageTokens, textTokens, burn terms, and verdict.
    *  Lets hosts measure flap-prevention efficacy and tune amortization horizon. */
   gateEval?: {
@@ -2126,6 +2153,20 @@ export async function transformRequest(
   } catch (e) {
     info.reason = `parse_error: ${(e as Error).message}`;
     return { body, info };
+  }
+
+  // ExactGuard is a real strategy gate, not receipt decoration. Until a
+  // reversible externalize/redact adapter is selected, preserve the complete
+  // native request whenever a configured rule detects a protected value.
+  // Counting only hashes/spans keeps this diagnostic plaintext-free.
+  if (o.exactGuard !== false) {
+    const protectedSpans = countProtectedRequestSpans(req, o.exactGuard ?? {});
+    if (protectedSpans > 0) {
+      info.reason = `exact_guard (preserve_native, spans=${protectedSpans})`;
+      info.exactGuard = { protectedSpans, action: 'preserve_native' };
+      bumpPassthrough(info, 'exact_guard');
+      return { body, info };
+    }
   }
 
   // Price the caller's OWN images before we rewrite anything: they occupy the

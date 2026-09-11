@@ -37,6 +37,26 @@ function trustFor(role: IRSourceRole): ContextIRBlockInput['trustLevel'] {
   }
 }
 
+const graphemeSegmenter = new Intl.Segmenter('und', { granularity: 'grapheme' });
+
+/**
+ * Return a UTF-16 offset that ends on a grapheme boundary. `chunkChars` is a
+ * grapheme-count limit, not a code-unit limit, so surrogate pairs, combining
+ * marks, emoji sequences and CRLF are never split between blocks.
+ */
+function safeChunkEnd(text: string, start: number, limit: number): number {
+  if (start >= text.length) return start;
+  let graphemes = 0;
+  let end = start;
+  for (const segment of graphemeSegmenter.segment(text.slice(start))) {
+    if (graphemes === limit) break;
+    end = start + segment.index + segment.segment.length;
+    graphemes += 1;
+  }
+  if (end < text.length && text[end - 1] === '\r' && text[end] === '\n') end += 1;
+  return end > start ? end : Math.min(text.length, start + 1);
+}
+
 /** Compile text into metadata-only Context IR blocks; source text is discarded after hashing. */
 export function compileDocument(input: DocumentCompilerInput): DocumentCompilation {
   const limit = chunkLimit(input.chunkChars);
@@ -45,7 +65,8 @@ export function compileDocument(input: DocumentCompilerInput): DocumentCompilati
   let charOffset = 0;
   let byteOffset = 0;
   while (charOffset < input.text.length || (input.text.length === 0 && chunks.length === 0)) {
-    const text = input.text.slice(charOffset, charOffset + limit);
+    const nextOffset = input.text.length === 0 ? 0 : safeChunkEnd(input.text, charOffset, limit);
+    const text = input.text.slice(charOffset, nextOffset);
     const classification = classifyContent(text, input.classifierHints);
     const chunkBytes = new TextEncoder().encode(text).byteLength;
     const secret = classification.sensitivity === 'secret';

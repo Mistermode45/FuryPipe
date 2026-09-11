@@ -3,6 +3,8 @@ import { createRecoveryStore, type RecoveryMetadata, type RecoveryStore } from '
 
 const MAX_MESSAGE_BYTES = 2 * 1024 * 1024;
 const MAX_TEXT_BYTES = 1024 * 1024;
+const MAX_BINARY_ARRAY_BYTES = 64 * 1024;
+const MAX_RANGE_BYTES = 1024 * 1024;
 const MAX_QUERY_CHARS = 256;
 const PROTOCOL_VERSION = '2025-11-25';
 declare const __FURYPIPE_VERSION__: string | undefined;
@@ -35,9 +37,40 @@ const TOOLS = [
     },
   },
   {
-    name: 'fetch_exact',
-    description: 'Fetch exact bytes from a recovery handle.',
+    name: 'index_bytes',
+    description: 'Store exact bytes supplied as canonical base64 and return a verifiable handle.',
+    inputSchema: {
+      type: 'object', required: ['base64'], additionalProperties: false,
+      properties: { base64: { type: 'string', maxLength: Math.ceil(MAX_TEXT_BYTES * 4 / 3) + 4 }, metadata: { type: 'object' } },
+    },
+  },
+  {
+    name: 'fetch_text',
+    description: 'Fetch a UTF-8 text representation from a recovery handle.',
     inputSchema: { type: 'object', required: ['handle'], additionalProperties: false, properties: { handle: { type: 'string' } } },
+  },
+  {
+    name: 'fetch_exact',
+    description: 'Legacy exact-byte alias for fetch_bytes_base64; result is canonical base64.',
+    inputSchema: { type: 'object', required: ['handle'], additionalProperties: false, properties: { handle: { type: 'string' } } },
+  },
+  {
+    name: 'fetch_bytes',
+    description: 'Fetch exact bytes as a bounded JSON byte array.',
+    inputSchema: { type: 'object', required: ['handle'], additionalProperties: false, properties: { handle: { type: 'string' } } },
+  },
+  {
+    name: 'fetch_bytes_base64',
+    description: 'Fetch exact arbitrary bytes as canonical base64.',
+    inputSchema: { type: 'object', required: ['handle'], additionalProperties: false, properties: { handle: { type: 'string' } } },
+  },
+  {
+    name: 'fetch_range',
+    description: 'Fetch an exact bounded half-open byte range as base64.',
+    inputSchema: {
+      type: 'object', required: ['handle', 'start'], additionalProperties: false,
+      properties: { handle: { type: 'string' }, start: { type: 'integer', minimum: 0 }, end_exclusive: { type: 'integer', minimum: 0 } },
+    },
   },
   {
     name: 'fetch_lines',
@@ -46,6 +79,16 @@ const TOOLS = [
       type: 'object', required: ['handle', 'from_line'], additionalProperties: false,
       properties: { handle: { type: 'string' }, from_line: { type: 'integer', minimum: 1 }, to_line: { type: 'integer', minimum: 1 } },
     },
+  },
+  {
+    name: 'manifest',
+    description: 'Read the versioned recovery manifest for a handle.',
+    inputSchema: { type: 'object', required: ['handle'], additionalProperties: false, properties: { handle: { type: 'string' } } },
+  },
+  {
+    name: 'delete_handle',
+    description: 'Delete one addressed recovery object and its manifest.',
+    inputSchema: { type: 'object', required: ['handle'], additionalProperties: false, properties: { handle: { type: 'string' } } },
   },
   {
     name: 'verify_handle',
@@ -99,6 +142,23 @@ function textResult(value: unknown): { content: [{ type: 'text'; text: string }]
   return { content: [{ type: 'text', text }] };
 }
 
+function decodeBase64(value: unknown): Uint8Array {
+  if (typeof value !== 'string' || value.length === 0 || value.length > Math.ceil(MAX_TEXT_BYTES * 4 / 3) + 4) {
+    throw new Error('base64 must be a bounded non-empty string');
+  }
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+    throw new Error('base64 must use canonical padding');
+  }
+  const bytes = Buffer.from(value, 'base64');
+  if (bytes.toString('base64') !== value || bytes.byteLength > MAX_TEXT_BYTES) throw new Error('base64 payload exceeds the 1 MiB limit');
+  return new Uint8Array(bytes);
+}
+
+function boundedInteger(value: unknown, name: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Error(`${name} must be a non-negative safe integer`);
+  return value;
+}
+
 /** Pure request dispatcher used by the stdio entrypoint and contract tests. */
 export function createMcpService(store: RecoveryStore): McpService {
   return {
@@ -130,10 +190,30 @@ export function createMcpService(store: RecoveryStore): McpService {
           const handle = await store.put(new TextEncoder().encode(args.text), metadataParam(args.metadata));
           return response(id, textResult({ handle }));
         }
-        if (params.name === 'fetch_exact') {
+        if (params.name === 'index_bytes') {
+          const handle = await store.put(decodeBase64(args.base64), metadataParam(args.metadata));
+          return response(id, textResult({ handle }));
+        }
+        if (params.name === 'fetch_text') {
           const bytes = await store.get(handleParam(args));
           if (bytes.byteLength > MAX_TEXT_BYTES) throw new Error('stored object exceeds MCP output limit');
           return response(id, textResult(new TextDecoder().decode(bytes)));
+        }
+        if (params.name === 'fetch_exact' || params.name === 'fetch_bytes' || params.name === 'fetch_bytes_base64') {
+          const bytes = await store.get(handleParam(args));
+          if (bytes.byteLength > (params.name === 'fetch_bytes' ? MAX_BINARY_ARRAY_BYTES : MAX_TEXT_BYTES)) throw new Error('stored object exceeds MCP output limit');
+          return response(id, textResult(params.name === 'fetch_bytes'
+            ? { bytes: Array.from(bytes), byteLength: bytes.byteLength }
+            : Buffer.from(bytes).toString('base64')));
+        }
+        if (params.name === 'fetch_range') {
+          const start = boundedInteger(args.start, 'start');
+          const end = args.end_exclusive === undefined
+            ? Math.min(Number.MAX_SAFE_INTEGER, start + MAX_RANGE_BYTES)
+            : boundedInteger(args.end_exclusive, 'end_exclusive');
+          if (end < start || end - start > MAX_RANGE_BYTES) throw new Error('byte range is invalid or too large');
+          const bytes = await store.fetchRange(handleParam(args), start, end);
+          return response(id, textResult({ start, endExclusive: start + bytes.byteLength, base64: Buffer.from(bytes).toString('base64') }));
         }
         if (params.name === 'fetch_lines') {
           const from = args.from_line;
@@ -145,6 +225,12 @@ export function createMcpService(store: RecoveryStore): McpService {
         }
         if (params.name === 'verify_handle') {
           return response(id, textResult(await store.verify(handleParam(args))));
+        }
+        if (params.name === 'manifest') {
+          return response(id, textResult(await store.manifest(handleParam(args))));
+        }
+        if (params.name === 'delete_handle') {
+          return response(id, textResult({ deleted: await store.delete(handleParam(args)) }));
         }
         throw new Error('unknown tool');
       } catch (caught) {
