@@ -3,6 +3,56 @@ import {
   createControlRoomSnapshot,
   type ControlRoomInput,
 } from '../src/control-room/index.js';
+import {
+  createV5ReleaseGates,
+  evaluateReleaseReadiness,
+  type V5ReleaseGateStates,
+} from '../src/release-readiness/index.js';
+
+function verifiedReleaseStates(): V5ReleaseGateStates {
+  return {
+    ciPush: 'VERIFIED',
+    ciPr: 'VERIFIED',
+    codeql: 'VERIFIED',
+    secretScan: 'VERIFIED',
+    supplyChain: 'VERIFIED',
+    licenseCompliance: 'VERIFIED',
+    recovery: 'VERIFIED',
+    mcp: 'VERIFIED',
+    agentRuntime: 'VERIFIED',
+    furyPrompt: 'VERIFIED',
+    learning: 'VERIFIED',
+    webStudio: 'VERIFIED',
+    controlRoom: 'VERIFIED',
+    i18n: 'VERIFIED',
+    documentation: 'VERIFIED',
+    branchPolicy: 'VERIFIED',
+    provenance: 'VERIFIED',
+    dependencyReview: 'VERIFIED',
+    providerBenchmarks: 'VERIFIED',
+  };
+}
+
+function releaseReport(
+  sourceCommit = 'a'.repeat(40),
+  overrides: Partial<V5ReleaseGateStates> = {},
+) {
+  const states: V5ReleaseGateStates = { ...verifiedReleaseStates(), ...overrides };
+  return evaluateReleaseReadiness({
+    generatedAt: 1_725_000_000_000,
+    sourceCommit,
+    packageVersion: '0.13.2',
+    channel: 'rc',
+    performanceClaims: false,
+    gates: createV5ReleaseGates(states),
+    authorization: {
+      mergeDefaultBranch: false,
+      createReleaseTag: false,
+      publishNpm: false,
+      deployProduction: false,
+    },
+  });
+}
 
 function input(): ControlRoomInput {
   return {
@@ -89,6 +139,48 @@ describe('Control Room V5 kernel', () => {
     expect(snapshot.sections.recovery.status).toBe('PARTIAL');
     expect(snapshot.sections.security.status).toBe('BLOCKED');
     expect(snapshot.sections.benchmarks.status).toBe('PARTIAL');
+    expect(snapshot.sections.release.status).toBe('NOT_AVAILABLE');
+    expect(snapshot.sections.release.warnings[0]).toMatch(/not available/i);
+  });
+
+  it('surfaces a blocked release decision with exact blocker counts', () => {
+    const base = input();
+    const snapshot = createControlRoomSnapshot({
+      ...base,
+      releaseReadiness: releaseReport(base.sourceCommit, {
+        recovery: 'PARTIAL',
+        mcp: 'PARTIAL',
+      }),
+    });
+
+    expect(snapshot.sections.release.status).toBe('BLOCKED');
+    expect(snapshot.sections.release.evidence.technicalStatus).toBe('BLOCKED');
+    expect(snapshot.sections.release.evidence.blockers).toBe(2);
+    expect(snapshot.sections.release.warnings[0]).toMatch(/blocked by 2 required gate/);
+  });
+
+  it('maps a technically ready release report to VERIFIED without executing release actions', () => {
+    const base = input();
+    const snapshot = createControlRoomSnapshot({
+      ...base,
+      releaseReadiness: releaseReport(base.sourceCommit),
+    });
+
+    expect(snapshot.sections.release.status).toBe('VERIFIED');
+    expect(snapshot.sections.release.evidence).toMatchObject({
+      technicalStatus: 'READY_FOR_RELEASE_DECISION',
+      blockers: 0,
+      releaseActionsExecuted: false,
+      authorizedActions: 0,
+    });
+  });
+
+  it('rejects stale release evidence from another source commit', () => {
+    const base = input();
+    expect(() => createControlRoomSnapshot({
+      ...base,
+      releaseReadiness: releaseReport('b'.repeat(40)),
+    })).toThrow(/source commit must match/);
   });
 
   it('warns that BACKUP_EXISTS is not restore verification', () => {
@@ -172,7 +264,10 @@ describe('Control Room V5 kernel', () => {
       providerRuns: 'VERIFIED',
       comparableRuns: 3,
     };
-    const snapshot = createControlRoomSnapshot(value);
+    const snapshot = createControlRoomSnapshot({
+      ...value,
+      releaseReadiness: releaseReport(value.sourceCommit),
+    });
     expect(snapshot.overall).toBe('HEALTHY');
     expect(Object.values(snapshot.sections).every((section) => section.status === 'VERIFIED')).toBe(true);
   });
