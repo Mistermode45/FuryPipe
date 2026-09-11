@@ -65,3 +65,12 @@
 - Recovery Store complété par backup versionné local et restore sans écrasement ; les fichiers identiques sont idempotents et les conflits de contenu sont refusés.
 - Test de round-trip backup/suppression/restore vert ; suite ciblée Recovery : 7 tests verts ; typecheck vert.
 - La limite « backup/restore » de l’entrée précédente est remplacée par la limite « chiffrement/ACL/SQLite/orphan GC ».
+
+## 2026-09-11 — final gate after recovery checkpoint
+
+- Commit contrôlé : `a50921cd302da957f2fd22e2a97ecbcc91b9a382`.
+- Suite complète post-backup/restore : `88` fichiers, `1 258` tests verts, durée observée 13,13 s.
+- Typecheck, build, audit production et `git diff --check` verts.
+- Package dry-run : `furypipe@0.13.2`, 147 fichiers, 4 069 975 octets compressés, 16 488 778 octets décompressés.
+- SHA-256 : `dist/node.js` = `0BD02C9AF461585EF59BC783EB1D02F1E0C5B0128E0551E3788E4A16F238256B` ; `dist/mcp.js` = `1897586E405CE221B7C27767338E84BFAD9525CAD16ECE464F5327DF997DC0B1`.
+- État Git : arbre propre sur `v5-production-hardening` ; aucun push, merge, publication ou déploiement.
