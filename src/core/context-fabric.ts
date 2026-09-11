@@ -11,7 +11,7 @@ import {
 import { planCache, type CachePlan } from './cache-planner.js';
 import { evaluatePolicy, type PolicyDecision, type PolicyMode, type PolicyStrategy } from './policy-engine.js';
 import { evaluatePolicyFabric, type PolicyFabricDecision } from './policy-fabric.js';
-import { resolveProviderFabric, type ProviderFabricDecision } from './provider-fabric.js';
+import { resolveProviderFabric, type ProviderFabricDecision, type ProviderRegistry } from './provider-fabric.js';
 
 /**
  * Safe, bounded diagnostics for one request's shared context pipeline.
@@ -74,6 +74,7 @@ interface FabricOptions {
   readonly mode?: PolicyMode;
   readonly providerAvailable?: boolean;
   readonly providerId?: string;
+  readonly providerRegistry?: ProviderRegistry;
 }
 
 interface FabricSource {
@@ -378,23 +379,37 @@ export function analyzeContextFabric(request: MessagesRequest, options: FabricOp
     explicitMarkers: true,
   });
   const costs = policyCosts(ir);
-  const policy = evaluatePolicy({
-    mode: modeFromInput(options.mode),
-    blocks: ir.blocks,
-    costs,
-    providerAvailable: options.providerAvailable,
-  });
-  const policyFabric = evaluatePolicyFabric({
-    provider: 'anthropic',
-    mode: modeFromInput(options.mode),
-    blocks: ir.blocks,
-    costs,
-    providerState: { status: 'unknown', circuit: 'closed' },
-  });
   const providerFabric = resolveProviderFabric({
     providerId: options.providerId ?? 'anthropic',
     model: request.model,
     protocol: 'anthropic',
+    ...(options.providerRegistry === undefined ? {} : { registry: options.providerRegistry }),
+  });
+  const observedProviderAvailable = options.providerAvailable
+    ?? (providerFabric.provider.availability === 'available'
+      ? true
+      : providerFabric.provider.availability === 'unavailable'
+        ? false
+        : undefined);
+  const policy = evaluatePolicy({
+    mode: modeFromInput(options.mode),
+    blocks: ir.blocks,
+    costs,
+    providerAvailable: observedProviderAvailable,
+  });
+  const policyFabric = evaluatePolicyFabric({
+    provider: providerFabric.provider.id,
+    mode: modeFromInput(options.mode),
+    blocks: ir.blocks,
+    costs,
+    providerState: {
+      status: providerFabric.provider.availability === 'available'
+        ? 'healthy'
+        : providerFabric.provider.availability === 'unavailable'
+          ? 'unavailable'
+          : 'unknown',
+      circuit: 'closed',
+    },
   });
   return {
     format: 'furypipe-context-fabric-analysis/v1',
