@@ -1,3 +1,5 @@
+import type { ReleaseReadinessReport } from '../release-readiness/index.js';
+
 export type ControlRoomEvidenceStatus =
   | 'NOT_AVAILABLE'
   | 'NOT_EXECUTED'
@@ -85,6 +87,17 @@ export interface BenchmarkEvidence {
   readonly comparableRuns: number;
 }
 
+export interface ReleaseReadinessEvidence {
+  readonly technicalStatus: 'NOT_AVAILABLE' | 'BLOCKED' | 'READY_FOR_RELEASE_DECISION';
+  readonly channel?: 'rc' | 'stable';
+  readonly blockers: number;
+  readonly warnings: number;
+  readonly verifiedRequiredGates: number;
+  readonly requiredGates: number;
+  readonly authorizedActions: number;
+  readonly releaseActionsExecuted: false;
+}
+
 export interface ControlRoomInput {
   readonly generatedAt: number;
   readonly sourceCommit: string;
@@ -97,6 +110,8 @@ export interface ControlRoomInput {
   readonly webStudio: WebStudioEvidence;
   readonly security: SecurityEvidence;
   readonly benchmarks: BenchmarkEvidence;
+  /** Optional M19 technical-readiness report for this exact source commit. */
+  readonly releaseReadiness?: ReleaseReadinessReport;
 }
 
 export interface ControlRoomSection<T> {
@@ -120,6 +135,7 @@ export interface ControlRoomSnapshot {
     readonly webStudio: ControlRoomSection<WebStudioEvidence>;
     readonly security: ControlRoomSection<SecurityEvidence>;
     readonly benchmarks: ControlRoomSection<BenchmarkEvidence>;
+    readonly release: ControlRoomSection<ReleaseReadinessEvidence>;
   };
 }
 
@@ -196,13 +212,33 @@ function validateInput(input: ControlRoomInput): void {
     throw new Error('encrypted Recovery evidence requires an activeKeyId');
   }
   if (!input.i18n.locale.trim()) throw new Error('i18n locale must not be empty');
+
+  if (input.releaseReadiness !== undefined) {
+    const release = input.releaseReadiness;
+    if (release.format !== 'furypipe-release-readiness/v1') {
+      throw new Error('release readiness report format is invalid');
+    }
+    if (release.sourceCommit !== input.sourceCommit) {
+      throw new Error('release readiness source commit must match Control Room source commit');
+    }
+    safeCount(release.blockers.length, 'release.blockers');
+    safeCount(release.warnings.length, 'release.warnings');
+    safeCount(release.verifiedRequiredGates, 'release.verifiedRequiredGates');
+    safeCount(release.requiredGates, 'release.requiredGates');
+    if (release.verifiedRequiredGates > release.requiredGates) {
+      throw new Error('release verified gate count cannot exceed required gate count');
+    }
+    if (release.releaseActionsExecuted !== false) {
+      throw new Error('Control Room accepts evidence-only release reports');
+    }
+  }
 }
 
 function overallFromSections(sections: ControlRoomSnapshot['sections']): ControlRoomOverallStatus {
   const statuses = Object.values(sections).map((value) => value.status);
   if (statuses.includes('BLOCKED')) return 'BLOCKED';
   if (statuses.every((status) => status === 'VERIFIED')) return 'HEALTHY';
-  if (statuses.includes('NOT_EXECUTED') || statuses.includes('PARTIAL')) return 'PARTIAL';
+  if (statuses.includes('NOT_AVAILABLE') || statuses.includes('NOT_EXECUTED') || statuses.includes('PARTIAL')) return 'PARTIAL';
   return 'DEGRADED';
 }
 
@@ -272,6 +308,33 @@ export function createControlRoomSnapshot(input: ControlRoomInput): ControlRoomS
     input.benchmarks.providerRuns,
   ]);
 
+  const releaseReport = input.releaseReadiness;
+  const releaseEvidence: ReleaseReadinessEvidence = releaseReport === undefined
+    ? {
+        technicalStatus: 'NOT_AVAILABLE',
+        blockers: 0,
+        warnings: 0,
+        verifiedRequiredGates: 0,
+        requiredGates: 0,
+        authorizedActions: 0,
+        releaseActionsExecuted: false,
+      }
+    : {
+        technicalStatus: releaseReport.status,
+        channel: releaseReport.channel,
+        blockers: releaseReport.blockers.length,
+        warnings: releaseReport.warnings.length,
+        verifiedRequiredGates: releaseReport.verifiedRequiredGates,
+        requiredGates: releaseReport.requiredGates,
+        authorizedActions: Object.values(releaseReport.authorization).filter((value) => value === true).length,
+        releaseActionsExecuted: false,
+      };
+  const releaseStatus: ControlRoomEvidenceStatus = releaseReport === undefined
+    ? 'NOT_AVAILABLE'
+    : releaseReport.status === 'BLOCKED'
+      ? 'BLOCKED'
+      : 'VERIFIED';
+
   const sections = Object.freeze({
     receipts: section(receiptStatus, input.receipts),
     recovery: section(recoveryStatus, input.recovery, [
@@ -290,6 +353,15 @@ export function createControlRoomSnapshot(input: ControlRoomInput): ControlRoomS
     benchmarks: section(benchmarkStatus, input.benchmarks, [
       ...(input.benchmarks.providerRuns !== 'VERIFIED'
         ? ['Provider benchmarks are not verified; do not publish performance claims.'] : []),
+    ]),
+    release: section(releaseStatus, releaseEvidence, [
+      ...(releaseReport === undefined
+        ? ['Release readiness evidence is not available for this commit.']
+        : releaseReport.status === 'BLOCKED'
+          ? [`Release decision is blocked by ${releaseReport.blockers.length} required gate(s).`]
+          : []),
+      ...(releaseReport !== undefined && Object.values(releaseReport.authorization).some((value) => value === true)
+        ? ['Release authorization is recorded separately; Control Room does not execute release actions.'] : []),
     ]),
   });
 
