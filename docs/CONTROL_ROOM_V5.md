@@ -2,56 +2,69 @@
 
 ## Status
 
-`KERNEL_IMPLEMENTED_NOT_DASHBOARD_WIRED`
+`DASHBOARD_WIRED_HOST_PROVIDER_NOT_CONFIGURED`
 
-The Control Room V5 kernel provides a single fail-visible snapshot for the current FuryPipe V5 subsystems without requiring the UI to infer status from unrelated counters.
+The Control Room V5 kernel provides a fail-visible metadata snapshot for FuryPipe V5 and is wired into the loopback dashboard through:
 
-Implemented:
+- `GET /api/control-room.json`;
+- `GET /fragments/control-room`;
+- the server-rendered Control Room panel.
 
-- receipts / ExactGuard evidence;
-- Recovery evidence and backup-vs-restore distinction;
-- Agent runtime evidence;
-- Human/Agent Learning evidence;
-- MCP transport/auth/conformance evidence;
-- i18n runtime/wiring evidence;
-- Web/Figma Studio evidence;
-- security/supply-chain evidence;
+The Node host currently constructs `DashboardState` without a Control Room evidence provider. The production panel therefore remains `NOT_AVAILABLE` until the host explicitly supplies a metadata-only snapshot. The dashboard does not infer green states from unrelated counters.
+
+## Evidence sections
+
+The snapshot covers:
+
+- receipts / ExactGuard;
+- Recovery and `BACKUP_EXISTS` vs `RESTORE_VERIFIED`;
+- Agent runtime;
+- Human/Agent Learning;
+- MCP transport/auth/conformance;
+- i18n runtime/wiring;
+- Web/Figma Studio;
+- security/supply-chain;
 - benchmark harness/provider-run distinction;
-- aggregate overall status;
-- impossible-counter validation;
-- source commit pinning.
+- M19 Release Readiness.
 
-Status semantics:
+Release Readiness is bound to the exact Control Room `sourceCommit`. Evidence from another commit is rejected as stale.
+
+The release section shows:
+
+- technical state: `NOT_AVAILABLE`, `BLOCKED` or `READY_FOR_RELEASE_DECISION`;
+- verified required gates / total required gates;
+- blocker count;
+- warning count;
+- number of separately authorized release actions;
+- `releaseActionsExecuted: false`.
+
+`READY_FOR_RELEASE_DECISION` is not a release authorization and does not cause merge, tag, npm publish, GitHub Release creation or deployment.
+
+## Status semantics
 
 - `VERIFIED`: evidence exists and the gate is verified;
 - `PARTIAL`: implementation/evidence exists but is incomplete;
-- `NOT_EXECUTED`: capability or validation has not run;
-- `NOT_AVAILABLE`: no applicable evidence exists;
-- `BLOCKED`: an external or repository-level blocker prevents completion.
+- `NOT_EXECUTED`: validation has not run;
+- `NOT_AVAILABLE`: no current evidence provider/report exists;
+- `BLOCKED`: a required or external blocker prevents completion.
 
-The dashboard must display these statuses as-is. It must not convert `PARTIAL`, `NOT_EXECUTED` or `BLOCKED` to a green state.
+The dashboard must display these states as-is.
 
-## Deliberately not wired yet
+## Host integration boundary
 
-The existing dashboard is a large shared surface currently adjacent to Codex runtime work. This track intentionally does not edit:
+The existing dashboard accepts an optional Control Room provider. The next host-level integration must build the snapshot from bounded runtime evidence; it must not inspect or expose raw secrets, prompts or recovered object plaintext.
 
-- `src/dashboard.ts`;
-- `src/dashboard/fragments.ts`;
-- `src/node.ts`;
-- package manifests.
-
-A follow-up integration can consume `createControlRoomSnapshot()` after the parallel runtime tracks stabilize.
+Until that provider is configured, `/api/control-room.json` correctly returns `503 {"status":"NOT_AVAILABLE"}`.
 
 ## Security
 
-The Control Room model contains counts, statuses, digests/commit IDs and bounded metadata only. It is not a channel for:
+The Control Room model is metadata-only. It must never become a channel for:
 
-- secrets;
-- bearer tokens;
-- OAuth codes;
-- prompt plaintext;
+- API keys, bearer tokens or OAuth codes;
+- prompt or agent-objective plaintext;
 - recovered object plaintext;
 - learner identifiers;
-- full agent objectives.
+- secret values;
+- raw protected ExactGuard spans.
 
-The model must remain evidence-oriented and metadata-only.
+Counts, statuses, digests, commit IDs and bounded evidence metadata are permitted.
