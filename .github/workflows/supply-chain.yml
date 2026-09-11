@@ -5,18 +5,46 @@ on:
     branches: [v5-production-hardening]
   push:
     branches: [v5-chatgpt-security, v5-production-hardening]
+  schedule:
+    - cron: '43 4 * * 1'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: supply-chain-${{ github.ref }}
+  group: supply-chain-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  dependency-audit:
+    name: Frozen dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install frozen dependency graph without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Audit all resolved dependencies
+        run: pnpm audit --audit-level high
+
   dependency-review:
-    if: github.event_name == 'pull_request'
+    name: GitHub dependency review
+    if: github.event_name == 'pull_request' && vars.FURYPIPE_DEPENDENCY_GRAPH_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -29,23 +57,36 @@ jobs:
           comment-summary-in-pr: never
 
   sbom:
-    if: github.event_name != 'pull_request'
+    name: SPDX SBOM
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
+    timeout-minutes: 15
     steps:
-      - name: Export repository SBOM
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install frozen dependency graph without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Generate SPDX SBOM
         run: |
-          set -euo pipefail
-          gh api "repos/${GITHUB_REPOSITORY}/dependency-graph/sbom" --jq '.sbom' > sbom.spdx.json
-          test -s sbom.spdx.json
+          npm sbom --sbom-format spdx > sbom.spdx.json
+          node -e "const fs=require('node:fs');const x=JSON.parse(fs.readFileSync('sbom.spdx.json','utf8'));if(x.spdxVersion!=='SPDX-2.3'||!Array.isArray(x.packages))process.exit(1)"
+
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: fury-pipe-sbom-spdx
+          name: furypipe-sbom-spdx
           path: sbom.spdx.json
           if-no-files-found: error
           retention-days: 30
