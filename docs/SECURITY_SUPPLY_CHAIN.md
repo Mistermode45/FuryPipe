@@ -5,10 +5,24 @@ This branch adds security controls without changing FuryPipe runtime modules or 
 ## Implemented
 
 - CodeQL advanced analysis for JavaScript/TypeScript in `.github/workflows/codeql.yml`.
-- Pull-request dependency review in `.github/workflows/supply-chain.yml`.
-- Repository SPDX SBOM export through GitHub's dependency graph API.
+- Frozen dependency installation with lifecycle scripts disabled.
+- Full resolved dependency audit with `pnpm audit --audit-level high`.
+- SPDX 2.3 SBOM generation with the built-in npm SBOM command and artifact retention.
+- Optional GitHub Dependency Review for pull requests when repository Dependency Graph support is explicitly enabled.
 - SHA-pinned third-party GitHub Actions.
 - Read-only default `GITHUB_TOKEN` permissions; only CodeQL receives `security-events: write`.
+
+## Repository-setting dependency
+
+GitHub Dependency Review cannot run while Dependency Graph is disabled for the repository. The first PR run failed with GitHub's explicit `Dependency review is not supported on this repository` error.
+
+The workflow therefore does not hide the failure with `continue-on-error`. Instead:
+
+1. the blocking security gate is the frozen full-tree `pnpm audit`;
+2. SBOM generation is performed locally and does not depend on GitHub Dependency Graph;
+3. GitHub Dependency Review is enabled only when repository variable `FURYPIPE_DEPENDENCY_GRAPH_ENABLED=true` is configured after Dependency Graph has actually been enabled.
+
+Until that repository setting exists, GitHub Dependency Review is `BLOCKED_BY_REPO_SETTING`, not `PASS`.
 
 ## Deliberately not claimed
 
