@@ -49,7 +49,7 @@
 
 | Élément | Résultat | Mesure / preuve |
 |---|---|---|
-| Push de `v5-production-hardening` | PASS | branche distante à `d03db733406efb003cb70007bab48b6623f9a892` |
+| Push de `v5-production-hardening` | PASS | branche distante à `14593fd02338a148bec5bc06d38a25c6ae483892` |
 | PR de vérification | PASS | draft PR #2 contre `v5-codex-review-clean`, sans merge |
 | CI ancienne matrice | PARTIAL | 5 jobs verts ; Windows Node 20 a échoué sur `ENOTEMPTY` pendant le nettoyage de `tests/node-security.test.ts` |
 | Test sécurité Windows ciblé après correction | PASS | 1 fichier ; 4 tests ; retries bornés de suppression NTFS |
@@ -79,6 +79,9 @@
 | M9 OpenClaw adapter ciblé | PASS local | 5 tests fixtures JSON5, surcharge de chemins, état absent/invalide, doctor metadata-only ; runtime réel `OPENCLAW_NOT_TESTED` |
 | M11 Agent Fabric ciblé | PASS local | 4 tests : registre de décisions sourcées, plan read-only/scoped-write, budget borné et digest sans plaintext ; harness runtime non exécuté |
 | Licences après JSON5/M11 | PASS local | `pnpm licenses list --json` : MIT 61, Apache-2.0 7, MIT OR Apache-2.0 4, ISC 3, MPL-2.0 2, autres inchangées dans `THIRD_PARTY_NOTICES.md` |
+| Correctif découverte processus Windows | PASS local | `scripts/restart.mjs` borne PowerShell à 5 s et replie sur `Get-Process`; `tests/restart.test.ts` : 23/23 |
+| Matrice CI commit `14593fd` — run push `34641522151` | PASS | 9/9 jobs verts : Ubuntu 24.04, Windows 2025, macOS 14 × Node 22.23.2, 24.21.0 et 26.8.2 |
+| Matrice CI commit `14593fd` — run PR `34641526734` | PASS | 9/9 jobs verts sur la PR draft #2 ; package smoke inclus ; aucune fusion effectuée |
 
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le

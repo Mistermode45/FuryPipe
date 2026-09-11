@@ -180,3 +180,20 @@
 - L’ajout du parser JSON5 OpenClaw a été revu dans l’inventaire de licences :
   `json5@2.2.3` MIT ; le comptage courant est MIT 61, sans changement de
   licence restrictive non documenté.
+
+## 2026-09-11 — M10 correction CI Windows process discovery
+
+- Le run PR `34640686829` du commit documentaire précédent a révélé une
+  expiration à 60 s dans `tests/restart.test.ts` sur Windows/Node 26, pendant
+  la commande PowerShell `Get-CimInstance Win32_Process`.
+- `scripts/restart.mjs` borne désormais chaque appel PowerShell à 5 s et
+  utilise `Get-Process -Name node` comme repli limité aux PID/noms ; la
+  correspondance d’un proxy par ligne de commande reste réservée au résultat
+  WMI riche, et le contrôle de port empêche un démarrage concurrent non
+  identifié.
+- Le parsing de la forme de repli est couvert ; test ciblé `23/23`, suite
+  complète `95 fichiers / 1 282 tests`, typecheck, build, audit et package
+  smoke passent en local.
+- Le commit `14593fd02338a148bec5bc06d38a25c6ae483892` est poussé ; CI push
+  `34641522151` et CI PR draft `34641526734` sont chacun `9/9` verts sur
+  Ubuntu/Windows/macOS et Node 22/24/26.
