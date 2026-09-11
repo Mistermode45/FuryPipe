@@ -4,6 +4,7 @@ import {
   type AgentFabricPermission,
   type AgentFabricStageId,
 } from './agent-fabric.js';
+import type { RecoveryStore } from './core/recovery-store.js';
 import { compileFuryPrompt, type FuryPromptCompileInput } from './fury-prompt.js';
 
 export type AgentRuntimeStatus = 'completed' | 'failed' | 'handoff_required';
@@ -245,6 +246,78 @@ export function createInMemoryAgentMemoryStore(): AgentMemoryStore {
     },
     async list(runId) {
       return [...(records.get(runId) ?? [])];
+    },
+  };
+}
+
+const AGENT_MEMORY_SOURCE = 'agent-runtime';
+const AGENT_MEMORY_CONTENT_TYPE = 'application/vnd.furypipe.agent-memory-record+json';
+const MAX_AGENT_MEMORY_RUN_ID = 256;
+const MAX_AGENT_MEMORY_DIGEST = 256;
+
+interface AgentMemoryEnvelope {
+  readonly format: 'furypipe-agent-memory-envelope/v1';
+  readonly record: AgentMemoryRecord;
+}
+
+function validatePersistedRecord(value: unknown): value is AgentMemoryRecord {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Partial<AgentMemoryRecord>;
+  return record.format === 'furypipe-agent-memory-record/v1'
+    && typeof record.runId === 'string' && record.runId.length > 0 && record.runId.length <= MAX_AGENT_MEMORY_RUN_ID && !record.runId.includes('\0')
+    && AGENT_FABRIC_STAGE_ORDER.includes(record.stage as AgentFabricStageId)
+    && typeof record.resultDigest === 'string' && record.resultDigest.length > 0 && record.resultDigest.length <= MAX_AGENT_MEMORY_DIGEST && !record.resultDigest.includes('\0')
+    && (record.status === 'completed' || record.status === 'handoff_required');
+}
+
+function validateMemoryRunId(runId: string): void {
+  if (typeof runId !== 'string' || runId.length === 0 || runId.length > MAX_AGENT_MEMORY_RUN_ID || runId.includes('\0')) {
+    throw new Error('agent memory run ID is invalid or exceeds its bound');
+  }
+}
+
+/**
+ * Recovery-backed metadata memory for cross-process agent handoff. Only the
+ * opaque stage result record is stored; objectives, prompts and evidence text
+ * are intentionally absent from the persisted payload.
+ */
+export function createRecoveryAgentMemoryStore(store: RecoveryStore): AgentMemoryStore {
+  if (typeof store.list !== 'function') throw new Error('Recovery store does not support bounded manifest listing');
+  const listManifests = store.list.bind(store);
+  return {
+    async append(record) {
+      validateMemoryRunId(record.runId);
+      if (!validatePersistedRecord(record)) throw new Error('agent memory record is invalid');
+      const envelope: AgentMemoryEnvelope = { format: 'furypipe-agent-memory-envelope/v1', record: { ...record } };
+      await store.put(new TextEncoder().encode(JSON.stringify(envelope)), {
+        source: AGENT_MEMORY_SOURCE,
+        contentType: AGENT_MEMORY_CONTENT_TYPE,
+        runId: record.runId,
+        stage: record.stage,
+      });
+    },
+    async list(runId) {
+      validateMemoryRunId(runId);
+      const handles = await listManifests({
+        limit: 10_000,
+        metadata: { source: AGENT_MEMORY_SOURCE, contentType: AGENT_MEMORY_CONTENT_TYPE, runId },
+      });
+      const records: AgentMemoryRecord[] = [];
+      for (const handle of handles) {
+        let envelope: unknown;
+        try {
+          envelope = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await store.get(handle)));
+        } catch {
+          throw new Error('agent memory record cannot be decoded');
+        }
+        if (!envelope || typeof envelope !== 'object' || (envelope as Partial<AgentMemoryEnvelope>).format !== 'furypipe-agent-memory-envelope/v1'
+          || !validatePersistedRecord((envelope as Partial<AgentMemoryEnvelope>).record)
+          || (envelope as AgentMemoryEnvelope).record.runId !== runId) {
+          throw new Error('agent memory record is invalid');
+        }
+        records.push({ ...(envelope as AgentMemoryEnvelope).record });
+      }
+      return records;
     },
   };
 }

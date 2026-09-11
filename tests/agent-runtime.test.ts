@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createRecoveryAgentMemoryStore,
   createInMemoryAgentMemoryStore,
   runAgent,
   type AgentRuntimeRequest,
 } from '../src/agent-runtime.js';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createRecoveryStore } from '../src/core/recovery-store.js';
 
 function stageExecutors(seen: string[], consumedTokens = 10): AgentRuntimeRequest['executors'] {
   return {
@@ -226,5 +231,26 @@ describe('FuryPipe Agent runtime', () => {
     expect(paused.snapshot?.furyPromptDigest).toMatch(/^fp_[a-f0-9]{64}$/);
     expect(JSON.stringify(paused.snapshot)).not.toContain('Preserve exact IDs');
     expect((await runAgent({ ...request, furyPrompt: { sections: { task: 'Changed prompt.' }, level: 'ENGINEERING' } }, paused.snapshot)).failure?.code).toBe('INVALID_SNAPSHOT');
+  });
+
+  it('persists only opaque memory records in Recovery and reopens them from a fresh store instance', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-agent-memory-'));
+    try {
+      const firstStore = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent' }));
+      const record = {
+        format: 'furypipe-agent-memory-record/v1' as const,
+        runId: 'persistent-run', stage: 'research' as const,
+        resultDigest: 'afrun_opaque-result', status: 'completed' as const,
+      };
+      await firstStore.append(record);
+      const reopened = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent' }));
+      expect(await reopened.list('persistent-run')).toEqual([record]);
+      const store = createRecoveryStore(root, { namespace: 'agent' });
+      const handles = await store.list?.({ metadata: { source: 'agent-runtime' } });
+      expect(handles).toHaveLength(1);
+      expect(new TextDecoder().decode(await store.get(handles![0]!))).not.toContain('objective');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

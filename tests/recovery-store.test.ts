@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { createRecoveryAgentMemoryStore, runAgent } from '../src/agent-runtime.js';
 import { createRecoveryStore } from '../src/core/recovery-store.js';
 
 const roots: string[] = [];
@@ -47,6 +48,17 @@ describe('Recovery Store', () => {
     expect(await store.fetchLines(handle, 2, 3)).toBe('beta\ngamma');
     expect(await store.verify(handle)).toMatchObject({ ok: true, exists: true, digestMatches: true, bytes: 16 });
     expect(await store.manifest(handle)).toMatchObject({ metadata: { source: 'test-fixture' } });
+  });
+
+  it('lists bounded manifests by exact metadata without exposing payloads', async () => {
+    const { store } = await createStoreFixture();
+    await store.put(new TextEncoder().encode('first'), { source: 'agent-runtime', runId: 'run-1', stage: 'research' });
+    await store.put(new TextEncoder().encode('second'), { source: 'agent-runtime', runId: 'run-2', stage: 'plan' });
+    const matches = await store.list?.({ metadata: { source: 'agent-runtime', runId: 'run-1' }, limit: 1 });
+    expect(matches).toHaveLength(1);
+    expect(matches?.[0]).toMatchObject({ metadata: { source: 'agent-runtime', runId: 'run-1', stage: 'research' } });
+    expect((matches?.[0] as Record<string, unknown>)['payload']).toBeUndefined();
+    await expect(store.list?.({ limit: 0 })).rejects.toThrow('list limit');
   });
 
   it('keeps a collision-free immutable object and rejects malformed handles', async () => {
@@ -266,5 +278,29 @@ describe('Recovery Store', () => {
     const staleTime = new Date(Date.now() - 120_000);
     await utimes(staleLock, staleTime, staleTime);
     expect((await runRecoveryWorker({ root, namespace: 'process', operation: 'put', value: 'after-restart' })).code).toBe(0);
+  });
+
+  it('resumes an agent with Recovery memory in a separate process', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-agent-process-'));
+    roots.push(root);
+    const memory = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent-process' }));
+    const objective = 'Resume from a durable handoff without persisting the prompt.';
+    const paused = await runAgent({
+      objective,
+      runId: 'agent-process-resume',
+      memory,
+      executors: {
+        research: async () => ({ status: 'handoff_required', evidence: ['parent-handoff'], consumedTokens: 1 }),
+      },
+    });
+    expect(paused.status).toBe('handoff_required');
+    const resumed = await runRecoveryWorker({
+      root, namespace: 'agent-process', operation: 'agent-resume', objective,
+      runId: 'agent-process-resume', snapshot: paused.snapshot,
+    });
+    expect(resumed.code).toBe(0);
+    expect(JSON.parse(resumed.stdout)).toMatchObject({ status: 'completed', runId: 'agent-process-resume' });
+    expect(await memory.list('agent-process-resume')).toHaveLength(6);
+    expect(resumed.stdout).not.toContain(objective);
   });
 });

@@ -80,6 +80,13 @@ export interface RecoveryRekeySummary {
   readonly alreadyCurrent: number;
 }
 
+export interface RecoveryListOptions {
+  /** Exact metadata values used to select manifests without reading payloads. */
+  readonly metadata?: Readonly<Record<string, string | number | boolean | null>>;
+  /** Hard-bounded result count. Defaults to 10,000. */
+  readonly limit?: number;
+}
+
 export interface RecoveryStore {
   put(bytes: Uint8Array | ArrayBuffer, metadata?: RecoveryMetadata): Promise<RecoveryHandle>;
   get(handle: RecoveryHandle | string): Promise<Uint8Array>;
@@ -87,6 +94,8 @@ export interface RecoveryStore {
   fetchLines(handle: RecoveryHandle | string, fromLine: number, toLine?: number): Promise<string>;
   verify(handle: RecoveryHandle | string): Promise<RecoveryVerification>;
   manifest(handle: RecoveryHandle | string): Promise<RecoveryHandle & { metadata?: RecoveryMetadata }>;
+  /** Optional for backward-compatible custom stores; createRecoveryStore implements it. */
+  list?(options?: RecoveryListOptions): Promise<readonly (RecoveryHandle & { metadata?: RecoveryMetadata })[]>;
   delete(handle: RecoveryHandle | string): Promise<boolean>;
   gc(now?: Date): Promise<{ expired: number; orphaned: number; bytesFreed: number }>;
   backup(destination: string): Promise<RecoveryBackupSummary>;
@@ -125,6 +134,14 @@ function metadataPath(root: string, digest: string): string {
 
 function validateNamespace(value: string): string {
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(value)) throw new Error('recovery namespace must be 1-64 ASCII letters, digits, _ or -');
+  return value;
+}
+
+function boundedListLimit(value: number | undefined): number {
+  if (value === undefined) return 10_000;
+  if (!Number.isSafeInteger(value) || value < 1 || value > 10_000) {
+    throw new RangeError('recovery list limit must be an integer from 1 to 10000');
+  }
   return value;
 }
 
@@ -727,6 +744,33 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
         const verification = await verifyHandle(handle);
         if (!verification.exists) throw new Error('recovery manifest and object missing');
         return makeHandle(digest, verification.bytes);
+      });
+    },
+
+    list(options = {}) {
+      return enqueue(async () => {
+        const limit = boundedListLimit(options.limit);
+        const filters = options.metadata ?? {};
+        const manifestRoot = join(scopedRoot, 'manifests');
+        let names: string[];
+        try {
+          names = (await readdir(manifestRoot)).filter((name) => name.endsWith('.json')).sort();
+        } catch (caught) {
+          if (isErrno(caught, 'ENOENT')) return [];
+          throw caught;
+        }
+        const matches: Array<RecoveryHandle & { metadata?: RecoveryMetadata }> = [];
+        for (const name of names) {
+          const digest = name.slice(0, -'.json'.length);
+          if (!/^[0-9a-f]{64}$/u.test(digest)) continue;
+          const manifest = await readManifest(digest);
+          if (manifest === undefined) continue;
+          const metadata = manifest.metadata ?? {};
+          if (Object.entries(filters).some(([key, value]) => metadata[key] !== value)) continue;
+          matches.push(manifest);
+          if (matches.length >= limit) break;
+        }
+        return matches;
       });
     },
 

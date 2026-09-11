@@ -67,6 +67,7 @@ export {
 } from './exact-guard.js';
 export {
   createRecoveryStore,
+  type RecoveryListOptions,
   type RecoveryHandle,
   type RecoveryMetadata,
   type RecoveryStore,
@@ -189,6 +190,7 @@ export {
   type ContextFabricAnalysis,
 } from './context-fabric.js';
 export {
+  createRecoveryAgentMemoryStore,
   createInMemoryAgentMemoryStore,
   runAgent,
   type AgentMemoryRecord,

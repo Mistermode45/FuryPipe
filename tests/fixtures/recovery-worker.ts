@@ -1,15 +1,19 @@
 import { createRecoveryStore } from '../../src/core/recovery-store.js';
+import { createRecoveryAgentMemoryStore, runAgent, type AgentRunSnapshot } from '../../src/agent-runtime.js';
 
 interface WorkerRequest {
   readonly root: string;
   readonly namespace: string;
-  readonly operation: 'put' | 'get' | 'delete' | 'backup' | 'restore' | 'rekey';
+  readonly operation: 'put' | 'get' | 'delete' | 'backup' | 'restore' | 'rekey' | 'agent-resume';
   readonly value?: string;
   readonly handle?: string;
   readonly path?: string;
   readonly profile?: 'none' | 'v1' | 'both' | 'v2';
   readonly targetKeyId?: string;
   readonly maxGlobalBytes?: number;
+  readonly objective?: string;
+  readonly runId?: string;
+  readonly snapshot?: AgentRunSnapshot;
 }
 
 const request = JSON.parse(process.argv[2] ?? '') as WorkerRequest;
@@ -59,6 +63,27 @@ try {
     case 'rekey':
       console.log(JSON.stringify(await store.rekey(request.targetKeyId)));
       break;
+    case 'agent-resume': {
+      if (request.objective === undefined || request.runId === undefined || request.snapshot === undefined) {
+        throw new Error('worker agent resume fields are missing');
+      }
+      const memory = createRecoveryAgentMemoryStore(store);
+      const evidence = (stage: string) => [`worker-${stage}-evidence`];
+      const result = await runAgent({
+        objective: request.objective,
+        runId: request.runId,
+        memory,
+        executors: {
+          research: async () => ({ evidence: evidence('research'), consumedTokens: 1 }),
+          plan: async () => ({ evidence: evidence('plan'), consumedTokens: 1 }),
+          implement: async () => ({ evidence: evidence('implement'), consumedTokens: 1 }),
+          review: async () => ({ evidence: evidence('review'), consumedTokens: 1 }),
+          verify: async () => ({ evidence: evidence('verify'), consumedTokens: 1 }),
+        },
+      }, request.snapshot);
+      console.log(JSON.stringify(result));
+      break;
+    }
   }
 } catch (caught) {
   console.error(caught instanceof Error ? caught.message : String(caught));

@@ -46,6 +46,16 @@ budget avant de reprendre. Lorsqu’un `furyPrompt` est explicitement fourni,
 il est compilé une seule fois ; les callbacks reçoivent le texte compilé et le
 snapshot lie la reprise à son digest sans conserver ce texte.
 
+`createRecoveryAgentMemoryStore()` fournit l’adaptateur durable pour les
+reprises entre processus. Chaque résultat est enveloppé dans un objet
+Recovery immuable et indexé par des métadonnées exactes (`source`, `runId`,
+`stage`, `contentType`). Le payload ne contient que le format, l’étape, le
+statut et le digest opaque du résultat ; l’objectif, le prompt et les preuves
+textuelles n’y sont pas écrits. La liste des manifests est bornée à 10 000
+éléments et la lecture revalide chaque enveloppe avant de la rendre au runtime.
+Le snapshot reste transporté explicitement par l’hôte : cet adaptateur ne
+fabrique ni worker, ni modèle, ni orchestration distante.
+
 ## Décisions de sources
 
 Le registre `AGENT_FABRIC_DECISIONS` documente les décisions
@@ -54,7 +64,7 @@ licence/provenance, raison, sécurité et maintenance. ECC et Matt Pocock skills
 sont utilisés comme références de patterns, sans copie de code ni vendoring.
 FuryPipe garde ses propres contrats et n’essaie pas de devenir un clone ECC.
 
-Cette tranche reste `PARTIAL` : le harness local et ses callbacks sont
-exécutables et testés, mais aucun adaptateur de modèle réel, worker
-interprocessus, handoff distribué, persistance Recovery des mémoires ou
-exécution d’un environnement externe n’est déclaré livré.
+Cette tranche reste `PARTIAL` : le harness local, l’adaptateur Recovery et la
+reprise testée dans un processus enfant sont exécutables. Aucun adaptateur de
+modèle réel, orchestrateur distribué, kill/reprise à chaque phase ou
+environnement externe n’est déclaré livré.

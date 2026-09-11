@@ -390,3 +390,12 @@
 - `createAgentFabricPlan` expose uniquement le niveau, la taille et le digest. `runAgent` compile une fois, expose le texte compilé aux callbacks via `context.prompt` et lie le digest au snapshot ; une reprise avec un prompt différent est rejetée.
 - Les tests M12 couvrent le compilateur historique plus 4 scénarios de wiring Transform, et Agent Fabric/Runtime couvrent le routage metadata-only, le callback réel et l’invalidation de snapshot. Validation ciblée : 20 tests verts ; typecheck vert.
 - Statut M12 : `PARTIAL`. Le wiring local est réel, mais aucun modèle/provider réel, exécution multi-agent, conformance hébergée ou outil implicite n’est déclaré.
+
+## 2026-09-12 — M11 Recovery-backed agent handoff
+
+- Objectif : fermer la lacune de persistance mémoire et prouver une reprise après changement de processus sans écrire l’objectif, le prompt ou les preuves textuelles.
+- Fichiers : `src/core/recovery-store.ts`, `src/agent-runtime.ts`, `src/core/index.ts`, `tests/recovery-store.test.ts`, `tests/agent-runtime.test.ts`, `tests/fixtures/recovery-worker.ts`, `docs/AGENT_FABRIC.md`, `docs/PXPIPE_GAP_ANALYSIS.md`, `TASKS.md`.
+- Implémentation : listing Recovery borné et filtrable par metadata ; `createRecoveryAgentMemoryStore()` avec enveloppe versionnée, validation fail-closed et payload metadata-only ; fixture enfant qui reprend `runAgent()` avec le snapshot parent.
+- Vérification ciblée : `pnpm exec vitest run tests/recovery-store.test.ts tests/agent-runtime.test.ts` — 2 fichiers, 23 tests verts ; `pnpm run typecheck` — vert.
+- Limites : processus enfant réel validé, mais aucun kill injecté dans chaque phase d’écriture, aucun orchestrateur distribué ni modèle/provider réel ; M11 reste `PARTIAL`.
+- Prochaine action : rejouer la suite complète, build, audit, package smoke puis synchroniser/inspecter CI avant de continuer vers M13.
