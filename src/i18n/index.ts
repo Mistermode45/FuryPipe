@@ -97,8 +97,7 @@ export function pseudoLocalize(message: string, mode: 'accented' | 'bidi'): stri
     return restorePlaceholders(`［${converted}］`, placeholders);
   }
 
-  const mirrored = [...text].reverse().join('');
-  return restorePlaceholders(`\u202e⟦${mirrored}⟧\u202c`, placeholders);
+  return restorePlaceholders(`\u202e⟦${text}⟧\u202c`, placeholders);
 }
 
 function interpolate(message: string, params: Readonly<Record<string, string | number | boolean>>): string {
