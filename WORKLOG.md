@@ -364,3 +364,29 @@
 - Le cycle agent exécute réellement `Plan -> Execute -> Verify -> Reflect -> Extract lesson -> Validate -> Store -> Reuse` via callbacks fournis par l’hôte.
 - La mémoire agent exige une validation avant stockage et ne conserve que des métadonnées, digests et handle de contenu opaque. Aucun prompt brut, secret, réseau, RAG ou fine-tuning n’est implicite.
 - Six tests ciblés M13 et l’export package smoke couvrent cette tranche. Statut : `PARTIAL`, les intégrations durables/modèle hébergé restent ouvertes.
+
+## 2026-09-12 — Synchronisation M13 à M19 et intégration Control Room
+
+- Le commit distant `dbb2fbe3cd9d5db4de7b27abcfef0ef67cba11c0` a été récupéré par fast-forward sans écraser de travail local. Il intègre la PR #10 de ChatGPT (`v5-chatgpt-control-room`), déjà fusionnée, avec le kernel `src/control-room/index.ts`, ses 8 tests et `docs/CONTROL_ROOM_V5.md`. Les fichiers réservés au Control Room ne sont pas modifiés dans cette tranche.
+- M13 reste `PARTIAL` : le stockage actuel est validé et metadata-only, mais la persistance Recovery durable, le graphe de connaissances/RAG, le modèle/provider réel, la validation hébergée et le multi-instance restent ouverts.
+- M14 est `PARTIAL / KERNEL_IMPLEMENTED_NOT_WIRED` : le kernel local est présent et testé ; Figma, Playwright, génération de site, WCAG, OWASP, SEO, Web Vitals et déploiement externe ne sont pas exécutés.
+- M16 est `PARTIAL / TESTED_REMOTE` sur le dernier commit validé `60005514` : CodeQL, Gitleaks, supply-chain/SPDX, licence compliance et audit de dépendances ont fourni des preuves distantes ; la revue selon graphe, l’attestation de release, la release candidate et npm restent ouvertes. Les contrôles du commit `dbb2fbe` sont encore en cours au moment de cette synchronisation.
+- M17 devient `PARTIAL / HARNESS_IMPLEMENTED_BENCHMARK_NON_EXECUTED` : les contrats/harness existent, mais aucun benchmark provider réel n’a été lancé et aucun gain de performance n’est revendiqué.
+- M18 i18n devient `RUNTIME_KERNEL_IMPLEMENTED_NOT_SURFACE_WIRED` : le kernel locale/fallback/direction/parité existe ; les surfaces CLI, dashboard et browser restent non câblées.
+- M19 reste `BLOCKED` : aucun merge de release/default branch, npm publish, tag ou déploiement n’est autorisé sans approbation explicite.
+
+## 2026-09-12 — M4 Recovery : verrou inter-processus
+
+- `src/core/recovery-store.ts` ajoute un verrou exclusif `.recovery.lock` à la racine du store. Les namespaces partageant une même racine sont ainsi sérialisés par un verrou commun, en complément de la chaîne mémoire existante.
+- Le verrou est borné à 30 secondes d’attente, récupère un fichier abandonné après 60 secondes d’inactivité et renouvelle son `mtime` toutes les 10 secondes pendant une opération. La libération vérifie le token de propriétaire afin de ne pas supprimer le verrou d’un autre processus après reprise.
+- Les opérations publiques `put`, `get`, `verify`, `manifest`, `delete`, `gc`, `backup`, `restore` et `rekey` passent par cette frontière ; l’initialisation et la libération nettoient également les échecs connus.
+- `tests/fixtures/recovery-worker.ts` et `tests/recovery-store.test.ts` exécutent des processus Node distincts pour la course de quota globale, `put/get/delete/backup/restore/rekey` et la reprise d’un verrou horodaté comme abandonné. Résultat ciblé : 14 tests verts.
+- Limites honnêtes : le test ne force pas encore un kill au milieu de chaque phase d’écriture ; les ACL Windows réelles restent gérées par l’hôte et SQLite n’est pas introduit.
+
+## 2026-09-12 — M12 FuryPrompt runtime wiring
+
+- `TransformOptions.furyPrompt` est une option explicite : `transformRequest` compile la structure une fois avant ExactGuard et Context Fabric, l’ajoute comme bloc `system`, puis conserve les champs provider existants. Sans cette option, le chemin historique ne compile rien ; `TRIVIAL` reste compact et sans wrapper.
+- Une compilation invalide retourne le body original avec `furyprompt_error`. Le diagnostic Transform ne conserve que niveau, tailles, digests et ordre des sections. ExactGuard reçoit la requête augmentée, et une décision `preserve_native` conserve cette requête explicite plutôt que de perdre silencieusement l’augmentation.
+- `createAgentFabricPlan` expose uniquement le niveau, la taille et le digest. `runAgent` compile une fois, expose le texte compilé aux callbacks via `context.prompt` et lie le digest au snapshot ; une reprise avec un prompt différent est rejetée.
+- Les tests M12 couvrent le compilateur historique plus 4 scénarios de wiring Transform, et Agent Fabric/Runtime couvrent le routage metadata-only, le callback réel et l’invalidation de snapshot. Validation ciblée : 20 tests verts ; typecheck vert.
+- Statut M12 : `PARTIAL`. Le wiring local est réel, mais aucun modèle/provider réel, exécution multi-agent, conformance hébergée ou outil implicite n’est déclaré.

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { compileFuryPrompt, type FuryPromptCompileInput } from './fury-prompt.js';
 
 export type AgentFabricDecision = 'ADOPT' | 'PORT' | 'ADAPT' | 'WRAP' | 'REFERENCE_ONLY' | 'REJECT';
 export const AGENT_FABRIC_STAGE_ORDER = ['research', 'plan', 'implement', 'review', 'verify'] as const;
@@ -110,6 +111,8 @@ export interface AgentFabricStage {
 
 export interface AgentFabricPlanRequest {
   readonly objective: string;
+  /** Optional structured prompt compiled into bounded, non-secret metadata. */
+  readonly furyPrompt?: FuryPromptCompileInput;
   readonly contextBudgetTokens?: number;
   readonly allowWrites?: boolean;
   readonly concepts?: readonly AgentFabricConceptDecision[];
@@ -130,6 +133,11 @@ export interface AgentFabricPlan {
     readonly secrets: 'never_requested';
   };
   readonly conceptDecisionIds: readonly string[];
+  readonly furyPrompt?: {
+    readonly level: FuryPromptCompileInput['level'];
+    readonly promptBytes: number;
+    readonly promptDigest: string;
+  };
 }
 
 const STAGES: readonly AgentFabricStage[] = [
@@ -152,6 +160,7 @@ export function createAgentFabricPlan(input: AgentFabricPlanRequest): AgentFabri
   if (!Number.isSafeInteger(budget) || budget < 256 || budget > 200_000) {
     throw new Error('agent fabric context budget must be an integer between 256 and 200000 tokens');
   }
+  const furyPrompt = input.furyPrompt === undefined ? undefined : compileFuryPrompt(input.furyPrompt);
   const concepts = input.concepts ?? AGENT_FABRIC_DECISIONS;
   return {
     format: 'furypipe-agent-fabric-plan/v1',
@@ -171,5 +180,12 @@ export function createAgentFabricPlan(input: AgentFabricPlanRequest): AgentFabri
       secrets: 'never_requested',
     },
     conceptDecisionIds: concepts.map((concept) => concept.id),
+    ...(furyPrompt === undefined ? {} : {
+      furyPrompt: {
+        level: furyPrompt.level,
+        promptBytes: furyPrompt.promptBytes,
+        promptDigest: furyPrompt.promptDigest,
+      },
+    }),
   };
 }

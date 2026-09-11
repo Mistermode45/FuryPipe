@@ -42,7 +42,9 @@ objectif plaintext n’est écrit dans la mémoire : seuls des digests, statuts,
 Un résultat `handoff_required` fournit un snapshot vérifiable contenant le
 digest d’objectif, l’étape suivante, les étapes terminées et le budget utilisé.
 `runAgent(request, snapshot)` vérifie l’objectif, l’ordre des étapes et le
-budget avant de reprendre.
+budget avant de reprendre. Lorsqu’un `furyPrompt` est explicitement fourni,
+il est compilé une seule fois ; les callbacks reçoivent le texte compilé et le
+snapshot lie la reprise à son digest sans conserver ce texte.
 
 ## Décisions de sources
 

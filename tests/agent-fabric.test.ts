@@ -36,4 +36,15 @@ describe('FuryPipe Agent Fabric', () => {
     expect(plan.objectiveDigest).toMatch(/^af_[a-f0-9]{16}$/);
     expect(JSON.stringify(plan)).not.toContain('private prompt value 123');
   });
+
+  it('records explicit FuryPrompt routing metadata without persisting its plaintext', () => {
+    const plan = createAgentFabricPlan({
+      objective: 'Execute the approved workflow.',
+      furyPrompt: { sections: { task: 'Preserve the exact tool contract.' }, level: 'ENGINEERING' },
+    });
+
+    expect(plan.furyPrompt).toMatchObject({ level: 'ENGINEERING', promptBytes: expect.any(Number) });
+    expect(plan.furyPrompt?.promptDigest).toMatch(/^fp_[a-f0-9]{64}$/);
+    expect(JSON.stringify(plan)).not.toContain('Preserve the exact tool contract.');
+  });
 });

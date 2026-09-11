@@ -4,6 +4,7 @@ import {
   type AgentFabricPermission,
   type AgentFabricStageId,
 } from './agent-fabric.js';
+import { compileFuryPrompt, type FuryPromptCompileInput } from './fury-prompt.js';
 
 export type AgentRuntimeStatus = 'completed' | 'failed' | 'handoff_required';
 export type AgentSkillHealthStatus = 'healthy' | 'degraded' | 'unhealthy' | 'unknown';
@@ -93,6 +94,8 @@ export interface AgentStageExecutionContext {
   readonly runId: string;
   readonly stage: AgentFabricStageId;
   readonly objective: string;
+  /** Compiled FuryPrompt when explicitly supplied; objective otherwise. */
+  readonly prompt: string;
   readonly objectiveDigest: string;
   readonly permission: AgentFabricPermission;
   readonly allowedWritePaths: readonly string[];
@@ -118,6 +121,8 @@ export type AgentStageExecutor = (context: AgentStageExecutionContext) => Promis
 
 export interface AgentRuntimeRequest {
   readonly objective: string;
+  /** Optional structured prompt compiled once for this run. */
+  readonly furyPrompt?: FuryPromptCompileInput;
   readonly contextBudgetTokens?: number;
   readonly allowWrites?: boolean;
   readonly allowedWritePaths?: readonly string[];
@@ -136,6 +141,8 @@ export interface AgentRunSnapshot {
   readonly nextStageIndex: number;
   readonly completedStages: readonly AgentFabricStageId[];
   readonly contextUsedTokens: number;
+  /** Digest of the explicit FuryPrompt used by the suspended run. */
+  readonly furyPromptDigest?: string;
 }
 
 export interface AgentRunFailure {
@@ -209,7 +216,14 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
   return undefined;
 }
 
-function snapshotFor(runId: string, objectiveDigest: string, nextStageIndex: number, completedStages: readonly AgentFabricStageId[], contextUsedTokens: number): AgentRunSnapshot {
+function snapshotFor(
+  runId: string,
+  objectiveDigest: string,
+  nextStageIndex: number,
+  completedStages: readonly AgentFabricStageId[],
+  contextUsedTokens: number,
+  furyPromptDigest?: string,
+): AgentRunSnapshot {
   return {
     format: 'furypipe-agent-run-snapshot/v1',
     runId,
@@ -217,6 +231,7 @@ function snapshotFor(runId: string, objectiveDigest: string, nextStageIndex: num
     nextStageIndex,
     completedStages: [...completedStages],
     contextUsedTokens,
+    ...(furyPromptDigest === undefined ? {} : { furyPromptDigest }),
   };
 }
 
@@ -252,6 +267,18 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   const budget = request.contextBudgetTokens ?? DEFAULT_CONTEXT_BUDGET;
   const objectiveDigest = digest(request.objective);
   const runId = request.runId ?? resumeFrom?.runId ?? randomUUID();
+  let furyPrompt: ReturnType<typeof compileFuryPrompt> | undefined;
+  try {
+    if (request.furyPrompt !== undefined) furyPrompt = compileFuryPrompt(request.furyPrompt);
+  } catch (caught) {
+    return {
+      format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
+      completedStages: [], contextUsedTokens: 0, skillHealth,
+      failure: { code: 'INVALID_REQUEST', reason: `FuryPrompt compilation failed: ${caught instanceof Error ? caught.message : String(caught)}` },
+    };
+  }
+  const prompt = furyPrompt?.prompt ?? request.objective;
+  const furyPromptDigest = furyPrompt?.promptDigest;
   const skills = new Map<string, AgentSkillDefinition>();
   for (const skill of request.skills ?? []) {
     if (!skill || typeof skill !== 'object' || typeof skill.id !== 'string' || !skill.id || typeof skill.execute !== 'function' || skills.has(skill.id)) {
@@ -296,6 +323,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
       || resumeFrom.nextStageIndex >= AGENT_FABRIC_STAGE_ORDER.length
       || !validSafeInteger(resumeFrom.contextUsedTokens)
       || resumeFrom.contextUsedTokens > budget
+      || resumeFrom.furyPromptDigest !== furyPromptDigest
       || !Array.isArray(resumeFrom.completedStages)
       || resumeFrom.completedStages.length !== resumeFrom.nextStageIndex
       || resumeFrom.completedStages.some((stage, index) => AGENT_FABRIC_STAGE_ORDER[index] !== stage)) {
@@ -394,7 +422,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
         return subagentResult;
       };
       result = await executor({
-        runId, stage, objective: request.objective, objectiveDigest, permission,
+        runId, stage, objective: request.objective, prompt, objectiveDigest, permission,
         allowedWritePaths: request.allowWrites === true ? [...(request.allowedWritePaths ?? [])] : [],
         contextBudgetTokens: budget, contextUsedTokens, remainingContextTokens: budget - contextUsedTokens,
         network: 'disabled', secrets: 'never_requested', completedStages: [...completedStages],
@@ -459,7 +487,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
       return {
         format: 'furypipe-agent-run/v1', status: 'handoff_required', runId, objectiveDigest,
         completedStages, contextUsedTokens, skillHealth,
-        snapshot: snapshotFor(runId, objectiveDigest, nextStageIndex, completedStages, contextUsedTokens),
+        snapshot: snapshotFor(runId, objectiveDigest, nextStageIndex, completedStages, contextUsedTokens, furyPromptDigest),
       };
     }
     completedStages = [...completedStages, stage];

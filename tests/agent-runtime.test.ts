@@ -204,4 +204,27 @@ describe('FuryPipe Agent runtime', () => {
     });
     expect(unhealthySkill.failure?.code).toBe('SKILL_BLOCKED');
   });
+
+  it('compiles FuryPrompt once for stage callbacks and binds its digest to resume', async () => {
+    const seenPrompts: string[] = [];
+    const request: AgentRuntimeRequest = {
+      objective: 'Run the approved workflow.',
+      runId: 'agent-furyprompt',
+      furyPrompt: { sections: { task: 'Preserve exact IDs and verify the result.' }, level: 'ENGINEERING' },
+      executors: {
+        ...stageExecutors([]),
+        research: async (context) => {
+          seenPrompts.push(context.prompt);
+          return { status: 'handoff_required', evidence: ['handoff'], consumedTokens: 1 };
+        },
+      },
+    };
+    const paused = await runAgent(request);
+
+    expect(paused.status).toBe('handoff_required');
+    expect(seenPrompts).toEqual(['## Task\nPreserve exact IDs and verify the result.']);
+    expect(paused.snapshot?.furyPromptDigest).toMatch(/^fp_[a-f0-9]{64}$/);
+    expect(JSON.stringify(paused.snapshot)).not.toContain('Preserve exact IDs');
+    expect((await runAgent({ ...request, furyPrompt: { sections: { task: 'Changed prompt.' }, level: 'ENGINEERING' } }, paused.snapshot)).failure?.code).toBe('INVALID_SNAPSHOT');
+  });
 });

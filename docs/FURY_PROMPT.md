@@ -31,9 +31,19 @@ conserver les valeurs protégées dans le manifest. Le prompt lui-même est bien
 sûr la sortie demandée et peut contenir le contenu fourni par l’appelant.
 
 Les `integrationHints` annoncent les contrats metadata-only attendus par
-Context Fabric et Agent Fabric. Ils ne déclenchent ni transform provider, ni
-outil, ni skill, ni serveur MCP, ni agent. L’exécution de ces surfaces doit
-rester explicite dans leurs propres runtimes.
+Context Fabric et Agent Fabric. Le compilateur seul n’exécute ni outil, ni
+skill, ni serveur MCP, ni agent. Lorsqu’un appelant fournit explicitement
+`TransformOptions.furyPrompt`, `transformRequest` compile une fois la structure,
+l’ajoute comme bloc `system` et laisse ensuite ExactGuard puis Context Fabric
+inspecter la requête complète. Une demande `TRIVIAL` reste le texte compact
+fourni, sans titres ni architecture artificielle. Une compilation invalide
+retourne le body d’origine et un diagnostic `furyprompt_error`.
+
+`runAgent` accepte le même `furyPrompt` explicite : les callbacks reçoivent le
+texte compilé, tandis que les résultats et snapshots ne conservent que le
+digest. `createAgentFabricPlan` conserve uniquement le niveau, la taille et le
+digest. Aucun prompt n’est compilé automatiquement lorsqu’une option explicite
+n’est pas présente.
 
 Les valeurs sont bornées avant rendu : 256 valeurs maximum par section, 1 MiB
 par valeur et 8 MiB d’inputs cumulés. Les sections vides et les valeurs non
@@ -45,7 +55,7 @@ textuelles sont refusées.
 l’ordre canonique, la déterminisme, les valeurs exactes, le manifest
 ExactGuard, le signal security-critical et les bornes d’entrée.
 
-Le statut M12 est `PARTIAL` : le compilateur public et ses contrats sont
-testés localement, mais son appel automatique dans `transformRequest` et son
-exécution par un Agent Harness n’existent pas encore. Aucun claim de runtime
-multi-agent ne doit être déduit de ce module seul.
+Le statut M12 reste `PARTIAL` : le wiring explicite Transform/Agent Fabric/
+Agent Runtime est testé localement, mais il ne constitue ni un modèle réel, ni
+une exécution multi-agent, ni une validation provider hébergée. Les callbacks,
+outils, skills et MCP restent sous l’autorité de leurs contrats propres.

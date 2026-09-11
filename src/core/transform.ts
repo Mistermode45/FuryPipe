@@ -61,6 +61,7 @@ import type { CompressionReceipt } from './receipt.js';
 import { detectProtectedSpans, exactGuardOptionsForMode, type ExactGuardMode, type ExactGuardOptions } from './exact-guard.js';
 import { analyzeContextFabric, finalizeContextFabricAnalysis, type ContextFabricAnalysis } from './context-fabric.js';
 import type { RecoveryHandle, RecoveryStore } from './recovery-store.js';
+import { compileFuryPrompt, type FuryPromptCompileInput, type FuryPromptCompilation } from '../fury-prompt.js';
 
 /** Per-block descriptor passed to `TransformOptions.keepSharp`. */
 export interface KeepSharpBlock {
@@ -155,10 +156,13 @@ export interface TransformOptions {
   safetyMode?: ExactGuardMode | false;
   /** Explicit Recovery target required by the `externalize` ExactGuard policy. */
   recoveryStore?: RecoveryStore;
+  /** Explicit structured prompt augmentation compiled before ExactGuard. */
+  furyPrompt?: FuryPromptCompileInput;
 }
 
-type ResolvedTransformOptions = Omit<Required<TransformOptions>, 'recoveryStore'> & {
+type ResolvedTransformOptions = Omit<Required<TransformOptions>, 'recoveryStore' | 'furyPrompt'> & {
   recoveryStore?: RecoveryStore;
+  furyPrompt?: FuryPromptCompileInput;
 };
 
 const DEFAULTS: ResolvedTransformOptions = {
@@ -790,6 +794,15 @@ export interface TransformInfo {
   receipt?: CompressionReceipt;
   /** Shared Context Fabric decision, exposed for safe per-request diagnostics. */
   contextFabric?: ContextFabricAnalysis;
+  /** Plaintext-free metadata for an explicit FuryPrompt augmentation. */
+  furyPrompt?: {
+    level: FuryPromptCompilation['level'];
+    promptBytes: number;
+    promptDigest: string;
+    sourceContentDigest: string;
+    orderedSections: readonly string[];
+    exactGuardMode: FuryPromptCompilation['exactGuard']['mode'];
+  };
   /** Exact UTF-8 byte length of the final serialized provider request. */
   serializedRequestBytes?: number;
   /** Result of the profile-level serialized request guard. */
@@ -2268,6 +2281,28 @@ async function runHistoryCollapseAndFinalize(
   return { body: outBody, info, collapsed: collapsedFlag };
 }
 
+function appendFuryPrompt(req: MessagesRequest, compilation: FuryPromptCompilation): void {
+  const block: TextBlock = { type: 'text', text: compilation.prompt };
+  if (req.system === undefined) {
+    req.system = [block];
+  } else if (typeof req.system === 'string') {
+    req.system = [{ type: 'text', text: req.system }, block];
+  } else {
+    req.system = [...req.system, block];
+  }
+}
+
+function furyPromptMetadata(compilation: FuryPromptCompilation): NonNullable<TransformInfo['furyPrompt']> {
+  return {
+    level: compilation.level,
+    promptBytes: compilation.promptBytes,
+    promptDigest: compilation.promptDigest,
+    sourceContentDigest: compilation.source.contentDigest,
+    orderedSections: [...compilation.source.orderedSections],
+    exactGuardMode: compilation.exactGuard.mode,
+  };
+}
+
 /**
  * Rewrite a Messages API request body. Returns the new body (still JSON
  * bytes) plus diagnostic info. On any error, returns the original bytes
@@ -2326,6 +2361,22 @@ export async function transformRequest(
   } catch (e) {
     info.reason = `parse_error: ${(e as Error).message}`;
     return { body, info };
+  }
+
+  // FuryPrompt is opt-in: ordinary requests pay no compiler cost and retain
+  // the historical body. An explicit compilation is inserted as a system text
+  // block before ExactGuard and Context Fabric inspect the request.
+  let exactGuardBody = body;
+  if (opts.furyPrompt !== undefined) {
+    try {
+      const compilation = compileFuryPrompt(opts.furyPrompt);
+      appendFuryPrompt(req, compilation);
+      info.furyPrompt = furyPromptMetadata(compilation);
+      exactGuardBody = new TextEncoder().encode(JSON.stringify(req));
+    } catch (caught) {
+      info.reason = `furyprompt_error: ${caught instanceof Error ? caught.message : String(caught)}`;
+      return { body, info };
+    }
   }
 
   // Build one shared analysis from the parsed provider request. This is
@@ -2397,7 +2448,7 @@ export async function transformRequest(
       info.reason = `exact_guard (preserve_native, spans=${protectedSpans})`;
       info.exactGuard = { protectedSpans, action: 'preserve_native' };
       bumpPassthrough(info, 'exact_guard');
-      return finish(body);
+      return finish(exactGuardBody);
     }
   }
 
@@ -2620,7 +2671,7 @@ export async function transformRequest(
     // `body` is the original bytes. If the pin pass edited `req`, those bytes
     // describe a request we are no longer sending, so forwarding them would put
     // the raw `@pxpipe pin` line back and drop the tail block.
-    return finish(pinsRewrote ? finalized.body : body);
+    return finish(pinsRewrote ? finalized.body : exactGuardBody);
   }
 
   // The wire cap guards even the slab. Imaging it is our biggest single win, but
@@ -2632,7 +2683,7 @@ export async function transformRequest(
     bumpPassthrough(info, 'image_budget');
     info.imageBudgetSkips = (info.imageBudgetSkips ?? 0) + 1;
     const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, pins);
-    return finish(pinsRewrote || finalized.collapsed ? finalized.body : body);
+    return finish(pinsRewrote || finalized.collapsed ? finalized.body : exactGuardBody);
   }
 
   // Break-even check guards even the slab (rare edge: tiny tool docs + tiny slab < 10k chars).
@@ -2704,7 +2755,7 @@ export async function transformRequest(
     // `body` is the original bytes. If the pin pass edited `req`, those bytes
     // describe a request we are no longer sending, so forwarding them would put
     // the raw `@pxpipe pin` line back and drop the tail block.
-    return finish(pinsRewrote ? finalized.body : body);
+    return finish(pinsRewrote ? finalized.body : exactGuardBody);
   }
 
   // Instruction header co-renders into the same PNG (+1.04pp L1 OCR vs baseline;
@@ -2740,7 +2791,7 @@ export async function transformRequest(
       info.compressed = true;
       return finish(finalized.body);
     }
-    return finish(pinsRewrote ? finalized.body : body);
+    return finish(pinsRewrote ? finalized.body : exactGuardBody);
   }
 
   const imageBlocks: ImageBlock[] = [];
