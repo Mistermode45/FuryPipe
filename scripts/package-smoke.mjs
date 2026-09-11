@@ -9,13 +9,6 @@ const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
 const root = process.cwd();
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const localBin = (directory, name) => path.join(
-  directory,
-  'node_modules',
-  '.bin',
-  process.platform === 'win32' ? `${name}.cmd` : name,
-);
-
 async function run(file, args, cwd) {
   if (process.platform === 'win32' && file.endsWith('.cmd')) {
     // npm is exposed as a .cmd shim on Windows. Use one quoted command
@@ -41,13 +34,13 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function runMcp(binary) {
+function runMcp(binary, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, [], {
+    const child = spawn(binary, args, {
       cwd: root,
       env: process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: process.platform === 'win32',
+      shell: process.platform === 'win32' && binary.endsWith('.cmd'),
     });
     let stdout = '';
     let stderr = '';
@@ -95,15 +88,16 @@ try {
   await run(npm, ['init', '-y'], installDir);
   await run(npm, ['install', tarball, '--ignore-scripts', '--no-audit', '--no-fund'], installDir);
 
-  const cli = localBin(installDir, 'furypipe');
-  const mcp = localBin(installDir, 'furypipe-mcp');
-  const version = await run(cli, ['--version'], installDir);
+  const packageRoot = path.join(installDir, 'node_modules', 'furypipe');
+  const cli = path.join(packageRoot, 'bin', 'cli.js');
+  const mcp = path.join(packageRoot, 'bin', 'mcp.js');
+  const version = await run(process.execPath, [cli, '--version'], installDir);
   assert(version.stdout.trim() === metadata.version, `CLI version mismatch: ${version.stdout}`);
 
-  const doctor = await run(cli, ['doctor', '--json'], installDir);
+  const doctor = await run(process.execPath, [cli, 'doctor', '--json'], installDir);
   const report = JSON.parse(doctor.stdout);
   assert(report.runtime?.node, 'doctor smoke returned no Node runtime');
-  await runMcp(mcp);
+  await runMcp(process.execPath, [mcp]);
   console.log(`package smoke passed: ${metadata.filename}`);
 } finally {
   if (installDir) await rm(installDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
