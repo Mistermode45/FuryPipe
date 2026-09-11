@@ -18,8 +18,8 @@ export interface LocaleResolution {
   pseudo: 'none' | 'accented' | 'bidi';
 }
 
-const RTL_LANGUAGES = new Set([
-  'ar', 'arc', 'ckb', 'dv', 'fa', 'he', 'ks', 'ku', 'ps', 'sd', 'ug', 'ur', 'yi'
+const RTL_SCRIPTS = new Set([
+  'Adlm', 'Arab', 'Hebr', 'Nkoo', 'Rohg', 'Samr', 'Syrc', 'Thaa'
 ]);
 
 const PSEUDO_LOCALES = new Map<string, 'accented' | 'bidi'>([
@@ -56,7 +56,8 @@ function languageOf(locale: string): string {
 export function directionForLocale(locale: string): 'ltr' | 'rtl' {
   const canonical = canonicalizeLocale(locale);
   if (canonical === 'ar-XB') return 'rtl';
-  return RTL_LANGUAGES.has(languageOf(canonical)) ? 'rtl' : 'ltr';
+  const script = new Intl.Locale(canonical).maximize().script;
+  return script && RTL_SCRIPTS.has(script) ? 'rtl' : 'ltr';
 }
 
 export function fallbackChain(locale: string, defaultLocale: string): readonly string[] {
