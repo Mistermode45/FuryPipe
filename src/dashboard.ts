@@ -1523,8 +1523,8 @@ export class DashboardState {
     );
   }
 
-  serveHtml(port: number): Response {
-    return htmlResponse(renderPage(port, dashboardHostLabel()));
+  serveHtml(port: number, locale?: string): Response {
+    return htmlResponse(renderPage(port, dashboardHostLabel(), locale));
   }
 
   private async readControlRoomSnapshot(): Promise<ControlRoomSnapshot | null> {
@@ -1617,7 +1617,10 @@ export class DashboardState {
         return htmlResponse(renderStatsTableFragment(p));
       }
       case 'control-room': {
-        return htmlResponse(renderControlRoomFragment(await this.readControlRoomSnapshot()));
+        return htmlResponse(renderControlRoomFragment(
+          await this.readControlRoomSnapshot(),
+          url.searchParams.get('locale') ?? 'en',
+        ));
       }
       default:
         return new Response('unknown fragment', { status: 404 });
