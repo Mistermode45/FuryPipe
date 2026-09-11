@@ -10,6 +10,7 @@ claim that the software is free of vulnerabilities.
 - Prompt, system-message, tool-schema, and tool-result contents.
 - Rendered PNGs, export bundles, and factsheets derived from that content.
 - Local event logs, optional diagnostic request bodies, and session metadata.
+- Recovery objects, manifests, backups, and encryption key identifiers.
 - Provider quota and billing attached to configured credentials.
 - The npm package and its release provenance.
 
@@ -19,6 +20,7 @@ claim that the software is free of vulnerabilities.
 client -> Node proxy or Worker -> configured provider/gateway
               |
               +-> transforms and rendered context
+              +-> local Recovery Store (optional AES-256-GCM)
               +-> local logs/dashboard (Node) or Workers Logs
 
 maintainer -> GitHub Actions -> npm trusted publishing
@@ -39,6 +41,9 @@ software supply-chain boundary.
   attacker-controlled request inputs.
 - Anyone who can read the pxpipe log directory or Workers Logs may learn
   sensitive metadata. Diagnostic body capture is treated as secret material.
+- Recovery encryption keys are supplied and owned by the host application. The
+  filesystem store does not generate, persist, print, or rotate key material
+  outside an explicit `rekey()` operation using the supplied key ring.
 - Callers that know `PXPIPE_WORKER_SECRET` are authorized to spend credentials
   configured in that Worker deployment.
 
@@ -52,6 +57,7 @@ software supply-chain boundary.
 | Dashboard exposes captured context | Dashboard routes require loopback source and host; cross-site mutations are rejected | Treat every dashboard route as sensitive and preserve both checks |
 | Oversized dashboard request exhausts memory | Dashboard request bodies are bounded | Keep bounds before parsing and add negative tests for new endpoints |
 | Oversized proxy request exhausts memory | Transformable routes refuse past `maxRequestBytes` (`PXPIPE_MAX_REQUEST_BYTES`, 16 MiB default) before allocating, using the streamed size rather than the declared one; label-only routes bound their model sniff and stream the remainder untouched | Never read an inbound body to completion before the limit is proven; add exact-boundary, missing-length and under-declared-length tests for new routes |
+| Recovery object or manifest is exposed at rest | Recovery Store supports opt-in AES-256-GCM per object, digest-bound authenticated data, explicit key IDs, fail-closed legacy plaintext handling, non-overwriting publication, and verified backup/restore | Keep keys in the host secret boundary; retain old keys only for a bounded migration window; do not claim Windows ACL enforcement until the host deployment proves it |
 | Malicious dependency or compromised release | Frozen lockfile, three-day release-age gate, restricted lifecycle scripts, OIDC trusted publishing, provenance | Keep least-privilege workflow permissions and review lockfile/lifecycle changes |
 | Vulnerable dependency remains installed | Dependabot, CodeQL/GitHub security scanning, a high-severity CI audit gate, targeted overrides | Run `pnpm audit` and remove overrides when direct dependencies adopt fixed ranges |
 
@@ -67,6 +73,12 @@ software supply-chain boundary.
 - Shared-secret authentication does not provide per-user identity, revocation,
   rate limits, or authorization scopes. Internet-facing deployments should
   add these controls at the edge.
+- POSIX file modes are applied where supported, but Windows ACLs remain
+  host-managed. A local account with filesystem access can still read the key
+  ring or decrypted content while the host process is running.
+- Recovery currently uses a filesystem backend with SHA-256 and uncompressed
+  payloads. Real process-kill recovery, multi-process locking, filesystem
+  corruption handling, and SQLite durability are not proven by local tests.
 
 ## Security review checklist
 

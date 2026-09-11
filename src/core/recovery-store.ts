@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
+import { chmod, copyFile, link, mkdir, open, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
+import { basename, dirname, join, resolve } from 'node:path';
 
 /** Serialize mutations from multiple namespace views sharing one root. */
 const recoveryWriteChains = new Map<string, Promise<void>>();
@@ -20,6 +19,12 @@ export interface RecoveryHandle {
   readonly digest: string;
   readonly bytes: number;
   readonly metadata?: RecoveryMetadata;
+  readonly storage?: RecoveryStorage;
+}
+
+export interface RecoveryStorage {
+  readonly format: 'aes-256-gcm/v1';
+  readonly keyId: string;
 }
 
 export interface RecoveryVerification {
@@ -39,6 +44,17 @@ export interface RecoveryStoreOptions {
   readonly maxTotalBytes?: number;
   /** Optional hard limit across every namespace below this store root. */
   readonly maxGlobalBytes?: number;
+  /** Optional AES-256-GCM key ring owned by the host application. */
+  readonly encryption?: RecoveryEncryptionOptions;
+}
+
+export interface RecoveryEncryptionOptions {
+  /** Key used for new objects and explicit rekey operations. */
+  readonly activeKeyId: string;
+  /** Key IDs may be retained during rotation so older objects remain readable. */
+  readonly keys: Readonly<Record<string, Uint8Array>>;
+  /** Explicit compatibility escape hatch for pre-encryption plaintext objects. */
+  readonly allowLegacyPlaintext?: boolean;
 }
 
 export interface RecoveryBackupSummary {
@@ -47,6 +63,16 @@ export interface RecoveryBackupSummary {
   readonly objects: number;
   readonly manifests: number;
   readonly bytes: number;
+  readonly evidence: 'BACKUP_EXISTS' | 'RESTORE_VERIFIED';
+}
+
+export interface RecoveryRekeySummary {
+  readonly format: 'furypipe-recovery-rekey/v1';
+  readonly namespace?: string;
+  readonly activeKeyId: string;
+  readonly scanned: number;
+  readonly migrated: number;
+  readonly alreadyCurrent: number;
 }
 
 export interface RecoveryStore {
@@ -60,9 +86,15 @@ export interface RecoveryStore {
   gc(now?: Date): Promise<{ expired: number; orphaned: number; bytesFreed: number }>;
   backup(destination: string): Promise<RecoveryBackupSummary>;
   restore(source: string): Promise<RecoveryBackupSummary>;
+  rekey(targetKeyId?: string): Promise<RecoveryRekeySummary>;
 }
 
 const HANDLE = /^furypipe-recovery\/v1\/sha256\/([0-9a-f]{64})$/;
+const KEY_ID = /^[A-Za-z0-9._-]{1,64}$/u;
+const ENCRYPTED_MAGIC = Buffer.from('FURYENC1', 'ascii');
+const ENCRYPTED_NONCE_BYTES = 12;
+const ENCRYPTED_TAG_BYTES = 16;
+const MANIFEST_BACKUP_MARKER = '.recovery-bak-';
 
 function digestBytes(bytes: Uint8Array | ArrayBuffer): string {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -82,10 +114,6 @@ function parseHandle(handle: RecoveryHandle | string): string {
   return match[1];
 }
 
-function objectPath(root: string, digest: string): string {
-  return join(root, 'objects', digest.slice(0, 2), digest);
-}
-
 function metadataPath(root: string, digest: string): string {
   return join(root, 'manifests', `${digest}.json`);
 }
@@ -95,14 +123,98 @@ function validateNamespace(value: string): string {
   return value;
 }
 
-function makeHandle(digest: string, bytes: number, metadata?: RecoveryMetadata): RecoveryHandle {
+function makeHandle(digest: string, bytes: number, metadata?: RecoveryMetadata, storage?: RecoveryStorage): RecoveryHandle {
   return {
     format: 'furypipe-recovery/v1',
     algorithm: 'sha256',
     digest,
     bytes,
     ...(metadata ? { metadata } : {}),
+    ...(storage ? { storage } : {}),
   };
+}
+
+function validateKeyId(value: string): string {
+  if (!KEY_ID.test(value)) throw new Error('recovery encryption key ID must be 1-64 ASCII letters, digits, _, ., or -');
+  return value;
+}
+
+function normalizeEncryption(options: RecoveryEncryptionOptions | undefined): {
+  readonly activeKeyId: string;
+  readonly keys: ReadonlyMap<string, Uint8Array>;
+  readonly allowLegacyPlaintext: boolean;
+} | undefined {
+  if (options === undefined) return undefined;
+  const activeKeyId = validateKeyId(options.activeKeyId.trim());
+  const keys = new Map<string, Uint8Array>();
+  for (const [rawId, rawKey] of Object.entries(options.keys)) {
+    const keyId = validateKeyId(rawId.trim());
+    if (!(rawKey instanceof Uint8Array) || rawKey.byteLength !== 32) {
+      throw new RangeError(`recovery encryption key ${keyId} must be exactly 32 bytes`);
+    }
+    keys.set(keyId, new Uint8Array(rawKey));
+  }
+  if (!keys.has(activeKeyId)) throw new Error(`active recovery encryption key is missing: ${activeKeyId}`);
+  return { activeKeyId, keys, allowLegacyPlaintext: options.allowLegacyPlaintext === true };
+}
+
+function storageFileName(digest: string, storage?: RecoveryStorage): string {
+  return storage === undefined ? digest : `${digest}.enc-${storage.keyId}`;
+}
+
+function objectPathFor(root: string, digest: string, storage?: RecoveryStorage): string {
+  return join(root, 'objects', digest.slice(0, 2), storageFileName(digest, storage));
+}
+
+function encryptionAad(digest: string): Buffer {
+  return Buffer.from(`furypipe-recovery/v1:${digest}`, 'utf8');
+}
+
+function encryptBytes(bytes: Uint8Array, digest: string, key: Uint8Array): Buffer {
+  const nonce = randomBytes(ENCRYPTED_NONCE_BYTES);
+  const cipher = createCipheriv('aes-256-gcm', key, nonce);
+  cipher.setAAD(encryptionAad(digest));
+  const ciphertext = Buffer.concat([cipher.update(bytes), cipher.final()]);
+  return Buffer.concat([ENCRYPTED_MAGIC, nonce, cipher.getAuthTag(), ciphertext]);
+}
+
+function decryptBytes(envelope: Uint8Array, digest: string, keyId: string, key: Uint8Array): Uint8Array {
+  const minimum = ENCRYPTED_MAGIC.byteLength + ENCRYPTED_NONCE_BYTES + ENCRYPTED_TAG_BYTES;
+  if (envelope.byteLength < minimum || !Buffer.from(envelope.subarray(0, ENCRYPTED_MAGIC.byteLength)).equals(ENCRYPTED_MAGIC)) {
+    throw new Error('recovery encrypted object envelope is invalid');
+  }
+  const nonceStart = ENCRYPTED_MAGIC.byteLength;
+  const tagStart = nonceStart + ENCRYPTED_NONCE_BYTES;
+  const ciphertextStart = tagStart + ENCRYPTED_TAG_BYTES;
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', key, envelope.subarray(nonceStart, tagStart));
+    decipher.setAAD(encryptionAad(digest));
+    decipher.setAuthTag(envelope.subarray(tagStart, ciphertextStart));
+    return new Uint8Array(Buffer.concat([decipher.update(envelope.subarray(ciphertextStart)), decipher.final()]));
+  } catch {
+    throw new Error(`recovery encrypted object cannot be opened with key ${keyId}`);
+  }
+}
+
+function manifestStorage(value: unknown): RecoveryStorage | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('recovery manifest storage is invalid');
+  const storage = value as Record<string, unknown>;
+  if (storage.format !== 'aes-256-gcm/v1' || typeof storage.keyId !== 'string') throw new Error('recovery manifest storage is invalid');
+  return { format: storage.format, keyId: validateKeyId(storage.keyId) };
+}
+
+function normalizeManifest(value: unknown): RecoveryHandle & { metadata?: RecoveryMetadata } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('recovery manifest is invalid');
+  const manifest = value as Record<string, unknown>;
+  if (manifest.format !== 'furypipe-recovery/v1' || manifest.algorithm !== 'sha256'
+    || typeof manifest.digest !== 'string' || !/^[0-9a-f]{64}$/u.test(manifest.digest)
+    || typeof manifest.bytes !== 'number' || !Number.isSafeInteger(manifest.bytes) || manifest.bytes < 0) {
+    throw new Error('recovery manifest is invalid');
+  }
+  const metadata = manifest.metadata === undefined ? undefined : manifest.metadata as RecoveryMetadata;
+  const storage = manifestStorage(manifest.storage);
+  return makeHandle(manifest.digest, manifest.bytes, metadata, storage);
 }
 
 async function exists(path: string): Promise<boolean> {
@@ -112,6 +224,120 @@ async function exists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function ensurePrivateDirectory(path: string): Promise<void> {
+  await mkdir(path, { recursive: true, mode: 0o700 });
+  try {
+    await chmod(path, 0o700);
+  } catch {
+    // Windows ACLs are host-managed; chmod there only toggles the read-only bit.
+  }
+}
+
+async function writePrivateFile(path: string, data: string | Uint8Array, flag: 'w' | 'wx' = 'w'): Promise<void> {
+  const file = await open(path, flag, 0o600);
+  try {
+    await file.writeFile(data);
+    await file.sync();
+  } finally {
+    await file.close();
+  }
+  try {
+    await chmod(path, 0o600);
+  } catch {
+    // Windows ACLs are host-managed; see the explicit security documentation.
+  }
+}
+
+async function writeExclusiveAtomic(path: string, data: string | Uint8Array): Promise<void> {
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writePrivateFile(temporary, data, 'wx');
+    try {
+      // A hard link publishes the fully fsynced temporary file without
+      // replacing an object or manifest that another writer already created.
+      await link(temporary, path);
+    } catch (error) {
+      await rm(temporary, { force: true });
+      throw error;
+    }
+    await rm(temporary, { force: true });
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw error;
+  }
+}
+
+/** Replace a manifest while leaving a recoverable backup if the process stops between renames. */
+async function replaceManifestAtomic(path: string, data: string): Promise<void> {
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  const backup = `${path}${MANIFEST_BACKUP_MARKER}${randomUUID()}`;
+  await writePrivateFile(temporary, data, 'wx');
+  try {
+    await rename(path, backup);
+    try {
+      await rename(temporary, path);
+    } catch (error) {
+      if (!(await exists(path)) && await exists(backup)) await rename(backup, path);
+      throw error;
+    }
+    await rm(backup, { force: true });
+  } catch (error) {
+    await rm(temporary, { force: true });
+    if (!(await exists(path)) && await exists(backup)) {
+      await rename(backup, path).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+async function recoverManifestBackups(manifestRoot: string): Promise<void> {
+  let entries;
+  try {
+    entries = await readdir(manifestRoot);
+  } catch (caught) {
+    if ((caught as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw caught;
+  }
+  for (const name of entries) {
+    const marker = name.indexOf(MANIFEST_BACKUP_MARKER);
+    if (marker < 0) continue;
+    const original = join(manifestRoot, name.slice(0, marker));
+    const backup = join(manifestRoot, name);
+    if (await exists(original)) await rm(backup, { force: true });
+    else await rename(backup, original);
+  }
+}
+
+function objectFileNameForPath(path: string): string {
+  return basename(path);
+}
+
+function objectFileMatchesDigest(path: string, digest: string): boolean {
+  const name = objectFileNameForPath(path);
+  return name === digest || name.startsWith(`${digest}.enc-`);
+}
+
+function objectDigestFromPath(path: string): string | undefined {
+  const match = /^([0-9a-f]{64})(?:\.enc-[A-Za-z0-9._-]+)?$/u.exec(objectFileNameForPath(path));
+  return match?.[1];
+}
+
+function objectReferenceKey(digest: string, path: string): string {
+  return `${digest.slice(0, 2)}/${objectFileNameForPath(path)}`;
+}
+
+async function objectVariants(root: string, digest: string): Promise<string[]> {
+  const directory = join(root, 'objects', digest.slice(0, 2));
+  let entries;
+  try {
+    entries = await readdir(directory);
+  } catch (caught) {
+    if ((caught as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw caught;
+  }
+  return entries.filter((name) => objectFileMatchesDigest(name, digest)).map((name) => join(directory, name));
 }
 
 async function totalObjectBytes(root: string): Promise<number> {
@@ -167,7 +393,7 @@ async function copyTree(source: string, destination: string, overwrite: boolean)
     const entries = await readdir(source, { withFileTypes: true });
     let files = 0;
     let bytes = 0;
-    await mkdir(destination, { recursive: true });
+    await ensurePrivateDirectory(destination);
     for (const entry of entries) {
       const from = join(source, entry.name);
       const to = join(destination, entry.name);
@@ -183,6 +409,11 @@ async function copyTree(source: string, destination: string, overwrite: boolean)
           if (digestBytes(current) !== digestBytes(incoming)) throw new Error(`recovery restore conflict at ${entry.name}`);
         } else {
           await copyFile(from, to);
+          try {
+            await chmod(to, 0o600);
+          } catch {
+            // Windows ACLs are host-managed.
+          }
         }
         files += 1;
         bytes += size;
@@ -196,9 +427,10 @@ async function copyTree(source: string, destination: string, overwrite: boolean)
 }
 
 /**
- * File-system content-addressed store. SHA-256 and raw bytes are intentional in
- * this portable first slice: Node's standard library has no BLAKE3/zstd API.
- * Compression and alternate backends remain explicit follow-up work.
+ * File-system content-addressed store. SHA-256 and an uncompressed payload are
+ * intentional in this portable first slice: Node's standard library has no
+ * BLAKE3/zstd API. Encryption is opt-in and uses the host-provided key ring;
+ * compression and alternate backends remain explicit follow-up work.
  */
 export function createRecoveryStore(root: string, options: RecoveryStoreOptions = {}): RecoveryStore {
   const storeRoot = resolve(root);
@@ -206,63 +438,146 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
   const maxObjectBytes = options.maxObjectBytes ?? Number.MAX_SAFE_INTEGER;
   const maxTotalBytes = options.maxTotalBytes ?? Number.MAX_SAFE_INTEGER;
   const maxGlobalBytes = options.maxGlobalBytes ?? Number.MAX_SAFE_INTEGER;
+  const encryption = normalizeEncryption(options.encryption);
   if (!Number.isSafeInteger(maxObjectBytes) || maxObjectBytes < 0) throw new RangeError('maxObjectBytes must be a non-negative safe integer');
   if (!Number.isSafeInteger(maxTotalBytes) || maxTotalBytes < 0) throw new RangeError('maxTotalBytes must be a non-negative safe integer');
   if (!Number.isSafeInteger(maxGlobalBytes) || maxGlobalBytes < 0) throw new RangeError('maxGlobalBytes must be a non-negative safe integer');
   const scopedRoot = namespace ? join(storeRoot, 'namespaces', namespace) : storeRoot;
+  async function recoverPendingManifestReplacements(): Promise<void> {
+    await recoverManifestBackups(join(scopedRoot, 'manifests'));
+  }
+  let readyPromise: Promise<void> | undefined;
+  function ensureReady(): Promise<void> {
+    readyPromise ??= recoverPendingManifestReplacements();
+    return readyPromise;
+  }
   function enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const previous = recoveryWriteChains.get(storeRoot) ?? Promise.resolve();
-    const next = previous.then(operation);
+    const next = previous.then(() => ensureReady()).then(operation);
     recoveryWriteChains.set(storeRoot, next.then(() => undefined, () => undefined));
     return next;
+  }
+
+  async function readManifest(digest: string): Promise<(RecoveryHandle & { metadata?: RecoveryMetadata }) | undefined> {
+    try {
+      return normalizeManifest(JSON.parse(await readFile(metadataPath(scopedRoot, digest), 'utf8')) as unknown);
+    } catch (caught) {
+      if ((caught as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      if (caught instanceof Error && (caught.message === 'recovery manifest is invalid' || caught.message === 'recovery manifest storage is invalid')) throw caught;
+      throw new Error('recovery manifest cannot be read');
+    }
+  }
+
+  async function readStored(digest: string, manifest?: RecoveryHandle & { metadata?: RecoveryMetadata }, allowLegacyPlaintext = false): Promise<Uint8Array> {
+    const storage = manifest?.storage;
+    if (storage !== undefined) {
+      if (manifest === undefined) throw new Error('recovery encrypted object manifest is missing');
+      if (encryption === undefined) throw new Error('recovery encryption key ring is required');
+      const key = encryption.keys.get(storage.keyId);
+      if (key === undefined) throw new Error(`recovery encryption key is unavailable: ${storage.keyId}`);
+      const envelope = new Uint8Array(await readFile(objectPathFor(scopedRoot, digest, storage)));
+      const bytes = decryptBytes(envelope, digest, storage.keyId, key);
+      if (digestBytes(bytes) !== digest || bytes.byteLength !== manifest.bytes) throw new Error('recovery object integrity check failed');
+      return bytes;
+    }
+    if (encryption !== undefined && !allowLegacyPlaintext && !encryption.allowLegacyPlaintext) {
+      throw new Error('recovery object is plaintext; explicit rekey migration is required');
+    }
+    const bytes = new Uint8Array(await readFile(objectPathFor(scopedRoot, digest)));
+    if (digestBytes(bytes) !== digest) throw new Error('recovery object integrity check failed');
+    if (manifest !== undefined && bytes.byteLength !== manifest.bytes) throw new Error('recovery object size does not match its manifest');
+    return bytes;
+  }
+
+  async function writeManifest(path: string, handle: RecoveryHandle): Promise<void> {
+    await writeExclusiveAtomic(path, JSON.stringify(handle) + '\n');
+  }
+
+  async function verifyScope(): Promise<{ objects: number; manifests: number; bytes: number }> {
+    const manifestRoot = join(scopedRoot, 'manifests');
+    let entries;
+    try {
+      entries = await readdir(manifestRoot);
+    } catch (caught) {
+      if ((caught as NodeJS.ErrnoException).code === 'ENOENT') return { objects: 0, manifests: 0, bytes: 0 };
+      throw caught;
+    }
+    let objects = 0;
+    let manifests = 0;
+    let bytes = 0;
+    for (const name of entries) {
+      if (!name.endsWith('.json')) continue;
+      const digest = name.slice(0, -'.json'.length);
+      if (!/^[0-9a-f]{64}$/u.test(digest)) continue;
+      const manifest = await readManifest(digest);
+      if (manifest === undefined) continue;
+      await readStored(digest, manifest);
+      objects += 1;
+      manifests += 1;
+      bytes += (await stat(objectPathFor(scopedRoot, digest, manifest.storage))).size;
+    }
+    return { objects, manifests, bytes };
   }
 
   return {
     put(bytes, metadata) {
       return enqueue(async () => {
-      const view = asUint8Array(bytes);
-      if (view.byteLength > maxObjectBytes) throw new Error('recovery object exceeds the configured object quota');
-      const digest = digestBytes(view);
-      const target = objectPath(scopedRoot, digest);
-      const manifest = metadataPath(scopedRoot, digest);
-      if (!(await exists(target)) && (await totalObjectBytes(join(scopedRoot, 'objects'))) + view.byteLength > maxTotalBytes) {
-        throw new Error('recovery namespace exceeds the configured total quota');
-      }
-      if (!(await exists(target)) && (await globalObjectBytes(storeRoot)) + view.byteLength > maxGlobalBytes) {
-        throw new Error('recovery store exceeds the configured global quota');
-      }
-      await mkdir(dirname(target), { recursive: true });
-      await mkdir(dirname(manifest), { recursive: true });
-      if (!(await exists(target))) {
-        const temporary = `${target}.${randomUUID()}.tmp`;
-        await writeFile(temporary, view, { flag: 'wx' });
-        try {
-          await rename(temporary, target);
-        } catch (error) {
-          await rm(temporary, { force: true });
-          if (!(await exists(target))) throw error;
+        const view = asUint8Array(bytes);
+        if (view.byteLength > maxObjectBytes) throw new Error('recovery object exceeds the configured object quota');
+        const digest = digestBytes(view);
+        const manifestFile = metadataPath(scopedRoot, digest);
+        const existingManifest = await readManifest(digest);
+        const existingVariants = await objectVariants(scopedRoot, digest);
+        const existingStorage = existingManifest?.storage;
+        if (existingManifest !== undefined || existingVariants.length > 0) {
+          if (existingManifest === undefined) {
+            throw new Error('recovery object has no manifest; refusing migration by overwrite');
+          }
+          const existing = await readStored(digest, existingManifest, true);
+          if (digestBytes(existing) !== digest) throw new Error('recovery object integrity check failed');
+          if (encryption !== undefined && existingStorage === undefined && !encryption.allowLegacyPlaintext) {
+            throw new Error('recovery object is plaintext; explicit rekey migration is required');
+          }
+          return makeHandle(digest, existing.byteLength, existingManifest?.metadata, existingStorage);
         }
-      }
-      const handle = makeHandle(digest, view.byteLength, metadata);
-      if (!(await exists(manifest))) {
-        const temporary = `${manifest}.${randomUUID()}.tmp`;
-        await writeFile(temporary, JSON.stringify(handle) + '\n', { encoding: 'utf8', flag: 'wx' });
-        try {
-          await rename(temporary, manifest);
-        } catch (error) {
-          await rm(temporary, { force: true });
-          if (!(await exists(manifest))) throw error;
+
+        const storage: RecoveryStorage | undefined = encryption === undefined
+          ? undefined
+          : { format: 'aes-256-gcm/v1', keyId: encryption.activeKeyId };
+        let stored: Uint8Array;
+        if (storage === undefined) {
+          stored = view;
+        } else {
+          const key = encryption?.keys.get(storage.keyId);
+          if (key === undefined) throw new Error(`recovery encryption key is unavailable: ${storage.keyId}`);
+          stored = encryptBytes(view, digest, key);
         }
-      }
-      return handle;
+        const target = objectPathFor(scopedRoot, digest, storage);
+        if ((await totalObjectBytes(join(scopedRoot, 'objects'))) + stored.byteLength > maxTotalBytes) {
+          throw new Error('recovery namespace exceeds the configured total quota');
+        }
+        if ((await globalObjectBytes(storeRoot)) + stored.byteLength > maxGlobalBytes) {
+          throw new Error('recovery store exceeds the configured global quota');
+        }
+        await ensurePrivateDirectory(dirname(target));
+        await ensurePrivateDirectory(dirname(manifestFile));
+        await writeExclusiveAtomic(target, stored);
+        const handle = makeHandle(digest, view.byteLength, metadata, storage);
+        try {
+          await writeManifest(manifestFile, handle);
+        } catch (error) {
+          // The object is intentionally left as a GC-visible orphan. A failed
+          // manifest write must never pretend the content was committed.
+          throw error;
+        }
+        return handle;
       });
     },
 
     async get(handle) {
+      await ensureReady();
       const digest = parseHandle(handle);
-      const bytes = new Uint8Array(await readFile(objectPath(scopedRoot, digest)));
-      if (digestBytes(bytes) !== digest) throw new Error('recovery object integrity check failed');
-      return bytes;
+      return readStored(digest, await readManifest(digest));
     },
 
     async fetchRange(handle, start, endExclusive) {
@@ -283,40 +598,51 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
     },
 
     async verify(handle) {
+      await ensureReady();
       const digest = parseHandle(handle);
-      const object = objectPath(scopedRoot, digest);
+      const manifest = await readManifest(digest);
+      const object = objectPathFor(scopedRoot, digest, manifest?.storage);
       if (!(await exists(object))) return { ok: false, handle: `furypipe-recovery/v1/sha256/${digest}`, exists: false, digestMatches: false, bytes: 0, reason: 'object missing' };
-      const bytes = new Uint8Array(await readFile(object));
-      const digestMatches = digestBytes(bytes) === digest;
-      return {
-        ok: digestMatches,
-        handle: `furypipe-recovery/v1/sha256/${digest}`,
-        exists: true,
-        digestMatches,
-        bytes: bytes.byteLength,
-        ...(digestMatches ? {} : { reason: 'digest mismatch' }),
-      };
+      try {
+        const bytes = await readStored(digest, manifest);
+        return {
+          ok: true,
+          handle: `furypipe-recovery/v1/sha256/${digest}`,
+          exists: true,
+          digestMatches: true,
+          bytes: bytes.byteLength,
+        };
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : 'recovery object verification failed';
+        return {
+          ok: false,
+          handle: `furypipe-recovery/v1/sha256/${digest}`,
+          exists: true,
+          digestMatches: false,
+          bytes: manifest?.bytes ?? 0,
+          reason: message.slice(0, 256),
+        };
+      }
     },
 
     async manifest(handle) {
+      await ensureReady();
       const digest = parseHandle(handle);
-      const file = metadataPath(scopedRoot, digest);
-      try {
-        return JSON.parse(await readFile(file, 'utf8')) as RecoveryHandle & { metadata?: RecoveryMetadata };
-      } catch {
-        const verification = await this.verify(handle);
-        if (!verification.exists) throw new Error('recovery manifest and object missing');
-        return makeHandle(digest, verification.bytes);
-      }
+      const current = await readManifest(digest);
+      if (current !== undefined) return current;
+      if (encryption !== undefined) throw new Error('recovery manifest is required when encryption is configured');
+      const verification = await this.verify(handle);
+      if (!verification.exists) throw new Error('recovery manifest and object missing');
+      return makeHandle(digest, verification.bytes);
     },
 
     async delete(handle) {
       return enqueue(async () => {
         const digest = parseHandle(handle);
-        const object = objectPath(scopedRoot, digest);
         const manifest = metadataPath(scopedRoot, digest);
-        const existed = await exists(object) || await exists(manifest);
-        await rm(object, { force: true });
+        const variants = await objectVariants(scopedRoot, digest);
+        const existed = variants.length > 0 || await exists(manifest);
+        await Promise.all(variants.map((variant) => rm(variant, { force: true })));
         await rm(manifest, { force: true });
         return existed;
       });
@@ -329,36 +655,42 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
         let orphaned = 0;
         let bytesFreed = 0;
         const referenced = new Set<string>();
+        const protectedDigests = new Set<string>();
         try {
           for (const name of await readdir(manifestRoot)) {
             if (!name.endsWith('.json')) continue;
             const digest = name.slice(0, -'.json'.length);
             if (!/^[0-9a-f]{64}$/.test(digest)) continue;
             const file = join(manifestRoot, name);
-            referenced.add(digest);
             let manifest: RecoveryHandle & { metadata?: RecoveryMetadata };
             try {
-              manifest = JSON.parse(await readFile(file, 'utf8')) as RecoveryHandle & { metadata?: RecoveryMetadata };
+              manifest = normalizeManifest(JSON.parse(await readFile(file, 'utf8')) as unknown);
             } catch {
+              protectedDigests.add(digest);
               continue;
             }
-            if (manifest.digest !== digest) continue;
+            if (manifest.digest !== digest) {
+              protectedDigests.add(digest);
+              continue;
+            }
             const expiresAt = manifest.metadata?.expiresAt;
-            if (typeof expiresAt !== 'string' || Number.isNaN(Date.parse(expiresAt)) || Date.parse(expiresAt) > now.getTime()) continue;
-            const object = objectPath(scopedRoot, digest);
-            try { bytesFreed += (await stat(object)).size; } catch { /* manifest-only corruption */ }
-            await rm(object, { force: true });
+            if (typeof expiresAt !== 'string' || Number.isNaN(Date.parse(expiresAt)) || Date.parse(expiresAt) > now.getTime()) {
+              referenced.add(objectReferenceKey(digest, objectPathFor(scopedRoot, digest, manifest.storage)));
+              continue;
+            }
+            for (const object of await objectVariants(scopedRoot, digest)) {
+              try { bytesFreed += (await stat(object)).size; } catch { /* manifest-only corruption */ }
+              await rm(object, { force: true });
+            }
             await rm(file, { force: true });
-            referenced.delete(digest);
             expired += 1;
           }
         } catch (caught) {
           if ((caught as NodeJS.ErrnoException).code !== 'ENOENT') throw caught;
         }
         for (const object of await objectFiles(join(scopedRoot, 'objects'))) {
-          const digest = object.split(/[\\/]/).pop() ?? '';
-          if (!/^[0-9a-f]{64}$/.test(digest) || referenced.has(digest)) continue;
-          if (await exists(metadataPath(scopedRoot, digest))) continue;
+          const digest = objectDigestFromPath(object);
+          if (digest === undefined || protectedDigests.has(digest) || referenced.has(objectReferenceKey(digest, object))) continue;
           bytesFreed += (await stat(object)).size;
           await rm(object, { force: true });
           orphaned += 1;
@@ -369,9 +701,10 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
 
     backup(destination) {
       return enqueue(async () => {
+        await verifyScope();
         const temporary = `${destination}.${randomUUID()}.tmp`;
         try {
-          await mkdir(temporary, { recursive: true });
+          await ensurePrivateDirectory(temporary);
           const objects = await copyTree(join(scopedRoot, 'objects'), join(temporary, 'objects'), true);
           const manifests = await copyTree(join(scopedRoot, 'manifests'), join(temporary, 'manifests'), true);
           const summary: RecoveryBackupSummary = {
@@ -380,9 +713,10 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
             objects: objects.files,
             manifests: manifests.files,
             bytes: objects.bytes,
+            evidence: 'BACKUP_EXISTS',
           };
-          await writeFile(join(temporary, 'backup.json'), JSON.stringify(summary) + '\n', { encoding: 'utf8', flag: 'wx' });
-          await mkdir(dirname(destination), { recursive: true });
+          await writePrivateFile(join(temporary, 'backup.json'), JSON.stringify(summary) + '\n', 'wx');
+          await ensurePrivateDirectory(dirname(destination));
           await rename(temporary, destination);
           return summary;
         } catch (caught) {
@@ -395,16 +729,93 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
     restore(source) {
       return enqueue(async () => {
         const summaryFile = join(source, 'backup.json');
-        const summary = JSON.parse(await readFile(summaryFile, 'utf8')) as RecoveryBackupSummary;
-        if (summary.format !== 'furypipe-recovery-backup/v1' || (summary.namespace !== undefined && summary.namespace !== namespace)) {
+        const parsed = JSON.parse(await readFile(summaryFile, 'utf8')) as Partial<RecoveryBackupSummary>;
+        const summary: RecoveryBackupSummary = {
+          format: parsed.format as RecoveryBackupSummary['format'],
+          ...(parsed.namespace !== undefined ? { namespace: parsed.namespace } : {}),
+          objects: parsed.objects ?? -1,
+          manifests: parsed.manifests ?? -1,
+          bytes: parsed.bytes ?? -1,
+          evidence: 'BACKUP_EXISTS',
+        };
+        if (summary.format !== 'furypipe-recovery-backup/v1'
+          || (summary.namespace !== undefined && summary.namespace !== namespace)
+          || !Number.isSafeInteger(summary.objects) || summary.objects < 0
+          || !Number.isSafeInteger(summary.manifests) || summary.manifests < 0
+          || !Number.isSafeInteger(summary.bytes) || summary.bytes < 0
+          || (parsed.evidence !== undefined && parsed.evidence !== 'BACKUP_EXISTS')) {
           throw new Error('invalid recovery backup manifest');
         }
+        await ensurePrivateDirectory(join(scopedRoot, 'objects'));
+        await ensurePrivateDirectory(join(scopedRoot, 'manifests'));
         const objects = await copyTree(join(source, 'objects'), join(scopedRoot, 'objects'), false);
         const manifests = await copyTree(join(source, 'manifests'), join(scopedRoot, 'manifests'), false);
         if (objects.files !== summary.objects || manifests.files !== summary.manifests || objects.bytes !== summary.bytes) {
           throw new Error('recovery backup verification failed');
         }
-        return summary;
+        await verifyScope();
+        return { ...summary, evidence: 'RESTORE_VERIFIED' };
+      });
+    },
+
+    rekey(targetKeyId) {
+      return enqueue(async () => {
+        if (encryption === undefined) throw new Error('recovery encryption is not configured');
+        const activeKeyId = validateKeyId((targetKeyId ?? encryption.activeKeyId).trim());
+        const activeKey = encryption.keys.get(activeKeyId);
+        if (activeKey === undefined) throw new Error(`recovery encryption key is unavailable: ${activeKeyId}`);
+        const manifestRoot = join(scopedRoot, 'manifests');
+        let entries;
+        try {
+          entries = await readdir(manifestRoot);
+        } catch (caught) {
+          if ((caught as NodeJS.ErrnoException).code === 'ENOENT') {
+            return {
+              format: 'furypipe-recovery-rekey/v1',
+              ...(namespace ? { namespace } : {}),
+              activeKeyId,
+              scanned: 0,
+              migrated: 0,
+              alreadyCurrent: 0,
+            } satisfies RecoveryRekeySummary;
+          }
+          throw caught;
+        }
+        let scanned = 0;
+        let migrated = 0;
+        let alreadyCurrent = 0;
+        for (const name of entries) {
+          if (!name.endsWith('.json')) continue;
+          const digest = name.slice(0, -'.json'.length);
+          if (!/^[0-9a-f]{64}$/u.test(digest)) continue;
+          const current = await readManifest(digest);
+          if (current === undefined) continue;
+          scanned += 1;
+          if (current.storage?.keyId === activeKeyId) {
+            alreadyCurrent += 1;
+            continue;
+          }
+          const bytes = await readStored(digest, current, true);
+          const storage: RecoveryStorage = { format: 'aes-256-gcm/v1', keyId: activeKeyId };
+          const target = objectPathFor(scopedRoot, digest, storage);
+          const updated = makeHandle(digest, bytes.byteLength, current.metadata, storage);
+          await ensurePrivateDirectory(dirname(target));
+          if (await exists(target)) {
+            await readStored(digest, updated);
+          } else {
+            await writeExclusiveAtomic(target, encryptBytes(bytes, digest, activeKey));
+          }
+          await replaceManifestAtomic(metadataPath(scopedRoot, digest), JSON.stringify(updated) + '\n');
+          migrated += 1;
+        }
+        return {
+          format: 'furypipe-recovery-rekey/v1',
+          ...(namespace ? { namespace } : {}),
+          activeKeyId,
+          scanned,
+          migrated,
+          alreadyCurrent,
+        } satisfies RecoveryRekeySummary;
       });
     },
   };

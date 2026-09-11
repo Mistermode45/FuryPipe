@@ -123,7 +123,24 @@ Cette preuve couvre le montage réseau local du transport MCP. Elle ne couvre
 pas un listener distant authentifié, un Authorization Server, un verifier OAuth
 hébergé, une conformance multi-client ou une validation réseau externe.
 
-Les versions Node de cette matrice sont relevées depuis l'index officiel des
+## M4 Recovery Store chiffré — 2026-09-11
+
+| Élément | Résultat | Mesure / preuve |
+|---|---|---|
+| Recovery ciblé | PASS local | `tests/recovery-store.test.ts` : 14/14 ; CAS, namespace, quotas, TTL/GC, orphan, backup/restore, corruption, rotation et reprise de manifest |
+| Chiffrement au repos | PASS local | AES-256-GCM par objet ; envelope `FURYENC1`, nonce 12 octets, tag GCM 16 octets, AAD liée au digest ; plaintext absent du fichier ciphertext |
+| Rotation de clés | PASS local | `rekey()` conserve la lecture de `key-v1`, publie `key-v2`, remplace la référence du manifest ; `gc()` supprime l’ancienne variante non référencée |
+| Migration legacy | FAIL-CLOSED | une configuration avec chiffrement refuse plaintext, backup et restore tant que `rekey()` n’a pas été demandé explicitement |
+| Atomicité / reprise | PASS local borné | hard-link non-écrasant après `sync()` ; sauvegarde de manifest récupérée par un nouveau store après interruption simulée |
+| Permissions | PARTIAL | `0700` répertoires et `0600` fichiers tentés ; ACL Windows host-managed, non certifiées par ce checkout |
+| Gates après M4 | PASS local | suite complète `100 fichiers / 1 318 tests`, typecheck, build, audit production et package smoke ; tarball `furypipe-0.13.2.tgz` |
+
+Le statut M4 reste `PARTIAL` : aucune preuve n’est encore produite pour un
+kill réel au milieu des opérations, plusieurs processus concurrents, une
+corruption du filesystem ou un backend SQLite. Les clés sont un contrat de
+l’application hôte et ne sont ni générées ni persistées par FuryPipe.
+
+Les versions Node de cette matrice sont relevées depuis l’index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le
 développement, mais n'est pas le runtime de production.
 

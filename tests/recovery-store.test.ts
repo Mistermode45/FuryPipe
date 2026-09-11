@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createRecoveryStore, type RecoveryHandle } from '../src/core/recovery-store.js';
+import { createRecoveryStore } from '../src/core/recovery-store.js';
 
 const roots: string[] = [];
 
@@ -42,6 +42,18 @@ describe('Recovery Store', () => {
     await writeFile(join(root, 'namespaces', 'test-tenant', 'objects', first.digest.slice(0, 2), first.digest), 'tampered');
     expect((await store.verify(first)).ok).toBe(false);
     await expect(store.get(first)).rejects.toThrow('integrity check failed');
+  });
+
+  it('refuses to overwrite an object variant left without its manifest', async () => {
+    const { root, store } = await createStoreFixture();
+    const bytes = new TextEncoder().encode('orphan encrypted variant');
+    const digest = createHash('sha256').update(bytes).digest('hex');
+    const objectDirectory = join(root, 'namespaces', 'test-tenant', 'objects', digest.slice(0, 2));
+    const orphan = join(objectDirectory, `${digest}.enc-key-v1`);
+    await mkdir(objectDirectory, { recursive: true });
+    await writeFile(orphan, 'orphan', { flag: 'wx' });
+    await expect(store.put(bytes)).rejects.toThrow('no manifest');
+    expect(await readFile(orphan, 'utf8')).toBe('orphan');
   });
 
   it('isolates namespaces and deletes only the addressed object', async () => {
@@ -112,11 +124,93 @@ describe('Recovery Store', () => {
     const handle = await source.put(new TextEncoder().encode('recover me'), { source: 'backup-test' });
     const destination = join(backup, 'snapshot');
     const summary = await source.backup(destination);
-    expect(summary).toMatchObject({ format: 'furypipe-recovery-backup/v1', namespace: 'backup', objects: 1, manifests: 1, bytes: 10 });
+    expect(summary).toMatchObject({ format: 'furypipe-recovery-backup/v1', namespace: 'backup', objects: 1, manifests: 1, bytes: 10, evidence: 'BACKUP_EXISTS' });
     await source.delete(handle);
     const restored = await source.restore(destination);
-    expect(restored).toEqual(summary);
+    expect(restored).toMatchObject({ ...summary, evidence: 'RESTORE_VERIFIED' });
+    expect(restored.evidence).not.toBe(summary.evidence);
     expect(new TextDecoder().decode(await source.get(handle))).toBe('recover me');
-    await expect(source.restore(destination)).resolves.toEqual(summary);
+    await expect(source.restore(destination)).resolves.toMatchObject({ ...summary, evidence: 'RESTORE_VERIFIED' });
+  });
+
+  it('encrypts objects at rest, reads retained key versions, and rekeys explicitly', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-encrypted-'));
+    roots.push(root);
+    const keyOne = new Uint8Array(32).fill(1);
+    const keyTwo = new Uint8Array(32).fill(2);
+    const first = createRecoveryStore(root, {
+      namespace: 'encrypted',
+      encryption: { activeKeyId: 'key-v1', keys: { 'key-v1': keyOne } },
+    });
+    const handle = await first.put(new TextEncoder().encode('secret at rest'), { source: 'encrypted-test' });
+    expect(handle.storage).toEqual({ format: 'aes-256-gcm/v1', keyId: 'key-v1' });
+    const objectDirectory = join(root, 'namespaces', 'encrypted', 'objects', handle.digest.slice(0, 2));
+    const encryptedFile = join(objectDirectory, `${handle.digest}.enc-key-v1`);
+    expect(await readFile(encryptedFile, 'utf8')).not.toContain('secret at rest');
+
+    const rotated = createRecoveryStore(root, {
+      namespace: 'encrypted',
+      encryption: { activeKeyId: 'key-v2', keys: { 'key-v1': keyOne, 'key-v2': keyTwo } },
+    });
+    expect(new TextDecoder().decode(await rotated.get(handle))).toBe('secret at rest');
+    await expect(rotated.rekey()).resolves.toMatchObject({ activeKeyId: 'key-v2', scanned: 1, migrated: 1, alreadyCurrent: 0 });
+    expect(await readdir(objectDirectory)).toEqual(expect.arrayContaining([`${handle.digest}.enc-key-v2`]));
+    await rotated.gc();
+    expect(await readdir(objectDirectory)).not.toContain(`${handle.digest}.enc-key-v1`);
+
+    const strictRotated = createRecoveryStore(root, {
+      namespace: 'encrypted',
+      encryption: { activeKeyId: 'key-v2', keys: { 'key-v2': keyTwo } },
+    });
+    expect(new TextDecoder().decode(await strictRotated.get(handle))).toBe('secret at rest');
+  });
+
+  it('fails closed on missing keys, tampered ciphertext and legacy plaintext until rekey', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-encryption-fail-'));
+    roots.push(root);
+    const key = new Uint8Array(32).fill(3);
+    const plain = createRecoveryStore(root, { namespace: 'legacy' });
+    const legacyHandle = await plain.put(new TextEncoder().encode('legacy content'));
+    const strict = createRecoveryStore(root, {
+      namespace: 'legacy',
+      encryption: { activeKeyId: 'key-v1', keys: { 'key-v1': key } },
+    });
+    await expect(strict.get(legacyHandle)).rejects.toThrow('explicit rekey migration');
+    await expect(strict.backup(join(root, 'legacy-backup'))).rejects.toThrow('explicit rekey migration');
+    await expect(strict.rekey()).resolves.toMatchObject({ migrated: 1 });
+    expect(new TextDecoder().decode(await strict.get(legacyHandle))).toBe('legacy content');
+
+    const encryptedHandle = await strict.put(new TextEncoder().encode('tamper me'));
+    const encryptedPath = join(root, 'namespaces', 'legacy', 'objects', encryptedHandle.digest.slice(0, 2), `${encryptedHandle.digest}.enc-key-v1`);
+    const tampered = await readFile(encryptedPath);
+    tampered[tampered.length - 1] = tampered[tampered.length - 1]! ^ 0xff;
+    await writeFile(encryptedPath, tampered);
+    expect(await strict.verify(encryptedHandle)).toMatchObject({ ok: false, exists: true, digestMatches: false });
+    await expect(strict.get(encryptedHandle)).rejects.toThrow('cannot be opened');
+
+    const noKey = createRecoveryStore(root, {
+      namespace: 'legacy',
+      encryption: { activeKeyId: 'key-v2', keys: { 'key-v2': new Uint8Array(32).fill(4) } },
+    });
+    await expect(noKey.get(legacyHandle)).rejects.toThrow('encryption key is unavailable');
+  });
+
+  it('recovers a manifest backup after a simulated process interruption', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-restart-'));
+    roots.push(root);
+    const key = new Uint8Array(32).fill(5);
+    const store = createRecoveryStore(root, {
+      namespace: 'restart',
+      encryption: { activeKeyId: 'key-v1', keys: { 'key-v1': key } },
+    });
+    const handle = await store.put(new TextEncoder().encode('restart-safe'));
+    const manifest = join(root, 'namespaces', 'restart', 'manifests', `${handle.digest}.json`);
+    const backup = `${manifest}.recovery-bak-simulated`;
+    await rename(manifest, backup);
+    const reopened = createRecoveryStore(root, {
+      namespace: 'restart',
+      encryption: { activeKeyId: 'key-v1', keys: { 'key-v1': key } },
+    });
+    expect(new TextDecoder().decode(await reopened.get(handle))).toBe('restart-safe');
   });
 });

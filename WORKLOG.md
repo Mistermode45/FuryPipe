@@ -269,3 +269,36 @@
 - M8 reste `PARTIAL` : le listener Node loopback est réellement raccordé,
   mais l’Authorization Server, le verifier OAuth hébergé, la conformance
   multi-client et le test réseau externe ne sont pas déclarés livrés.
+
+## 2026-09-11 — M4 Recovery Store chiffré et récupérable
+
+- `src/core/recovery-store.ts` conserve le CAS SHA-256 et ajoute un stockage
+  optionnel AES-256-GCM par objet. Le key-ring est fourni par l’application
+  hôte (`activeKeyId` + clés de 32 octets) ; aucun secret n’est écrit dans les
+  manifests, les logs ou les receipts.
+- Les manifests portent le format de stockage et le `keyId`. Les anciennes
+  clés peuvent rester lisibles pendant une rotation, puis `rekey()` écrit une
+  nouvelle variante chiffrée et déplace la référence du manifest ; `gc()`
+  supprime ensuite les variantes chiffrées non référencées.
+- Les objets et manifests sont publiés sans écrasement après écriture et
+  synchronisation du fichier temporaire. Une publication par hard-link évite
+  qu’un writer remplace un objet immuable existant. Les remplacements de
+  manifest conservent une sauvegarde récupérable au prochain accès.
+- Une configuration chiffrée refuse par défaut la lecture, la sauvegarde ou la
+  restauration d’un objet plaintext legacy. La migration doit être explicite
+  via `rekey()` ; les variantes sans manifest ne peuvent pas être écrasées.
+- Backup/restore vérifient désormais les compteurs, octets, digests et
+  ciphertexts déchiffrables ; les résultats distinguent `BACKUP_EXISTS` de
+  `RESTORE_VERIFIED`. Les permissions POSIX `0700`/`0600` sont tentées ; les
+  ACL Windows restent gérées par l’hôte et ne sont pas déclarées prouvées.
+- `tests/recovery-store.test.ts` couvre 14 tests : CAS, isolation, quotas,
+  GC, backup/restore, orphan variant, chiffrement au repos, rotation/rekey,
+  clé absente, ciphertext altéré, legacy fail-closed et reprise de manifest
+  après interruption simulée.
+- Preuves locales de la tranche : suite complète `100 fichiers / 1 318 tests`,
+  `pnpm run typecheck`, `pnpm run build`, `pnpm audit --prod
+  --audit-level high` et `pnpm run package:smoke` verts. Le tarball contrôlé
+  est `furypipe-0.13.2.tgz`; aucun publish n’a été effectué.
+- Statut M4 : `PARTIAL`. Les tests couvrent une interruption simulée dans le
+  même système de fichiers, pas un kill réel du processus, plusieurs writers
+  indépendants, une corruption de filesystem ou un contrôle ACL Windows.

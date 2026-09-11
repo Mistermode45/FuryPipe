@@ -73,6 +73,9 @@ export {
   type RecoveryStoreOptions,
   type RecoveryVerification,
   type RecoveryBackupSummary,
+  type RecoveryEncryptionOptions,
+  type RecoveryStorage,
+  type RecoveryRekeySummary,
 } from './recovery-store.js';
 export {
   createContextIR,
