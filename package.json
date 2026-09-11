@@ -82,6 +82,10 @@
       "types": "./dist/core/provider-fabric.d.ts",
       "import": "./dist/core/provider-fabric.js"
     },
+    "./provider-runtime": {
+      "types": "./dist/core/provider-runtime.d.ts",
+      "import": "./dist/core/provider-runtime.js"
+    },
     "./openclaw": {
       "types": "./dist/openclaw.d.ts",
       "import": "./dist/openclaw.js"
