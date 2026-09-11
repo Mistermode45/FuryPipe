@@ -18,7 +18,11 @@ concurrency:
 
 jobs:
   report:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-14]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -46,7 +50,7 @@ jobs:
       - name: Upload license evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: furypipe-license-report
+          name: furypipe-license-report-${{ matrix.os }}
           path: |
             licenses.raw.json
             licenses.summary.json
