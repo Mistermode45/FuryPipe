@@ -104,6 +104,12 @@ try {
     "const m = await import('furypipe/mcp-http-node'); if (typeof m.listenMcpHttpNode !== 'function') process.exit(1);",
   ], installDir);
   assert(nodeHttpExport.stderr === '', `Node MCP HTTP package export wrote stderr: ${nodeHttpExport.stderr}`);
+  const furyPromptExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/fury-prompt'); if (typeof m.compileFuryPrompt !== 'function') process.exit(1);",
+  ], installDir);
+  assert(furyPromptExport.stderr === '', `FuryPrompt package export wrote stderr: ${furyPromptExport.stderr}`);
   await runMcp(process.execPath, [mcp], {
     jsonrpc: '2.0',
     id: 1,

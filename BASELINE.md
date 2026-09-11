@@ -140,6 +140,22 @@ kill réel au milieu des opérations, plusieurs processus concurrents, une
 corruption du filesystem ou un backend SQLite. Les clés sont un contrat de
 l’application hôte et ne sont ni générées ni persistées par FuryPipe.
 
+## M12 FuryPrompt Compiler — 2026-09-11
+
+| Élément | Résultat | Mesure / preuve |
+|---|---|---|
+| Compilateur structuré | PASS local borné | `compileFuryPrompt()` public ; 15 sections canoniques ; niveaux explicites et inférence bornée |
+| Prompt trivial | PASS local | un seul court `Task` reste la sortie compacte sans wrapper de titres |
+| Exactitude / inspectabilité | PASS local | rendu déterministe, valeurs exactes conservées, taille UTF-8, digests source/sortie et manifest ExactGuard `safe` |
+| Sécurité des bornes | PASS local | valeurs vides/non textuelles refusées, 256 valeurs par section, 1 MiB par valeur, 8 MiB cumulés |
+| Contrats Context/Agent Fabric | IMPLEMENTED_NOT_WIRED | `integrationHints` metadata-only ; aucune exécution automatique de transform, outil, skill, MCP ou agent |
+| Tests ciblés | PASS local | `tests/fury-prompt.test.ts` : 5/5 |
+| Package export | PASS local | export `furypipe/fury-prompt` contrôlé par package smoke |
+
+M12 reste `PARTIAL` : la compilation est atteignable et testée, mais le
+compilateur n’est pas encore branché automatiquement au chemin
+`transformRequest` ni à un Agent Harness exécutable.
+
 Les versions Node de cette matrice sont relevées depuis l’index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le
 développement, mais n'est pas le runtime de production.

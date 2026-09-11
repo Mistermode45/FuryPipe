@@ -302,3 +302,31 @@
 - Statut M4 : `PARTIAL`. Les tests couvrent une interruption simulée dans le
   même système de fichiers, pas un kill réel du processus, plusieurs writers
   indépendants, une corruption de filesystem ou un contrôle ACL Windows.
+
+## 2026-09-11 — M12 FuryPrompt Compiler
+
+- `src/fury-prompt.ts` ajoute un compilateur structuré FuryPipe-native pour
+  `Intent`, `Role`, `Objective`, `Context`, `Inputs`, `Constraints`, `Task`,
+  `Plan`, `Tools`, `Skills`, `MCP`, `Subagents`, `Output Contract`,
+  `Acceptance Criteria` et `Verification`.
+- Les niveaux `TRIVIAL`, `STANDARD`, `ENGINEERING`, `RESEARCH`, `MULTI_AGENT`
+  et `SECURITY_CRITICAL` ont un choix explicite ou une inférence bornée. Un
+  prompt trivial reste compact ; le niveau security-critical n’est jamais
+  déduit d’un mot présent dans le contenu et demande un signal de l’appelant.
+- Le rendu est ordonné par une liste canonique, les valeurs restent présentes
+  dans la sortie, et les tailles sont bornées avant rendu. Chaque compilation
+  expose taille UTF-8, digests SHA-256, sections rendues, explication et
+  manifest ExactGuard `safe` par défaut ; les valeurs protégées ne sont pas
+  copiées dans le manifest.
+- L’export `furypipe/fury-prompt` et l’export racine sont atteignables. Le
+  package smoke vérifie l’export installé. Le module n’exécute aucun outil,
+  skill, MCP ou agent ; ses `integrationHints` restent metadata-only.
+- `tests/fury-prompt.test.ts` couvre 5 tests : compacité, quinze sections et
+  ordre, déterminisme/valeurs exactes/manifest, signal critique et limites.
+- Preuves locales M12 : suite complète, `pnpm run typecheck`, `pnpm run build`,
+  `pnpm run audit` et `pnpm run package:smoke` passent ; le test ciblé
+  FuryPrompt est inclus dans la suite. Le tarball réel reste
+  `furypipe-0.13.2.tgz` et n’a pas été publié.
+- Statut M12 : `PARTIAL` selon la règle de non-promotion des modules isolés ;
+  le compilateur public est réel et testé, mais le wiring automatique à
+  `transformRequest` et l’exécution par Agent Harness restent à construire.

@@ -173,6 +173,17 @@ export {
   type DocumentCompilerInput,
 } from './document-compiler.js';
 export {
+  compileFuryPrompt,
+  FURY_PROMPT_SECTION_ORDER,
+  type FuryPromptCompilation,
+  type FuryPromptCompileInput,
+  type FuryPromptLevel,
+  type FuryPromptRenderedSection,
+  type FuryPromptSection,
+  type FuryPromptSections,
+  type FuryPromptSectionValue,
+} from '../fury-prompt.js';
+export {
   analyzeContextFabric,
   finalizeContextFabricAnalysis,
   type ContextFabricAnalysis,

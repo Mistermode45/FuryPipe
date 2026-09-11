@@ -90,6 +90,10 @@
       "types": "./dist/agent-fabric.d.ts",
       "import": "./dist/agent-fabric.js"
     },
+    "./fury-prompt": {
+      "types": "./dist/fury-prompt.d.ts",
+      "import": "./dist/fury-prompt.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"
@@ -127,6 +131,7 @@
     "docs/PXPIPE_GAP_ANALYSIS.md",
     "docs/CLI.md",
     "docs/MCP.md",
+    "docs/FURY_PROMPT.md",
     "docs/CONTEXT_FABRIC.md",
     "docs/PROVIDER_FABRIC.md",
     "docs/OPENCLAW.md",
