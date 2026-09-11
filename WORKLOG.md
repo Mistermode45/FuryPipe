@@ -414,3 +414,16 @@
 - Le test renderer FR et la parité des catalogues couvrent cette surface. Le dashboard, MCP et l’auto-détection de locale OS ne sont pas déclarés câblés.
 - Vérification : 3 fichiers i18n/doctor — 16 tests verts ; `pnpm exec tsx src/node.ts doctor --locale=fr` produit la sortie française ; suite complète — 105 fichiers / 1 364 tests verts ; typecheck, build, audit et package smoke verts.
 - Documentation corrigée : `docs/I18N.md` et `docs/I18N_RUNTIME.md` distinguent désormais le câblage CLI `doctor` prouvé des surfaces dashboard/browser/MCP encore non câblées.
+
+
+## 2026-09-12 — Synchronisation finale des preuves `ff6448f`
+
+- GitHub a été revérifié sur le HEAD `ff6448f454097c644d230dfb1770376735a759a4` de la PR #2.
+- CI push `34657046569` et CI PR `34657049423` sont vertes sur Ubuntu 24.04, macOS 14 et Windows 2025 avec Node 22.23.2, 24.21.0 et 26.8.2.
+- CodeQL `34657046529`, Supply Chain `34657046526`, License Compliance `34657046524`, Secret Scan push/PR `34657046560`/`34657049448` et Benchmark Contract push/PR `34657046540`/`34657049387` sont verts. Dependency Review reste skipped selon le réglage du repository.
+- `TASKS.md` a été remis à jour pour supprimer les anciens états « CI à vérifier », l’ancienne référence M16 `60005514`, l’ancien état M18 sans CLI et l’ancien M19 sans évaluateur.
+- M4/M11/M12/M13 restent `PARTIAL` malgré la CI distante : leurs limites externes/hébergées et/ou transactionnelles restent explicitement ouvertes.
+- M15 reste `PARTIAL` : kernel, API/fragment dashboard et release-readiness sont présents, mais l’alimentation runtime exhaustive du Control Room n’est pas encore prouvée.
+- M17 reste `PARTIAL / HARNESS_IMPLEMENTED_BENCHMARK_NON_EXECUTED` : aucun benchmark fournisseur réel n’autorise de claim de performance.
+- M18 est désormais décrit comme partiellement câblé : `doctor --locale=fr` est prouvé, dashboard/browser/MCP/auto-détection OS/RTL visuel restent ouverts.
+- M19 reste `BLOCKED` même si son évaluateur fail-closed est testé : aucun RC, merge de branche par défaut, tag, publication npm ou déploiement n’est autorisé/exécuté.
