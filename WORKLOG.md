@@ -413,3 +413,4 @@
 - `doctor` consomme maintenant les catalogues i18n existants pour ses libellés humains et accepte `--locale=<BCP-47>` ; la sortie JSON, les statuts techniques, chemins, versions, URL et identifiants restent inchangés.
 - Le test renderer FR et la parité des catalogues couvrent cette surface. Le dashboard, MCP et l’auto-détection de locale OS ne sont pas déclarés câblés.
 - Vérification : 3 fichiers i18n/doctor — 16 tests verts ; `pnpm exec tsx src/node.ts doctor --locale=fr` produit la sortie française ; suite complète — 105 fichiers / 1 364 tests verts ; typecheck, build, audit et package smoke verts.
+- Documentation corrigée : `docs/I18N.md` et `docs/I18N_RUNTIME.md` distinguent désormais le câblage CLI `doctor` prouvé des surfaces dashboard/browser/MCP encore non câblées.

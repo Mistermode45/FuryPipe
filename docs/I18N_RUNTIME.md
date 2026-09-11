@@ -19,9 +19,9 @@ Implemented:
 - FR/EN catalog-key parity enforcement;
 - pseudo-locale compatibility through the existing core.
 
-Deliberately not claimed:
+The `doctor` human-readable CLI labels now consume the shared catalog through
+`--locale=<BCP-47>`. The following remain deliberately not claimed:
 
-- CLI flag wiring;
 - dashboard locale selector;
 - browser localStorage persistence;
 - OS locale auto-discovery;
