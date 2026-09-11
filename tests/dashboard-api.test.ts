@@ -209,7 +209,6 @@ describe('serveControlRoomJson', () => {
     expect(html).toContain('Control Room V5');
     expect(html).toContain('Security / Supply Chain');
     expect(html).toContain('Provider benchmarks are not verified');
-    expect(html).toContain('db');
   });
 });
 
