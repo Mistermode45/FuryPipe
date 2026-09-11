@@ -268,7 +268,10 @@ export async function runMcpStdio(store: RecoveryStore): Promise<void> {
   }
 }
 
-if (process.argv[1]?.endsWith('mcp.js')) {
+// Keep direct `node dist/mcp.js` useful for local diagnostics, but let the
+// package bin entrypoint own normal process startup. This avoids relying on
+// how npm represents its Unix .bin symlink in process.argv[1].
+if (/(?:^|[\\/])dist[\\/]mcp\.js$/u.test(process.argv[1] ?? '')) {
   const root = process.env.FURYPIPE_RECOVERY_ROOT?.trim() || `${process.cwd()}/.furypipe/recovery`;
   const store = createRecoveryStore(root, { namespace: process.env.FURYPIPE_TENANT?.trim() || 'default' });
   runMcpStdio(store).catch((caught) => {
