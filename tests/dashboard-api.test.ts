@@ -213,6 +213,21 @@ describe('serveControlRoomJson', () => {
     expect(html).toContain('release actions executed: no');
     expect(html).toContain('Provider benchmarks are not verified');
   });
+
+  it('localizes Control Room human labels without translating machine statuses', async () => {
+    const snapshot = controlRoomSnapshot();
+    const withControlRoom = new DashboardState(tmp, async () => new Map(), undefined, () => snapshot);
+    const html = await (await withControlRoom.serveFragment(
+      'control-room',
+      new URL('http://localhost/fragments/control-room?locale=fr'),
+      1234,
+    )).text();
+    expect(html).toContain('Sécurité / Supply Chain');
+    expect(html).toContain('Préparation de la release');
+    expect(html).toContain('actions de release exécutées : non');
+    expect(html).toContain('<strong>NOT_AVAILABLE</strong>');
+    expect(html).toContain('commit <code>aaaaaaaaaaaa</code>');
+  });
 });
 
 // ---- /api/stats.json ------------------------------------
@@ -458,6 +473,28 @@ describe('serveFragment', () => {
   it('404s unknown fragments', async () => {
     const res = await dash.serveFragment('nope', url, 1);
     expect(res.status).toBe(404);
+  });
+});
+
+describe('dashboard locale surface', () => {
+  it('renders French lang metadata, shell labels and browser persistence controls', () => {
+    const html = renderPage(47821, '', 'fr');
+    expect(html).toContain('<html lang="fr" dir="ltr">');
+    expect(html).toContain('<title>FuryPipe — tableau de bord en direct</title>');
+    expect(html).toContain('Voir exactement ce qui a été transformé et pourquoi.');
+    expect(html).toContain('Langue <select');
+    expect(html).toContain('furypipe-locale');
+    expect(html).toContain('window.ppLocale = "fr"');
+    expect(html).toContain("event.detail.parameters.locale = window.ppLocale");
+  });
+
+  it('marks the bidi pseudo-locale RTL and falls back safely for invalid tags', () => {
+    const rtl = renderPage(47821, '', 'ar-XB');
+    expect(rtl).toContain('<html lang="ar-XB" dir="rtl">');
+
+    const invalid = renderPage(47821, '', '<script>');
+    expect(invalid).toContain('<html lang="en" dir="ltr">');
+    expect(invalid).not.toContain('<script><script>');
   });
 });
 
