@@ -436,3 +436,14 @@
 - La fixture enfant crée un état de crash réaliste (résidu fsync + verrou racine), termine par `SIGKILL`, puis le test vieillit le verrou abandonné et vérifie qu'une nouvelle opération Recovery récupère le store, supprime le résidu et reste lisible.
 - M4 reste `PARTIAL` : ce test ne couvre pas encore un kill injecté à chacune des phases internes de publication/rename, les ACL Windows réelles restent host-managed et aucune décision SQLite n'est inventée.
 - Tranche PR #15 ; CI/CodeQL/security/license/benchmark distants à vérifier avant merge.
+
+
+## 2026-09-12 — M7 Provider Runtime health + cost oracle
+
+- `src/core/provider-runtime.ts` ajoute un store runtime explicite pour les observations de santé et les catalogues de prix approuvés par l'hôte.
+- Les preuves health ont une fenêtre `observedAt/expiresAt`; une preuve périmée redevient automatiquement `unknown` au lieu de rester verte.
+- `runtime.registry(now)` produit un `ProviderRegistry` dérivé, avec uniquement les preuves fraîches. `transformRequest({ providerRegistry })` transmet cette disponibilité au Context Fabric et à la Policy Fabric.
+- Une observation `unavailable` devient une contrainte policy `provider unavailable`; sans observation, le comportement reste inconnu/non fabriqué.
+- Le cost oracle exige un prix exact provider/modèle et tous les tarifs nécessaires aux tokens utilisés. Les alias non enregistrés et les usages cache sans tarif cache renvoient `COST_UNKNOWN`.
+- L'inspection runtime reste metadata-only et n'expose pas les montants du catalogue.
+- Aucun provider réel, credential, endpoint payant ou health probe externe n'est exécuté par cette tranche ; M7 reste `PARTIAL`.
