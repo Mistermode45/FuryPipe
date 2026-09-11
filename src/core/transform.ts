@@ -2337,6 +2337,7 @@ export async function transformRequest(
       info.contextFabric = analyzeContextFabric(req, {
         mode: o.safetyMode === false ? 'balanced' : o.safetyMode,
         providerAvailable: true,
+        providerId: 'anthropic',
       });
     } catch {
       // Context analysis must never turn a provider-valid request into a

@@ -75,6 +75,7 @@
 | Matrice CI M5 runtime — run push `34636151930` | PASS | 9/9 jobs verts sur Ubuntu/Windows/macOS × Node 22.23.2/24.21.0/26.8.2 |
 | Matrice CI M5 runtime — run PR `34636158894` | PASS | 9/9 jobs verts sur la PR draft #2 ; package smoke inclus ; aucune fusion effectuée |
 | M6 policy fabric ciblé | PASS local | 4 tests : cinq stratégies évaluées séparément, circuit ouvert, fallback explicite, canary/rollback/régression bornés |
+| M7 provider/model fabric ciblé | PASS local | 5 tests registry/fallback + intégration `ContextFabricAnalysis`; registry locale, alias/famille modèle, raisons de routage, cache et `COST_UNKNOWN`; disponibilité reste `unknown` |
 
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le

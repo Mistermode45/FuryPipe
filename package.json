@@ -77,6 +77,10 @@
       "types": "./dist/core/context-fabric.d.ts",
       "import": "./dist/core/context-fabric.js"
     },
+    "./provider-fabric": {
+      "types": "./dist/core/provider-fabric.d.ts",
+      "import": "./dist/core/provider-fabric.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"
@@ -107,6 +111,7 @@
     "docs/CLI.md",
     "docs/MCP.md",
     "docs/CONTEXT_FABRIC.md",
+    "docs/PROVIDER_FABRIC.md",
     "docs/POLICY.md",
     "docs/RECEIPTS.md",
     "LICENSE"

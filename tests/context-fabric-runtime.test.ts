@@ -29,6 +29,10 @@ describe('Context Fabric runtime integration', () => {
       ir: { verification: 'ok' },
       ledger: { verification: 'ok', latestUserRequest: true },
       verification: { phase: 'post_transform', ir: 'ok', ledger: 'ok' },
+      providerFabric: {
+        provider: { id: 'anthropic', availability: 'unknown' },
+        model: { family: 'anthropic', safeFallback: 'native' },
+      },
     });
     expect(analysis?.ir.blockCount).toBeGreaterThan(0);
     expect(analysis?.strategy.observed).toBe('raw');

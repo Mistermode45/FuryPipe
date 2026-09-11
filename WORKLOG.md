@@ -134,3 +134,20 @@
 - L’analyse expose un état provider borné avec santé `unknown` par défaut, circuit breaker, fallback explicite, canary, rollback sûr et régression qualité ; aucun état live n’est fabriqué.
 - Le résultat est appelé depuis `src/core/context-fabric.ts` et reste consultatif : le proxy mature ne change pas de route et aucun provider n’est contacté.
 - `tests/policy-fabric.test.ts` couvre l’évaluation des cinq stratégies et le blocage par circuit ouvert.
+
+## 2026-09-11 — M7 provider/model fabric
+
+- `src/core/provider-fabric.ts` ajoute une registry locale pour Anthropic,
+  OpenAI-compatible et Google/Gemini autour du routeur historique inchangé.
+- La résolution distingue route explicite, inférence par famille modèle,
+  protocole par défaut et fallback de provider inconnu ; les aliases
+  vendor-qualified restent visibles comme métadonnées.
+- Les capacités cache sont bornées par provider : contrat local Anthropic connu,
+  OpenAI/Google `unknown`; disponibilité reste `unknown` faute de health probe.
+- Les prix absolus utilisent explicitement `COST_UNKNOWN`; aucun ratio de profil
+  n’est converti en prix USD et aucune absence n’est comptée comme zéro.
+- Le résultat est raccordé à `ContextFabricAnalysis.providerFabric` dans le vrai
+  `transformRequest` sans changer la route ni appeler un provider.
+- M7 reste `PARTIAL` : adapters provider, probes live, fallback/canary hébergés
+  et contrats cache OpenAI/Google nécessitent encore une implémentation et une
+  validation réelles.

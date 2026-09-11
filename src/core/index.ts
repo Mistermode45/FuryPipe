@@ -126,6 +126,24 @@ export {
   type ProviderHealthStatus,
 } from './policy-fabric.js';
 export {
+  COST_UNKNOWN,
+  createProviderRegistry,
+  DEFAULT_PROVIDER_REGISTRY,
+  inspectProviderRegistry,
+  resolveProviderFabric,
+  type ModelCapability,
+  type ProviderAvailability,
+  type ProviderCacheCapabilities,
+  type ProviderDefinition,
+  type ProviderEvidence,
+  type ProviderEvidenceKind,
+  type ProviderFabricDecision,
+  type ProviderFabricProtocol,
+  type ProviderFabricRequest,
+  type ProviderRegistry,
+  type ProviderRegistrationStatus,
+} from './provider-fabric.js';
+export {
   createCompressionReceipt,
   verifyCompressionReceipt,
   type CompressionReceipt,
