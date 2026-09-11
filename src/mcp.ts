@@ -106,7 +106,8 @@ function error(id: string | number | null, code: number, message: string): JsonR
 }
 
 function requestId(value: unknown): string | number | null {
-  return typeof value === 'string' || (typeof value === 'number' && Number.isSafeInteger(value)) ? value : null;
+  return (typeof value === 'string' && value.length > 0 && value.length <= 128)
+    || (typeof value === 'number' && Number.isSafeInteger(value)) ? value : null;
 }
 
 function objectParams(value: unknown): Record<string, unknown> {
@@ -161,6 +162,7 @@ function boundedInteger(value: unknown, name: string): number {
 
 /** Pure request dispatcher used by the stdio entrypoint and contract tests. */
 export function createMcpService(store: RecoveryStore): McpService {
+  const seenRequestIds = new Set<string>();
   return {
     async handle(message) {
       if (!message || typeof message !== 'object' || Array.isArray(message)) return error(null, -32600, 'invalid request');
@@ -169,6 +171,9 @@ export function createMcpService(store: RecoveryStore): McpService {
       if (request.jsonrpc !== '2.0' || typeof request.method !== 'string') return error(id, -32600, 'invalid request');
       if (request.method.startsWith('notifications/')) return null;
       if (id === null) return error(null, -32600, 'request id must be a non-null string or integer');
+      const requestKey = `${typeof id}:${String(id)}`;
+      if (seenRequestIds.has(requestKey)) return error(id, -32600, 'request id was already used in this session');
+      seenRequestIds.add(requestKey);
       try {
         if (request.method === 'initialize') {
           return response(id, {

@@ -58,6 +58,9 @@ describe('MCP stdio contract', () => {
     expect((await mcp.handle({ jsonrpc: '2.0', method: 'ping' }))?.error?.code).toBe(-32600);
     expect((await mcp.handle({ jsonrpc: '2.0', id: null, method: 'ping' }))?.error?.code).toBe(-32600);
     expect((await mcp.handle({ jsonrpc: '2.0', id: 1.5, method: 'ping' }))?.error?.code).toBe(-32600);
+    expect((await mcp.handle({ jsonrpc: '2.0', id: 7, method: 'ping' }))?.result).toEqual({});
+    expect((await mcp.handle({ jsonrpc: '2.0', id: 7, method: 'ping' }))?.error?.code).toBe(-32600);
+    expect((await mcp.handle({ jsonrpc: '2.0', id: 'x'.repeat(129), method: 'ping' }))?.error?.code).toBe(-32600);
     expect((await mcp.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'unknown', arguments: {} } }))?.error?.code).toBe(-32602);
     expect((await mcp.handle({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'index_text', arguments: { text: 'x'.repeat(1024 * 1024 + 1) } } }))?.error?.code).toBe(-32602);
     expect(await mcp.handle({ jsonrpc: '2.0', method: 'notifications/initialized' })).toBeNull();
