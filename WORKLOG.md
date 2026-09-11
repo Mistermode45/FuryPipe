@@ -177,3 +177,6 @@
   qu’un digest de l’objectif.
 - M11 reste `PARTIAL` : aucun harness multi-agent, handoff interprocessus,
   mémoire de prompts ou exécution de skills n’est déclaré livré.
+- L’ajout du parser JSON5 OpenClaw a été revu dans l’inventaire de licences :
+  `json5@2.2.3` MIT ; le comptage courant est MIT 61, sans changement de
+  licence restrictive non documenté.

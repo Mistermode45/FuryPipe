@@ -6,7 +6,7 @@ Inventaire généré depuis le lockfile installé avec `pnpm licenses list --jso
 
 | Licence déclarée | Packages |
 |---|---:|
-| MIT | 57 |
+| MIT | 61 |
 | Apache-2.0 | 7 |
 | MIT OR Apache-2.0 | 4 |
 | ISC | 3 |
@@ -22,6 +22,7 @@ Inventaire généré depuis le lockfile installé avec `pnpm licenses list --jso
 - La dépendance `@img/sharp-win32-x64` déclare `Apache-2.0 AND LGPL-3.0-or-later`; cette obligation combinée doit rester visible dans tout bundle qui l’embarque.
 - `lightningcss` et son binding Windows déclarent MPL-2.0 ; `source-map-js` déclare BSD-3-Clause ; `@speed-highlight/core` déclare CC0-1.0.
 - `blake3-wasm` est présent transitivement et déclare MIT, mais n’est pas ajouté comme dépendance directe dans cette tranche.
+- `json5@2.2.3` déclare MIT et est la dépendance directe utilisée pour lire les configurations JSON5 OpenClaw ; son avis reste inclus dans l’inventaire du lockfile.
 
 ## État release
 
