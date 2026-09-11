@@ -1070,15 +1070,16 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv[0] === 'doctor') {
     const extra = argv.slice(1);
-    if (extra.some((arg) => arg !== '--json' && arg !== '-h' && arg !== '--help')) {
-      console.error('[furypipe] doctor accepts only --json');
+    const localeArg = extra.find((arg) => arg.startsWith('--locale='));
+    if (extra.some((arg) => arg !== '--json' && arg !== '-h' && arg !== '--help' && arg !== localeArg)) {
+      console.error('[furypipe] doctor accepts --json and --locale=<BCP-47>');
       process.exit(2);
     }
     if (extra.includes('-h') || extra.includes('--help')) {
-      console.log('Usage: furypipe doctor [--json]');
+      console.log('Usage: furypipe doctor [--json] [--locale=<BCP-47>]');
       return;
     }
-    console.log(renderDoctorReport(collectDoctorReport(), extra.includes('--json')));
+    console.log(renderDoctorReport(collectDoctorReport(), extra.includes('--json'), localeArg?.slice('--locale='.length) ?? 'en'));
     return;
   }
   if (argv[0] === 'export') {

@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { discoverOpenClaw, type OpenClawDiscovery } from './openclaw.js';
+import { createI18n } from './i18n/index.js';
+import { CORE_CATALOGS } from './i18n/catalogs.js';
 
 export interface DoctorCheck {
   readonly status: 'available' | 'unavailable' | 'configured' | 'not_configured';
@@ -138,29 +140,31 @@ export function collectDoctorReport(): DoctorReport {
   };
 }
 
-export function renderDoctorReport(report: DoctorReport, json = false): string {
+export function renderDoctorReport(report: DoctorReport, json = false, locale = 'en'): string {
   if (json) return JSON.stringify(report, null, 2);
+  const i18n = createI18n({ catalogs: CORE_CATALOGS, defaultLocale: 'en' });
+  const t = (key: string): string => i18n.translate(locale, key);
   const check = (value: DoctorCheck): string => value.value ? `${value.status} (${value.value})` : value.status;
   return [
-    'FuryPipe doctor',
-    `OS/arch: ${report.platform.os} / ${report.platform.arch}`,
-    `Node: ${report.runtime.node}`,
-    `npm: ${check(report.runtime.npm)}`,
-    `pnpm: ${check(report.runtime.pnpm)}`,
-    `Shell: ${report.platform.shell}`,
-    `Listen: ${report.network.host}:${report.network.port}`,
-    `Upstream: ${report.network.upstream}`,
-    `Config: ${report.paths.config}`,
-    `Events: ${report.paths.events}`,
-    `Docker: ${check(report.tools.docker)}`,
-    `Browser open: ${check(report.tools.browser)}`,
-    `Claude: ${check(report.tools.claude)}`,
-    `Codex: ${check(report.tools.codex)}`,
-    `OpenClaw: ${check(report.tools.openclaw)}`,
+    t('doctor.title'),
+    `${t('doctor.osArch')}: ${report.platform.os} / ${report.platform.arch}`,
+    `${t('doctor.node')}: ${report.runtime.node}`,
+    `${t('doctor.npm')}: ${check(report.runtime.npm)}`,
+    `${t('doctor.pnpm')}: ${check(report.runtime.pnpm)}`,
+    `${t('doctor.shell')}: ${report.platform.shell}`,
+    `${t('doctor.listen')}: ${report.network.host}:${report.network.port}`,
+    `${t('doctor.upstream')}: ${report.network.upstream}`,
+    `${t('doctor.config')}: ${report.paths.config}`,
+    `${t('doctor.events')}: ${report.paths.events}`,
+    `${t('doctor.docker')}: ${check(report.tools.docker)}`,
+    `${t('doctor.browserOpen')}: ${check(report.tools.browser)}`,
+    `${t('doctor.claude')}: ${check(report.tools.claude)}`,
+    `${t('doctor.codex')}: ${check(report.tools.codex)}`,
+    `${t('doctor.openclaw')}: ${check(report.tools.openclaw)}`,
     ...(report.openclaw ? [
-      `OpenClaw config: ${report.openclaw.config.status} (${report.openclaw.config.path})`,
-      `OpenClaw workspace: ${report.openclaw.workspace.exists ? 'present' : 'missing'} (${report.openclaw.workspace.path})`,
-      `OpenClaw secret fields: ${report.openclaw.config.secretBearingPaths.length}`,
+      `${t('doctor.openclawConfig')}: ${report.openclaw.config.status} (${report.openclaw.config.path})`,
+      `${t('doctor.openclawWorkspace')}: ${report.openclaw.workspace.exists ? 'present' : 'missing'} (${report.openclaw.workspace.path})`,
+      `${t('doctor.openclawSecrets')}: ${report.openclaw.config.secretBearingPaths.length}`,
     ] : []),
   ].join('\n');
 }

@@ -405,5 +405,11 @@
 - Objectif : rendre le stockage des leçons validées réouvrable après redémarrage sans persister le texte de tâche ni le contenu d’une leçon.
 - Fichiers : `src/learning.ts`, `src/core/index.ts`, `tests/learning.test.ts`, `docs/LEARNING_KNOWLEDGE.md`, `TASKS.md`.
 - Implémentation : `createRecoveryAgentLearningStore()` stocke des enveloppes immuables metadata-only ; les réutilisations publient une nouvelle révision et la lecture sélectionne la révision la plus haute par `lessonId`.
-- Vérification ciblée à exécuter après cette tranche : test de réouverture et de `reuseCount`, puis suite complète, typecheck, build, audit et package smoke.
+- Vérification : test ciblé de réouverture et de `reuseCount` — 7 tests verts ; suite complète — 105 fichiers / 1 363 tests verts ; typecheck, build, audit et package smoke verts.
 - Limites : la durabilité locale est visée et la concurrence inter-processus est sérialisée par Recovery, mais le read-modify-write de `reuseCount` entre plusieurs instances reste non transactionnel ; RAG, fine-tuning, modèle/provider et hébergement restent hors preuve.
+
+## 2026-09-12 — M18 CLI i18n wiring
+
+- `doctor` consomme maintenant les catalogues i18n existants pour ses libellés humains et accepte `--locale=<BCP-47>` ; la sortie JSON, les statuts techniques, chemins, versions, URL et identifiants restent inchangés.
+- Le test renderer FR et la parité des catalogues couvrent cette surface. Le dashboard, MCP et l’auto-détection de locale OS ne sont pas déclarés câblés.
+- Vérification : 3 fichiers i18n/doctor — 16 tests verts ; `pnpm exec tsx src/node.ts doctor --locale=fr` produit la sortie française ; suite complète — 105 fichiers / 1 364 tests verts ; typecheck, build, audit et package smoke verts.

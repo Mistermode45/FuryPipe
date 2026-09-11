@@ -33,4 +33,11 @@ describe('furypipe doctor renderer', () => {
     expect(parsed.network.port).toBe(47821);
     expect(parsed.runtime.pnpm.value).toBe('12.3.4');
   });
+
+  it('wires the locale option into human-readable output while keeping protocol values intact', () => {
+    const output = renderDoctorReport(report, false, 'fr-FR');
+    expect(output).toContain('Configuration: C:\\Users\\test\\config.json');
+    expect(output).toContain('Écoute: 127.0.0.1:47821');
+    expect(output).toContain('Node: 26.8.2');
+  });
 });
