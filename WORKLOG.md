@@ -447,3 +447,13 @@
 - Le cost oracle exige un prix exact provider/modèle et tous les tarifs nécessaires aux tokens utilisés. Les alias non enregistrés et les usages cache sans tarif cache renvoient `COST_UNKNOWN`.
 - L'inspection runtime reste metadata-only et n'expose pas les montants du catalogue.
 - Aucun provider réel, credential, endpoint payant ou health probe externe n'est exécuté par cette tranche ; M7 reste `PARTIAL`.
+
+
+## 2026-09-12 — M6 cache / retrieval / hybrid runtime
+
+- Ajout de `src/core/policy-runtime.ts` avec un cache local exact borné par entrée, volume total, nombre d'entrées et TTL.
+- Les clés de cache sont SHA-256 sur provider + modèle exact + payload byte-exact ; les buffers sont copiés pour éviter les mutations après `put/get`.
+- `executeRecoveryRetrieval()` exécute réellement la recherche sur `RecoveryIndex` mais retourne uniquement handles/offsets/lignes et digest de requête, jamais le plaintext recherché.
+- `executePolicyHybrid()` n'appelle le transformeur fourni par l'hôte qu'après une retrieval non vide ; sans preuve retrieval, le payload reste inchangé.
+- `PolicyFabricRequest.runtimeCapabilities` rend l'éligibilité retrieval/hybrid explicite et fail-visible.
+- Cette tranche ne simule pas le prompt-cache natif d'un provider et ne revendique aucun canary hébergé.
