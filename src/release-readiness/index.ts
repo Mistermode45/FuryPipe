@@ -85,7 +85,7 @@ function validateInput(input: ReleaseReadinessInput): void {
     seen.add(gate.id);
     if (gate.evidence !== undefined) {
       if (!Array.isArray(gate.evidence) || gate.evidence.length > 64
-        || gate.evidence.some((item) => typeof item !== 'string' || item.length === 0 || item.length > 512 || item.includes('\0'))) {
+        || gate.evidence.some((item: unknown) => typeof item !== 'string' || item.length === 0 || item.length > 512 || item.includes('\0'))) {
         throw new Error(`release gate evidence is invalid: ${gate.id}`);
       }
     }
