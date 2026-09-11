@@ -12,5 +12,6 @@
 | SRC-008 | https://github.com/teamchong/pxpipe | dépôt étudié pour comparaison | `8ba82b713a1e823bc1c09b7a68e47f63caa7b426` | 2026-09-11 | MIT upstream | Conserver les chemins provider/proxy éprouvés ; ne pas copier sans licence/portée | vérifiée par remote |
 | SRC-009 | https://github.com/affaan-m/ECC | dépôt étudié pour workflow | `c9148d0bb239ed01a95724a5928b98cdf9c30658` | 2026-09-11 | provenance GitHub vérifiée ; licence détaillée à revoir avant intégration de code | Retenir les principes de gates/review, aucune copie de code dans ce checkpoint | vérifiée par remote |
 | SRC-010 | https://github.com/mattpocock/skills | dépôt étudié pour skills | `3cca18b368ae95cdbdebbff572ccafa662551015` | 2026-09-11 | provenance GitHub vérifiée ; licence détaillée à revoir avant vendoring | Retenir les workflows réutilisables, aucune copie de code dans ce checkpoint | vérifiée par remote |
+| SRC-011 | https://modelcontextprotocol.io/specification/2025-11-25/basic | spécification MCP officielle | JSON-RPC, IDs non nuls, notifications, auth HTTP/stdio | 2026-09-11 | spécification officielle courante consultée | Corriger le dispatcher stdio sur les IDs ; ne pas déclarer HTTP/OAuth implémenté | vérifiée documentaire |
 
 Ce ledger sera enrichi avec les sources réellement consultées. Une URL listée dans le master prompt n'est pas une preuve de lecture.

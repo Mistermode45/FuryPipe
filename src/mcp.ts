@@ -106,7 +106,7 @@ function error(id: string | number | null, code: number, message: string): JsonR
 }
 
 function requestId(value: unknown): string | number | null {
-  return typeof value === 'string' || typeof value === 'number' ? value : null;
+  return typeof value === 'string' || (typeof value === 'number' && Number.isSafeInteger(value)) ? value : null;
 }
 
 function objectParams(value: unknown): Record<string, unknown> {
@@ -168,6 +168,7 @@ export function createMcpService(store: RecoveryStore): McpService {
       const id = requestId(request.id);
       if (request.jsonrpc !== '2.0' || typeof request.method !== 'string') return error(id, -32600, 'invalid request');
       if (request.method.startsWith('notifications/')) return null;
+      if (id === null) return error(null, -32600, 'request id must be a non-null string or integer');
       try {
         if (request.method === 'initialize') {
           return response(id, {

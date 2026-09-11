@@ -123,6 +123,9 @@ const LOW_CONFIDENCE_RULES: readonly ExactGuardRule[] = [
   { id: 'string-literal', class: 'string_literal', priority: 30, pattern: /(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)/g },
   { id: 'numeric-literal', class: 'numeric_literal', priority: 20, pattern: /(?<![\w.])-?(?:0x[0-9a-f]+|\d+(?:\.\d+)?)(?![\w.])/gi },
 ];
+const MAX_CUSTOM_RULES = 64;
+const MAX_RULE_SOURCE_LENGTH = 512;
+const MAX_GUARDED_TEXT_LENGTH = 4 * 1024 * 1024;
 
 function sha256(value: Uint8Array | string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -178,8 +181,22 @@ function selectNonOverlapping(candidates: readonly Candidate[]): ProtectedSpan[]
     .map(({ priority: _priority, ...span }) => span);
 }
 
+function validateCustomRules(rules: readonly ExactGuardRule[]): void {
+  if (rules.length > MAX_CUSTOM_RULES) throw new RangeError('ExactGuard rules are limited to 64');
+  for (const rule of rules) {
+    if (!rule.id || rule.id.length > 64 || rule.pattern.source.length > MAX_RULE_SOURCE_LENGTH) {
+      throw new RangeError('ExactGuard rule id/pattern is too large');
+    }
+    if (rule.pattern.flags.includes('g') === false && rule.pattern.flags.includes('y')) {
+      throw new RangeError('ExactGuard sticky rules are not supported');
+    }
+  }
+}
+
 /** Detect exactness-sensitive spans without retaining their plaintext values. */
 export function detectProtectedSpans(text: string, options: ExactGuardOptions = {}): readonly ProtectedSpan[] {
+  if (text.length > MAX_GUARDED_TEXT_LENGTH) throw new RangeError('ExactGuard input exceeds the 4 MiB limit');
+  validateCustomRules(options.rules ?? []);
   const rules = [
     ...DEFAULT_RULES,
     ...(options.includeLowConfidenceLiterals ? LOW_CONFIDENCE_RULES : []),
@@ -225,4 +242,3 @@ export function verifyPrecisionManifest(text: string, manifest: PrecisionManifes
     ...(ok ? {} : { reason: sourceHashMatches ? 'protected span mismatch' : 'source hash mismatch' }),
   };
 }
-

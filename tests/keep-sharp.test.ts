@@ -24,6 +24,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { transformRequest } from '../src/core/transform.js';
+import { detectProtectedSpans } from '../src/core/exact-guard.js';
 import { transformAnthropicMessages } from '../src/core/library.js';
 
 const enc = new TextEncoder();
@@ -61,6 +62,11 @@ function userBlocks(body: Uint8Array): any[] {
 const BIG = 'x'.repeat(50_000);
 
 describe('keepSharp fidelity hint', () => {
+  it('bounds custom ExactGuard rule inputs', () => {
+    expect(() => detectProtectedSpans('payload', { rules: Array.from({ length: 65 }, (_, i) => ({ id: `r${i}`, class: 'custom' as const, pattern: /payload/g })) })).toThrow('64');
+    expect(() => detectProtectedSpans('payload', { rules: [{ id: 'oversized', class: 'custom', pattern: new RegExp('x'.repeat(513), 'g') }] })).toThrow('large');
+  });
+
   it('wires ExactGuard into the lossy decision and preserves protected requests natively', async () => {
     const source = makeReq([
       { type: 'tool_result', tool_use_id: 'toolu_exact', content: `${BIG}\nrequest 123e4567-e89b-12d3-a456-426614174000` },
