@@ -1,11 +1,11 @@
-# MCP FuryPipe — tranche locale
+# MCP FuryPipe — transport local et HTTP
 
 Le binaire `furypipe-mcp` fournit un serveur MCP local en transport stdio. Il
 utilise le SDK officiel `@modelcontextprotocol/server` `2.0.0`. Le même
 registre d’outils sert le protocole moderne `2026-07-28` et le fallback legacy
-`2025-11-25`; le SDK sélectionne l’ère à l’ouverture de la connexion. Il ne
-lance pas de listener HTTP, ne lit pas de credential provider et n’est pas
-activé automatiquement.
+`2025-11-25`; le SDK sélectionne l’ère à l’ouverture de la connexion. Le
+transport stdio ne lance pas de listener HTTP et ne lit pas de credential
+provider.
 
 Outils exposés :
 
@@ -35,12 +35,40 @@ Exécution locale après build :
 FURYPIPE_RECOVERY_ROOT=<directory> FURYPIPE_TENANT=default furypipe-mcp
 ```
 
-Le module `dist/mcp-modern.js` expose aussi `createModernMcpHandler()` pour
-une intégration fetch-native testable. Il n’est pas monté en endpoint HTTP par
-le binaire : host/origin validation, bearer auth/OAuth, resource indicators et
-déploiement restent à intégrer dans l’application hôte.
+Le module `dist/mcp-modern.js` expose deux surfaces HTTP fetch-native :
 
-Cette tranche prouve le registre commun et le transport stdio dual-era en
-local, pas une certification complète HTTP/OAuth ni une validation client
-hébergée. Les limites de taille et de validation restent celles de la
-surface legacy, en plus des validations de schéma du SDK moderne.
+- `createModernMcpHandler()` : adaptateur SDK brut, pour un hôte qui possède
+  déjà ses propres contrôles de frontière ;
+- `createProductionMcpHandler()` : façade bornée qui exige un allowlist Host,
+  valide Origin, méthode, `Content-Type`, `Accept`, taille de corps et
+  JSON-RPC avant dispatch, propage l’annulation, impose un délai maximal et
+  ajoute des en-têtes anti-cache/anti-MIME-sniffing/CORS contrôlés.
+
+Pour un endpoint distant, fournir `bearerAuth` avec un vrai vérificateur OAuth
+2.0 Resource Server. Le middleware officiel du SDK vérifie l’expiration et les
+scopes puis transmet uniquement `AuthInfo` au serveur. Pour un outil local sans
+authentification, `allowUnauthenticatedLoopback: true` est obligatoire et la
+construction refuse tout hostname non loopback. `oauthMetadata` active, si
+configuré par l’hôte, les routes de découverte RFC 9728/RFC 8414 ; FuryPipe ne
+fabrique pas d’Authorization Server et ne stocke aucun credential.
+
+Exemple minimal loopback, après build :
+
+```ts
+const handler = createProductionMcpHandler(store, {
+  allowedHostnames: ['127.0.0.1', 'localhost'],
+  allowUnauthenticatedLoopback: true,
+});
+```
+
+L’hôte doit monter `handler.fetch` uniquement sur son endpoint MCP et fournir
+un `Host` réel. Pour un déploiement non loopback, l’allowlist et
+`bearerAuth.verifier` sont obligatoires ; un token statique dans un test ne
+constitue pas un fournisseur OAuth de production.
+
+Cette tranche prouve localement le registre commun, le transport stdio
+dual-era, la frontière HTTP fetch-native et ses rejets négatifs. Elle ne vaut
+pas une certification client hébergée, un test réseau multi-processus, ni une
+intégration à un Authorization Server réel. Les limites de taille et de
+validation restent celles de la surface legacy, en plus des validations de
+schéma du SDK moderne.

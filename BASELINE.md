@@ -82,6 +82,9 @@
 | Correctif découverte processus Windows | PASS local | `scripts/restart.mjs` borne PowerShell à 5 s et replie sur `Get-Process`; `tests/restart.test.ts` : 23/23 |
 | Matrice CI commit `14593fd` — run push `34641522151` | PASS | 9/9 jobs verts : Ubuntu 24.04, Windows 2025, macOS 14 × Node 22.23.2, 24.21.0 et 26.8.2 |
 | Matrice CI commit `14593fd` — run PR `34641526734` | PASS | 9/9 jobs verts sur la PR draft #2 ; package smoke inclus ; aucune fusion effectuée |
+| M8 HTTP boundary ciblée | PASS local | `tests/mcp-http.test.ts` : 12/12 ; Host/Origin, médias, taille, JSON-RPC/routage, annulation, Bearer, OAuth metadata et fallback legacy |
+| Export package M8 | PASS local | `scripts/package-smoke.mjs` importe `furypipe/mcp-modern` depuis le tarball installé et vérifie `createProductionMcpHandler` |
+| Gates locales M8 | PASS local | suite `96 fichiers / 1 289 tests`, typecheck, build, audit (`No known vulnerabilities found`) et package smoke `furypipe-0.13.2.tgz` |
 
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le

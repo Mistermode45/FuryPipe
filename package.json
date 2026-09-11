@@ -97,6 +97,10 @@
       "types": "./dist/mcp.d.ts",
       "import": "./dist/mcp.js"
     },
+    "./mcp-modern": {
+      "types": "./dist/mcp-modern.d.ts",
+      "import": "./dist/mcp-modern.js"
+    },
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"

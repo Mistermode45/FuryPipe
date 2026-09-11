@@ -92,6 +92,12 @@ try {
   const doctor = await run(process.execPath, [cli, 'doctor', '--json'], installDir);
   const report = JSON.parse(doctor.stdout);
   assert(report.runtime?.node, 'doctor smoke returned no Node runtime');
+  const httpExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/mcp-modern'); if (typeof m.createProductionMcpHandler !== 'function') process.exit(1);",
+  ], installDir);
+  assert(httpExport.stderr === '', `MCP HTTP package export wrote stderr: ${httpExport.stderr}`);
   await runMcp(process.execPath, [mcp], {
     jsonrpc: '2.0',
     id: 1,

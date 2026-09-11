@@ -197,3 +197,28 @@
 - Le commit `14593fd02338a148bec5bc06d38a25c6ae483892` est poussé ; CI push
   `34641522151` et CI PR draft `34641526734` sont chacun `9/9` verts sur
   Ubuntu/Windows/macOS et Node 22/24/26.
+
+## 2026-09-11 — M8 HTTP boundary sécurisée
+
+- `src/mcp-modern.ts` expose `createProductionMcpHandler()` autour du handler
+  SDK dual-era existant. La façade exige un allowlist Host, valide Origin,
+  méthode, `Content-Type`, `Accept`, `Content-Length`/taille réelle et un
+  message JSON-RPC unique avant dispatch ; elle borne le délai, propage
+  l’annulation, ajoute CORS contrôlé et désactive le cache des POST.
+- Un endpoint non authentifié doit déclarer explicitement le mode loopback ;
+  toute allowlist Host ou Origin non loopback est refusée sans Bearer. Quand un
+  verifier est fourni, `requireBearerAuth` officiel vérifie token, expiration
+  et scopes ; `oauthMetadata` active uniquement les documents de découverte
+  configurés par l’hôte.
+- `tests/mcp-http.test.ts` : 12/12 tests ciblés verts, incluant rejets Host,
+  Origin, méthode, médias, taille, JSON-RPC/routage, annulation, Bearer,
+  découverte OAuth et fallback legacy 2025. Le package smoke vérifie aussi
+  l’export installé `furypipe/mcp-modern`.
+- Après la tranche : suite complète `96 fichiers / 1 289 tests` verte ;
+  `pnpm run typecheck`, `pnpm run build`, `pnpm run audit` et
+  `pnpm run package:smoke` passent. Le tarball réel est
+  `furypipe-0.13.2.tgz` ; aucun publish n’a été effectué.
+- M8 reste `PARTIAL` : aucun Authorization Server, verifier OAuth hébergé,
+  listener HTTP intégré au binaire proxy ou test conformance multi-client n’a
+  été inventé. Le transport fetch-native est utilisable par l’application
+  hôte, mais son montage réseau reste une étape distincte.
