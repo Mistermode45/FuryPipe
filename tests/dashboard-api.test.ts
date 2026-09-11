@@ -208,6 +208,9 @@ describe('serveControlRoomJson', () => {
     const html = await (await withControlRoom.serveFragment('control-room', new URL('http://localhost/fragments/control-room'), 1234)).text();
     expect(html).toContain('Control Room V5');
     expect(html).toContain('Security / Supply Chain');
+    expect(html).toContain('Release readiness');
+    expect(html).toContain('Release readiness · <strong>NOT_AVAILABLE</strong>');
+    expect(html).toContain('release actions executed: no');
     expect(html).toContain('Provider benchmarks are not verified');
   });
 });
