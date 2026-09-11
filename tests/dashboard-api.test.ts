@@ -14,6 +14,7 @@ import { DashboardState, dashboardPath, dashboardHostLabel } from '../src/dashbo
 import { getAllowedModelBases, isPxpipeSupportedModel, setAllowedModelBases } from '../src/core/applicability.js';
 import type { SessionsPaths } from '../src/sessions.js';
 import type { TrackEvent } from '../src/core/tracker.js';
+import { createControlRoomSnapshot, type ControlRoomSnapshot } from '../src/control-room/index.js';
 import type { StatsPayload, RecentPayload } from '../src/dashboard/types.js';
 import {
   renderHeaderFragment,
@@ -46,6 +47,54 @@ function writeEvents(paths: SessionsPaths, events: TrackEvent[]): void {
     paths.eventsFile,
     events.map((e) => JSON.stringify(e)).join('\n') + '\n',
   );
+}
+
+function controlRoomSnapshot(): ControlRoomSnapshot {
+  return createControlRoomSnapshot({
+    generatedAt: 1_725_000_000_000,
+    sourceCommit: 'a'.repeat(40),
+    receipts: { receipts: 2, verifiedReceipts: 2, protectedSpans: 3, recoveryHandles: 1, confidence: 'verified' },
+    recovery: {
+      objects: 1,
+      verifiedObjects: 1,
+      encryption: 'aes-256-gcm',
+      activeKeyId: 'primary',
+      backupEvidence: 'BACKUP_EXISTS',
+      crashRecovery: 'PARTIAL',
+      multiProcess: 'PARTIAL',
+    },
+    agent: {
+      runs: 1,
+      completedRuns: 1,
+      handoffRuns: 0,
+      failedRuns: 0,
+      contextUsedTokens: 20,
+      persistedMemory: 'PARTIAL',
+      distributedHandoff: 'NOT_EXECUTED',
+    },
+    learning: { humanTopics: 1, agentLessons: 1, reusedLessons: 0, durableStore: 'PARTIAL', semanticRetrieval: 'NOT_EXECUTED' },
+    mcp: { stdio: 'VERIFIED', http: 'VERIFIED', bearerAuth: 'VERIFIED', oauth: 'PARTIAL', externalConformance: 'NOT_EXECUTED' },
+    i18n: { locale: 'fr', direction: 'ltr', runtimeKernel: 'VERIFIED', cliWiring: 'NOT_EXECUTED', dashboardWiring: 'VERIFIED' },
+    webStudio: {
+      kernel: 'VERIFIED',
+      figma: 'NOT_EXECUTED',
+      playwright: 'NOT_EXECUTED',
+      accessibility: 'NOT_EXECUTED',
+      security: 'NOT_EXECUTED',
+      seo: 'NOT_EXECUTED',
+      deployment: 'NOT_EXECUTED',
+    },
+    security: {
+      codeql: 'VERIFIED',
+      secretScan: 'VERIFIED',
+      dependencyAudit: 'VERIFIED',
+      sbom: 'VERIFIED',
+      actionPinning: 'VERIFIED',
+      licenseCompliance: 'VERIFIED',
+      dependencyReview: 'BLOCKED',
+    },
+    benchmarks: { harness: 'VERIFIED', providerRuns: 'NOT_EXECUTED', comparableRuns: 0 },
+  });
 }
 
 let tmp: SessionsPaths;
@@ -83,6 +132,7 @@ describe('dashboardPath()', () => {
   it('matches the new /api/* routes', () => {
     expect(dashboardPath('/api/sessions.json')?.kind).toBe('api-sessions');
     expect(dashboardPath('/api/stats.json')?.kind).toBe('api-stats');
+    expect(dashboardPath('/api/control-room.json')?.kind).toBe('api-control-room');
   });
 
   it('returns null for unknown paths', () => {
@@ -132,6 +182,36 @@ describe('serveSessionsJson', () => {
   });
 });
 
+// ---- /api/control-room.json ----------------------------------------------
+
+describe('serveControlRoomJson', () => {
+  it('returns 503 and a fail-visible status when no provider is configured', async () => {
+    const res = await dash.serveControlRoomJson();
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ status: 'NOT_AVAILABLE' });
+  });
+
+  it('returns the metadata-only snapshot supplied by the host', async () => {
+    const snapshot = controlRoomSnapshot();
+    const withControlRoom = new DashboardState(tmp, async () => new Map(), undefined, () => snapshot);
+    const res = await withControlRoom.serveControlRoomJson();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.format).toBe('furypipe-control-room/v1');
+    expect(body.sourceCommit).toBe('a'.repeat(40));
+    expect(body.sections.security.status).toBe('BLOCKED');
+  });
+
+  it('renders the Control Room fragment from the same provider', async () => {
+    const snapshot = controlRoomSnapshot();
+    const withControlRoom = new DashboardState(tmp, async () => new Map(), undefined, () => snapshot);
+    const html = await (await withControlRoom.serveFragment('control-room', new URL('http://localhost/fragments/control-room'), 1234)).text();
+    expect(html).toContain('Control Room V5');
+    expect(html).toContain('Security / Supply Chain');
+    expect(html).toContain('Provider benchmarks are not verified');
+  });
+});
+
 // ---- /api/stats.json ------------------------------------
 
 describe('serveApiStats', () => {
@@ -168,6 +248,7 @@ describe('serveFragment', () => {
   it('routes /fragments/<name> via dashboardPath', () => {
     expect(dashboardPath('/fragments/header')).toEqual({ kind: 'fragment', name: 'header' });
     expect(dashboardPath('/fragments/latest')).toEqual({ kind: 'fragment', name: 'latest' });
+    expect(dashboardPath('/fragments/control-room')).toEqual({ kind: 'fragment', name: 'control-room' });
   });
 
   it('renders the toggle fragment reflecting compression state', async () => {
