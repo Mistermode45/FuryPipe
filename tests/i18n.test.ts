@@ -34,6 +34,9 @@ describe('FuryPipe i18n core', () => {
   it('identifies RTL locales and pseudo bidi locale', () => {
     expect(directionForLocale('ar')).toBe('rtl');
     expect(directionForLocale('he-IL')).toBe('rtl');
+    expect(directionForLocale('az-Arab')).toBe('rtl');
+    expect(directionForLocale('pa-Arab')).toBe('rtl');
+    expect(directionForLocale('az-Latn')).toBe('ltr');
     expect(directionForLocale('fr-FR')).toBe('ltr');
     expect(i18n.resolve('ar-XB')).toMatchObject({ direction: 'rtl', pseudo: 'bidi' });
   });
