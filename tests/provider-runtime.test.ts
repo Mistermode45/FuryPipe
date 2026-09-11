@@ -4,6 +4,7 @@ import {
   DEFAULT_PROVIDER_REGISTRY,
   createProviderRuntimeState,
   resolveProviderFabric,
+  transformRequest,
 } from '../src/core/index.js';
 
 describe('provider runtime evidence and cost oracle', () => {
@@ -160,4 +161,30 @@ describe('provider runtime evidence and cost oracle', () => {
     }]);
     expect(JSON.stringify(inspection)).not.toContain('inputUsdPerMillionTokens');
   });
+  it('wires fresh provider health into the real transform Context Fabric analysis', async () => {
+    const runtime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
+    runtime.observeHealth({
+      providerId: 'anthropic',
+      availability: 'unavailable',
+      observedAt: 100,
+      expiresAt: 200,
+      source: 'runtime-health-gate',
+      evidenceKind: 'live-probe',
+    });
+
+    const body = new TextEncoder().encode(JSON.stringify({
+      model: 'claude-opus-5',
+      messages: [{ role: 'user', content: 'short request' }],
+    }));
+    const result = await transformRequest(body, {
+      safetyMode: false,
+      providerRegistry: runtime.registry(150),
+    });
+
+    expect(result.info.contextFabric?.providerFabric.provider.availability).toBe('unavailable');
+    expect(result.info.contextFabric?.policyFabric.providerState.status).toBe('unavailable');
+    expect(result.info.contextFabric?.policy.hardConstraints).toContain('provider unavailable');
+    expect(JSON.stringify(result.info.contextFabric)).not.toContain('short request');
+  });
+
 });
