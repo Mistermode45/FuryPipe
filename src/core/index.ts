@@ -70,6 +70,7 @@ export {
   type RecoveryStore,
   type RecoveryStoreOptions,
   type RecoveryVerification,
+  type RecoveryBackupSummary,
 } from './recovery-store.js';
 export {
   createContextIR,

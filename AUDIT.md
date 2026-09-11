@@ -18,8 +18,9 @@
 - La portée de la segmentation est celle des graphemes Unicode via
   `Intl.Segmenter` ; une validation visuelle client ou provider n’est pas
   déduite des tests locaux.
-- Le Recovery Store n’a pas encore de chiffrement-at-rest, backup/restore,
-  backend SQLite, ACL Windows explicites ou GC des objets sans manifest.
+- Le Recovery Store n’a pas encore de chiffrement-at-rest, backend SQLite,
+  ACL Windows explicites ou GC des objets sans manifest. Le backup/restore
+  local est présent, vérifié par conflit et sans écrasement silencieux.
 - Le MCP livré est stdio local. Aucun serveur HTTP sécurisé, OAuth ou test de
   conformance externe n’est déclaré.
 

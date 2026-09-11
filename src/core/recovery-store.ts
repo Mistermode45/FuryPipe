@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -36,6 +36,14 @@ export interface RecoveryStoreOptions {
   readonly maxTotalBytes?: number;
 }
 
+export interface RecoveryBackupSummary {
+  readonly format: 'furypipe-recovery-backup/v1';
+  readonly namespace?: string;
+  readonly objects: number;
+  readonly manifests: number;
+  readonly bytes: number;
+}
+
 export interface RecoveryStore {
   put(bytes: Uint8Array | ArrayBuffer, metadata?: RecoveryMetadata): Promise<RecoveryHandle>;
   get(handle: RecoveryHandle | string): Promise<Uint8Array>;
@@ -45,6 +53,8 @@ export interface RecoveryStore {
   manifest(handle: RecoveryHandle | string): Promise<RecoveryHandle & { metadata?: RecoveryMetadata }>;
   delete(handle: RecoveryHandle | string): Promise<boolean>;
   gc(now?: Date): Promise<{ expired: number; orphaned: number; bytesFreed: number }>;
+  backup(destination: string): Promise<RecoveryBackupSummary>;
+  restore(source: string): Promise<RecoveryBackupSummary>;
 }
 
 const HANDLE = /^furypipe-recovery\/v1\/sha256\/([0-9a-f]{64})$/;
@@ -111,6 +121,39 @@ async function totalObjectBytes(root: string): Promise<number> {
     return total;
   } catch (caught) {
     if ((caught as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+    throw caught;
+  }
+}
+
+async function copyTree(source: string, destination: string, overwrite: boolean): Promise<{ files: number; bytes: number }> {
+  try {
+    const entries = await readdir(source, { withFileTypes: true });
+    let files = 0;
+    let bytes = 0;
+    await mkdir(destination, { recursive: true });
+    for (const entry of entries) {
+      const from = join(source, entry.name);
+      const to = join(destination, entry.name);
+      if (entry.isDirectory()) {
+        const nested = await copyTree(from, to, overwrite);
+        files += nested.files;
+        bytes += nested.bytes;
+      } else if (entry.isFile()) {
+        const size = (await stat(from)).size;
+        if (!overwrite && await exists(to)) {
+          const current = await readFile(to);
+          const incoming = await readFile(from);
+          if (digestBytes(current) !== digestBytes(incoming)) throw new Error(`recovery restore conflict at ${entry.name}`);
+        } else {
+          await copyFile(from, to);
+        }
+        files += 1;
+        bytes += size;
+      }
+    }
+    return { files, bytes };
+  } catch (caught) {
+    if ((caught as NodeJS.ErrnoException).code === 'ENOENT') return { files: 0, bytes: 0 };
     throw caught;
   }
 }
@@ -258,6 +301,51 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
         if ((caught as NodeJS.ErrnoException).code !== 'ENOENT') throw caught;
       }
       return { expired, orphaned, bytesFreed };
+    },
+
+    backup(destination) {
+      const operation = writeChain.then(async () => {
+        const temporary = `${destination}.${randomUUID()}.tmp`;
+        try {
+          await mkdir(temporary, { recursive: true });
+          const objects = await copyTree(join(scopedRoot, 'objects'), join(temporary, 'objects'), true);
+          const manifests = await copyTree(join(scopedRoot, 'manifests'), join(temporary, 'manifests'), true);
+          const summary: RecoveryBackupSummary = {
+            format: 'furypipe-recovery-backup/v1',
+            ...(namespace ? { namespace } : {}),
+            objects: objects.files,
+            manifests: manifests.files,
+            bytes: objects.bytes,
+          };
+          await writeFile(join(temporary, 'backup.json'), JSON.stringify(summary) + '\n', { encoding: 'utf8', flag: 'wx' });
+          await mkdir(dirname(destination), { recursive: true });
+          await rename(temporary, destination);
+          return summary;
+        } catch (caught) {
+          await rm(temporary, { recursive: true, force: true });
+          throw caught;
+        }
+      });
+      writeChain = operation.then(() => undefined, () => undefined);
+      return operation;
+    },
+
+    restore(source) {
+      const operation = writeChain.then(async () => {
+        const summaryFile = join(source, 'backup.json');
+        const summary = JSON.parse(await readFile(summaryFile, 'utf8')) as RecoveryBackupSummary;
+        if (summary.format !== 'furypipe-recovery-backup/v1' || (summary.namespace !== undefined && summary.namespace !== namespace)) {
+          throw new Error('invalid recovery backup manifest');
+        }
+        const objects = await copyTree(join(source, 'objects'), join(scopedRoot, 'objects'), false);
+        const manifests = await copyTree(join(source, 'manifests'), join(scopedRoot, 'manifests'), false);
+        if (objects.files !== summary.objects || manifests.files !== summary.manifests || objects.bytes !== summary.bytes) {
+          throw new Error('recovery backup verification failed');
+        }
+        return summary;
+      });
+      writeChain = operation.then(() => undefined, () => undefined);
+      return operation;
     },
   };
 }

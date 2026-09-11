@@ -76,4 +76,20 @@ describe('Recovery Store', () => {
     expect(await store.gc(new Date('2026-09-11T00:00:00.000Z'))).toMatchObject({ expired: 1, bytesFreed: 9 });
     expect((await store.verify(handle)).exists).toBe(false);
   });
+
+  it('creates a verified backup and restores it without overwriting conflicts', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-backup-'));
+    const backup = await mkdtemp(join(tmpdir(), 'furypipe-recovery-backup-target-'));
+    roots.push(root, backup);
+    const source = createRecoveryStore(root, { namespace: 'backup' });
+    const handle = await source.put(new TextEncoder().encode('recover me'), { source: 'backup-test' });
+    const destination = join(backup, 'snapshot');
+    const summary = await source.backup(destination);
+    expect(summary).toMatchObject({ format: 'furypipe-recovery-backup/v1', namespace: 'backup', objects: 1, manifests: 1, bytes: 10 });
+    await source.delete(handle);
+    const restored = await source.restore(destination);
+    expect(restored).toEqual(summary);
+    expect(new TextDecoder().decode(await source.get(handle))).toBe('recover me');
+    await expect(source.restore(destination)).resolves.toEqual(summary);
+  });
 });
