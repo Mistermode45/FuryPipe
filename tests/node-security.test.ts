@@ -32,7 +32,7 @@ function removeTempTree(target: string): void {
   fs.rmSync(target, {
     recursive: true,
     force: true,
-    maxRetries: 10,
+    maxRetries: 30,
     retryDelay: 100,
   });
 }
@@ -40,7 +40,9 @@ function removeTempTree(target: string): void {
 afterEach(async () => {
   if (child?.exitCode === null) {
     child.kill('SIGTERM');
-    await new Promise<void>((resolve) => child!.once('exit', () => resolve()));
+    // `exit` can precede stdio/handle closure on Windows. Wait for `close`
+    // so the log and dump files are no longer held by the child process.
+    await new Promise<void>((resolve) => child!.once('close', () => resolve()));
   }
   child = undefined;
   if (upstream) await new Promise<void>((resolve) => upstream!.close(() => resolve()));

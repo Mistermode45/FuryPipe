@@ -54,7 +54,8 @@
 | CI ancienne matrice | PARTIAL | 5 jobs verts ; Windows Node 20 a échoué sur `ENOTEMPTY` pendant le nettoyage de `tests/node-security.test.ts` |
 | Test sécurité Windows ciblé après correction | PASS | 1 fichier ; 4 tests ; retries bornés de suppression NTFS |
 | Package smoke réel | PASS | `npm pack`, installation du tarball dans un répertoire temporaire, CLI `--version`, `doctor --json`, handshake MCP |
-| Matrice CI V5 | EN ATTENTE | Node 22.23.2, 24.21.0 et 26.8.2 sur Ubuntu, Windows et macOS après le prochain push |
+| Matrice CI V5 — run push `34627466584` | PASS | 9/9 jobs verts : Node 22.23.2, 24.21.0 et 26.8.2 sur Ubuntu, Windows et macOS ; package smoke inclus |
+| Matrice CI V5 — run PR `34627470246` | PARTIAL | 8/9 jobs verts ; Windows Node 22 a encore exposé `EBUSY` après `exit`, corrigé ensuite par attente `close` |
 
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le

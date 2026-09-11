@@ -51,6 +51,7 @@
 - `scripts/package-smoke.mjs` ajouté : le gate fabrique et installe le tarball réel, vérifie la version CLI, `doctor --json` et le handshake MCP. Smoke local PASS.
 - Gates locales après ces changements : typecheck PASS, build PASS, test sécurité ciblé PASS, package smoke PASS. L'invocation Windows du smoke est désormais sans warning `DEP0190`.
 - CI V5 intermédiaire : Windows Node 22.23.2 et 24.21.0 ont passé le package smoke ; les six jobs Unix ont révélé que le shim `.bin/furypipe-mcp` ne produisait aucune réponse. Le point d'entrée `bin/mcp.js` est maintenant explicite et le smoke invoque le fichier package installé avec l'exécutable Node, sans shell.
+- Le run PR du commit `303bf78` a ensuite isolé une course de nettoyage Windows Node 22 (`exit` avant `close`) dans `tests/node-security.test.ts`; l'attente est passée à `close` et le retry NTFS est borné à 30 tentatives. Trois exécutions locales successives du test sécurité passent.
 - Limites : HTTP/OAuth MCP, OpenClaw, provider live, CI distante, chiffrement, backup/restore, SQLite et release restent non livrés.
 
 ## 2026-09-11 — MCP conformance boundary
