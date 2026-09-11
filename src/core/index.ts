@@ -116,6 +116,16 @@ export {
   type PolicyStrategy,
 } from './policy-engine.js';
 export {
+  evaluatePolicyFabric,
+  type CircuitState,
+  type PolicyFabricDecision,
+  type PolicyFabricRequest,
+  type PolicyFabricStrategy,
+  type PolicyProviderState,
+  type PolicyStrategyAssessment,
+  type ProviderHealthStatus,
+} from './policy-fabric.js';
+export {
   createCompressionReceipt,
   verifyCompressionReceipt,
   type CompressionReceipt,

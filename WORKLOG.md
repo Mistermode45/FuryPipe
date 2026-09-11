@@ -127,3 +127,10 @@
 - Le wrapper public renvoie `reason: 'externalized'`, `applied: true` et un receipt `strategy: 'externalize'` lorsque `emitReceipt` est demandé. `redact` n’est pas activé.
 - E2E ajouté dans `tests/exact-recovery-e2e.test.ts` : externalisation + récupération exacte + receipt, et échec fermé sur champ structurel.
 - CI distante du checkpoint M5 `9832ce0` : runs push `34636151930` et PR `34636158894`, chacun `9/9` vert sur Ubuntu/Windows/macOS et Node 22/24/26.
+
+## 2026-09-11 — M6 policy fabric raccordé
+
+- `src/core/policy-fabric.ts` évalue séparément les stratégies `raw`, `native-cache`, `guarded-lossy`, `retrieval` et `hybrid` sans additionner des coûts de chemins mutuellement exclusifs.
+- L’analyse expose un état provider borné avec santé `unknown` par défaut, circuit breaker, fallback explicite, canary, rollback sûr et régression qualité ; aucun état live n’est fabriqué.
+- Le résultat est appelé depuis `src/core/context-fabric.ts` et reste consultatif : le proxy mature ne change pas de route et aucun provider n’est contacté.
+- `tests/policy-fabric.test.ts` couvre l’évaluation des cinq stratégies et le blocage par circuit ouvert.

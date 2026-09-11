@@ -62,6 +62,14 @@ d’entrée/sortie et l’état de vérification. `native-cache` reste une
 recommandation du planner tant qu’un exécuteur de cache provider dédié n’est
 pas branché.
 
+`src/core/policy-fabric.ts` complète cette décision avec cinq évaluations
+séparées (`raw`, `native-cache`, `guarded-lossy`, `retrieval`, `hybrid`) et un
+état provider borné : santé, circuit breaker, fallback, canary, rollback et
+détection de régression qualité. La santé est `unknown` par défaut dans le
+runtime local ; aucun appel provider n’est simulé et aucune stratégie
+mutuellement exclusive n’est additionnée comme si elle était exécutée en
+parallèle.
+
 `TransformInfo.contextFabric` est un diagnostic borné : il expose des
 compteurs, catégories, états de validation et identifiants `ctx_` opaques,
 mais ni ledger, ni IR complet, ni texte source. L’analyse ne possède pas le

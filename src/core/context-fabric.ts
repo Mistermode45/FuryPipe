@@ -10,6 +10,7 @@ import {
 } from './instruction-ledger.js';
 import { planCache, type CachePlan } from './cache-planner.js';
 import { evaluatePolicy, type PolicyDecision, type PolicyMode, type PolicyStrategy } from './policy-engine.js';
+import { evaluatePolicyFabric, type PolicyFabricDecision } from './policy-fabric.js';
 
 /**
  * Safe, bounded diagnostics for one request's shared context pipeline.
@@ -50,6 +51,7 @@ export interface ContextFabricAnalysis {
   };
   readonly cache: Pick<CachePlan, 'format' | 'provider' | 'protocol' | 'mode' | 'orderedBlockIds' | 'requiresProviderContractTest' | 'reason'>;
   readonly policy: PolicyDecision;
+  readonly policyFabric: PolicyFabricDecision;
   readonly strategy: {
     readonly planned: PolicyStrategy;
     readonly observed?: PolicyStrategy | 'externalize';
@@ -372,11 +374,19 @@ export function analyzeContextFabric(request: MessagesRequest, options: FabricOp
     strictOrdering: true,
     explicitMarkers: true,
   });
+  const costs = policyCosts(ir);
   const policy = evaluatePolicy({
     mode: modeFromInput(options.mode),
     blocks: ir.blocks,
-    costs: policyCosts(ir),
+    costs,
     providerAvailable: options.providerAvailable,
+  });
+  const policyFabric = evaluatePolicyFabric({
+    provider: 'anthropic',
+    mode: modeFromInput(options.mode),
+    blocks: ir.blocks,
+    costs,
+    providerState: { status: 'unknown', circuit: 'closed' },
   });
   return {
     format: 'furypipe-context-fabric-analysis/v1',
@@ -411,6 +421,7 @@ export function analyzeContextFabric(request: MessagesRequest, options: FabricOp
       reason: cache.reason,
     },
     policy,
+    policyFabric,
     strategy: { planned: policy.strategy },
     verification: {
       phase: 'pre_transform',
