@@ -173,6 +173,20 @@ M11 reste `PARTIAL` : la preuve porte sur un harness local à callbacks fournis
 par l’hôte. Aucun modèle réel, provider, worker interprocessus, handoff
 distribué ou stockage durable Recovery n’est exécuté ici.
 
+## M13 Learning and Knowledge — 2026-09-11
+
+| Élément | Résultat | Mesure / preuve |
+|---|---|---|
+| Parcours humain | PASS local borné | diagnostic sans identifiant plaintext, roadmap topologique, curriculum théorie/pratique/exercices/projet/quiz/explain-back, graphe de maîtrise et reviews espacées |
+| Mise à jour de maîtrise | PASS local borné | `recordHumanLearningAttempt()` valide les scores bornés et recalcule maîtrise, gaps et intervalle de révision |
+| Cycle agent | PASS local borné | callbacks réels `Plan -> Execute -> Verify -> Reflect -> Extract lesson -> Validate -> Store -> Reuse` |
+| Mémoire agent | PASS local borné | store mémoire refuse les leçons non validées et conserve seulement digests, classe, compteurs et handle opaque |
+| Package export | à exécuter | export `furypipe/learning` ajouté et branché au package smoke |
+
+M13 reste `PARTIAL` : aucun graphe de connaissances durable, RAG sémantique,
+fine-tuning, modèle réel, worker interprocessus ou service hébergé n’est
+implémenté et aucune de ces capacités n’est revendiquée.
+
 Les versions Node de cette matrice sont relevées depuis l’index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le
 développement, mais n'est pas le runtime de production.

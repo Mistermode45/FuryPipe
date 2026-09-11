@@ -356,3 +356,11 @@
 - Statut M11 : `PARTIAL`. Le kernel local est réel et testé, mais aucun modèle
   réel, worker interprocessus, handoff distribué ou stockage Recovery durable
   de mémoire n’est déclaré livré.
+
+## 2026-09-11 — M13 Learning and Knowledge
+
+- `src/learning.ts` ajoute un parcours humain borné : diagnostic, roadmap avec prérequis, théorie, pratique, exercices, projet, quiz, explain-back, graphe de maîtrise et reviews espacées.
+- `recordHumanLearningAttempt()` met à jour la maîtrise depuis des scores validés et recalcule le chemin recommandé et la prochaine révision.
+- Le cycle agent exécute réellement `Plan -> Execute -> Verify -> Reflect -> Extract lesson -> Validate -> Store -> Reuse` via callbacks fournis par l’hôte.
+- La mémoire agent exige une validation avant stockage et ne conserve que des métadonnées, digests et handle de contenu opaque. Aucun prompt brut, secret, réseau, RAG ou fine-tuning n’est implicite.
+- Six tests ciblés M13 et l’export package smoke couvrent cette tranche. Statut : `PARTIAL`, les intégrations durables/modèle hébergé restent ouvertes.

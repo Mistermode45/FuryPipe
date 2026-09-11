@@ -98,6 +98,10 @@
       "types": "./dist/fury-prompt.d.ts",
       "import": "./dist/fury-prompt.js"
     },
+    "./learning": {
+      "types": "./dist/learning.d.ts",
+      "import": "./dist/learning.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"
@@ -140,6 +144,7 @@
     "docs/PROVIDER_FABRIC.md",
     "docs/OPENCLAW.md",
     "docs/AGENT_FABRIC.md",
+    "docs/LEARNING_KNOWLEDGE.md",
     "docs/POLICY.md",
     "docs/RECEIPTS.md",
     "LICENSE"
