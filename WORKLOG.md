@@ -88,3 +88,14 @@
 - Package dry-run : `furypipe@0.13.2`, 147 fichiers, 4 069 975 octets compressés, 16 488 778 octets décompressés.
 - SHA-256 : `dist/node.js` = `0BD02C9AF461585EF59BC783EB1D02F1E0C5B0128E0551E3788E4A16F238256B` ; `dist/mcp.js` = `1897586E405CE221B7C27767338E84BFAD9525CAD16ECE464F5327DF997DC0B1`.
 - État Git : arbre propre sur `v5-production-hardening` ; aucun push, merge, publication ou déploiement.
+
+## 2026-09-11 — ExactGuard automatique et Recovery multi-namespace
+
+- ExactGuard est désormais appliqué automatiquement par `transformRequest` en mode `balanced` par défaut ; `safe`, `coding-safe` et `safetyMode: false` sont explicites et testés.
+- Le préflight protège les valeurs critiques sans stocker leur plaintext dans la télémétrie ; les blocs `tool_result` protégés restent natifs tandis que les autres zones peuvent encore être transformées.
+- La ligne de facturation `x-anthropic-billing-header` reste traitée comme métadonnée de transport et n’empêche pas son extraction ; un `exactGuard` explicite conserve toujours la requête complète.
+- Le paging de fixture lockfile utilise désormais l’opt-out documenté, car ses checksums synthétiques sont volontairement hors périmètre de fidélité de ce test.
+- Recovery ajoute `maxGlobalBytes` partagé entre namespaces et sérialise les mutations par racine réelle, y compris entre instances créées séparément.
+- Chaque nouvel objet reçoit maintenant un manifeste atomique ; `gc()` supprime aussi les objets sans manifeste, sans toucher les manifestes invalides ou valides non expirés.
+- Tests locaux après ces changements : suite ciblée ExactGuard/Recovery/render/billing/paging verte ; suite complète 88 fichiers / 1 262 tests ; typecheck vert.
+- Revue MCP officielle effectuée sur la spec `2026-07-28` et le SDK TypeScript `@modelcontextprotocol/server`/`client`/`core` `2.0.0`. La cible moderne est stateless, self-describing, sans handshake obligatoire, avec `server/discover`, `_meta` par requête, headers de routage et cache hints ; le serveur local reste legacy stdio jusqu’à migration et conformance réelles.

@@ -39,6 +39,7 @@ export type ExactnessClass =
   | 'custom';
 
 export type RepresentationPolicy = 'preserve_exact' | 'redact' | 'externalize';
+export type ExactGuardMode = 'safe' | 'balanced' | 'coding-safe';
 
 export interface ExactGuardRule {
   readonly id: string;
@@ -52,6 +53,8 @@ export interface ExactGuardOptions {
   readonly rules?: readonly ExactGuardRule[];
   readonly includeLowConfidenceLiterals?: boolean;
   readonly representationPolicy?: RepresentationPolicy;
+  /** Restrict built-in rules for a named safety profile; custom rules remain active. */
+  readonly protectedClasses?: readonly ExactnessClass[];
 }
 
 export interface ProtectedSpan {
@@ -127,6 +130,24 @@ const MAX_CUSTOM_RULES = 64;
 const MAX_RULE_SOURCE_LENGTH = 512;
 const MAX_GUARDED_TEXT_LENGTH = 4 * 1024 * 1024;
 
+const BALANCED_CLASSES: readonly ExactnessClass[] = [
+  'secret', 'auth_header', 'jwt', 'uuid', 'sha1', 'sha256', 'sha512', 'blake3',
+  'commit_sha', 'tool_call_id', 'message_id', 'minecraft_uuid', 'checksum',
+];
+
+const CODING_SAFE_CLASSES: readonly ExactnessClass[] = [
+  ...BALANCED_CLASSES,
+  'url', 'path', 'line_reference', 'semver', 'code_symbol', 'identifier',
+  'command', 'sql_identifier', 'error_code', 'stacktrace_frame',
+  'permission_node', 'coordinate', 'email', 'phone', 'host_port', 'ip',
+];
+
+/** Resolve the built-in protection policy used before a lossy transform. */
+export function exactGuardOptionsForMode(mode: ExactGuardMode): ExactGuardOptions {
+  if (mode === 'safe') return {};
+  return { protectedClasses: mode === 'balanced' ? BALANCED_CLASSES : CODING_SAFE_CLASSES };
+}
+
 function sha256(value: Uint8Array | string): string {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -197,9 +218,12 @@ function validateCustomRules(rules: readonly ExactGuardRule[]): void {
 export function detectProtectedSpans(text: string, options: ExactGuardOptions = {}): readonly ProtectedSpan[] {
   if (text.length > MAX_GUARDED_TEXT_LENGTH) throw new RangeError('ExactGuard input exceeds the 4 MiB limit');
   validateCustomRules(options.rules ?? []);
+  const allowed = options.protectedClasses ? new Set(options.protectedClasses) : undefined;
   const rules = [
-    ...DEFAULT_RULES,
-    ...(options.includeLowConfidenceLiterals ? LOW_CONFIDENCE_RULES : []),
+    ...DEFAULT_RULES.filter((rule) => !allowed || allowed.has(rule.class)),
+    ...(options.includeLowConfidenceLiterals
+      ? LOW_CONFIDENCE_RULES.filter((rule) => !allowed || allowed.has(rule.class))
+      : []),
     ...(options.rules ?? []),
   ];
   const defaultPolicy = options.representationPolicy ?? 'preserve_exact';

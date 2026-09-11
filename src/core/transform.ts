@@ -58,7 +58,7 @@ import { visionTokens, type VisionPricing } from './vision-cost.js';
 import { CLAUDE_PROFILE } from './claude-model-profiles.js';
 import { resolveGptProfile } from './gpt-model-profiles.js';
 import type { CompressionReceipt } from './receipt.js';
-import { detectProtectedSpans, type ExactGuardOptions } from './exact-guard.js';
+import { detectProtectedSpans, exactGuardOptionsForMode, type ExactGuardMode, type ExactGuardOptions } from './exact-guard.js';
 
 /** Per-block descriptor passed to `TransformOptions.keepSharp`. */
 export interface KeepSharpBlock {
@@ -145,12 +145,12 @@ export interface TransformOptions {
   /** When true, the public library wrapper emits a plaintext-free compression receipt. */
   emitReceipt?: boolean;
   /**
-   * Optional lossiness gate. When enabled, any protected span in a textual
-   * request value keeps the complete request native until an explicit,
-   * reversible representation path is available. This is intentionally opt-in
-   * for compatibility with existing hosts; it is never receipt-only when set.
+   * Explicit ExactGuard rule set. Passing `false` is the documented opt-out.
+   * When omitted, `safetyMode` supplies the automatic built-in policy.
    */
   exactGuard?: ExactGuardOptions | false;
+  /** Automatic protection profile applied before any lossy transform. */
+  safetyMode?: ExactGuardMode | false;
 }
 
 const DEFAULTS: Required<TransformOptions> = {
@@ -176,6 +176,7 @@ const DEFAULTS: Required<TransformOptions> = {
   emitRecoverable: false,
   emitReceipt: false,
   exactGuard: false,
+  safetyMode: 'balanced',
   // GPT-only knobs; the Anthropic transform ignores them but Required<> needs them.
   collapseHistory: true,
   gptHistory: {},
@@ -547,16 +548,48 @@ function bumpPassthrough(
 }
 
 /** Count protected spans without retaining their plaintext in telemetry. */
-function countProtectedRequestSpans(value: unknown, options: ExactGuardOptions, depth = 0): number {
+function countProtectedRequestSpans(
+  value: unknown,
+  options: ExactGuardOptions,
+  depth = 0,
+  key?: string,
+  skipToolResultContent = false,
+): number {
   if (depth > 8) return 0;
-  if (typeof value === 'string') return detectProtectedSpans(value, options).length;
+  // This header is consumed as transport metadata before the lossy stages;
+  // its request id must not prevent the billing-line extraction below.
+  if (key?.toLowerCase() === 'x-anthropic-billing-header') return 0;
+  if (typeof value === 'string') {
+    // The billing line is transport metadata embedded in a system string,
+    // rather than a semantic prompt value. It is extracted before the lossy
+    // stages, so its request id must not make the whole request native. Keep
+    // scanning the remainder of the string: unrelated protected values still
+    // need to fail closed.
+    const semanticText = value.replace(
+      /(?:^|\r?\n)x-anthropic-billing-header:[^\r\n]*/gi,
+      '',
+    );
+    return detectProtectedSpans(semanticText, options).length;
+  }
   if (!value || typeof value !== 'object') return 0;
+  // Live tool-result text has its own per-block gate. Keeping it out of the
+  // whole-request preflight lets safe static context compress while the exact
+  // tool output remains native when a protected span is found.
+  if (skipToolResultContent && !Array.isArray(value) && (value as { type?: unknown }).type === 'tool_result') {
+    let metadataCount = 0;
+    for (const [childKey, item] of Object.entries(value as Record<string, unknown>)) {
+      if (childKey !== 'content') {
+        metadataCount += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent);
+      }
+    }
+    return metadataCount;
+  }
   let count = 0;
   if (Array.isArray(value)) {
-    for (const item of value) count += countProtectedRequestSpans(item, options, depth + 1);
+    for (const item of value) count += countProtectedRequestSpans(item, options, depth + 1, undefined, skipToolResultContent);
   } else {
-    for (const item of Object.values(value as Record<string, unknown>)) {
-      count += countProtectedRequestSpans(item, options, depth + 1);
+    for (const [childKey, item] of Object.entries(value as Record<string, unknown>)) {
+      count += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent);
     }
   }
   return count;
@@ -572,6 +605,21 @@ function callerKeepsSharp(
     return fn(block) === true;
   } catch {
     return false;
+  }
+}
+
+/** Automatic ExactGuard for live blocks; failures fail safe to native text. */
+function guardKeepsSharp(
+  fn: ((block: KeepSharpBlock) => boolean) | undefined,
+  block: KeepSharpBlock,
+  options: ExactGuardOptions | false,
+): boolean {
+  if (callerKeepsSharp(fn, block)) return true;
+  if (options === false) return false;
+  try {
+    return detectProtectedSpans(block.text, options).length > 0;
+  } catch {
+    return true;
   }
 }
 
@@ -2159,8 +2207,17 @@ export async function transformRequest(
   // reversible externalize/redact adapter is selected, preserve the complete
   // native request whenever a configured rule detects a protected value.
   // Counting only hashes/spans keeps this diagnostic plaintext-free.
-  if (o.exactGuard !== false) {
-    const protectedSpans = countProtectedRequestSpans(req, o.exactGuard ?? {});
+  const activeExactGuard = opts.exactGuard !== undefined
+    ? opts.exactGuard
+    : o.safetyMode === false ? false : exactGuardOptionsForMode(o.safetyMode);
+  if (activeExactGuard !== false) {
+    const protectedSpans = countProtectedRequestSpans(
+      req,
+      activeExactGuard,
+      0,
+      undefined,
+      opts.exactGuard === undefined,
+    );
     if (protectedSpans > 0) {
       info.reason = `exact_guard (preserve_native, spans=${protectedSpans})`;
       info.exactGuard = { protectedSpans, action: 'preserve_native' };
@@ -2724,7 +2781,7 @@ export async function transformRequest(
           const innerRaw = tr.content;
           if (typeof innerRaw === 'string') {
             // Caller fidelity override: pin this tool_result as text.
-            if (callerKeepsSharp(o.keepSharp, { kind: 'tool_result', text: innerRaw, toolUseId: tr.tool_use_id })) {
+            if (guardKeepsSharp(o.keepSharp, { kind: 'tool_result', text: innerRaw, toolUseId: tr.tool_use_id }, activeExactGuard)) {
               bumpPassthrough(info, 'kept_sharp');
               info.keptSharpBlocks = (info.keptSharpBlocks ?? 0) + 1;
               rewritten.push(blk);
@@ -2837,7 +2894,7 @@ export async function transformRequest(
               }
               const innerTextRaw = (ib as TextBlock).text;
               // Caller fidelity override: pin this tool_result part as text.
-              if (callerKeepsSharp(o.keepSharp, { kind: 'tool_result_part', text: innerTextRaw, toolUseId: tr.tool_use_id })) {
+              if (guardKeepsSharp(o.keepSharp, { kind: 'tool_result_part', text: innerTextRaw, toolUseId: tr.tool_use_id }, activeExactGuard)) {
                 bumpPassthrough(info, 'kept_sharp');
                 info.keptSharpBlocks = (info.keptSharpBlocks ?? 0) + 1;
                 newInner.push(ib as TextBlock | ImageBlock);

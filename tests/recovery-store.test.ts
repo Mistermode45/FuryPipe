@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -70,11 +71,37 @@ describe('Recovery Store', () => {
     expect(await store.get(first)).toEqual(new TextEncoder().encode('1234'));
   });
 
+  it('enforces a shared global quota across namespace views', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-global-quota-'));
+    roots.push(root);
+    const one = createRecoveryStore(root, { namespace: 'one', maxGlobalBytes: 5 });
+    const two = createRecoveryStore(root, { namespace: 'two', maxGlobalBytes: 5 });
+    const outcomes = await Promise.allSettled([
+      one.put(new TextEncoder().encode('1234')),
+      two.put(new TextEncoder().encode('56')),
+    ]);
+    expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+    const rejected = outcomes.find((outcome) => outcome.status === 'rejected');
+    expect(rejected?.status === 'rejected' && rejected.reason).toMatchObject({ message: expect.stringContaining('global quota') });
+  });
+
   it('garbage-collects expired manifests and their immutable objects', async () => {
     const { store } = await createStoreFixture();
     const handle = await store.put(new TextEncoder().encode('temporary'), { expiresAt: '2020-01-01T00:00:00.000Z' });
     expect(await store.gc(new Date('2026-09-11T00:00:00.000Z'))).toMatchObject({ expired: 1, bytesFreed: 9 });
     expect((await store.verify(handle)).exists).toBe(false);
+  });
+
+  it('removes unreferenced object files without touching valid manifests', async () => {
+    const { root, store } = await createStoreFixture();
+    const live = await store.put(new TextEncoder().encode('live'), { source: 'kept' });
+    const orphanBytes = new TextEncoder().encode('orphan');
+    const orphanDigest = createHash('sha256').update(orphanBytes).digest('hex');
+    const orphanPath = join(root, 'namespaces', 'test-tenant', 'objects', orphanDigest.slice(0, 2), orphanDigest);
+    await mkdir(join(root, 'namespaces', 'test-tenant', 'objects', orphanDigest.slice(0, 2)), { recursive: true });
+    await writeFile(orphanPath, orphanBytes, { flag: 'wx' });
+    expect(await store.gc(new Date('2026-09-11T00:00:00.000Z'))).toMatchObject({ orphaned: 1, bytesFreed: 6 });
+    expect((await store.verify(live)).ok).toBe(true);
   });
 
   it('creates a verified backup and restores it without overwriting conflicts', async () => {

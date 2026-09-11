@@ -56,6 +56,10 @@
 | Package smoke réel | PASS | `npm pack`, installation du tarball dans un répertoire temporaire, CLI `--version`, `doctor --json`, handshake MCP |
 | Matrice CI V5 — run push `34627466584` | PASS | 9/9 jobs verts : Node 22.23.2, 24.21.0 et 26.8.2 sur Ubuntu, Windows et macOS ; package smoke inclus |
 | Matrice CI V5 — run PR `34627470246` | PARTIAL | 8/9 jobs verts ; Windows Node 22 a encore exposé `EBUSY` après `exit`, corrigé ensuite par attente `close` |
+| Matrice CI V5 — run push `34628201836` | PASS | 9/9 jobs verts après attente `close` : Ubuntu/Windows/macOS × Node 22.23.2/24.21.0/26.8.2 |
+| Matrice CI V5 — run PR `34628205790` | PASS | 9/9 jobs verts sur la PR draft, package smoke inclus |
+| ExactGuard automatic modes | PASS local | modes `safe`/`balanced`/`coding-safe`, balanced par défaut, opt-out explicite ; suite complète 88 fichiers / 1 262 tests |
+| Recovery global/orphan tranche | PASS local | quota partagé entre namespaces, queue d’écriture par racine, manifeste systématique, GC des objets sans manifeste ; 9 tests Recovery |
 
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le

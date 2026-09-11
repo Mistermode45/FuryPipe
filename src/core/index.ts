@@ -54,8 +54,10 @@ export {
 export {
   buildPrecisionManifest,
   detectProtectedSpans,
+  exactGuardOptionsForMode,
   verifyPrecisionManifest,
   type ExactGuardOptions,
+  type ExactGuardMode,
   type ExactGuardRule,
   type ExactnessClass,
   type PrecisionManifest,

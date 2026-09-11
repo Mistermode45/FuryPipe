@@ -78,6 +78,22 @@ describe('keepSharp fidelity hint', () => {
     expect(info.passthroughReasons?.exact_guard).toBe(1);
   });
 
+  it('protects exact-looking tool output under the automatic balanced default', async () => {
+    const source = makeReq([
+      { type: 'tool_result', tool_use_id: 'toolu_exact', content: `${BIG}\nchecksum=${'a'.repeat(64)}` },
+    ]);
+    const { body, info } = await transformRequest(source, { charsPerToken: 2 });
+    expect(body).not.toEqual(source);
+    expect(info.compressed).toBe(true);
+    expect(info.toolResultImgs ?? 0).toBe(0);
+    expect(info.keptSharpBlocks).toBeGreaterThan(0);
+    const tr = userBlocks(body).find((b) => b.type === 'tool_result');
+    const text = typeof tr?.content === 'string'
+      ? tr.content
+      : (tr?.content ?? []).find((b: any) => b.type === 'text')?.text;
+    expect(text).toBe(`${BIG}\nchecksum=${'a'.repeat(64)}`);
+  });
+
   it('images a large tool_result by default (baseline, no hint)', async () => {
     const { body, info } = await transformRequest(
       makeReq([{ type: 'tool_result', tool_use_id: 'toolu_a', content: BIG }]),
