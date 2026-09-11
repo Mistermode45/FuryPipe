@@ -123,6 +123,12 @@ try {
     "const m = await import('furypipe/learning'); if (typeof m.runAgentLearningCycle !== 'function' || typeof m.createHumanLearningPath !== 'function') process.exit(1);",
   ], installDir);
   assert(learningExport.stderr === '', `Learning package export wrote stderr: ${learningExport.stderr}`);
+  const providerRuntimeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/provider-runtime'); if (typeof m.createProviderRuntimeState !== 'function') process.exit(1);",
+  ], installDir);
+  assert(providerRuntimeExport.stderr === '', `Provider runtime package export wrote stderr: ${providerRuntimeExport.stderr}`);
   await runMcp(process.execPath, [mcp], {
     jsonrpc: '2.0',
     id: 1,
