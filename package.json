@@ -85,6 +85,10 @@
       "types": "./dist/openclaw.d.ts",
       "import": "./dist/openclaw.js"
     },
+    "./agent-fabric": {
+      "types": "./dist/agent-fabric.d.ts",
+      "import": "./dist/agent-fabric.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"
@@ -117,6 +121,7 @@
     "docs/CONTEXT_FABRIC.md",
     "docs/PROVIDER_FABRIC.md",
     "docs/OPENCLAW.md",
+    "docs/AGENT_FABRIC.md",
     "docs/POLICY.md",
     "docs/RECEIPTS.md",
     "LICENSE"

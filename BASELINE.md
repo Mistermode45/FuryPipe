@@ -77,6 +77,7 @@
 | M6 policy fabric ciblé | PASS local | 4 tests : cinq stratégies évaluées séparément, circuit ouvert, fallback explicite, canary/rollback/régression bornés |
 | M7 provider/model fabric ciblé | PASS local | 5 tests registry/fallback + intégration `ContextFabricAnalysis`; registry locale, alias/famille modèle, raisons de routage, cache et `COST_UNKNOWN`; disponibilité reste `unknown` |
 | M9 OpenClaw adapter ciblé | PASS local | 5 tests fixtures JSON5, surcharge de chemins, état absent/invalide, doctor metadata-only ; runtime réel `OPENCLAW_NOT_TESTED` |
+| M11 Agent Fabric ciblé | PASS local | 4 tests : registre de décisions sourcées, plan read-only/scoped-write, budget borné et digest sans plaintext ; harness runtime non exécuté |
 
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le

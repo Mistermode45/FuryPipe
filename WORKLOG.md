@@ -163,3 +163,17 @@
 - Les fixtures couvrent JSON5 avec commentaires/trailing comma, surcharge de
   chemin, config absente et config invalide. Aucun binaire ou gateway OpenClaw
   réel n’a été lancé : statut conservé `OPENCLAW_NOT_TESTED`.
+
+## 2026-09-11 — M11 Agent Fabric FuryPipe-native
+
+- `src/agent-fabric.ts` formalise un plan metadata-only en cinq étapes
+  (`research`, `plan`, `implement`, `review`, `verify`) avec preuves requises,
+  gates et permission read/scoped-write.
+- Le registre documente les décisions de concepts ECC/Matt/local (`ADAPT`,
+  `WRAP`, `REFERENCE_ONLY`, `REJECT`) avec référence, licence/provenance,
+  sécurité et maintenance ; aucun code externe n’est copié.
+- Le plan est read-only par défaut, n’active l’écriture qu’avec un opt-in
+  explicite, désactive le réseau, ne demande jamais de secrets et ne conserve
+  qu’un digest de l’objectif.
+- M11 reste `PARTIAL` : aucun harness multi-agent, handoff interprocessus,
+  mémoire de prompts ou exécution de skills n’est déclaré livré.
