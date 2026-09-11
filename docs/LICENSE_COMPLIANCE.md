@@ -4,7 +4,7 @@
 
 `AUTOMATED_REPORT_CONFIGURED`
 
-FuryPipe generates a dependency-license inventory in CI from the frozen pnpm dependency graph.
+FuryPipe generates dependency-license inventories in CI from the frozen pnpm dependency graph on Ubuntu, Windows and macOS. The installed optional/native dependency set is platform-specific, so a single-OS report is insufficient.
 
 ## Evidence
 
@@ -20,10 +20,12 @@ pnpm licenses list --json > licenses.raw.json
 node scripts/security/license-report.mjs licenses.raw.json licenses.summary.json
 ```
 
-Artifacts:
+Artifacts are emitted separately for `ubuntu-24.04`, `windows-2025` and `macos-14`:
 
-- `licenses.raw.json` — pnpm's source report;
-- `licenses.summary.json` — normalized FuryPipe count/status report.
+- `licenses.raw.json` — pnpm's source report for that runner;
+- `licenses.summary.json` — normalized FuryPipe count/status report for that runner.
+
+Package totals are not expected to be identical across operating systems because optional native packages differ. Release review must consider the union of the supported-platform reports.
 
 The job fails when the report is empty or contains an explicit unknown/unlicensed group.
 
