@@ -67,6 +67,13 @@ The workflow scans full git history and fails on findings. Legitimate test fixtu
 
 ## Dependabot policy
 
-Status: `DEFERRED_UNTIL_BRANCH_POLICY_FINAL`.
+Status: `CONFIGURED_BRANCH_POLICY_REVIEW_REQUIRED`.
 
-The repository default branch is currently `v5-codex-review-clean` while active development occurs on `v5-production-hardening`. Dependabot configuration is intentionally deferred until the target/default branch policy is finalized so automated update PRs are not directed at the wrong integration branch.
+The repository already contains `.github/dependabot.yml` with weekly update checks for:
+
+- `github-actions`;
+- `npm`.
+
+No `target-branch` is configured. GitHub's documented default behavior is therefore to inspect and target the repository default branch for version-update pull requests. The repository default branch is currently `v5-codex-review-clean`, while active V5 development occurs on `v5-production-hardening`.
+
+Do not silently add `target-branch` during this parallel track: the integration/default/release branch model must be finalized first. Security-update behavior must also be reviewed separately because GitHub handles security updates against the default branch.
