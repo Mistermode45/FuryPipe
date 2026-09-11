@@ -6,7 +6,7 @@
 - Branche locale : `main`
 - Date d’exécution : 2026-09-11
 - OS local : Windows 11 x64
-- Node cible : 26.8.2
+- Node local vérifié : 26.8.2 ; baseline production V5 : 24.21.0
 - npm : 11.14.1
 - pnpm : 12.3.4
 
@@ -44,6 +44,21 @@
 | `node --input-type=module` public export smoke | PASS | `createCompressionReceipt` exporté par `dist/core/index.js` |
 | `npm pack --dry-run --json` après M5/M6 | PASS | package `furypipe@0.13.2` ; 147 entrées ; 4 064 314 octets compressés / 16 459 325 décompressés ; Context Fabric, Policy, MCP stdio, receipts, classifier, retrieval et compiler inclus ; aucun tarball publié |
 | `pnpm licenses list --json` après M5/M6 | PASS | MIT 57, Apache-2.0 7, MIT OR Apache-2.0 4, ISC 3, MPL-2.0 2, Apache-2.0 AND LGPL-3.0-or-later 1, CC0-1.0 1, BSD-3-Clause 1 |
+
+## Continuation V5 — CI et runtime
+
+| Élément | Résultat | Mesure / preuve |
+|---|---|---|
+| Push de `v5-production-hardening` | PASS | branche distante à `d03db733406efb003cb70007bab48b6623f9a892` |
+| PR de vérification | PASS | draft PR #2 contre `v5-codex-review-clean`, sans merge |
+| CI ancienne matrice | PARTIAL | 5 jobs verts ; Windows Node 20 a échoué sur `ENOTEMPTY` pendant le nettoyage de `tests/node-security.test.ts` |
+| Test sécurité Windows ciblé après correction | PASS | 1 fichier ; 4 tests ; retries bornés de suppression NTFS |
+| Package smoke réel | PASS | `npm pack`, installation du tarball dans un répertoire temporaire, CLI `--version`, `doctor --json`, handshake MCP |
+| Matrice CI V5 | EN ATTENTE | Node 22.23.2, 24.21.0 et 26.8.2 sur Ubuntu, Windows et macOS après le prochain push |
+
+Les versions Node de cette matrice sont relevées depuis l'index officiel des
+distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le
+développement, mais n'est pas le runtime de production.
 
 Les rapports JUnit `build/test-results/test/TEST-*.xml` ne sont pas produits par la configuration Vitest actuelle : `XML_REPORTS=0`. Le décompte ci-dessus vient donc de la sortie Vitest, pas d’un rapport XML fabriqué.
 

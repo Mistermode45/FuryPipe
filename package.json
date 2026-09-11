@@ -114,6 +114,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "package:smoke": "node scripts/package-smoke.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
     "vendor:ui": "node scripts/vendor-ui.mjs"
   },
@@ -130,7 +131,7 @@
     "cloudflare-workers"
   ],
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.14"
   },
   "packageManager": "pnpm@10.21.0",
   "pnpm": {

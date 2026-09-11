@@ -25,6 +25,18 @@ let child: ChildProcess | undefined;
 let upstream: Server | undefined;
 let dir: string | undefined;
 
+function removeTempTree(target: string): void {
+  // Windows can keep a just-closed child-process handle alive for a short
+  // interval. Let Node retry the directory removal instead of making the
+  // security test depend on scheduler timing.
+  fs.rmSync(target, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 100,
+  });
+}
+
 afterEach(async () => {
   if (child?.exitCode === null) {
     child.kill('SIGTERM');
@@ -33,7 +45,7 @@ afterEach(async () => {
   child = undefined;
   if (upstream) await new Promise<void>((resolve) => upstream!.close(() => resolve()));
   upstream = undefined;
-  if (dir) fs.rmSync(dir, { recursive: true, force: true });
+  if (dir) removeTempTree(dir);
   dir = undefined;
 });
 

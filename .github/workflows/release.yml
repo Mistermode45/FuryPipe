@@ -28,9 +28,9 @@ jobs:
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          # Keep the release runtime aligned with the locally verified Node 26
-          # toolchain; do not silently move to an untested runtime.
-          node-version: 26.8.2
+          # Keep the release runtime aligned with the V5 production Node 24
+          # baseline; the CI matrix separately covers Node 22 and 26.
+          node-version: 24.21.0
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - name: Verify tag matches package version
