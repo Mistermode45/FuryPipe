@@ -1,0 +1,179 @@
+import { describe, expect, it } from 'vitest';
+import {
+  createControlRoomSnapshot,
+  type ControlRoomInput,
+} from '../src/control-room/index.js';
+
+function input(): ControlRoomInput {
+  return {
+    generatedAt: 1_725_000_000_000,
+    sourceCommit: 'a'.repeat(40),
+    receipts: {
+      receipts: 10,
+      verifiedReceipts: 10,
+      protectedSpans: 42,
+      recoveryHandles: 3,
+      confidence: 'verified',
+    },
+    recovery: {
+      objects: 3,
+      verifiedObjects: 3,
+      encryption: 'aes-256-gcm',
+      activeKeyId: 'primary',
+      backupEvidence: 'RESTORE_VERIFIED',
+      crashRecovery: 'PARTIAL',
+      multiProcess: 'PARTIAL',
+    },
+    agent: {
+      runs: 4,
+      completedRuns: 4,
+      handoffRuns: 0,
+      failedRuns: 0,
+      contextUsedTokens: 1200,
+      persistedMemory: 'PARTIAL',
+      distributedHandoff: 'PARTIAL',
+    },
+    learning: {
+      humanTopics: 6,
+      agentLessons: 4,
+      reusedLessons: 2,
+      durableStore: 'PARTIAL',
+      semanticRetrieval: 'NOT_EXECUTED',
+    },
+    mcp: {
+      stdio: 'VERIFIED',
+      http: 'VERIFIED',
+      bearerAuth: 'VERIFIED',
+      oauth: 'PARTIAL',
+      externalConformance: 'NOT_EXECUTED',
+    },
+    i18n: {
+      locale: 'fr',
+      direction: 'ltr',
+      runtimeKernel: 'VERIFIED',
+      cliWiring: 'NOT_EXECUTED',
+      dashboardWiring: 'NOT_EXECUTED',
+    },
+    webStudio: {
+      kernel: 'VERIFIED',
+      figma: 'NOT_EXECUTED',
+      playwright: 'NOT_EXECUTED',
+      accessibility: 'NOT_EXECUTED',
+      security: 'NOT_EXECUTED',
+      seo: 'NOT_EXECUTED',
+      deployment: 'NOT_EXECUTED',
+    },
+    security: {
+      codeql: 'VERIFIED',
+      secretScan: 'VERIFIED',
+      dependencyAudit: 'VERIFIED',
+      sbom: 'VERIFIED',
+      actionPinning: 'VERIFIED',
+      licenseCompliance: 'VERIFIED',
+      dependencyReview: 'BLOCKED',
+    },
+    benchmarks: {
+      harness: 'VERIFIED',
+      providerRuns: 'NOT_EXECUTED',
+      comparableRuns: 0,
+    },
+  };
+}
+
+describe('Control Room V5 kernel', () => {
+  it('builds a fail-visible snapshot without promoting incomplete systems', () => {
+    const snapshot = createControlRoomSnapshot(input());
+    expect(snapshot.format).toBe('furypipe-control-room/v1');
+    expect(snapshot.overall).toBe('BLOCKED');
+    expect(snapshot.sections.receipts.status).toBe('VERIFIED');
+    expect(snapshot.sections.recovery.status).toBe('PARTIAL');
+    expect(snapshot.sections.security.status).toBe('BLOCKED');
+    expect(snapshot.sections.benchmarks.status).toBe('PARTIAL');
+  });
+
+  it('warns that BACKUP_EXISTS is not restore verification', () => {
+    const value = input();
+    value.recovery = { ...value.recovery, backupEvidence: 'BACKUP_EXISTS' };
+    const snapshot = createControlRoomSnapshot(value);
+    expect(snapshot.sections.recovery.warnings).toContain('Backup exists but restore has not been verified.');
+  });
+
+  it('warns when provider benchmark evidence is absent', () => {
+    const snapshot = createControlRoomSnapshot(input());
+    expect(snapshot.sections.benchmarks.warnings[0]).toMatch(/do not publish performance claims/i);
+  });
+
+  it('rejects impossible receipt and recovery counters', () => {
+    const badReceipts = input();
+    badReceipts.receipts = { ...badReceipts.receipts, verifiedReceipts: 11 };
+    expect(() => createControlRoomSnapshot(badReceipts)).toThrow(/verified receipt count/);
+
+    const badRecovery = input();
+    badRecovery.recovery = { ...badRecovery.recovery, verifiedObjects: 4 };
+    expect(() => createControlRoomSnapshot(badRecovery)).toThrow(/verified recovery object count/);
+  });
+
+  it('rejects encrypted Recovery evidence without a key id', () => {
+    const value = input();
+    value.recovery = { ...value.recovery, activeKeyId: undefined };
+    expect(() => createControlRoomSnapshot(value)).toThrow(/activeKeyId/);
+  });
+
+  it('rejects malformed commit evidence', () => {
+    const value = input();
+    value.sourceCommit = 'latest';
+    expect(() => createControlRoomSnapshot(value)).toThrow(/40-character commit SHA/);
+  });
+
+  it('can represent a fully verified system without inventing evidence', () => {
+    const value = input();
+    value.recovery = {
+      ...value.recovery,
+      crashRecovery: 'VERIFIED',
+      multiProcess: 'VERIFIED',
+    };
+    value.agent = {
+      ...value.agent,
+      persistedMemory: 'VERIFIED',
+      distributedHandoff: 'VERIFIED',
+    };
+    value.learning = {
+      ...value.learning,
+      durableStore: 'VERIFIED',
+      semanticRetrieval: 'VERIFIED',
+    };
+    value.mcp = {
+      stdio: 'VERIFIED',
+      http: 'VERIFIED',
+      bearerAuth: 'VERIFIED',
+      oauth: 'VERIFIED',
+      externalConformance: 'VERIFIED',
+    };
+    value.i18n = {
+      ...value.i18n,
+      cliWiring: 'VERIFIED',
+      dashboardWiring: 'VERIFIED',
+    };
+    value.webStudio = {
+      kernel: 'VERIFIED',
+      figma: 'VERIFIED',
+      playwright: 'VERIFIED',
+      accessibility: 'VERIFIED',
+      security: 'VERIFIED',
+      seo: 'VERIFIED',
+      deployment: 'VERIFIED',
+    };
+    value.security = {
+      ...value.security,
+      dependencyReview: 'VERIFIED',
+    };
+    value.benchmarks = {
+      harness: 'VERIFIED',
+      providerRuns: 'VERIFIED',
+      comparableRuns: 3,
+    };
+    const snapshot = createControlRoomSnapshot(value);
+    expect(snapshot.overall).toBe('HEALTHY');
+    expect(Object.values(snapshot.sections).every((section) => section.status === 'VERIFIED')).toBe(true);
+  });
+});
