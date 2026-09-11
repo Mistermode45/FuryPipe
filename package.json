@@ -69,6 +69,10 @@
       "types": "./dist/core/document-compiler.d.ts",
       "import": "./dist/core/document-compiler.js"
     },
+    "./context-fabric": {
+      "types": "./dist/core/context-fabric.d.ts",
+      "import": "./dist/core/context-fabric.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"

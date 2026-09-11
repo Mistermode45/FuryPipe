@@ -66,6 +66,11 @@
 | Package smoke post-MCP SDK | PASS local | tarball réel installé ; CLI, doctor et handshake stdio legacy SDK validés ; `furypipe-0.13.2.tgz` |
 | Matrice CI SDK — run push `34634021388` | PASS | 9/9 jobs : Ubuntu/Windows/macOS × Node 22.23.2/24.21.0/26.8.2 ; package smoke moderne + legacy inclus |
 | Matrice CI SDK — run PR `34634025667` | PASS | 9/9 jobs sur la PR draft #2 ; même matrice et mêmes gates ; aucune fusion effectuée |
+| M5 Context Fabric runtime ciblé | PASS local | `tests/context-fabric-runtime.test.ts` : 2 tests ; analyse attachée à `transformRequest`, stratégie native/raw observée et plaintext absent du diagnostic |
+| Suite complète post-M5 runtime | PASS local | 90 fichiers ; 1 266 tests ; sortie 0 ; 14,72 s ; Vitest 5.0.0 |
+| Typecheck/build post-M5 runtime | PASS local | `pnpm run typecheck`, `pnpm run build` ; sortie 0 ; `dist/core/context-fabric.js` et déclarations émises ; version CLI `0.13.2` |
+| CI docs-only commit `df46a07` — run push `34634492559` | PASS | 9/9 jobs verts : Ubuntu/Windows/macOS × Node 22.23.2/24.21.0/26.8.2 |
+| CI docs-only commit `df46a07` — run PR `34634496448` | PASS | 9/9 jobs verts sur la PR draft #2 ; package smoke inclus ; aucune fusion effectuée |
 
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le

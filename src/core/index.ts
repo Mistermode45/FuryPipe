@@ -141,3 +141,8 @@ export {
   type DocumentCompilation,
   type DocumentCompilerInput,
 } from './document-compiler.js';
+export {
+  analyzeContextFabric,
+  finalizeContextFabricAnalysis,
+  type ContextFabricAnalysis,
+} from './context-fabric.js';

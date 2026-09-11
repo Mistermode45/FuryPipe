@@ -108,3 +108,13 @@
 - `pnpm test` post-adaptateur : 89 fichiers / 1 264 tests verts ; typecheck, build et package smoke verts.
 - Limites maintenues : aucun listener HTTP ou OAuth de production, aucune validation client/provider hébergée, aucune certification MCP externe.
 - CI distante du commit `9dade8d` : runs push `34634021388` et PR `34634025667`, chacun `9/9` vert sur Ubuntu/Windows/macOS et Node 22/24/26.
+
+## 2026-09-11 — M5 Context Fabric runtime
+
+- `src/core/context-fabric.ts` relie le body Anthropic réel à une analyse partagée : parsing, classification des surfaces textuelles, Context IR, Instruction Ledger, contrat de cache et Policy Engine.
+- Le chemin de production reste `transformRequest` ; l’analyse est consultative et ne réécrit pas la conversation. La sortie enregistre la stratégie observée (`raw`, `native-cache` ou `guarded-lossy`), les tailles d’octets et la vérification IR/ledger.
+- `TransformInfo.contextFabric` ne contient que des compteurs, classes, décisions et identifiants opaques ; les textes sources, ledger et IR complets restent hors du diagnostic.
+- `tests/context-fabric-runtime.test.ts` couvre le flux réel, le chemin ExactGuard raw et l’absence de plaintext dans l’analyse.
+- Validation : 90 fichiers / 1 266 tests verts ; typecheck et build verts ; le package exporte aussi `./context-fabric`.
+- CI docs-only du commit `df46a07` : push `34634492559` et PR `34634496448`, chacun `9/9` vert sur Ubuntu/Windows/macOS et Node 22/24/26.
+- Limite : les coûts policy restent estimés ; l’externalize/recovery, les adapters provider, le listener HTTP/OAuth, la conformance externe et la validation hébergée restent ouverts.

@@ -59,6 +59,7 @@ import { CLAUDE_PROFILE } from './claude-model-profiles.js';
 import { resolveGptProfile } from './gpt-model-profiles.js';
 import type { CompressionReceipt } from './receipt.js';
 import { detectProtectedSpans, exactGuardOptionsForMode, type ExactGuardMode, type ExactGuardOptions } from './exact-guard.js';
+import { analyzeContextFabric, finalizeContextFabricAnalysis, type ContextFabricAnalysis } from './context-fabric.js';
 
 /** Per-block descriptor passed to `TransformOptions.keepSharp`. */
 export interface KeepSharpBlock {
@@ -669,6 +670,8 @@ export interface TransformInfo {
   reason?: string;
   /** Optional plaintext-free audit receipt, populated by provider wrappers on request. */
   receipt?: CompressionReceipt;
+  /** Shared Context Fabric decision, exposed for safe per-request diagnostics. */
+  contextFabric?: ContextFabricAnalysis;
   /** Exact UTF-8 byte length of the final serialized provider request. */
   serializedRequestBytes?: number;
   /** Result of the profile-level serialized request guard. */
@@ -2203,6 +2206,35 @@ export async function transformRequest(
     return { body, info };
   }
 
+  // Build one shared analysis from the parsed provider request. This is
+  // deliberately diagnostic-only: the existing transform remains the sole
+  // writer of the outbound body, while the IR/ledger/planner/policy stages
+  // share the exact same parsed request and cannot silently reorder it.
+  if (Array.isArray(req.messages)) {
+    try {
+      info.contextFabric = analyzeContextFabric(req, {
+        mode: o.safetyMode === false ? 'balanced' : o.safetyMode,
+        providerAvailable: true,
+      });
+    } catch {
+      // Context analysis must never turn a provider-valid request into a
+      // transform failure. The production path continues with its existing
+      // parser and guards when an unusual extension shape is encountered.
+    }
+  }
+  const finish = (outBody: Uint8Array): { body: Uint8Array; info: TransformInfo } => {
+    if (info.contextFabric) {
+      info.contextFabric = finalizeContextFabricAnalysis(
+        info.contextFabric,
+        body.byteLength,
+        outBody.byteLength,
+        info.compressed,
+        info.reason,
+      );
+    }
+    return { body: outBody, info };
+  };
+
   // ExactGuard is a real strategy gate, not receipt decoration. Until a
   // reversible externalize/redact adapter is selected, preserve the complete
   // native request whenever a configured rule detects a protected value.
@@ -2222,7 +2254,7 @@ export async function transformRequest(
       info.reason = `exact_guard (preserve_native, spans=${protectedSpans})`;
       info.exactGuard = { protectedSpans, action: 'preserve_native' };
       bumpPassthrough(info, 'exact_guard');
-      return { body, info };
+      return finish(body);
     }
   }
 
@@ -2440,12 +2472,12 @@ export async function transformRequest(
     const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, pins);
     if (finalized.collapsed) {
       info.compressed = true;
-      return { body: finalized.body, info };
+      return finish(finalized.body);
     }
     // `body` is the original bytes. If the pin pass edited `req`, those bytes
     // describe a request we are no longer sending, so forwarding them would put
     // the raw `@pxpipe pin` line back and drop the tail block.
-    return { body: pinsRewrote ? finalized.body : body, info };
+    return finish(pinsRewrote ? finalized.body : body);
   }
 
   // The wire cap guards even the slab. Imaging it is our biggest single win, but
@@ -2457,7 +2489,7 @@ export async function transformRequest(
     bumpPassthrough(info, 'image_budget');
     info.imageBudgetSkips = (info.imageBudgetSkips ?? 0) + 1;
     const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, pins);
-    return { body: pinsRewrote || finalized.collapsed ? finalized.body : body, info };
+    return finish(pinsRewrote || finalized.collapsed ? finalized.body : body);
   }
 
   // Break-even check guards even the slab (rare edge: tiny tool docs + tiny slab < 10k chars).
@@ -2524,12 +2556,12 @@ export async function transformRequest(
     const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, pins);
     if (finalized.collapsed) {
       info.compressed = true;
-      return { body: finalized.body, info };
+      return finish(finalized.body);
     }
     // `body` is the original bytes. If the pin pass edited `req`, those bytes
     // describe a request we are no longer sending, so forwarding them would put
     // the raw `@pxpipe pin` line back and drop the tail block.
-    return { body: pinsRewrote ? finalized.body : body, info };
+    return finish(pinsRewrote ? finalized.body : body);
   }
 
   // Instruction header co-renders into the same PNG (+1.04pp L1 OCR vs baseline;
@@ -2563,9 +2595,9 @@ export async function transformRequest(
     const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, pins);
     if (finalized.collapsed) {
       info.compressed = true;
-      return { body: finalized.body, info };
+      return finish(finalized.body);
     }
-    return { body: pinsRewrote ? finalized.body : body, info };
+    return finish(pinsRewrote ? finalized.body : body);
   }
 
   const imageBlocks: ImageBlock[] = [];
@@ -3056,7 +3088,7 @@ export async function transformRequest(
   info.wireImages = countNativeImages(req.messages);
   if (nearByteLimit(info, o.maxImageBytes)) info.imageBytesNearLimit = true;
   const outBody = new TextEncoder().encode(JSON.stringify(req));
-  return { body: outBody, info };
+  return finish(outBody);
 }
 
 /** Sum every TEXT char the upstream tokenizer will see (system, tools, messages).

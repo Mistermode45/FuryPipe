@@ -49,3 +49,25 @@ utilisateur.
 organisation stable/semi-stable/dynamique, force `raw_passthrough` en présence
 d’un bloc protégé et signale quand un contrat provider est requis. Aucun
 `cache_control`, ordre wire ou marqueur n’est réécrit par cette tranche.
+
+## Intégration runtime M5
+
+`src/core/context-fabric.ts` relie désormais ces primitives dans le chemin
+réel `transformRequest` : le body JSON est parsé, ses surfaces textuelles sont
+classées, un Context IR est construit, le ledger de provenance est validé, le
+contrat de cache Anthropic est évalué et la policy produit une stratégie
+estimée avant le transformeur historique. À la sortie, l’analyse est
+complétée avec la stratégie observée (`raw` ou `guarded-lossy`), les tailles
+d’entrée/sortie et l’état de vérification. `native-cache` reste une
+recommandation du planner tant qu’un exécuteur de cache provider dédié n’est
+pas branché.
+
+`TransformInfo.contextFabric` est un diagnostic borné : il expose des
+compteurs, catégories, états de validation et identifiants `ctx_` opaques,
+mais ni ledger, ni IR complet, ni texte source. L’analyse ne possède pas le
+body sortant et ne peut donc pas réordonner ou réécrire la conversation.
+
+La policy et les coûts restent `estimated` tant qu’un oracle provider/modèle
+et des coûts de retrieval vérifiés ne sont pas disponibles. Cette intégration
+M5 ne marque donc pas M6 comme terminé et ne prétend pas fournir une preuve
+provider hébergée.
