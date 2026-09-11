@@ -815,6 +815,7 @@ export function renderControlRoomFragment(snapshot: ControlRoomSnapshot | null):
     webStudio: 'Web / Figma Studio',
     security: 'Security / Supply Chain',
     benchmarks: 'Benchmarks',
+    release: 'Release readiness',
   };
 
   const rows = (Object.entries(snapshot.sections) as Array<[
@@ -829,8 +830,15 @@ export function renderControlRoomFragment(snapshot: ControlRoomSnapshot | null):
     .map((warning) => `<div class="status">⚠ ${escapeHtml(warning)}</div>`)
     .join('');
 
+  const release = snapshot.sections.release.evidence;
+  const releaseSummary =
+    `<div class="status">Release readiness · <strong>${escapeHtml(release.technicalStatus)}</strong>` +
+    ` · required gates ${numFmt(release.verifiedRequiredGates)}/${numFmt(release.requiredGates)}` +
+    ` · blockers ${numFmt(release.blockers)} · release actions executed: no</div>`;
+
   return (
     `<div class="status"><strong>Control Room V5 · ${escapeHtml(snapshot.overall)}</strong> · commit <code>${escapeHtml(snapshot.sourceCommit.slice(0, 12))}</code></div>` +
+    releaseSummary +
     `<table class="dtable"><tbody>${rows}</tbody></table>` +
     warnings
   );
