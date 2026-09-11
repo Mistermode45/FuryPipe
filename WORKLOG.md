@@ -99,3 +99,11 @@
 - Chaque nouvel objet reçoit maintenant un manifeste atomique ; `gc()` supprime aussi les objets sans manifeste, sans toucher les manifestes invalides ou valides non expirés.
 - Tests locaux après ces changements : suite ciblée ExactGuard/Recovery/render/billing/paging verte ; suite complète 88 fichiers / 1 262 tests ; typecheck vert.
 - Revue MCP officielle effectuée sur la spec `2026-07-28` et le SDK TypeScript `@modelcontextprotocol/server`/`client`/`core` `2.0.0`. La cible moderne est stateless, self-describing, sans handshake obligatoire, avec `server/discover`, `_meta` par requête, headers de routage et cache hints ; le serveur local reste legacy stdio jusqu’à migration et conformance réelles.
+
+## 2026-09-11 — MCP SDK dual-era
+
+- `@modelcontextprotocol/server@2.0.0` est câblé dans `src/mcp-modern.ts` ; il fournit le registre officiel `McpServer`, `createMcpHandler` et `serveStdio`.
+- La logique de Recovery est partagée par `executeMcpTool()` entre le dispatcher legacy déjà couvert et les callbacks SDK ; aucun second algorithme métier n’a été introduit.
+- `tests/mcp-modern.test.ts` prouve `server/discover`, `tools/list`, index/fetch exact et rejet d’une enveloppe moderne absente. `scripts/package-smoke.mjs` prouve le handshake legacy depuis le tarball installé avec les paramètres MCP requis.
+- `pnpm test` post-adaptateur : 89 fichiers / 1 264 tests verts ; typecheck, build et package smoke verts.
+- Limites maintenues : aucun listener HTTP ou OAuth de production, aucune validation client/provider hébergée, aucune certification MCP externe.

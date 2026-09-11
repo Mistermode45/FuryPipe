@@ -1,12 +1,12 @@
 import { createInterface } from 'node:readline';
 import { createRecoveryStore, type RecoveryMetadata, type RecoveryStore } from './core/recovery-store.js';
 
-const MAX_MESSAGE_BYTES = 2 * 1024 * 1024;
-const MAX_TEXT_BYTES = 1024 * 1024;
-const MAX_BINARY_ARRAY_BYTES = 64 * 1024;
-const MAX_RANGE_BYTES = 1024 * 1024;
-const MAX_QUERY_CHARS = 256;
-const PROTOCOL_VERSION = '2025-11-25';
+export const MAX_MESSAGE_BYTES = 2 * 1024 * 1024;
+export const MAX_TEXT_BYTES = 1024 * 1024;
+export const MAX_BINARY_ARRAY_BYTES = 64 * 1024;
+export const MAX_RANGE_BYTES = 1024 * 1024;
+export const MAX_QUERY_CHARS = 256;
+export const PROTOCOL_VERSION = '2025-11-25';
 declare const __FURYPIPE_VERSION__: string | undefined;
 
 interface JsonRpcRequest {
@@ -27,7 +27,11 @@ export interface McpService {
   handle(message: unknown): Promise<JsonRpcResponse | null>;
 }
 
-const TOOLS = [
+export function furypipeMcpVersion(): string {
+  return typeof __FURYPIPE_VERSION__ === 'string' ? __FURYPIPE_VERSION__ : 'dev';
+}
+
+export const TOOLS = [
   {
     name: 'index_text',
     description: 'Store text in the local byte-exact recovery store and return a verifiable handle.',
@@ -160,6 +164,56 @@ function boundedInteger(value: unknown, name: string): number {
   return value;
 }
 
+/** Execute one recovery tool and return the legacy-compatible CallToolResult. */
+export async function executeMcpTool(
+  store: RecoveryStore,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ content: [{ type: 'text'; text: string }] }> {
+  if (name === 'index_text') {
+    if (typeof args.text !== 'string' || new TextEncoder().encode(args.text).byteLength > MAX_TEXT_BYTES) throw new Error('text exceeds the 1 MiB limit');
+    const handle = await store.put(new TextEncoder().encode(args.text), metadataParam(args.metadata));
+    return textResult({ handle });
+  }
+  if (name === 'index_bytes') {
+    const handle = await store.put(decodeBase64(args.base64), metadataParam(args.metadata));
+    return textResult({ handle });
+  }
+  if (name === 'fetch_text') {
+    const bytes = await store.get(handleParam(args));
+    if (bytes.byteLength > MAX_TEXT_BYTES) throw new Error('stored object exceeds MCP output limit');
+    return textResult(new TextDecoder().decode(bytes));
+  }
+  if (name === 'fetch_exact' || name === 'fetch_bytes' || name === 'fetch_bytes_base64') {
+    const bytes = await store.get(handleParam(args));
+    if (bytes.byteLength > (name === 'fetch_bytes' ? MAX_BINARY_ARRAY_BYTES : MAX_TEXT_BYTES)) throw new Error('stored object exceeds MCP output limit');
+    return textResult(name === 'fetch_bytes'
+      ? { bytes: Array.from(bytes), byteLength: bytes.byteLength }
+      : Buffer.from(bytes).toString('base64'));
+  }
+  if (name === 'fetch_range') {
+    const start = boundedInteger(args.start, 'start');
+    const end = args.end_exclusive === undefined
+      ? Math.min(Number.MAX_SAFE_INTEGER, start + MAX_RANGE_BYTES)
+      : boundedInteger(args.end_exclusive, 'end_exclusive');
+    if (end < start || end - start > MAX_RANGE_BYTES) throw new Error('byte range is invalid or too large');
+    const bytes = await store.fetchRange(handleParam(args), start, end);
+    return textResult({ start, endExclusive: start + bytes.byteLength, base64: Buffer.from(bytes).toString('base64') });
+  }
+  if (name === 'fetch_lines') {
+    const from = args.from_line;
+    const to = args.to_line;
+    if (typeof from !== 'number' || !Number.isSafeInteger(from) || from < 1 || (to !== undefined && (typeof to !== 'number' || !Number.isSafeInteger(to) || to < from || to - from > 10_000))) throw new Error('line range is invalid or too large');
+    const value = await store.fetchLines(handleParam(args), from, to);
+    if (value.length > MAX_QUERY_CHARS * 4096) throw new Error('line output exceeds MCP limit');
+    return textResult(value);
+  }
+  if (name === 'verify_handle') return textResult(await store.verify(handleParam(args)));
+  if (name === 'manifest') return textResult(await store.manifest(handleParam(args)));
+  if (name === 'delete_handle') return textResult({ deleted: await store.delete(handleParam(args)) });
+  throw new Error('unknown tool');
+}
+
 /** Pure request dispatcher used by the stdio entrypoint and contract tests. */
 export function createMcpService(store: RecoveryStore): McpService {
   const seenRequestIds = new Set<string>();
@@ -181,7 +235,7 @@ export function createMcpService(store: RecoveryStore): McpService {
             capabilities: { tools: {} },
             serverInfo: {
               name: 'furypipe-recovery',
-              version: typeof __FURYPIPE_VERSION__ === 'string' ? __FURYPIPE_VERSION__ : 'dev',
+              version: furypipeMcpVersion(),
             },
           });
         }
@@ -191,54 +245,7 @@ export function createMcpService(store: RecoveryStore): McpService {
         const params = objectParams(request.params);
         if (typeof params.name !== 'string') throw new Error('tool name is required');
         const args = objectParams(params.arguments ?? {});
-        if (params.name === 'index_text') {
-          if (typeof args.text !== 'string' || new TextEncoder().encode(args.text).byteLength > MAX_TEXT_BYTES) throw new Error('text exceeds the 1 MiB limit');
-          const handle = await store.put(new TextEncoder().encode(args.text), metadataParam(args.metadata));
-          return response(id, textResult({ handle }));
-        }
-        if (params.name === 'index_bytes') {
-          const handle = await store.put(decodeBase64(args.base64), metadataParam(args.metadata));
-          return response(id, textResult({ handle }));
-        }
-        if (params.name === 'fetch_text') {
-          const bytes = await store.get(handleParam(args));
-          if (bytes.byteLength > MAX_TEXT_BYTES) throw new Error('stored object exceeds MCP output limit');
-          return response(id, textResult(new TextDecoder().decode(bytes)));
-        }
-        if (params.name === 'fetch_exact' || params.name === 'fetch_bytes' || params.name === 'fetch_bytes_base64') {
-          const bytes = await store.get(handleParam(args));
-          if (bytes.byteLength > (params.name === 'fetch_bytes' ? MAX_BINARY_ARRAY_BYTES : MAX_TEXT_BYTES)) throw new Error('stored object exceeds MCP output limit');
-          return response(id, textResult(params.name === 'fetch_bytes'
-            ? { bytes: Array.from(bytes), byteLength: bytes.byteLength }
-            : Buffer.from(bytes).toString('base64')));
-        }
-        if (params.name === 'fetch_range') {
-          const start = boundedInteger(args.start, 'start');
-          const end = args.end_exclusive === undefined
-            ? Math.min(Number.MAX_SAFE_INTEGER, start + MAX_RANGE_BYTES)
-            : boundedInteger(args.end_exclusive, 'end_exclusive');
-          if (end < start || end - start > MAX_RANGE_BYTES) throw new Error('byte range is invalid or too large');
-          const bytes = await store.fetchRange(handleParam(args), start, end);
-          return response(id, textResult({ start, endExclusive: start + bytes.byteLength, base64: Buffer.from(bytes).toString('base64') }));
-        }
-        if (params.name === 'fetch_lines') {
-          const from = args.from_line;
-          const to = args.to_line;
-          if (typeof from !== 'number' || !Number.isSafeInteger(from) || from < 1 || (to !== undefined && (typeof to !== 'number' || !Number.isSafeInteger(to) || to < from || to - from > 10_000))) throw new Error('line range is invalid or too large');
-          const value = await store.fetchLines(handleParam(args), from, to);
-          if (value.length > MAX_QUERY_CHARS * 4096) throw new Error('line output exceeds MCP limit');
-          return response(id, textResult(value));
-        }
-        if (params.name === 'verify_handle') {
-          return response(id, textResult(await store.verify(handleParam(args))));
-        }
-        if (params.name === 'manifest') {
-          return response(id, textResult(await store.manifest(handleParam(args))));
-        }
-        if (params.name === 'delete_handle') {
-          return response(id, textResult({ deleted: await store.delete(handleParam(args)) }));
-        }
-        throw new Error('unknown tool');
+        return response(id, await executeMcpTool(store, params.name, args));
       } catch (caught) {
         const messageText = caught instanceof Error ? caught.message : 'tool failed';
         return error(id, -32602, messageText.slice(0, MAX_QUERY_CHARS));

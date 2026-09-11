@@ -60,6 +60,10 @@
 | Matrice CI V5 — run PR `34628205790` | PASS | 9/9 jobs verts sur la PR draft, package smoke inclus |
 | ExactGuard automatic modes | PASS local | modes `safe`/`balanced`/`coding-safe`, balanced par défaut, opt-out explicite ; suite complète 88 fichiers / 1 262 tests |
 | Recovery global/orphan tranche | PASS local | quota partagé entre namespaces, queue d’écriture par racine, manifeste systématique, GC des objets sans manifeste ; 9 tests Recovery |
+| MCP SDK dual-era ciblé | PASS local | `tests/mcp-modern.test.ts` : 1 fichier / 2 tests ; discovery `2026-07-28`, 11 outils, index/fetch exact et enveloppe requise |
+| Suite complète post-MCP SDK | PASS local | 89 fichiers ; 1 264 tests ; sortie 0 ; 14,41 s |
+| Typecheck/build post-MCP SDK | PASS local | `pnpm run typecheck`, `pnpm run build` ; sortie 0 ; `dist/mcp-modern.js` émis et version CLI `0.13.2` |
+| Package smoke post-MCP SDK | PASS local | tarball réel installé ; CLI, doctor et handshake stdio legacy SDK validés ; `furypipe-0.13.2.tgz` |
 
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le

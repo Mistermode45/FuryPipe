@@ -152,6 +152,7 @@
     "wrangler": "^4.131.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
     "gpt-tokenizer": "^4.0.0"
   },
   "repository": {

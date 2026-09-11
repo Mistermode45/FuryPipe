@@ -6,10 +6,10 @@
 | npm | 11.14.1 localement |
 | pnpm | 10.21.0 imposé par `packageManager` |
 | OS local | Windows 11 x64 |
-| MCP | JSON-RPC 2.0, protocole `2025-11-25`, transport stdio local |
+| MCP | SDK officiel `@modelcontextprotocol/server@2.0.0`, stdio moderne `2026-07-28` + fallback legacy `2025-11-25` |
 | Recovery | filesystem local, namespace explicite, SHA-256, quotas objet/namespace/global, GC orphan/TTL, backup/restore atomiques |
 | Provider live | NON TESTÉ |
-| MCP HTTP/OAuth | NON IMPLÉMENTÉ |
+| MCP HTTP/OAuth | adaptateur fetch-native présent et testé localement ; listener/auth/OAuth de production NON IMPLÉMENTÉS |
 | OpenClaw | NON IMPLÉMENTÉ |
 | Linux/macOS CI | matrice GitHub Actions active ; derniers runs de référence verts sur Ubuntu/Windows/macOS et Node 22/24/26 |
 

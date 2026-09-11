@@ -1,7 +1,10 @@
 # MCP FuryPipe — tranche locale
 
 Le binaire `furypipe-mcp` fournit un serveur MCP local en transport stdio. Il
-ne lance pas de listener HTTP, ne lit pas de credential provider et n’est pas
+utilise le SDK officiel `@modelcontextprotocol/server` `2.0.0`. Le même
+registre d’outils sert le protocole moderne `2026-07-28` et le fallback legacy
+`2025-11-25`; le SDK sélectionne l’ère à l’ouverture de la connexion. Il ne
+lance pas de listener HTTP, ne lit pas de credential provider et n’est pas
 activé automatiquement.
 
 Outils exposés :
@@ -32,7 +35,12 @@ Exécution locale après build :
 FURYPIPE_RECOVERY_ROOT=<directory> FURYPIPE_TENANT=default furypipe-mcp
 ```
 
-Cette surface est une compatibilité stdio locale, pas une certification MCP
-HTTP. Pour HTTP, l’authentification doit suivre la spec MCP courante et ses
-resource indicators ; aucune implémentation HTTP n’est présente dans cette
-tranche.
+Le module `dist/mcp-modern.js` expose aussi `createModernMcpHandler()` pour
+une intégration fetch-native testable. Il n’est pas monté en endpoint HTTP par
+le binaire : host/origin validation, bearer auth/OAuth, resource indicators et
+déploiement restent à intégrer dans l’application hôte.
+
+Cette tranche prouve le registre commun et le transport stdio dual-era en
+local, pas une certification complète HTTP/OAuth ni une validation client
+hébergée. Les limites de taille et de validation restent celles de la
+surface legacy, en plus des validations de schéma du SDK moderne.

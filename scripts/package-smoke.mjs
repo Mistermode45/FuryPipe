@@ -34,7 +34,7 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function runMcp(binary, args) {
+function runMcp(binary, args, payload, validate) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, {
       cwd: root,
@@ -63,15 +63,10 @@ function runMcp(binary, args) {
         return;
       }
       const response = JSON.parse(stdout.trim().split(/\r?\n/u)[0]);
-      assert(response.result?.protocolVersion, 'MCP initialize response has no protocolVersion');
+      validate(response);
       resolve(response);
     });
-    child.stdin.end(`${JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
-      params: {},
-    })}\n`);
+    child.stdin.end(`${JSON.stringify(payload)}\n`);
   });
 }
 
@@ -97,7 +92,31 @@ try {
   const doctor = await run(process.execPath, [cli, 'doctor', '--json'], installDir);
   const report = JSON.parse(doctor.stdout);
   assert(report.runtime?.node, 'doctor smoke returned no Node runtime');
-  await runMcp(process.execPath, [mcp]);
+  await runMcp(process.execPath, [mcp], {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2025-11-25',
+      capabilities: {},
+      clientInfo: { name: 'furypipe-package-smoke', version: '1.0.0' },
+    },
+  }, (response) => {
+    assert(response.result?.protocolVersion === '2025-11-25', 'MCP legacy handshake version mismatch');
+  });
+  await runMcp(process.execPath, [mcp], {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'server/discover',
+    params: {
+      _meta: {
+        'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+        'io.modelcontextprotocol/clientCapabilities': {},
+      },
+    },
+  }, (response) => {
+    assert(response.result?.supportedVersions?.includes('2026-07-28'), 'MCP modern discovery has no 2026 support');
+  });
   console.log(`package smoke passed: ${metadata.filename}`);
 } finally {
   if (installDir) await rm(installDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
