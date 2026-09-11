@@ -4,26 +4,30 @@ This branch adds security controls without changing FuryPipe runtime modules or 
 
 ## Implemented
 
-- CodeQL advanced analysis for JavaScript/TypeScript.
-- Pull-request dependency review that fails on newly introduced high/critical vulnerabilities in runtime or development scopes.
-- CycloneDX SBOM generation from the frozen dependency graph after lifecycle scripts are disabled.
-- SHA-pinned GitHub Actions.
+- CodeQL advanced analysis for JavaScript/TypeScript in `.github/workflows/codeql.yml`.
+- Pull-request dependency review in `.github/workflows/supply-chain.yml`.
+- Repository SPDX SBOM export through GitHub's dependency graph API.
+- SHA-pinned third-party GitHub Actions.
 - Read-only default `GITHUB_TOKEN` permissions; only CodeQL receives `security-events: write`.
 
 ## Deliberately not claimed
 
-- GitHub secret scanning / push protection are repository settings, not something this workflow can prove enabled.
-- Release attestations are not added here because the release workflow is a shared critical file and remains owned by the hardening/release track.
+- GitHub secret scanning / push protection are repository settings, not something these workflows can prove enabled.
+- Release attestations are not added here because `.github/workflows/release.yml` is a shared critical file and remains outside this parallel track.
 - No npm publication, release, merge, deployment, credential rotation, or branch-protection change is performed.
+- A workflow is not considered validated until its GitHub Actions run completes successfully on this branch/PR.
 
 ## Ownership boundary
 
 ChatGPT track owns:
 
-- `.github/workflows/security.yml`
+- `.github/workflows/codeql.yml`
+- `.github/workflows/supply-chain.yml`
 - `docs/SECURITY_SUPPLY_CHAIN.md`
 
-Codex should avoid those files while this track is active. ChatGPT does not modify:
+Codex should avoid those files while this track is active.
+
+ChatGPT does not modify:
 
 - `.github/workflows/ci.yml`
 - `.github/workflows/release.yml`
