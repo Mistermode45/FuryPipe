@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 
 export type AgentFabricDecision = 'ADOPT' | 'PORT' | 'ADAPT' | 'WRAP' | 'REFERENCE_ONLY' | 'REJECT';
-export type AgentFabricStageId = 'research' | 'plan' | 'implement' | 'review' | 'verify';
+export const AGENT_FABRIC_STAGE_ORDER = ['research', 'plan', 'implement', 'review', 'verify'] as const;
+export type AgentFabricStageId = typeof AGENT_FABRIC_STAGE_ORDER[number];
 export type AgentFabricPermission = 'read' | 'scoped-write';
 
 export interface AgentFabricConceptDecision {

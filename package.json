@@ -90,6 +90,10 @@
       "types": "./dist/agent-fabric.d.ts",
       "import": "./dist/agent-fabric.js"
     },
+    "./agent-runtime": {
+      "types": "./dist/agent-runtime.d.ts",
+      "import": "./dist/agent-runtime.js"
+    },
     "./fury-prompt": {
       "types": "./dist/fury-prompt.d.ts",
       "import": "./dist/fury-prompt.js"

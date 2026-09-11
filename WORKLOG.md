@@ -330,3 +330,29 @@
 - Statut M12 : `PARTIAL` selon la règle de non-promotion des modules isolés ;
   le compilateur public est réel et testé, mais le wiring automatique à
   `transformRequest` et l’exécution par Agent Harness restent à construire.
+
+## 2026-09-11 — M11 Agent Runtime exécutable
+
+- `src/agent-runtime.ts` complète le plan metadata-only par un harness local
+  qui exécute réellement les callbacks `research`, `plan`, `implement`,
+  `review` et `verify` dans l’ordre. Une étape manquante, une preuve invalide,
+  un échec ou un dépassement de budget bloque le run.
+- Le contexte d’étape expose l’objectif uniquement à l’exécuteur courant et
+  n’offre ni shell, ni réseau, ni secret. La permission reste `read` par
+  défaut ; `scoped-write` exige `allowWrites` et des chemins bornés, y compris
+  pour un skill ou un subagent.
+- Les skills ont une health check et leur consommation de contexte est ajoutée
+  automatiquement au budget de l’étape. Les subagents sont des callbacks
+  enregistrés par l’hôte, non des objets décoratifs ; leurs résultats sont
+  validés et comptés. Les serveurs MCP utilisent une allowlist de méthodes et
+  les déclarations réseau sont refusées par la policy `disabled`.
+- Le runtime fournit un store mémoire éphémère metadata-only et des snapshots
+  de handoff sans objectif plaintext. La reprise vérifie digest, ordre et
+  budget avant de continuer.
+- `tests/agent-runtime.test.ts` couvre 5 tests exécutables : ordre/skills/
+  subagent/MCP, permissions read/scoped-write, budget/preuves, handoff/resume
+  et refus MCP/skill. Le résultat complet comptait 101 fichiers et 1 323 tests
+  avant cette tranche ; les gates finales M11 seront rejouées après le patch.
+- Statut M11 : `PARTIAL`. Le kernel local est réel et testé, mais aucun modèle
+  réel, worker interprocessus, handoff distribué ou stockage Recovery durable
+  de mémoire n’est déclaré livré.

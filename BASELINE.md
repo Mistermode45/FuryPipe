@@ -156,6 +156,23 @@ M12 reste `PARTIAL` : la compilation est atteignable et testée, mais le
 compilateur n’est pas encore branché automatiquement au chemin
 `transformRequest` ni à un Agent Harness exécutable.
 
+## M11 Agent Runtime — 2026-09-11
+
+| Élément | Résultat | Mesure / preuve |
+|---|---|---|
+| Harness de stages | PASS local borné | `runAgent()` appelle réellement les cinq callbacks dans l’ordre ; executor manquant et preuve vide bloquent |
+| Permissions | PASS local | read-only par défaut ; `scoped-write` seulement sur `implement` avec `allowWrites` et chemins explicitement bornés |
+| Skills / subagents | PASS local borné | callbacks exécutables, health `healthy/unhealthy`, budget imbriqué compté, réseau requis refusé |
+| MCP permissions | PASS local | allowlist de méthodes par serveur ; méthode non autorisée ou serveur réseau bloqué |
+| Budget / verification | PASS local | compteur de tokens borné ; dépassement et résultats invalides échouent le run |
+| Handoff / resume | PASS local borné | snapshot sans objectif plaintext, digest vérifié, reprise à l’étape attendue |
+| Mémoire | PASS local borné | store mémoire conserve uniquement statuts, étapes et digests de résultats |
+| Tests ciblés | PASS local | `tests/agent-fabric.test.ts` 4/4 + `tests/agent-runtime.test.ts` 5/5 |
+
+M11 reste `PARTIAL` : la preuve porte sur un harness local à callbacks fournis
+par l’hôte. Aucun modèle réel, provider, worker interprocessus, handoff
+distribué ou stockage durable Recovery n’est exécuté ici.
+
 Les versions Node de cette matrice sont relevées depuis l’index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le
 développement, mais n'est pas le runtime de production.
