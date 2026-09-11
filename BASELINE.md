@@ -86,6 +86,28 @@
 | Export package M8 | PASS local | `scripts/package-smoke.mjs` importe `furypipe/mcp-modern` depuis le tarball installé et vérifie `createProductionMcpHandler` |
 | Gates locales M8 | PASS local | suite `96 fichiers / 1 289 tests`, typecheck, build, audit (`No known vulnerabilities found`) et package smoke `furypipe-0.13.2.tgz` |
 
+## Checkpoint fusionné — 2026-09-11
+
+| Élément | Résultat | Mesure / preuve |
+|---|---|---|
+| Commit contrôlé | PASS | `c4f0d16c5033ac59ca84c8d562c9e68e638ad62d` ; branche locale et `origin/v5-production-hardening` identiques |
+| PR de travail | OPEN DRAFT | PR #2 vers `v5-codex-review-clean` ; aucune fusion effectuée |
+| Suite locale combinée après fusion | PASS | `97` fichiers ; `1 295` tests ; sortie 0 |
+| Typecheck/build/audit/package smoke après fusion | PASS | sorties 0 ; `furypipe-0.13.2.tgz` contrôlé ; aucun publish |
+| CI push du commit courant | PASS | run `34646766437` ; `9/9` jobs verts ; Ubuntu 24.04/Windows 2025/macOS 14 × Node 22.23.2/24.21.0/26.8.2 |
+| CI PR du commit courant | PASS | run `34646770940` ; `9/9` jobs verts sur la PR draft |
+| CodeQL push | PASS | run `34646766357` ; analyse JavaScript/TypeScript verte |
+| Supply Chain push | PASS | run `34646766430` ; gates de chaîne d’approvisionnement vertes |
+| Secret Scan push | PASS | run `34646766565` ; aucun secret détecté par le workflow |
+| Benchmark contract push | PASS | run `34646766411` ; contrat de résultat benchmark vert ; aucune mesure de performance exécutée |
+| Équivalents PR security/benchmark | PASS | Secret Scan `34646770825`, benchmark contract `34646770793` ; mêmes gates PR vertes |
+
+La fusion a intégré le commit parallèle `138f125d45f648c6ba4406b4ce48e13377d4619c`
+sans réécriture d’historique ni force push. Les fichiers réservés à l’autre
+track n’ont pas été modifiés par la tranche M8. La façade HTTP reste un
+handler fetch-native exporté : aucun listener réseau intégré, Authorization
+Server ou conformance externe ne doit être inféré de cette preuve CI.
+
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le
 développement, mais n'est pas le runtime de production.

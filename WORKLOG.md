@@ -222,3 +222,27 @@
   listener HTTP intégré au binaire proxy ou test conformance multi-client n’a
   été inventé. Le transport fetch-native est utilisable par l’application
   hôte, mais son montage réseau reste une étape distincte.
+
+## 2026-09-11 — M8 HTTP et tracks parallèles vérifiés à distance
+
+- Le commit courant `c4f0d16c5033ac59ca84c8d562c9e68e638ad62d` est aligné
+  localement et sur `origin/v5-production-hardening`.
+- CI push `34646766437` et CI PR `34646770940` : `9/9` jobs verts sur
+  Ubuntu 24.04, Windows 2025 et macOS 14 avec Node 22.23.2, 24.21.0 et
+  26.8.2 ; le package smoke est inclus.
+- Gates push et PR du commit courant vertes : CodeQL `34646766357`,
+  Supply Chain `34646766430`, Secret Scan `34646766565` et benchmark contract
+  `34646766411`, avec leurs équivalents PR `34646770940`, `34646770825` et
+  `34646770793` lorsque distincts.
+- La fusion non destructive du commit parallèle `138f125d45f648c6ba4406b4ce48e13377d4619c`
+  a conservé la tranche M8 et intégré les fichiers de sécurité, benchmarks,
+  i18n et web-studio de l’autre track ; aucun de ses fichiers réservés n’a été
+  modifié dans la tranche M8.
+- Suite locale combinée après fusion : `97` fichiers / `1 295` tests verts ;
+  `pnpm run typecheck`, `pnpm run build`, `pnpm run audit` et
+  `pnpm run package:smoke` verts. Le tarball contrôlé reste
+  `furypipe-0.13.2.tgz` et n’a pas été publié.
+- M8 reste `PARTIAL` malgré la CI verte : le handler fetch-native est prouvé
+  et exporté, mais le listener réseau intégré, l’Authorization Server,
+  le verifier OAuth hébergé, la conformance multi-client et le test réseau
+  externe restent non livrés.
