@@ -47,11 +47,13 @@ function input(states: V5ReleaseGateStates = verifiedStates()): ReleaseReadiness
 
 describe('Release Readiness V5', () => {
   it('blocks a release decision while required runtime milestones are partial', () => {
-    const states = verifiedStates();
-    states.recovery = 'PARTIAL';
-    states.mcp = 'PARTIAL';
-    states.agentRuntime = 'PARTIAL';
-    states.furyPrompt = 'PARTIAL';
+    const states: V5ReleaseGateStates = {
+      ...verifiedStates(),
+      recovery: 'PARTIAL',
+      mcp: 'PARTIAL',
+      agentRuntime: 'PARTIAL',
+      furyPrompt: 'PARTIAL',
+    };
     const report = evaluateReleaseReadiness(input(states));
 
     expect(report.status).toBe('BLOCKED');
@@ -77,8 +79,10 @@ describe('Release Readiness V5', () => {
   });
 
   it('keeps provider benchmarks optional when no performance claim is made', () => {
-    const states = verifiedStates();
-    states.providerBenchmarks = 'NOT_EXECUTED';
+    const states: V5ReleaseGateStates = {
+      ...verifiedStates(),
+      providerBenchmarks: 'NOT_EXECUTED',
+    };
     const report = evaluateReleaseReadiness(input(states));
 
     expect(report.status).toBe('READY_FOR_RELEASE_DECISION');
@@ -86,10 +90,14 @@ describe('Release Readiness V5', () => {
   });
 
   it('requires provider benchmarks when performance claims are requested', () => {
-    const states = verifiedStates();
-    states.providerBenchmarks = 'NOT_EXECUTED';
-    const value = input(states);
-    value.performanceClaims = true;
+    const states: V5ReleaseGateStates = {
+      ...verifiedStates(),
+      providerBenchmarks: 'NOT_EXECUTED',
+    };
+    const value: ReleaseReadinessInput = {
+      ...input(states),
+      performanceClaims: true,
+    };
     const report = evaluateReleaseReadiness(value);
 
     expect(report.status).toBe('BLOCKED');
@@ -97,8 +105,10 @@ describe('Release Readiness V5', () => {
   });
 
   it('reports repository dependency review blockers without replacing the required audit/SBOM gates', () => {
-    const states = verifiedStates();
-    states.dependencyReview = 'BLOCKED_BY_REPO_SETTING';
+    const states: V5ReleaseGateStates = {
+      ...verifiedStates(),
+      dependencyReview: 'BLOCKED_BY_REPO_SETTING',
+    };
     const report = evaluateReleaseReadiness(input(states));
 
     expect(report.status).toBe('READY_FOR_RELEASE_DECISION');
@@ -106,18 +116,25 @@ describe('Release Readiness V5', () => {
   });
 
   it('rejects duplicate gate IDs and unpinned source identity', () => {
-    const value = input();
-    value.gates = [...value.gates, value.gates[0]];
+    const base = input();
+    const value: ReleaseReadinessInput = {
+      ...base,
+      gates: [...base.gates, base.gates[0]],
+    };
     expect(() => evaluateReleaseReadiness(value)).toThrow(/duplicate release gate id/);
 
-    const badCommit = input();
-    badCommit.sourceCommit = 'latest';
+    const badCommit: ReleaseReadinessInput = {
+      ...input(),
+      sourceCommit: 'latest',
+    };
     expect(() => evaluateReleaseReadiness(badCommit)).toThrow(/40-character commit SHA/);
   });
 
   it('keeps NOT_APPLICABLE invalid for a required gate', () => {
-    const states = verifiedStates();
-    states.recovery = 'NOT_APPLICABLE';
+    const states: V5ReleaseGateStates = {
+      ...verifiedStates(),
+      recovery: 'NOT_APPLICABLE',
+    };
     const report = evaluateReleaseReadiness(input(states));
 
     expect(report.status).toBe('BLOCKED');
