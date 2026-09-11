@@ -148,6 +148,17 @@ export {
   type ProviderRegistrationStatus,
 } from './provider-fabric.js';
 export {
+  createProviderRuntimeState,
+  type ProviderCostEstimate,
+  type ProviderCostUsage,
+  type ProviderHealthEvidenceKind,
+  type ProviderHealthObservation,
+  type ProviderModelPrice,
+  type ProviderRuntimeHealth,
+  type ProviderRuntimeInspection,
+  type ProviderRuntimeState,
+} from './provider-runtime.js';
+export {
   createCompressionReceipt,
   verifyCompressionReceipt,
   type CompressionReceipt,
