@@ -1,10 +1,13 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, open } from 'node:fs/promises';
+import { join } from 'node:path';
 import { createRecoveryStore } from '../../src/core/recovery-store.js';
 import { createRecoveryAgentMemoryStore, runAgent, type AgentRunSnapshot } from '../../src/agent-runtime.js';
 
 interface WorkerRequest {
   readonly root: string;
   readonly namespace: string;
-  readonly operation: 'put' | 'get' | 'delete' | 'backup' | 'restore' | 'rekey' | 'agent-resume';
+  readonly operation: 'put' | 'get' | 'delete' | 'backup' | 'restore' | 'rekey' | 'agent-resume' | 'crash-temp';
   readonly value?: string;
   readonly handle?: string;
   readonly path?: string;
@@ -34,6 +37,34 @@ const store = createRecoveryStore(request.root, {
 
 try {
   switch (request.operation) {
+    case 'crash-temp': {
+      const digest = 'a'.repeat(64);
+      const objectDirectory = join(request.root, 'namespaces', request.namespace, 'objects', digest.slice(0, 2));
+      await mkdir(objectDirectory, { recursive: true });
+      const tempPath = join(objectDirectory, `${digest}.${randomUUID()}.tmp`);
+      const temp = await open(tempPath, 'wx', 0o600);
+      try {
+        await temp.writeFile('crash-residue');
+        await temp.sync();
+      } finally {
+        await temp.close();
+      }
+      const lock = await open(join(request.root, '.recovery.lock'), 'wx', 0o600);
+      try {
+        await lock.writeFile(JSON.stringify({ token: randomUUID(), pid: process.pid, createdAt: new Date().toISOString() }) + '\n');
+        await lock.sync();
+      } finally {
+        await lock.close();
+      }
+      await new Promise<void>((resolveWrite, rejectWrite) => {
+        process.stdout.write(JSON.stringify({ tempPath }) + '\n', (error) => {
+          if (error) rejectWrite(error);
+          else resolveWrite();
+        });
+      });
+      process.kill(process.pid, 'SIGKILL');
+      break;
+    }
     case 'put': {
       if (request.value === undefined) throw new Error('worker put value is missing');
       const handle = await store.put(new TextEncoder().encode(request.value), { source: 'recovery-worker' });
