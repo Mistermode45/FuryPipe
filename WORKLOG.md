@@ -46,3 +46,16 @@
 - Dispatcher corrigé pour refuser les IDs absents, null ou non entiers sur les requêtes ; notifications restent sans réponse.
 - ExactGuard custom rules bornées à 64 règles, patterns de 512 caractères et texte de 4 MiB maximum ; aucune valeur protégée n’est copiée dans le diagnostic.
 - Tests ajoutés : frontière MCP et limites ExactGuard ; typecheck vert.
+
+## 2026-09-11 — final local gate for current checkpoint
+
+- Branche contrôlée : `v5-production-hardening` ; commit avant ce journal : `41e466481369d3bd047ae616c19bae96da11e389`.
+- Suite complète : `88` fichiers de test et `1 257` tests verts ; durée observée 13,43 s.
+- TypeScript : `pnpm run typecheck` vert.
+- Build : `pnpm run build` vert ; `dist/node.js` et `dist/mcp.js` générés ; smoke CLI `0.13.2`.
+- Audit : `pnpm audit --prod --audit-level high` = `No known vulnerabilities found`.
+- MCP réel local : handshake stdio `2025-11-25` avec `furypipe-recovery 0.13.2`.
+- Package dry-run : `furypipe@0.13.2`, 147 fichiers, 4 068 733 octets compressés, 16 481 278 octets décompressés.
+- Licences installées : MIT 57, Apache-2.0 7, MIT OR Apache-2.0 4, ISC 3, MPL-2.0 2, Apache-2.0 AND LGPL-3.0-or-later 1, CC0-1.0 1, BSD-3-Clause 1.
+- SHA-256 artefacts : `dist/node.js` = `0BD02C9AF461585EF59BC783EB1D02F1E0C5B0128E0551E3788E4A16F238256B` ; `dist/mcp.js` = `E22F6F097A32BB903E627E3A3942298DDE3D343FFF87A4CF4F57D33E18340DB4`.
+- Limites finales : aucun run CI distant, provider réel, client visuel, HTTP/OAuth MCP, OpenClaw, Docker, Linux/macOS, chiffrement ou backup/restore ; aucun push, merge, npm publish ou deploy.
