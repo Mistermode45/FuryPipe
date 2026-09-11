@@ -390,9 +390,14 @@ export function createInMemoryAgentLearningStore(): AgentLearningStore {
       records.set(record.lessonId, { ...record, evidenceDigests: [...record.evidenceDigests] });
     },
     async findReusableLessons(input) {
-      return [...records.values()]
-        .filter((record) => record.taskDigest === input.taskDigest && (input.memoryClass === undefined || record.memoryClass === input.memoryClass))
-        .map((record) => ({ ...record, evidenceDigests: [...record.evidenceDigests] }));
+      const reusable: AgentLearningLessonRecord[] = [];
+      for (const record of records.values()) {
+        if (record.taskDigest !== input.taskDigest || (input.memoryClass !== undefined && record.memoryClass !== input.memoryClass)) continue;
+        const reused = { ...record, reuseCount: record.reuseCount + 1, evidenceDigests: [...record.evidenceDigests] };
+        records.set(record.lessonId, reused);
+        reusable.push(reused);
+      }
+      return reusable;
     },
   };
 }

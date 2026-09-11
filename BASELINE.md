@@ -181,7 +181,7 @@ distribué ou stockage durable Recovery n’est exécuté ici.
 | Mise à jour de maîtrise | PASS local borné | `recordHumanLearningAttempt()` valide les scores bornés et recalcule maîtrise, gaps et intervalle de révision |
 | Cycle agent | PASS local borné | callbacks réels `Plan -> Execute -> Verify -> Reflect -> Extract lesson -> Validate -> Store -> Reuse` |
 | Mémoire agent | PASS local borné | store mémoire refuse les leçons non validées et conserve seulement digests, classe, compteurs et handle opaque |
-| Package export | à exécuter | export `furypipe/learning` ajouté et branché au package smoke |
+| Package export | PASS local | export `furypipe/learning` contrôlé par `pnpm run package:smoke` sur le tarball réel `furypipe-0.13.2.tgz` |
 
 M13 reste `PARTIAL` : aucun graphe de connaissances durable, RAG sémantique,
 fine-tuning, modèle réel, worker interprocessus ou service hébergé n’est

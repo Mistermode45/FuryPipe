@@ -74,9 +74,9 @@ describe('FuryPipe learning layers', () => {
     expect(result.status).toBe('completed');
     expect(seen).toEqual(['plan', 'execute', 'verify', 'reflect']);
     expect(result.phaseOrder).toEqual(['plan', 'execute', 'verify', 'reflect', 'extract_lesson', 'validate', 'store', 'reuse']);
-    expect(result.reusedLessons).toMatchObject([{ lessonId: 'lesson-1', contentHandle: 'opaque://lesson-1' }]);
+    expect(result.reusedLessons).toMatchObject([{ lessonId: 'lesson-1', contentHandle: 'opaque://lesson-1', reuseCount: 1 }]);
     expect(JSON.stringify(result)).not.toContain('Improve the recovery invariant.');
-    expect((await store.findReusableLessons({ taskDigest: result.taskDigest, memoryClass: 'Procedural' }))[0]?.validation).toBe('validated');
+    expect((await store.findReusableLessons({ taskDigest: result.taskDigest, memoryClass: 'Procedural' }))[0]).toMatchObject({ validation: 'validated', reuseCount: 2 });
   });
 
   it('does not store a rejected lesson', async () => {
