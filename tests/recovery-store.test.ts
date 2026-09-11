@@ -1,11 +1,28 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, utimes, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRecoveryStore } from '../src/core/recovery-store.js';
 
 const roots: string[] = [];
+
+async function runRecoveryWorker(request: Record<string, unknown>): Promise<{ code: number; stdout: string; stderr: string }> {
+  const worker = fileURLToPath(new URL('./fixtures/recovery-worker.ts', import.meta.url));
+  const tsx = join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  const child = spawn(process.execPath, [tsx, worker, JSON.stringify(request)], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => { stdout += chunk; });
+  child.stderr.on('data', (chunk: string) => { stderr += chunk; });
+  const [result] = await once(child, 'close') as [number | null, string];
+  return { code: result ?? -1, stdout: stdout.trim(), stderr: stderr.trim() };
+}
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -212,5 +229,42 @@ describe('Recovery Store', () => {
       encryption: { activeKeyId: 'key-v1', keys: { 'key-v1': key } },
     });
     expect(new TextDecoder().decode(await reopened.get(handle))).toBe('restart-safe');
+  });
+
+  it('serializes real separate-process put/get/delete/backup/restore and rekey operations', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-process-'));
+    const backupRoot = await mkdtemp(join(tmpdir(), 'furypipe-recovery-process-backup-'));
+    roots.push(root, backupRoot);
+    const backup = join(backupRoot, 'snapshot');
+
+    const quotaRace = await Promise.all([
+      runRecoveryWorker({ root, namespace: 'process', operation: 'put', value: '1234', maxGlobalBytes: 5 }),
+      runRecoveryWorker({ root, namespace: 'process', operation: 'put', value: '5678', maxGlobalBytes: 5 }),
+    ]);
+    expect(quotaRace.filter((result) => result.code === 0)).toHaveLength(1);
+    expect(quotaRace.filter((result) => result.code !== 0)).toHaveLength(1);
+    expect(quotaRace.find((result) => result.code !== 0)?.stderr).toContain('global quota');
+    const winnerIndex = quotaRace.findIndex((result) => result.code === 0);
+    const winnerValue = ['1234', '5678'][winnerIndex]!;
+    const first = JSON.parse(quotaRace.find((result) => result.code === 0)!.stdout) as { handle: { digest: string } };
+    const firstHandle = `furypipe-recovery/v1/sha256/${first.handle.digest}`;
+
+    expect((await runRecoveryWorker({ root, namespace: 'process', operation: 'get', handle: firstHandle })).stdout).toBe(winnerValue);
+    expect(JSON.parse((await runRecoveryWorker({ root, namespace: 'process', operation: 'backup', path: backup })).stdout)).toMatchObject({ evidence: 'BACKUP_EXISTS' });
+    expect(JSON.parse((await runRecoveryWorker({ root, namespace: 'process', operation: 'delete', handle: firstHandle })).stdout)).toEqual({ deleted: true });
+    expect(JSON.parse((await runRecoveryWorker({ root, namespace: 'process', operation: 'restore', path: backup })).stdout)).toMatchObject({ evidence: 'RESTORE_VERIFIED' });
+    expect((await runRecoveryWorker({ root, namespace: 'process', operation: 'get', handle: firstHandle })).stdout).toBe(winnerValue);
+
+    const encrypted = await runRecoveryWorker({ root, namespace: 'encrypted-process', operation: 'put', value: 'rotate-me', profile: 'v1' });
+    expect(encrypted.code).toBe(0);
+    const encryptedHandle = (JSON.parse(encrypted.stdout) as { handle: { digest: string } }).handle;
+    expect((await runRecoveryWorker({ root, namespace: 'encrypted-process', operation: 'rekey', profile: 'both', targetKeyId: 'key-v2' })).code).toBe(0);
+    expect((await runRecoveryWorker({ root, namespace: 'encrypted-process', operation: 'get', profile: 'v2', handle: `furypipe-recovery/v1/sha256/${encryptedHandle.digest}` })).stdout).toBe('rotate-me');
+
+    const staleLock = join(root, '.recovery.lock');
+    await writeFile(staleLock, JSON.stringify({ token: 'crashed-process', pid: 1, createdAt: '2020-01-01T00:00:00.000Z' }));
+    const staleTime = new Date(Date.now() - 120_000);
+    await utimes(staleLock, staleTime, staleTime);
+    expect((await runRecoveryWorker({ root, namespace: 'process', operation: 'put', value: 'after-restart' })).code).toBe(0);
   });
 });

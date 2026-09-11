@@ -77,8 +77,10 @@ software supply-chain boundary.
   host-managed. A local account with filesystem access can still read the key
   ring or decrypted content while the host process is running.
 - Recovery currently uses a filesystem backend with SHA-256 and uncompressed
-  payloads. Real process-kill recovery, multi-process locking, filesystem
-  corruption handling, and SQLite durability are not proven by local tests.
+  payloads. Root-wide file locking, stale-lock recovery, corruption fixtures,
+  and cross-process put/get/delete/backup/restore/rekey scenarios are covered
+  locally; a process kill injected during every write phase, Windows ACL
+  enforcement, and SQLite durability remain unproven.
 
 ## Security review checklist
 

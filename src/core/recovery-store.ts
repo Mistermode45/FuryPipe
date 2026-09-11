@@ -1,9 +1,14 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
-import { chmod, copyFile, link, mkdir, open, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
+import { chmod, copyFile, link, mkdir, open, readFile, readdir, rename, rm, stat, utimes } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 
-/** Serialize mutations from multiple namespace views sharing one root. */
+/** Serialize operations from multiple namespace views sharing one root. */
 const recoveryWriteChains = new Map<string, Promise<void>>();
+const RECOVERY_LOCK_FILE = '.recovery.lock';
+const RECOVERY_LOCK_STALE_MS = 60_000;
+const RECOVERY_LOCK_WAIT_MS = 30_000;
+const RECOVERY_LOCK_RETRY_MS = 25;
+const RECOVERY_LOCK_HEARTBEAT_MS = 10_000;
 
 export interface RecoveryMetadata {
   readonly contentType?: string;
@@ -250,6 +255,82 @@ async function writePrivateFile(path: string, data: string | Uint8Array, flag: '
   }
 }
 
+interface RecoveryLockRecord {
+  readonly token: string;
+  readonly pid: number;
+  readonly createdAt: string;
+}
+
+function isErrno(caught: unknown, code: string): boolean {
+  return caught instanceof Error && (caught as NodeJS.ErrnoException).code === code;
+}
+
+function waitForRecoveryLock(): Promise<void> {
+  return new Promise((resolveWait) => setTimeout(resolveWait, RECOVERY_LOCK_RETRY_MS));
+}
+
+/**
+ * Acquire a root-wide inter-process lock using exclusive file creation.
+ * A bounded stale-lock lease makes a process crash recoverable without an
+ * unbounded retry or a forced deletion of a live lock.
+ */
+async function acquireRecoveryLock(storeRoot: string): Promise<() => Promise<void>> {
+  await ensurePrivateDirectory(storeRoot);
+  const lockPath = join(storeRoot, RECOVERY_LOCK_FILE);
+  const token = randomUUID();
+  const startedAt = Date.now();
+  const record: RecoveryLockRecord = { token, pid: process.pid, createdAt: new Date().toISOString() };
+
+  while (Date.now() - startedAt < RECOVERY_LOCK_WAIT_MS) {
+    try {
+      const file = await open(lockPath, 'wx', 0o600);
+      try {
+        await file.writeFile(JSON.stringify(record) + '\n');
+        await file.sync();
+      } catch (error) {
+        await rm(lockPath, { force: true }).catch(() => undefined);
+        throw error;
+      } finally {
+        await file.close();
+      }
+      try {
+        await chmod(lockPath, 0o600);
+      } catch {
+        // Windows ACLs are host-managed; see the explicit security documentation.
+      }
+
+      const heartbeat = setInterval(() => {
+        void utimes(lockPath, new Date(), new Date()).catch(() => undefined);
+      }, RECOVERY_LOCK_HEARTBEAT_MS);
+      heartbeat.unref();
+
+      return async () => {
+        clearInterval(heartbeat);
+        try {
+          const current = JSON.parse(await readFile(lockPath, 'utf8')) as Partial<RecoveryLockRecord>;
+          if (current.token === token) await rm(lockPath, { force: true });
+        } catch (caught) {
+          if (!isErrno(caught, 'ENOENT')) throw caught;
+        }
+      };
+    } catch (caught) {
+      if (!isErrno(caught, 'EEXIST')) throw caught;
+      try {
+        const lock = await stat(lockPath);
+        if (Date.now() - lock.mtimeMs >= RECOVERY_LOCK_STALE_MS) {
+          await rm(lockPath, { force: true });
+          continue;
+        }
+      } catch (statError) {
+        if (isErrno(statError, 'ENOENT')) continue;
+        throw statError;
+      }
+      await waitForRecoveryLock();
+    }
+  }
+  throw new Error('recovery store lock acquisition timed out');
+}
+
 async function writeExclusiveAtomic(path: string, data: string | Uint8Array): Promise<void> {
   const temporary = `${path}.${randomUUID()}.tmp`;
   try {
@@ -453,7 +534,15 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
   }
   function enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const previous = recoveryWriteChains.get(storeRoot) ?? Promise.resolve();
-    const next = previous.then(() => ensureReady()).then(operation);
+    const next = previous.then(async () => {
+      const release = await acquireRecoveryLock(storeRoot);
+      try {
+        await ensureReady();
+        return await operation();
+      } finally {
+        await release();
+      }
+    });
     recoveryWriteChains.set(storeRoot, next.then(() => undefined, () => undefined));
     return next;
   }
@@ -519,6 +608,33 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
     return { objects, manifests, bytes };
   }
 
+  async function verifyHandle(handle: RecoveryHandle | string): Promise<RecoveryVerification> {
+    const digest = parseHandle(handle);
+    const manifest = await readManifest(digest);
+    const object = objectPathFor(scopedRoot, digest, manifest?.storage);
+    if (!(await exists(object))) return { ok: false, handle: `furypipe-recovery/v1/sha256/${digest}`, exists: false, digestMatches: false, bytes: 0, reason: 'object missing' };
+    try {
+      const bytes = await readStored(digest, manifest);
+      return {
+        ok: true,
+        handle: `furypipe-recovery/v1/sha256/${digest}`,
+        exists: true,
+        digestMatches: true,
+        bytes: bytes.byteLength,
+      };
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'recovery object verification failed';
+      return {
+        ok: false,
+        handle: `furypipe-recovery/v1/sha256/${digest}`,
+        exists: true,
+        digestMatches: false,
+        bytes: manifest?.bytes ?? 0,
+        reason: message.slice(0, 256),
+      };
+    }
+  }
+
   return {
     put(bytes, metadata) {
       return enqueue(async () => {
@@ -574,10 +690,11 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
       });
     },
 
-    async get(handle) {
-      await ensureReady();
-      const digest = parseHandle(handle);
-      return readStored(digest, await readManifest(digest));
+    get(handle) {
+      return enqueue(async () => {
+        const digest = parseHandle(handle);
+        return readStored(digest, await readManifest(digest));
+      });
     },
 
     async fetchRange(handle, start, endExclusive) {
@@ -597,46 +714,23 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
       return lines.slice(fromLine - 1, toLine).join('\n');
     },
 
-    async verify(handle) {
-      await ensureReady();
-      const digest = parseHandle(handle);
-      const manifest = await readManifest(digest);
-      const object = objectPathFor(scopedRoot, digest, manifest?.storage);
-      if (!(await exists(object))) return { ok: false, handle: `furypipe-recovery/v1/sha256/${digest}`, exists: false, digestMatches: false, bytes: 0, reason: 'object missing' };
-      try {
-        const bytes = await readStored(digest, manifest);
-        return {
-          ok: true,
-          handle: `furypipe-recovery/v1/sha256/${digest}`,
-          exists: true,
-          digestMatches: true,
-          bytes: bytes.byteLength,
-        };
-      } catch (caught) {
-        const message = caught instanceof Error ? caught.message : 'recovery object verification failed';
-        return {
-          ok: false,
-          handle: `furypipe-recovery/v1/sha256/${digest}`,
-          exists: true,
-          digestMatches: false,
-          bytes: manifest?.bytes ?? 0,
-          reason: message.slice(0, 256),
-        };
-      }
+    verify(handle) {
+      return enqueue(async () => verifyHandle(handle));
     },
 
-    async manifest(handle) {
-      await ensureReady();
-      const digest = parseHandle(handle);
-      const current = await readManifest(digest);
-      if (current !== undefined) return current;
-      if (encryption !== undefined) throw new Error('recovery manifest is required when encryption is configured');
-      const verification = await this.verify(handle);
-      if (!verification.exists) throw new Error('recovery manifest and object missing');
-      return makeHandle(digest, verification.bytes);
+    manifest(handle) {
+      return enqueue(async () => {
+        const digest = parseHandle(handle);
+        const current = await readManifest(digest);
+        if (current !== undefined) return current;
+        if (encryption !== undefined) throw new Error('recovery manifest is required when encryption is configured');
+        const verification = await verifyHandle(handle);
+        if (!verification.exists) throw new Error('recovery manifest and object missing');
+        return makeHandle(digest, verification.bytes);
+      });
     },
 
-    async delete(handle) {
+    delete(handle) {
       return enqueue(async () => {
         const digest = parseHandle(handle);
         const manifest = metadataPath(scopedRoot, digest);
@@ -648,7 +742,7 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
       });
     },
 
-    async gc(now = new Date()) {
+    gc(now = new Date()) {
       return enqueue(async () => {
         const manifestRoot = join(scopedRoot, 'manifests');
         let expired = 0;
@@ -686,7 +780,7 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
             expired += 1;
           }
         } catch (caught) {
-          if ((caught as NodeJS.ErrnoException).code !== 'ENOENT') throw caught;
+          if (!isErrno(caught, 'ENOENT')) throw caught;
         }
         for (const object of await objectFiles(join(scopedRoot, 'objects'))) {
           const digest = objectDigestFromPath(object);
@@ -722,7 +816,7 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
         } catch (caught) {
           await rm(temporary, { recursive: true, force: true });
           throw caught;
-      }
+        }
       });
     },
 
@@ -769,7 +863,7 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
         try {
           entries = await readdir(manifestRoot);
         } catch (caught) {
-          if ((caught as NodeJS.ErrnoException).code === 'ENOENT') {
+          if (isErrno(caught, 'ENOENT')) {
             return {
               format: 'furypipe-recovery-rekey/v1',
               ...(namespace ? { namespace } : {}),
