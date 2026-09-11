@@ -7,7 +7,7 @@ export type ReceiptConfidence = 'unknown' | 'estimated' | 'verified';
 export interface CompressionReceipt {
   readonly format: 'furypipe-compression-receipt/v1';
   readonly requestId?: string;
-  readonly strategy: 'passthrough' | 'pxpipe-transform';
+  readonly strategy: 'passthrough' | 'pxpipe-transform' | 'externalize';
   readonly model?: string;
   readonly originalHash: string;
   readonly transformedHash: string;

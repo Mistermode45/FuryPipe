@@ -22,8 +22,10 @@ Windows y était moins déterministe.
 Le mode ExactGuard automatique par défaut est `balanced`. `safe` et
 `coding-safe` sont disponibles ; `safetyMode: false` est l’opt-out explicite
 pour les intégrations qui assument la perte. Un span protégé dans un bloc
-live reste textuel ; l’externalisation vers Recovery et la redaction restent
-des stratégies séparées, non activées silencieusement.
+live reste textuel. `representationPolicy: 'externalize'` est disponible
+explicitement avec un `recoveryStore` ; les identités de protocole protégées
+échouent fermé vers le natif. La redaction reste non implémentée et aucune de
+ces stratégies n’est activée silencieusement.
 
 Une version de protocole ou un runtime absent de cette table n’est pas
 implicitement compatible.

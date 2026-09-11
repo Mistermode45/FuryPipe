@@ -52,7 +52,7 @@ export interface ContextFabricAnalysis {
   readonly policy: PolicyDecision;
   readonly strategy: {
     readonly planned: PolicyStrategy;
-    readonly observed?: PolicyStrategy;
+    readonly observed?: PolicyStrategy | 'externalize';
     readonly compressed?: boolean;
     readonly reason?: string;
   };
@@ -431,7 +431,9 @@ export function finalizeContextFabricAnalysis(
   // The current Anthropic path only applies the lossy renderer; it does not
   // have a separate native-cache executor. An uncompressed body is therefore
   // observed as raw, even when the planner recommends native cache.
-  const observed: PolicyStrategy = compressed ? 'guarded-lossy' : 'raw';
+  const observed: PolicyStrategy | 'externalize' = reason?.startsWith('exact_guard (externalize')
+    ? 'externalize'
+    : compressed ? 'guarded-lossy' : 'raw';
   return {
     ...analysis,
     strategy: { ...analysis.strategy, observed, compressed, ...(reason ? { reason } : {}) },

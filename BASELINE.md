@@ -71,6 +71,9 @@
 | Typecheck/build post-M5 runtime | PASS local | `pnpm run typecheck`, `pnpm run build` ; sortie 0 ; `dist/core/context-fabric.js` et déclarations émises ; version CLI `0.13.2` |
 | CI docs-only commit `df46a07` — run push `34634492559` | PASS | 9/9 jobs verts : Ubuntu/Windows/macOS × Node 22.23.2/24.21.0/26.8.2 |
 | CI docs-only commit `df46a07` — run PR `34634496448` | PASS | 9/9 jobs verts sur la PR draft #2 ; package smoke inclus ; aucune fusion effectuée |
+| ExactGuard externalize E2E | PASS local | 2 tests : span sémantique vers Recovery, vérification hash/relecture, receipt `externalize`, échec fermé sur identité protocolaire |
+| Matrice CI M5 runtime — run push `34636151930` | PASS | 9/9 jobs verts sur Ubuntu/Windows/macOS × Node 22.23.2/24.21.0/26.8.2 |
+| Matrice CI M5 runtime — run PR `34636158894` | PASS | 9/9 jobs verts sur la PR draft #2 ; package smoke inclus ; aucune fusion effectuée |
 
 Les versions Node de cette matrice sont relevées depuis l'index officiel des
 distributions Node.js le 2026-09-11. Le Node 26 local reste installé pour le

@@ -67,6 +67,35 @@ compteurs, catégories, états de validation et identifiants `ctx_` opaques,
 mais ni ledger, ni IR complet, ni texte source. L’analyse ne possède pas le
 body sortant et ne peut donc pas réordonner ou réécrire la conversation.
 
+## Externalize ExactGuard
+
+L’externalisation est une stratégie explicitement opt-in :
+
+```ts
+const result = await transformAnthropicMessages({
+  body,
+  model,
+  options: {
+    exactGuard: { representationPolicy: 'externalize' },
+    recoveryStore,
+    emitReceipt: true,
+  },
+});
+```
+
+Les spans sémantiques sont remplacés par des marqueurs contenant un handle
+Recovery ; chaque handle est vérifié immédiatement par hash et relu avant que
+la requête provider-shaped ne soit retournée. Les champs d’identité de
+protocole (`id`, `tool_use_id`, `request_id`, etc.) ne sont jamais remplacés :
+si un tel champ est protégé, le chemin échoue fermé et conserve la requête
+native. Sans `recoveryStore`, l’opt-in externalize échoue également fermé.
+
+La stratégie `redact` n’est pas exécutée par défaut et aucune donnée n’est
+silencieusement supprimée. Le receipt opt-in porte la stratégie `externalize`
+et les handles, sans plaintext ; `verifyCompressionReceipt` vérifie les octets
+de la requête originale et provider-shaped, tandis que `RecoveryStore.verify`
+et `get` vérifient la récupération exacte du span.
+
 La policy et les coûts restent `estimated` tant qu’un oracle provider/modèle
 et des coûts de retrieval vérifiés ne sont pas disponibles. Cette intégration
 M5 ne marque donc pas M6 comme terminé et ne prétend pas fournir une preuve

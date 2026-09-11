@@ -60,6 +60,7 @@ import { resolveGptProfile } from './gpt-model-profiles.js';
 import type { CompressionReceipt } from './receipt.js';
 import { detectProtectedSpans, exactGuardOptionsForMode, type ExactGuardMode, type ExactGuardOptions } from './exact-guard.js';
 import { analyzeContextFabric, finalizeContextFabricAnalysis, type ContextFabricAnalysis } from './context-fabric.js';
+import type { RecoveryHandle, RecoveryStore } from './recovery-store.js';
 
 /** Per-block descriptor passed to `TransformOptions.keepSharp`. */
 export interface KeepSharpBlock {
@@ -152,9 +153,15 @@ export interface TransformOptions {
   exactGuard?: ExactGuardOptions | false;
   /** Automatic protection profile applied before any lossy transform. */
   safetyMode?: ExactGuardMode | false;
+  /** Explicit Recovery target required by the `externalize` ExactGuard policy. */
+  recoveryStore?: RecoveryStore;
 }
 
-const DEFAULTS: Required<TransformOptions> = {
+type ResolvedTransformOptions = Omit<Required<TransformOptions>, 'recoveryStore'> & {
+  recoveryStore?: RecoveryStore;
+};
+
+const DEFAULTS: ResolvedTransformOptions = {
   compress: true,
   compressTools: true,
   compressToolResults: true,
@@ -178,6 +185,7 @@ const DEFAULTS: Required<TransformOptions> = {
   emitReceipt: false,
   exactGuard: false,
   safetyMode: 'balanced',
+  recoveryStore: undefined,
   // GPT-only knobs; the Anthropic transform ignores them but Required<> needs them.
   collapseHistory: true,
   gptHistory: {},
@@ -346,7 +354,7 @@ function imageTokensCost(
  *  undefined in every shipped profile, so this returns the dense geometry
  *  unchanged out of the box. */
 function historyGateGeometry(
-  o?: Required<TransformOptions>,
+  o?: ResolvedTransformOptions,
   callerOverrodeCols: boolean = false,
 ): GateGeometry {
   const dense = denseGateGeometry(o);
@@ -360,7 +368,7 @@ function historyGateGeometry(
 }
 
 /** Gate geometry for dense tool-result, reminder, and history pages. */
-function denseGateGeometry(o?: Required<TransformOptions>): GateGeometry {
+function denseGateGeometry(o?: ResolvedTransformOptions): GateGeometry {
   const profile = o?.model ? resolveGptProfile(o.model) : undefined;
   const cols = o?.cols ?? profile?.stripCols ?? DENSE_CONTENT_COLS;
   return {
@@ -596,6 +604,116 @@ function countProtectedRequestSpans(
   return count;
 }
 
+const NON_EXTERNALIZABLE_KEYS = new Set([
+  'id',
+  'tool_use_id',
+  'request_id',
+  'message_id',
+  'session_id',
+  'thread_id',
+]);
+
+function isNonExternalizableKey(key: string | undefined): boolean {
+  return key !== undefined && NON_EXTERNALIZABLE_KEYS.has(key.toLowerCase());
+}
+
+function recoveryHandleString(handle: RecoveryHandle): string {
+  return `${handle.format}/${handle.algorithm}/${handle.digest}`;
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+/** Check protocol identity fields before writing any externalized object. */
+function hasExternalizationBlocker(
+  value: unknown,
+  options: ExactGuardOptions,
+  depth = 0,
+  key?: string,
+): boolean {
+  if (depth > 8) return false;
+  if (typeof value === 'string') {
+    if (key?.toLowerCase() === 'x-anthropic-billing-header') return false;
+    return isNonExternalizableKey(key) && detectProtectedSpans(value, options).length > 0;
+  }
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some((item) => hasExternalizationBlocker(item, options, depth + 1));
+  return Object.entries(value as Record<string, unknown>).some(([childKey, item]) =>
+    hasExternalizationBlocker(item, options, depth + 1, childKey));
+}
+
+interface ExternalizationResult {
+  readonly value: unknown;
+  readonly protectedSpans: number;
+  readonly recoveryHandles: readonly string[];
+}
+
+/**
+ * Replace only semantic protected spans with explicit Recovery handles.
+ * Protocol identity fields are rejected up front because replacing a
+ * tool_use_id or request id would change provider correlation semantics.
+ */
+async function externalizeProtectedRequest(
+  value: unknown,
+  options: ExactGuardOptions,
+  store: RecoveryStore,
+): Promise<ExternalizationResult> {
+  const handles: string[] = [];
+  let protectedSpans = 0;
+  const encoder = new TextEncoder();
+
+  async function visit(input: unknown, depth = 0, key?: string): Promise<unknown> {
+    if (depth > 8 || input === null || typeof input !== 'object') {
+      if (typeof input !== 'string') return input;
+      if (key?.toLowerCase() === 'x-anthropic-billing-header') return input;
+      const spans = detectProtectedSpans(input, options);
+      protectedSpans += spans.length;
+      if (spans.length === 0) return input;
+      let output = input;
+      for (let index = spans.length - 1; index >= 0; index -= 1) {
+        const span = spans[index]!;
+        const original = input.slice(span.start, span.end);
+        const handle = await store.put(encoder.encode(original), {
+          contentType: 'text/plain; charset=utf-8',
+          source: 'exact-guard.externalize',
+          exactnessClass: span.class,
+        });
+        const handleText = recoveryHandleString(handle);
+        const verification = await store.verify(handle);
+        if (!verification.ok) throw new Error('recovery verification failed after externalization');
+        const recovered = await store.get(handle);
+        if (!sameBytes(recovered, encoder.encode(original))) throw new Error('recovery bytes changed after externalization');
+        handles.push(handleText);
+        output = `${output.slice(0, span.start)}[furypipe-externalized:${handleText}]${output.slice(span.end)}`;
+      }
+      return output;
+    }
+    if (Array.isArray(input)) {
+      const output: unknown[] = [];
+      for (const item of input) output.push(await visit(item, depth + 1));
+      return output;
+    }
+    const output: Record<string, unknown> = {};
+    for (const [childKey, item] of Object.entries(input as Record<string, unknown>)) {
+      output[childKey] = await visit(item, depth + 1, childKey);
+    }
+    return output;
+  }
+
+  try {
+    const result = await visit(value);
+    return { value: result, protectedSpans, recoveryHandles: [...new Set(handles)] };
+  } catch (error) {
+    await Promise.all(handles.map((handle) => store.delete(handle).catch(() => false)));
+    throw error;
+  }
+}
+
 /** Invoke `keepSharp` defensively; a throw or non-`true` return means "image as usual". */
 function callerKeepsSharp(
   fn: ((block: KeepSharpBlock) => boolean) | undefined,
@@ -802,7 +920,11 @@ export interface TransformInfo {
   /** Why blocks passed through without compression. Only present when count > 0. */
   passthroughReasons?: { below_threshold?: number; not_profitable?: number; kept_sharp?: number; image_budget?: number; exact_guard?: number };
   /** ExactGuard runtime decision, when the configured guard found protected values. */
-  exactGuard?: { protectedSpans: number; action: 'preserve_native' };
+  exactGuard?: {
+    protectedSpans: number;
+    action: 'preserve_native' | 'externalize';
+    recoveryHandles?: readonly string[];
+  };
   /** Slab gate diagnostics — imageTokens, textTokens, burn terms, and verdict.
    *  Lets hosts measure flap-prevention efficacy and tune amortization horizon. */
   gateEval?: {
@@ -2026,7 +2148,7 @@ function historyGridTuning(
 async function runHistoryCollapseAndFinalize(
   req: MessagesRequest,
   info: TransformInfo,
-  o: Required<TransformOptions>,
+  o: ResolvedTransformOptions,
   opts: TransformOptions,
   droppedCodepoints: Map<number, number>,
   pins: Pin[],
@@ -2176,7 +2298,7 @@ export async function transformRequest(
         ?? (DEFAULTS as Record<string, unknown>)[k];
     }
   }
-  const o: Required<TransformOptions> = merged as Required<TransformOptions>;
+  const o: ResolvedTransformOptions = merged as ResolvedTransformOptions;
   const info: TransformInfo = {
     compressed: false,
     origChars: 0,
@@ -2251,6 +2373,26 @@ export async function transformRequest(
       opts.exactGuard === undefined,
     );
     if (protectedSpans > 0) {
+      if (activeExactGuard.representationPolicy === 'externalize' && opts.recoveryStore) {
+        try {
+          if (!hasExternalizationBlocker(req, activeExactGuard)) {
+            const externalized = await externalizeProtectedRequest(req, activeExactGuard, opts.recoveryStore);
+            if (externalized.protectedSpans > 0) {
+              const externalizedBody = new TextEncoder().encode(JSON.stringify(externalized.value));
+              info.reason = `exact_guard (externalize, spans=${externalized.protectedSpans})`;
+              info.exactGuard = {
+                protectedSpans: externalized.protectedSpans,
+                action: 'externalize',
+                recoveryHandles: externalized.recoveryHandles,
+              };
+              bumpPassthrough(info, 'exact_guard');
+              return finish(externalizedBody);
+            }
+          }
+        } catch {
+          // Recovery failures fail closed to the original provider request.
+        }
+      }
       info.reason = `exact_guard (preserve_native, spans=${protectedSpans})`;
       info.exactGuard = { protectedSpans, action: 'preserve_native' };
       bumpPassthrough(info, 'exact_guard');

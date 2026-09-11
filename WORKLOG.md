@@ -118,3 +118,12 @@
 - Validation : 90 fichiers / 1 266 tests verts ; typecheck et build verts ; le package exporte aussi `./context-fabric`.
 - CI docs-only du commit `df46a07` : push `34634492559` et PR `34634496448`, chacun `9/9` vert sur Ubuntu/Windows/macOS et Node 22/24/26.
 - Limite : les coûts policy restent estimés ; l’externalize/recovery, les adapters provider, le listener HTTP/OAuth, la conformance externe et la validation hébergée restent ouverts.
+
+## 2026-09-11 — ExactGuard externalize avec Recovery
+
+- `transformRequest` accepte désormais une stratégie explicitement opt-in via `exactGuard: { representationPolicy: 'externalize' }` et `recoveryStore`.
+- Les spans sémantiques sont écrits dans Recovery, vérifiés par hash puis relus ; la requête provider-shaped porte un marqueur `[furypipe-externalized:<handle>]` et l’action ExactGuard expose les handles sans plaintext.
+- Les champs d’identité de protocole protégés (`id`, `tool_use_id`, `request_id`, `message_id`, `session_id`, `thread_id`) bloquent l’externalisation et forcent le natif afin de préserver la corrélation provider.
+- Le wrapper public renvoie `reason: 'externalized'`, `applied: true` et un receipt `strategy: 'externalize'` lorsque `emitReceipt` est demandé. `redact` n’est pas activé.
+- E2E ajouté dans `tests/exact-recovery-e2e.test.ts` : externalisation + récupération exacte + receipt, et échec fermé sur champ structurel.
+- CI distante du checkpoint M5 `9832ce0` : runs push `34636151930` et PR `34636158894`, chacun `9/9` vert sur Ubuntu/Windows/macOS et Node 22/24/26.

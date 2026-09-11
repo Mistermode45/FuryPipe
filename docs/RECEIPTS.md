@@ -19,6 +19,13 @@ protégés sous forme d'offsets + hashes, les handles de récupération éventue
 et les effets cache observés par la couche locale. Le plaintext n'est pas
 recopié dans le receipt.
 
+La stratégie `externalize` est disponible uniquement lorsque l’appelant fournit
+à la fois `exactGuard: { representationPolicy: 'externalize' }` et un
+`recoveryStore`. Le résultat est provider-shaped avec des marqueurs Recovery,
+et le receipt contient les handles correspondants. Le test E2E vérifie ensuite
+chaque handle par hash et relit ses octets ; un champ d’identité de protocole
+non externalisable ou une panne Recovery conserve la requête native.
+
 La génération est désactivée par défaut. Elle ajoute un scan ExactGuard sur le
 corps UTF-8 et doit donc rester une décision explicite de l'appelant. Les
 wrappers OpenAI ajoutent en plus le protocole dans `cacheEffects.protocol`.
