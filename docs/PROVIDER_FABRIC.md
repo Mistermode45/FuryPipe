@@ -42,3 +42,22 @@ probe, credential, appel payant, fallback live, canary ou coût provider réel
 n’est simulé. M7 est donc `PARTIAL` : le registre et son raccordement au
 Context Fabric sont testés localement, tandis que les adapters provider et la
 disponibilité hébergée restent à implémenter/valider.
+
+
+## Runtime health et cost oracle
+
+`src/core/provider-runtime.ts` fournit maintenant une frontière d'injection explicite pour les preuves détenues par l'hôte :
+
+- observation de santé `available` / `unavailable` avec `observedAt` et `expiresAt` ;
+- expiration fail-closed : une observation périmée redevient `unknown` ;
+- provenance bornée `live-probe` ou `operator-config` ;
+- latence optionnelle metadata-only ;
+- registre dérivé qui peut être fourni à `transformRequest({ providerRegistry })` ;
+- catalogue de prix exact provider/modèle ;
+- estimation USD uniquement quand chaque tarif requis par l'usage est explicitement présent.
+
+Le runtime ne contacte aucun endpoint tout seul et ne lit aucun credential. Une disponibilité fraîche ne peut donc venir que d'une observation fournie par l'application hôte. Le Context Fabric consomme ce registre et force la policy locale en `raw` lorsque le provider est explicitement observé `unavailable`.
+
+Les identifiants de modèles utilisés par le cost oracle sont exacts : aucun alias ou suffixe `latest` n'est transformé en tarif connu. Si des tokens cache sont déclarés sans tarif cache correspondant, le résultat reste `COST_UNKNOWN`.
+
+M7 reste `PARTIAL` : la frontière runtime et le cost oracle sont réels, mais aucun probe hébergé, fallback provider live, credentialed adapter ou validation externe n'est déclaré exécuté.

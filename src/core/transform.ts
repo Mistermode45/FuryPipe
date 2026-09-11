@@ -62,6 +62,7 @@ import { detectProtectedSpans, exactGuardOptionsForMode, type ExactGuardMode, ty
 import { analyzeContextFabric, finalizeContextFabricAnalysis, type ContextFabricAnalysis } from './context-fabric.js';
 import type { RecoveryHandle, RecoveryStore } from './recovery-store.js';
 import { compileFuryPrompt, type FuryPromptCompileInput, type FuryPromptCompilation } from '../fury-prompt.js';
+import type { ProviderRegistry } from './provider-fabric.js';
 
 /** Per-block descriptor passed to `TransformOptions.keepSharp`. */
 export interface KeepSharpBlock {
@@ -158,11 +159,14 @@ export interface TransformOptions {
   recoveryStore?: RecoveryStore;
   /** Explicit structured prompt augmentation compiled before ExactGuard. */
   furyPrompt?: FuryPromptCompileInput;
+  /** Optional provider registry carrying fresh host-supplied health evidence. */
+  providerRegistry?: ProviderRegistry;
 }
 
-type ResolvedTransformOptions = Omit<Required<TransformOptions>, 'recoveryStore' | 'furyPrompt'> & {
+type ResolvedTransformOptions = Omit<Required<TransformOptions>, 'recoveryStore' | 'furyPrompt' | 'providerRegistry'> & {
   recoveryStore?: RecoveryStore;
   furyPrompt?: FuryPromptCompileInput;
+  providerRegistry?: ProviderRegistry;
 };
 
 const DEFAULTS: ResolvedTransformOptions = {
@@ -2387,8 +2391,8 @@ export async function transformRequest(
     try {
       info.contextFabric = analyzeContextFabric(req, {
         mode: o.safetyMode === false ? 'balanced' : o.safetyMode,
-        providerAvailable: true,
         providerId: 'anthropic',
+        ...(opts.providerRegistry === undefined ? {} : { providerRegistry: opts.providerRegistry }),
       });
     } catch {
       // Context analysis must never turn a provider-valid request into a
