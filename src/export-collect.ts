@@ -1,5 +1,5 @@
 /**
- * Shared file-reading gate for `pxpipe export`. Every collection mode
+ * Shared file-reading gate for `furypipe export`. Every collection mode
  * (directory walk, explicit single-file target, and `--git` untracked files)
  * must apply the SAME three checks — include/exclude globs, a max size, and a
  * binary sniff — so the untracked path can no longer read gigabyte or filtered
