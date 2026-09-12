@@ -14,11 +14,8 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { isIP } from 'node:net';
 import { spawnSync } from 'node:child_process';
-import { createProxy, parseGatewayHeaders, resolveUpstreams, type ProxyConfig } from './core/proxy.js';
+import { createProxy, parseGatewayHeaders, type ProxyConfig } from './core/proxy.js';
 import { createOmniRouteProxyConfig } from './core/omniroute.js';
-import {
-  chatCompletionsUrl,
-} from './core/messages-chat-bridge.js';
 import {
   parseExportArgv,
   runExportCore,
@@ -114,7 +111,7 @@ function applyConfigFileDefaults(): void {
   try {
     parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
   } catch (e) {
-    console.warn(`[pxpipe] ignored invalid config ${file}: ${(e as Error).message}`);
+    console.warn('[furypipe] ignored invalid config file');
     return;
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
@@ -139,13 +136,13 @@ function persistModelBasesToConfig(bases: readonly string[]): void {
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      console.warn(`[pxpipe] could not persist model scope: invalid config object ${file}`);
+      console.warn('[furypipe] could not persist model scope: invalid config object');
       return;
     }
     cfg = parsed as Record<string, unknown>;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.warn(`[pxpipe] could not persist model scope: invalid config ${file}: ${(e as Error).message}`);
+      console.warn('[furypipe] could not persist model scope: invalid config file');
       return;
     }
   }
@@ -166,7 +163,7 @@ function persistModelBasesToConfig(bases: readonly string[]): void {
     } catch {
       // The write may have failed before the temporary file was created.
     }
-    console.warn(`[pxpipe] could not persist model scope to ${file}: ${(e as Error).message}`);
+    console.warn('[furypipe] could not persist model scope');
   }
 }
 
@@ -236,7 +233,7 @@ function parseMaxRequestBytes(value: string | undefined): number | undefined {
   const bytes = Number(raw);
   if (!Number.isSafeInteger(bytes) || bytes <= 0) {
     console.error(
-      `[pxpipe] PXPIPE_MAX_REQUEST_BYTES must be a positive whole number of bytes, got: ${value}`,
+      '[furypipe] PXPIPE_MAX_REQUEST_BYTES must be a positive whole number of bytes',
     );
     process.exit(2);
   }
@@ -246,7 +243,7 @@ function parseMaxRequestBytes(value: string | undefined): number | undefined {
 function parseProvider(v: string | undefined): 'cloudflare-ai-gateway' | 'omniroute' | undefined {
   if (v === undefined || v === '') return undefined;
   if (v === 'cloudflare-ai-gateway' || v === 'omniroute') return v;
-  console.error(`[pxpipe] unknown PXPIPE_PROVIDER: ${v}`);
+  console.error('[furypipe] unknown PXPIPE_PROVIDER value');
   process.exit(2);
 }
 
@@ -340,7 +337,7 @@ declare const __PXPIPE_VERSION__: string | undefined;
 
 function printVersion(): void {
   const injected = typeof __PXPIPE_VERSION__ === 'string' ? __PXPIPE_VERSION__ : undefined;
-  console.log(injected ?? process.env.npm_package_version ?? 'unknown');
+  console.log(injected ?? 'unknown');
 }
 
 // ---- node:http <-> Web Request/Response bridge ---------------------------
@@ -1216,7 +1213,7 @@ async function main(): Promise<void> {
       }
     : undefined;
   if (authTokenFile) {
-    console.log(`[pxpipe] ANTHROPIC_OAUTH_TOKEN_FILE set — bearer resolved per request from ${authTokenFile}`);
+    console.log('[furypipe] ANTHROPIC_OAUTH_TOKEN_FILE set — bearer resolved per request');
   }
   // Debug aid: when PXPIPE_DUMP_DIR is set, persist every rendered PNG this
   // process emits, so you can eyeball exactly what the model received (OCR /
@@ -1228,9 +1225,9 @@ async function main(): Promise<void> {
   if (imageDumpDir) {
     try {
       ensurePrivateDirectory(imageDumpDir);
-      console.log(`[pxpipe] PXPIPE_DUMP_DIR set — dumping rendered PNGs to ${imageDumpDir}`);
+      console.log('[furypipe] PXPIPE_DUMP_DIR set — rendered PNG dumping enabled');
     } catch (err) {
-      console.warn(`[pxpipe] PXPIPE_DUMP_DIR unusable (${(err as Error).message}) — image dumping disabled`);
+      console.warn('[furypipe] PXPIPE_DUMP_DIR unusable — image dumping disabled');
       imageDumpDir = undefined;
     }
   }
@@ -1351,11 +1348,11 @@ async function main(): Promise<void> {
           try {
             fs.writeFileSync(path.join(imageDumpDir, name), pngs[i]!, { mode: 0o600 });
           } catch (err) {
-            console.warn(`[pxpipe] PNG dump write failed: ${(err as Error).message}`);
+            console.warn('[furypipe] PNG dump write failed');
             break; // dir vanished / full — stop hammering it this request
           }
         }
-        console.log(`  ↳ dumped ${pngs.length} rendered png(s) → ${imageDumpDir}`);
+        console.log(`  ↳ dumped ${pngs.length} rendered png(s)`);
       }
       // Terse human-readable console line.
       const extra: string[] = [];
@@ -1477,20 +1474,17 @@ async function main(): Promise<void> {
     opts.host === '127.0.0.1' || opts.host === 'localhost' || opts.host === '::1';
   const announce = () => {
     const routes = resolveUpstreams(config);
-    console.log(`[pxpipe] anthropic upstream → ${routes.anthropic}`);
-    console.log(`[pxpipe] openai upstream → ${routes.openai}`);
+    console.log('[furypipe] Anthropic upstream configured');
+    console.log('[furypipe] OpenAI upstream configured');
     if (opts.cloudflareUpstream !== undefined) {
       console.log(
-        `[pxpipe] cloudflare upstream → ${chatCompletionsUrl(opts.cloudflareUpstream)} ` +
-          `(models: ${opts.cloudflareModels?.join(', ') || 'none'})`,
+        '[furypipe] Cloudflare upstream configured',
       );
     }
-    console.log(`[pxpipe] tracking events → ${opts.eventsFile}`);
+    console.log('[furypipe] event tracking enabled');
     if (opts.captureErrorReqBody) {
       console.warn(
-        `[pxpipe] PXPIPE_DEBUG_CAPTURE_4XX=1 — persisting full 4xx request and ` +
-          `upstream error bodies (prompts + any secrets in context) to ${bodySidecarDir}. ` +
-          `Debugging only.`,
+        '[furypipe] PXPIPE_DEBUG_CAPTURE_4XX=1 — persisting full 4xx request and upstream error bodies; debugging only.',
       );
     }
   };
@@ -1498,13 +1492,10 @@ async function main(): Promise<void> {
   server.listen(opts.port, opts.host, () => {
     console.log(`[pxpipe] listening on http://${displayHost}:${opts.port}`);
     if (!isLoopbackHost) {
-      console.warn(
-        `[pxpipe] bound to ${opts.host}; proxy API is reachable off-host, ` +
-          `but dashboard routes remain loopback-only.`,
-      );
+      console.warn('[furypipe] non-loopback bind enabled; proxy API is reachable off-host, dashboard routes remain loopback-only');
     }
     announce();
-    console.log(`[pxpipe] dashboard → http://127.0.0.1:${opts.port}/`);
+    console.log('[furypipe] dashboard available on loopback');
   });
 
   // server.close() only stops accepting new connections and waits for open
