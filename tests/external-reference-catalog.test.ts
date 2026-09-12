@@ -55,6 +55,25 @@ describe('external reference catalog', () => {
     });
   });
 
+  it('catalogs current skill/spec standards and memory backends without auto-enabling them', () => {
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'agent-skills-standard')).toMatchObject({
+      mode: 'ADAPTER_CANDIDATE',
+      licenseStatus: 'VERIFIED',
+      licenseSpdx: 'Apache-2.0',
+      capabilities: expect.arrayContaining(['skill-standard']),
+    });
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'github-spec-kit')).toMatchObject({
+      mode: 'REFERENCE_ONLY',
+      licenseStatus: 'VERIFIED',
+      capabilities: expect.arrayContaining(['spec-driven-development']),
+    });
+    expect(referencesByCapability('memory-backend').map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(['mem0', 'letta', 'graphiti']),
+    );
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'graphiti')?.capabilities)
+      .toContain('temporal-knowledge');
+  });
+
   it('returns defensive copies from inspection helpers', () => {
     const first = inspectExternalReferences();
     expect(first).not.toBe(EXTERNAL_REFERENCE_CATALOG);
