@@ -27,6 +27,55 @@ function uniqueCanonical(locales: readonly string[]): string[] {
   return result;
 }
 
+const ACCEPT_LANGUAGE_MAX_BYTES = 4_096;
+const ACCEPT_LANGUAGE_MAX_ITEMS = 32;
+
+export function parseAcceptLanguage(value: string | null | undefined): readonly string[] {
+  if (value === null || value === undefined || value.length === 0) return Object.freeze([]);
+  if (value.length > ACCEPT_LANGUAGE_MAX_BYTES || value.includes('\0')) return Object.freeze([]);
+
+  const weighted: Array<{ locale: string; quality: number; ordinal: number }> = [];
+  const rawItems = value.split(',');
+  for (let ordinal = 0; ordinal < Math.min(rawItems.length, ACCEPT_LANGUAGE_MAX_ITEMS); ordinal += 1) {
+    const raw = rawItems[ordinal]!.trim();
+    if (!raw) continue;
+    const [rangeRaw, ...parameters] = raw.split(';');
+    const range = rangeRaw?.trim();
+    if (!range || range === '*') continue;
+
+    let quality = 1;
+    let valid = true;
+    for (const parameterRaw of parameters) {
+      const parameter = parameterRaw.trim();
+      if (!parameter) continue;
+      const match = /^q=(0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/iu.exec(parameter);
+      if (!match) {
+        valid = false;
+        break;
+      }
+      quality = Number(match[1]);
+    }
+    if (!valid || quality <= 0) continue;
+
+    try {
+      const locale = canonicalizeLocale(range);
+      weighted.push({ locale, quality, ordinal });
+    } catch {
+      // Invalid language ranges are isolated from the rest of the header.
+    }
+  }
+
+  weighted.sort((a, b) => b.quality - a.quality || a.ordinal - b.ordinal);
+  const seen = new Set<string>();
+  const preferences: string[] = [];
+  for (const item of weighted) {
+    if (seen.has(item.locale)) continue;
+    seen.add(item.locale);
+    preferences.push(item.locale);
+  }
+  return Object.freeze(preferences);
+}
+
 export function resolveSupportedLocale(
   preferences: readonly string[],
   supportedLocales: readonly string[],
