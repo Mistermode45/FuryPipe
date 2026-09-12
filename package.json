@@ -114,6 +114,10 @@
       "types": "./dist/knowledge.d.ts",
       "import": "./dist/knowledge.js"
     },
+    "./knowledge-recovery": {
+      "types": "./dist/knowledge-recovery.d.ts",
+      "import": "./dist/knowledge-recovery.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"

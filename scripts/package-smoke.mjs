@@ -129,6 +129,12 @@ try {
     "const m = await import('furypipe/knowledge'); if (typeof m.createKnowledgeIndex !== 'function') process.exit(1);",
   ], installDir);
   assert(knowledgeExport.stderr === '', `Knowledge package export wrote stderr: ${knowledgeExport.stderr}`);
+  const knowledgeRecoveryExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/knowledge-recovery'); if (typeof m.createRecoveryKnowledgeStore !== 'function') process.exit(1);",
+  ], installDir);
+  assert(knowledgeRecoveryExport.stderr === '', `Knowledge Recovery package export wrote stderr: ${knowledgeRecoveryExport.stderr}`);
   const providerRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',

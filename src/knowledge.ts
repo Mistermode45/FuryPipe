@@ -48,6 +48,12 @@ export interface KnowledgeGraphStats {
   readonly indexedTermDigests: number;
 }
 
+export interface KnowledgeSnapshot {
+  readonly format: 'furypipe-knowledge-snapshot/v1';
+  readonly entries: readonly KnowledgeEntry[];
+  readonly edges: readonly KnowledgeEdge[];
+}
+
 export interface KnowledgeIndex {
   addLesson(record: AgentLearningLessonRecord, terms: readonly string[]): KnowledgeEntry;
   addEntry(entry: KnowledgeEntry): void;
@@ -61,6 +67,7 @@ export interface KnowledgeIndex {
   neighbors(id: string, relation?: KnowledgeRelation): readonly KnowledgeEdge[];
   get(id: string): KnowledgeEntry | undefined;
   stats(): KnowledgeGraphStats;
+  snapshot(): KnowledgeSnapshot;
 }
 
 const ID = /^[A-Za-z0-9._:-]{1,128}$/u;
@@ -159,9 +166,58 @@ function edgeId(from: string, relation: KnowledgeRelation, to: string, digest: s
   return `edge_${sha256(`${from}\0${relation}\0${to}\0${digest}`).slice(0, 32)}`;
 }
 
-export function createKnowledgeIndex(): KnowledgeIndex {
+function validateEdge(edge: KnowledgeEdge): void {
+  if (edge.format !== 'furypipe-knowledge-edge/v1') throw new Error('knowledge edge format is invalid');
+  validateId(edge.id, 'knowledge edge id');
+  validateId(edge.from, 'knowledge edge from');
+  validateId(edge.to, 'knowledge edge to');
+  if (edge.from === edge.to) throw new Error('knowledge self-edge is not allowed');
+  if (!RELATIONS.has(edge.relation)) throw new Error('knowledge relation is invalid');
+  if (!/^[0-9a-f]{64}$/u.test(edge.evidenceDigest)) throw new Error('knowledge edge evidenceDigest is invalid');
+  if (edge.id !== edgeId(edge.from, edge.relation, edge.to, edge.evidenceDigest)) {
+    throw new Error('knowledge edge id does not match its content');
+  }
+}
+
+function frozenEntry(entry: KnowledgeEntry): KnowledgeEntry {
+  return Object.freeze({
+    ...entry,
+    evidenceDigests: Object.freeze([...entry.evidenceDigests]),
+    termDigests: Object.freeze([...new Set(entry.termDigests)].sort()),
+  });
+}
+
+function frozenEdge(edge: KnowledgeEdge): KnowledgeEdge {
+  return Object.freeze({ ...edge });
+}
+
+export function createKnowledgeIndex(initialSnapshot?: KnowledgeSnapshot): KnowledgeIndex {
   const entries = new Map<string, KnowledgeEntry>();
   const edges = new Map<string, KnowledgeEdge>();
+
+  if (initialSnapshot !== undefined) {
+    if (!initialSnapshot || typeof initialSnapshot !== 'object'
+      || initialSnapshot.format !== 'furypipe-knowledge-snapshot/v1'
+      || !Array.isArray(initialSnapshot.entries)
+      || !Array.isArray(initialSnapshot.edges)
+      || initialSnapshot.entries.length > 100_000
+      || initialSnapshot.edges.length > 500_000) {
+      throw new Error('knowledge snapshot is invalid');
+    }
+    for (const entry of initialSnapshot.entries) {
+      validateEntry(entry);
+      if (entries.has(entry.id)) throw new Error(`duplicate knowledge snapshot entry: ${entry.id}`);
+      entries.set(entry.id, frozenEntry(entry));
+    }
+    for (const edge of initialSnapshot.edges) {
+      validateEdge(edge);
+      if (!entries.has(edge.from) || !entries.has(edge.to)) {
+        throw new Error('knowledge snapshot edge endpoints must exist');
+      }
+      if (edges.has(edge.id)) throw new Error(`duplicate knowledge snapshot edge: ${edge.id}`);
+      edges.set(edge.id, frozenEdge(edge));
+    }
+  }
 
   const degree = (id: string): number => {
     let count = 0;
@@ -181,11 +237,7 @@ export function createKnowledgeIndex(): KnowledgeIndex {
     addEntry(entry) {
       validateEntry(entry);
       if (entries.has(entry.id)) throw new Error(`knowledge entry already exists: ${entry.id}`);
-      entries.set(entry.id, Object.freeze({
-        ...entry,
-        evidenceDigests: Object.freeze([...entry.evidenceDigests]),
-        termDigests: Object.freeze([...new Set(entry.termDigests)].sort()),
-      }));
+      entries.set(entry.id, frozenEntry(entry));
     },
 
     link(input) {
@@ -197,7 +249,7 @@ export function createKnowledgeIndex(): KnowledgeIndex {
       }
       if (!RELATIONS.has(input.relation)) throw new Error('knowledge relation is invalid');
       const digest = evidenceDigest(input.evidence);
-      const edge: KnowledgeEdge = Object.freeze({
+      const edge: KnowledgeEdge = frozenEdge({
         format: 'furypipe-knowledge-edge/v1',
         id: edgeId(input.from, input.relation, input.to, digest),
         from: input.from,
@@ -205,6 +257,7 @@ export function createKnowledgeIndex(): KnowledgeIndex {
         relation: input.relation,
         evidenceDigest: digest,
       });
+      validateEdge(edge);
       edges.set(edge.id, edge);
       return edge;
     },
@@ -263,6 +316,18 @@ export function createKnowledgeIndex(): KnowledgeIndex {
       const terms = new Set<string>();
       for (const entry of entries.values()) entry.termDigests.forEach((value) => terms.add(value));
       return Object.freeze({ entries: entries.size, edges: edges.size, indexedTermDigests: terms.size });
+    },
+
+    snapshot() {
+      return Object.freeze({
+        format: 'furypipe-knowledge-snapshot/v1',
+        entries: Object.freeze([...entries.values()]
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map((entry) => frozenEntry(entry))),
+        edges: Object.freeze([...edges.values()]
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .map((edge) => frozenEdge(edge))),
+      });
     },
   };
 }

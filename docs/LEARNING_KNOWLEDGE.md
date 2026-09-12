@@ -35,3 +35,22 @@ The V5 local baseline deliberately uses a metadata inverted index.
 - **Hybrid retrieval — FUTURE.** A host may combine this metadata index with an independently validated semantic retriever later, but FuryPipe must keep provenance and exact opaque handles visible.
 
 This is real retrieval but not semantic RAG. M13 therefore remains `PARTIAL`: durable graph persistence, semantic retrieval, hosted provider validation and multi-instance transactional updates remain separate work.
+
+
+## Durable Knowledge snapshots
+
+`createRecoveryKnowledgeStore()` persists the metadata graph as immutable Recovery snapshots.
+
+Properties:
+
+- every snapshot is revalidated through `createKnowledgeIndex(snapshot)` before write;
+- the latest Recovery object is integrity-verified before decode;
+- entries, term digests, evidence digests, relations and opaque content handles are restored;
+- edge IDs are recomputed/validated against their endpoints, relation and evidence digest;
+- malformed or structurally forged newest snapshots fail closed;
+- the loader does **not** silently fall back to an older snapshot after corruption;
+- snapshot selection uses bounded `createdAt` metadata and digest tie-break ordering.
+
+No plaintext search term or edge-evidence text is introduced by persistence.
+
+This closes local graph durability, but does not claim multi-writer transactional semantics. Concurrent hosts still require an external coordinator or a future transactional backend when strict read-modify-write serialization is required.
