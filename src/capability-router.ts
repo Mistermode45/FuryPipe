@@ -914,7 +914,7 @@ function validateDynamicAnalysis(
   }
   const additions = analysis.promptAdditions ?? {};
   for (const [section, values] of Object.entries(additions)) {
-    if (!['role','objective','intent','context','constraints','plan','tasks','acceptanceCriteria','testing','security','deployment','outputContract','verification','sources','skills','mcp','plugins','subagents','recovery','instructions','custom'].includes(section)
+    if (!['intent','role','objective','context','inputs','constraints','task','plan','tools','skills','mcp','subagents','outputContract','acceptanceCriteria','verification'].includes(section)
       || !Array.isArray(values)
       || values.length > 32
       || values.some((value) => typeof value !== 'string' || value.length < 1 || value.length > 2048 || value.includes('\0'))) {
