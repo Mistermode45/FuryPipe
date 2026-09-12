@@ -104,3 +104,41 @@ It does **not** mean:
 - the source is allowed to run automatically.
 
 Any future executable integration must still pass the dedicated adapter/skill permission and security gates.
+
+
+## Recommended 2026 integration set
+
+The detailed audit is maintained in `docs/research/ECOSYSTEM_2026.md`.
+
+### First-class opt-in candidates
+
+- **Context7** — current library documentation; network/read-only.
+- **GitHub MCP** — official repository/issue/PR/workflow connector; repository-read by default.
+- **Microsoft Playwright CLI** — token-efficient browser QA for coding agents; explicit browser/process/network permission.
+- **Chrome DevTools MCP** — deeper console/network/trace/performance diagnostics; optional and separate from Playwright.
+- **Supabase AI tools** — project-scoped backend workflows; database-read by default.
+- **Codebase Memory MCP** — optional local structural code intelligence; repository-read/process boundary.
+- **OmniRoute** — optional multi-provider gateway through Provider Fabric.
+- **21st.dev** — optional UI/component discovery.
+- **Firecrawl / Tavily / Exa** — alternative primary research connectors; do not enable all by default.
+
+### Skill source pools
+
+The following are source pools, not trusted executable bundles:
+
+- Addy Osmani Agent Skills;
+- wshobson/agents;
+- UI Skills;
+- Ponytail methodology;
+- Agency Agents;
+- OneWave Claude Skills;
+- Claude Code Templates;
+- Tons of Skills Marketplace.
+
+Every executable skill still requires immutable provenance, licence review, permission classification and its own registry decision.
+
+### Explicit reference-only boundaries
+
+- OpenMontage and Claude Squad remain external/reference-only because their audited source licence is AGPL.
+- Strix remains reference-only/high-privilege; no automatic offensive tooling.
+- HorizonX remains commercial/reference-only; no paid code/component reproduction without independently held rights.
