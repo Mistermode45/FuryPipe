@@ -102,6 +102,14 @@
       "types": "./dist/agent-runtime.d.ts",
       "import": "./dist/agent-runtime.js"
     },
+    "./skill-registry": {
+      "types": "./dist/skill-registry.d.ts",
+      "import": "./dist/skill-registry.js"
+    },
+    "./external-references": {
+      "types": "./dist/external-reference-catalog.d.ts",
+      "import": "./dist/external-reference-catalog.js"
+    },
     "./fury-prompt": {
       "types": "./dist/fury-prompt.d.ts",
       "import": "./dist/fury-prompt.js"

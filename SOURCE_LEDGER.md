@@ -18,3 +18,23 @@
 | SRC-014 | https://github.com/json5/json5 | dépendance parser | `2.2.3` | 2026-09-11 | MIT déclaré par le package | Dépendance directe minimale pour JSON5 ; pas de parser maison | vérifiée par lockfile |
 
 Ce ledger sera enrichi avec les sources réellement consultées. Une URL listée dans le master prompt n'est pas une preuve de lecture.
+
+| SRC-015 | https://github.com/furkankly/zoetrope | session observability | `b1f31dd26bd4e9e513885e39edb78d0850a5d1fe` | 2026-09-12 | MIT file verified | Adapter candidate for metadata-only session visualization ideas; no transcript ingestion enabled | verified |
+| SRC-016 | https://github.com/dietrichgebert/ponytail | coding skill | `356918eba965ee1eac64bd3a7f0dd02108350de5` | 2026-09-12 | MIT file verified | Reference-only for simplification/YAGNI and benchmark methodology | verified |
+| SRC-017 | https://github.com/addyosmani/agent-skills | agent skills | `be4e44a9fbc5e8df0beaefadbb28bd22ee61cc39` | 2026-09-12 | MIT file verified | Reference-only pending per-skill review | verified |
+| SRC-018 | https://github.com/trailhq/Graft | codebase context graph | `f9e65396e638e517aecae0d731017f53084d70ed` | 2026-09-12 | MIT file verified | Adapter candidate for external context/MCP comparison | verified |
+| SRC-019 | https://github.com/calesthio/OpenMontage | agentic video production | `08e2151fa02de28a5d6a312b3d575692bf147ad7` | 2026-09-12 | AGPL-3.0 file verified | Reference-only; do not copy/vend into MIT FuryPipe | verified |
+| SRC-020 | https://github.com/DeusData/codebase-memory-mcp | codebase graph MCP | `b790be3d15d44f0d4629a2c97ddf76c104d80d22` | 2026-09-12 | MIT file verified | Explicit external MCP adapter candidate | verified |
+| SRC-021 | https://github.com/msitarzewski/agency-agents | specialist agent catalogue | `6d29a9b08785a0e49ffc9818bbdd381164c2df5f` | 2026-09-12 | MIT file verified | Reference-only for role decomposition | verified |
+| SRC-022 | https://github.com/ScrapeGraphAI/Scrapegraph-ai | web/data research | `c75c8084fae2d4f5ba01a8c218bc1168b67e3569` | 2026-09-12 | MIT file verified | Adapter candidate only with explicit policy/network boundary | verified |
+| SRC-023 | https://github.com/voltagent/voltagent | agent framework | `44b4c8e4998ce56095b2f0e4eaf1a988f5e6d0de` | 2026-09-12 | README reports MIT; root licence file not resolved in this audit | Reference-only until licence provenance is file-verified | partial |
+| SRC-024 | https://github.com/OneWave-AI/claude-skills | agent skill library | `82859c0ebaff803889be6ca2efa0834ba8787773` | 2026-09-12 | MIT file verified | Reference-only pending per-skill trust review | verified |
+| SRC-025 | https://github.com/jeremylongshore/tons-of-skills-marketplace | skill marketplace | `a58233ed4b9a9fda3ff0d37a304a570f4cc98083` | 2026-09-12 | MIT file verified | Reference-only; marketplace membership is not execution trust | verified |
+| SRC-026 | https://github.com/smtg-ai/claude-squad | multi-agent worktrees | `ce1ffb4392b01f38e2c4599c7c84d2a93973b138` | 2026-09-12 | AGPL-3.0 file verified | Reference-only; no source copied into MIT FuryPipe | verified |
+| SRC-027 | https://github.com/microsoft/playwright-cli | browser automation for coding agents | `655530f6d0dc71a0d6bf46ae165877d3c7311099` | 2026-09-12 | Apache-2.0 file verified | Preferred optional Web Studio browser adapter candidate | verified |
+| SRC-028 | https://github.com/tghastings/strix-claude-code | security testing workflow | `55d7a39768ce7c4ff2e1e140114246cfbcaf9ff2` | 2026-09-12 | licence not resolved in this audit | Reference-only; no automatic offensive tooling | partial |
+| SRC-029 | https://supabase.com/docs/guides/ai-tools/plugins | official app-backend plugin docs | current docs | 2026-09-12 | documentation/service; no code licence claimed | External opt-in reference for Supabase MCP + skills | verified documentary |
+| SRC-030 | https://www.ui-skills.com | design-engineering skill catalogue | current site | 2026-09-12 | mixed upstream authors/licences | Reference-only; individual skill provenance required | partial |
+| SRC-031 | https://context7.com/docs/clients/claude-code | current-library documentation integration | current docs | 2026-09-12 | documentation/service; no code licence claimed | External opt-in CLI/MCP/plugin reference | verified documentary |
+| SRC-032 | https://horizonx.so | commercial design/code library | current site | 2026-09-12 | commercial licence; paid content | Reference-only; no copying/vendoring without user-held rights | verified documentary |
+| SRC-033 | https://github.com/diegosouzapw/OmniRoute | multi-provider gateway | `152d95108c9c3d557562311ffed63240a511eb31` | 2026-09-12 | MIT file verified | Provider Fabric adapter candidate | verified |
