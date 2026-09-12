@@ -669,18 +669,22 @@ export function createContinuousMemoryEngine(options: CreateContinuousMemoryEngi
         throw new Error('continuous memory analyzer returned too many candidates');
       }
 
-      const receipts: ContinuousMemoryMutationReceipt[] = [];
+      const validatedCandidates = rawCandidates.map((candidate) => validateCandidate(candidate, configured));
       const seen = new Set<string>();
-
-      for (const rawCandidate of rawCandidates) {
-        const candidate = validateCandidate(rawCandidate, configured);
-        const scoped = scopeInput(scopes, candidate.scopeKind);
+      for (const candidate of validatedCandidates) {
         const memoryId = memoryIdFor(candidate.key, candidate.scopeKind);
         const uniqueKey = candidate.scopeKind + '\0' + memoryId;
         if (seen.has(uniqueKey)) {
           throw new Error('continuous memory analyzer returned duplicate candidate keys in one turn');
         }
         seen.add(uniqueKey);
+        scopeInput(scopes, candidate.scopeKind);
+      }
+
+      const receipts: ContinuousMemoryMutationReceipt[] = [];
+      for (const candidate of validatedCandidates) {
+        const scoped = scopeInput(scopes, candidate.scopeKind);
+        const memoryId = memoryIdFor(candidate.key, candidate.scopeKind);
 
         const skipped = policySkip(candidate, configured);
         if (skipped) {
