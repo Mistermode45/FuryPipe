@@ -181,6 +181,10 @@
     "./worker": {
       "types": "./dist/worker.d.ts",
       "import": "./dist/worker.js"
+    },
+    "./continuous-memory": {
+      "types": "./dist/continuous-memory.d.ts",
+      "import": "./dist/continuous-memory.js"
     }
   },
   "files": [
@@ -207,7 +211,8 @@
     "docs/LONG_TERM_MEMORY.md",
     "docs/POLICY.md",
     "docs/RECEIPTS.md",
-    "LICENSE"
+    "LICENSE",
+    "docs/CONTINUOUS_MEMORY.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
