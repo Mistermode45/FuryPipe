@@ -124,7 +124,7 @@ export function applyInstructionProfiles(
   if (!input || typeof input !== 'object' || !input.sections || typeof input.sections !== 'object') {
     throw new TypeError('instruction profiles require a valid FuryPrompt input');
   }
-  if (!Array.isArray(profileIds) || profileIds.length > FURY_INSTRUCTION_PROFILE_IDS.length) {
+  if (!Array.isArray(profileIds) || profileIds.length > 32) {
     throw new Error('instruction profile list is invalid');
   }
   const unique = new Set<FuryInstructionProfileId>();
