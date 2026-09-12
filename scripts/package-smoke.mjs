@@ -77,6 +77,9 @@ try {
   const packed = await run(npm, ['pack', '--json', '--ignore-scripts', '--quiet'], root);
   const metadata = JSON.parse(packed.stdout)[0];
   assert(metadata?.filename, 'npm pack returned no tarball');
+  const packedFiles = new Set((metadata.files ?? []).map((entry) => entry.path));
+  assert(!packedFiles.has('docs/PXPIPE_GAP_ANALYSIS.md'), 'historical gap analysis leaked into the public package');
+  assert(packedFiles.has('docs/CLI.md'), 'FuryPipe CLI documentation is missing from the public package');
   tarball = path.resolve(root, metadata.filename);
   assert(existsSync(tarball), `npm pack did not create ${metadata.filename}`);
 
