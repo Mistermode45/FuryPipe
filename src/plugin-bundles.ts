@@ -174,6 +174,9 @@ function validateSource(source: FuryPluginSource): FuryPluginSource {
   if (source.commitSha !== undefined && !SHA40.test(source.commitSha)) {
     throw new Error('plugin source commitSha must be a lowercase 40-character SHA');
   }
+  if (new URL(url).hostname.toLowerCase() === 'github.com' && source.commitSha === undefined) {
+    throw new Error('GitHub-backed plugin sources require a pinned commitSha');
+  }
   if (!['VERIFIED', 'NOT_APPLICABLE', 'UNKNOWN'].includes(source.licenseStatus)) {
     throw new Error('plugin source licenseStatus is invalid');
   }
@@ -380,6 +383,7 @@ export const GITHUB_MCP_PLUGIN_BUNDLE: FuryPluginBundle = validateFuryPluginBund
   mode: 'EXTERNAL_OPT_IN',
   source: {
     url: 'https://github.com/github/github-mcp-server',
+    commitSha: '7d13a7ad6f2a17f351a6d77ce280c85ae1821f4d',
     licenseStatus: 'VERIFIED',
     licenseSpdx: 'MIT',
   },
@@ -413,6 +417,7 @@ export const SUPABASE_PLUGIN_BUNDLE: FuryPluginBundle = validateFuryPluginBundle
   mode: 'EXTERNAL_OPT_IN',
   source: {
     url: 'https://github.com/supabase/supabase',
+    commitSha: '26585dd4a4d6db8910a595214c9f6e8fdd206768',
     licenseStatus: 'VERIFIED',
     licenseSpdx: 'Apache-2.0',
   },
