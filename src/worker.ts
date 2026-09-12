@@ -133,9 +133,9 @@ export default {
         return new Response(
           JSON.stringify({
             error:
-              'refusing to proxy: an API key override is configured but PXPIPE_WORKER_SECRET is not, ' +
+              'refusing to proxy: an API key override is configured but FURYPIPE_WORKER_SECRET is not, ' +
               'which would let anyone who finds this URL spend the configured key. ' +
-              'Run `npx wrangler secret put PXPIPE_WORKER_SECRET` and send the value as the x-pxpipe-secret header.',
+              'Run `npx wrangler secret put FURYPIPE_WORKER_SECRET` and send the value as the x-furypipe-secret header.',
           }),
           { status: 503, headers: { 'content-type': 'application/json' } },
         );
