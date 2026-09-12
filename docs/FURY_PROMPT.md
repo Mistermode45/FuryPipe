@@ -56,3 +56,21 @@ l’ordre canonique, la déterminisme, les valeurs exactes, le manifest
 ExactGuard, le signal security-critical et les bornes d’entrée.
 
 Le statut M12 reste `PARTIAL` : le wiring explicite Transform/Agent Fabric/Agent Runtime est testé localement et le niveau `MULTI_AGENT` peut désormais être exécuté par plusieurs subagents locaux via le runtime borné. Cela ne constitue toujours ni un modèle/provider réel, ni un orchestrateur distribué, ni une validation provider hébergée. Les callbacks, outils, skills, MCP et subagents restent sous l’autorité de leurs contrats propres.
+
+
+## Instruction profiles
+
+`src/instruction-profiles.ts` provides opt-in, inspectable FuryPrompt augmentation profiles.
+
+The first profile is `karpathy-coding-discipline`, adapted from the reviewed
+`multica-ai/andrej-karpathy-skills` source. FuryPipe uses its own wording and
+records the exact source commit/path/licence state instead of embedding the
+upstream `CLAUDE.md` verbatim.
+
+The profile adds bounded engineering guidance only to `Constraints`, `Plan`,
+`Acceptance Criteria` and `Verification`. It cannot grant tools, MCP,
+network, provider access, skills, subagents or write permissions.
+
+`applyInstructionProfiles()` runs before `compileFuryPrompt()`; normal
+FuryPrompt validation and ExactGuard processing therefore still apply to the
+result. See `docs/INSTRUCTION_PROFILES.md`.
