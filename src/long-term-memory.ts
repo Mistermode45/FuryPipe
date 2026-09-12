@@ -272,8 +272,10 @@ function validateRecord(value: unknown): LongTermMemoryRecord {
   if (record.state === 'tombstone' && (record.contentHandle !== undefined || record.contentDigest !== undefined)) {
     throw new Error('long-term memory tombstone must not retain content references');
   }
-  if (!/^[0-9a-f]{64}$/u.test(record.sourceDigest as string)
-    || !/^[0-9a-f]{64}$/u.test(record.reasonDigest as string)) {
+  const sourceDigest = record.sourceDigest;
+  const reasonDigest = record.reasonDigest;
+  if (typeof sourceDigest !== 'string' || !/^[0-9a-f]{64}$/u.test(sourceDigest)
+    || typeof reasonDigest !== 'string' || !/^[0-9a-f]{64}$/u.test(reasonDigest)) {
     throw new Error('long-term memory source/reason digest is invalid');
   }
   if (!Array.isArray(record.termDigests) || record.termDigests.length > MAX_TERMS
@@ -302,8 +304,8 @@ function validateRecord(value: unknown): LongTermMemoryRecord {
     state: record.state,
     ...(record.contentHandle === undefined ? {} : { contentHandle: record.contentHandle }),
     ...(record.contentDigest === undefined ? {} : { contentDigest: record.contentDigest }),
-    sourceDigest: record.sourceDigest,
-    reasonDigest: record.reasonDigest,
+    sourceDigest,
+    reasonDigest,
     termDigests: Object.freeze([...new Set(record.termDigests)].sort()),
     importance,
     confidence,
