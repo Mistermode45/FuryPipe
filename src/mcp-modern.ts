@@ -157,13 +157,13 @@ function validateModernRoutingHeaders(value: Record<string, unknown>, request: R
   const method = typeof value.method === 'string' ? value.method : undefined;
   const routeMethod = request.headers.get('mcp-method');
   if (!method || routeMethod !== method) {
-    return jsonRpcHttpError(400, -32600, 'Mcp-Method must match the JSON-RPC method');
+    return jsonRpcHttpError(400, -32020, 'Mcp-Method must match the JSON-RPC method');
   }
   if (method === 'tools/call') {
     const params = requestBody(value.params);
     const toolName = typeof params?.name === 'string' ? params.name : undefined;
     if (!toolName || request.headers.get('mcp-name') !== toolName) {
-      return jsonRpcHttpError(400, -32600, 'Mcp-Name must match the called tool');
+      return jsonRpcHttpError(400, -32020, 'Mcp-Name must match the called tool');
     }
   }
   return undefined;
