@@ -301,7 +301,7 @@ Environment:
   CLOUDFLARE_API_TOKEN    Workers AI endpoint and bearer token
   PXPIPE_PROVIDER         optional: 'cloudflare-ai-gateway' or 'omniroute'
   PXPIPE_GATEWAY_BASE_URL generic gateway base URL
-  PXPIPE_GATEWAY_HEADERS  extra non-secret gateway headers: JSON or k=v;k2=v2
+  PXPIPE_GATEWAY_HEADERS  extra gateway headers; OmniRoute rejects auth/cookie names
   OMNIROUTE_BASE_URL      OmniRoute root or /v1 URL; required for omniroute
   OMNIROUTE_API_KEY       optional OmniRoute Bearer API key; never logged
   PXPIPE_MODELS           comma-separated model bases to image (Claude/Gemini/GPT/Grok);
