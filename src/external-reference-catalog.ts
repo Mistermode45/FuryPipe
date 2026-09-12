@@ -307,7 +307,7 @@ export const EXTERNAL_REFERENCE_CATALOG: readonly ExternalReferenceEntry[] = Obj
     licenseStatus: 'VERIFIED',
     licenseSpdx: 'MIT',
     notes: 'Multi-provider gateway with OpenAI, Anthropic and Gemini compatibility surfaces. Candidate for an explicit Provider Fabric gateway adapter.',
-  })
+  }),
   ref({
     id: 'omniroute-service',
     name: 'OmniRoute Service',
