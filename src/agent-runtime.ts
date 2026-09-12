@@ -70,6 +70,10 @@ export interface AgentSubagentExecution {
   readonly consumedTokens: number;
 }
 
+export interface AgentSubagentBatchItem extends AgentSubagentExecution {
+  readonly id: string;
+}
+
 export interface AgentSubagentDefinition {
   readonly id: string;
   readonly stages: readonly AgentFabricStageId[];
@@ -109,6 +113,7 @@ export interface AgentStageExecutionContext {
   readonly invokeSkill: (skillId: string) => Promise<AgentSkillExecution>;
   readonly invokeMcp: (serverId: string, method: string, params?: unknown) => Promise<unknown>;
   readonly invokeSubagent: (subagentId: string) => Promise<AgentSubagentExecution>;
+  readonly invokeSubagents: (subagentIds: readonly string[]) => Promise<readonly AgentSubagentBatchItem[]>;
 }
 
 export interface AgentStageResult {
@@ -132,6 +137,8 @@ export interface AgentRuntimeRequest {
   readonly skills?: readonly AgentSkillDefinition[];
   readonly mcpServers?: readonly AgentMcpServerDefinition[];
   readonly subagents?: readonly AgentSubagentDefinition[];
+  /** Maximum simultaneous subagent callbacks within one stage. Default 4, hard max 8. */
+  readonly maxSubagentConcurrency?: number;
   readonly memory?: AgentMemoryStore;
 }
 
@@ -179,6 +186,9 @@ const MIN_CONTEXT_BUDGET = 256;
 const MAX_CONTEXT_BUDGET = 200_000;
 const MAX_EVIDENCE_ITEMS = 64;
 const MAX_EVIDENCE_LENGTH = 512;
+const DEFAULT_SUBAGENT_CONCURRENCY = 4;
+const MAX_SUBAGENT_CONCURRENCY = 8;
+const MAX_SUBAGENT_BATCH = 16;
 
 function digest(value: string): string {
   return `afrun_${createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 24)}`;
@@ -214,7 +224,44 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
   if (request.skills !== undefined && !Array.isArray(request.skills)) return { code: 'INVALID_REQUEST', reason: 'agent skills must be an array' };
   if (request.mcpServers !== undefined && !Array.isArray(request.mcpServers)) return { code: 'INVALID_REQUEST', reason: 'agent MCP servers must be an array' };
   if (request.subagents !== undefined && !Array.isArray(request.subagents)) return { code: 'INVALID_REQUEST', reason: 'agent subagents must be an array' };
+  const subagentConcurrency = request.maxSubagentConcurrency ?? DEFAULT_SUBAGENT_CONCURRENCY;
+  if (!Number.isSafeInteger(subagentConcurrency) || subagentConcurrency < 1 || subagentConcurrency > MAX_SUBAGENT_CONCURRENCY) {
+    return { code: 'INVALID_REQUEST', reason: `maxSubagentConcurrency must be between 1 and ${MAX_SUBAGENT_CONCURRENCY}` };
+  }
   return undefined;
+}
+
+async function mapBoundedOrdered<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<readonly R[]> {
+  if (items.length === 0) return [];
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  let failure: unknown;
+
+  const runWorker = async (): Promise<void> => {
+    while (failure === undefined) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      try {
+        results[index] = await worker(items[index]!, index);
+      } catch (caught) {
+        failure = caught;
+        return;
+      }
+    }
+  };
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => runWorker(),
+  );
+  await Promise.all(workers);
+  if (failure !== undefined) throw failure;
+  return Object.freeze(results);
 }
 
 function snapshotFor(
@@ -494,6 +541,18 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
         nestedConsumedTokens += subagentResult.consumedTokens;
         return subagentResult;
       };
+      const invokeSubagentsForStage = async (subagentIds: readonly string[]): Promise<readonly AgentSubagentBatchItem[]> => {
+        if (!Array.isArray(subagentIds) || subagentIds.length < 1 || subagentIds.length > MAX_SUBAGENT_BATCH
+          || subagentIds.some((id) => typeof id !== 'string' || id.length < 1 || id.length > 256 || id.includes('\0'))) {
+          throw new Error(`subagent batch must contain between 1 and ${MAX_SUBAGENT_BATCH} bounded IDs`);
+        }
+        if (new Set(subagentIds).size !== subagentIds.length) throw new Error('subagent batch IDs must be unique');
+        const concurrency = request.maxSubagentConcurrency ?? DEFAULT_SUBAGENT_CONCURRENCY;
+        return mapBoundedOrdered(subagentIds, concurrency, async (subagentId) => {
+          const execution = await invokeSubagentForStage(subagentId);
+          return Object.freeze({ id: subagentId, ...execution });
+        });
+      };
       result = await executor({
         runId, stage, objective: request.objective, prompt, objectiveDigest, permission,
         allowedWritePaths: request.allowWrites === true ? [...(request.allowedWritePaths ?? [])] : [],
@@ -502,10 +561,17 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
         invokeSkill: invokeSkillForStage,
         invokeMcp: (serverId, method, params) => invokeMcp(stage, serverId, method, params),
         invokeSubagent: invokeSubagentForStage,
+        invokeSubagents: invokeSubagentsForStage,
       });
     } catch (caught) {
       const reason = caught instanceof Error ? caught.message : 'agent stage execution failed';
-      const code = reason.startsWith('skill ') ? 'SKILL_BLOCKED' : reason.startsWith('MCP ') ? 'MCP_BLOCKED' : 'STAGE_FAILED';
+      const code = reason.startsWith('skill ')
+        ? 'SKILL_BLOCKED'
+        : reason.startsWith('MCP ')
+          ? 'MCP_BLOCKED'
+          : reason.startsWith('subagent ')
+            ? 'SUBAGENT_BLOCKED'
+            : 'STAGE_FAILED';
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
         completedStages, contextUsedTokens, skillHealth, failure: { code, stage, reason },
