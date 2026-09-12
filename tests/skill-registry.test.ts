@@ -45,11 +45,14 @@ describe('Agent skill registry', () => {
       'sales',
       'operations',
       'finance',
+      'minecraft',
+      'modding',
+      'game-server',
       'research',
       'context',
       'learning',
     ]);
-    expect(new Set(SKILL_CATEGORIES).size).toBe(23);
+    expect(new Set(SKILL_CATEGORIES).size).toBe(26);
   });
 
   it('resolves executable local skills by priority with health evidence', async () => {
