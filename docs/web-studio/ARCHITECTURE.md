@@ -2,7 +2,7 @@
 
 ## Status
 
-`SPECIFIED_NOT_IMPLEMENTED`
+`KERNEL_PLUS_LOCAL_RUNTIME_IMPLEMENTED`
 
 This document defines the architecture and gates for M14. It does not claim a working Figma integration, website generator, deployment engine, or Playwright suite.
 
@@ -180,3 +180,14 @@ Each generated project should retain:
 - deployment target/version.
 
 A project cannot move from `IMPLEMENTED` to `VERIFIED` merely because the UI renders.
+
+
+## Implemented local runtime boundary
+
+The current implementation now includes a deterministic static artifact generator and a browser-QA adapter contract.
+
+The generator intentionally produces a minimal semantic document instead of silently choosing React/Vue/Next or adding analytics, fonts, scripts or remote assets. Framework-specific generation remains a separate host concern.
+
+The browser QA contract is adapter-based so a host may plug in Playwright without making Playwright a mandatory FuryPipe runtime dependency. The adapter version must be pinned and every returned observation is validated before aggregation.
+
+A local green browser-QA report is supporting evidence only. It cannot set the Studio project's production `performance`, `deployment` or full manual accessibility/security gates to VERIFIED by itself.

@@ -2,9 +2,9 @@
 
 ## Status
 
-`KERNEL_IMPLEMENTED_NOT_WIRED`
+`LOCAL_GENERATOR_AND_QA_HARNESS_IMPLEMENTED`
 
-The Web/Figma Studio now has an executable domain kernel under `src/web-studio/**` with regression coverage. It is not yet wired to an external Figma API, a dashboard, website generator, deployment provider or Playwright runtime.
+The Web/Figma Studio now has an executable domain kernel plus a deterministic static-page generator and a browser-QA harness under `src/web-studio/**`. The harness executes a host-supplied pinned browser adapter; FuryPipe itself still does not bundle Playwright or claim a live Figma/deployment integration.
 
 Implemented and tested:
 
@@ -24,8 +24,8 @@ Still deliberately not claimed:
 
 - live Figma connectivity;
 - asset download;
-- automatic code generation;
-- Playwright execution for generated sites;
+- framework/project code generation beyond the deterministic static-page artifact;
+- bundled Playwright/browser runtime execution; a pinned host adapter is required;
 - WCAG manual audit completion;
 - OWASP ASVS verification;
 - SEO verification;
@@ -33,3 +33,37 @@ Still deliberately not claimed:
 - production Core Web Vitals field evidence.
 
 Those remain `NOT_EXECUTED` until a real Studio project and authorized external integrations exist.
+
+
+## Local generator
+
+`renderStaticStudioPage()` requires an approved project and selected variant. It emits a deterministic HTML document with:
+
+- canonical BCP-47 locale and LTR/RTL direction;
+- UTF-8 + viewport metadata;
+- title, description and canonical URL;
+- one semantic `main` and `h1`;
+- escaped text content;
+- a restrictive metadata CSP;
+- no third-party scripts;
+- SHA-256 of the exact HTML artifact.
+
+The generator rejects unapproved projects, malformed page paths, invalid locale tags and non-HTTPS/credential-bearing canonical URLs.
+
+## Browser QA harness
+
+`buildStudioQaMatrix()` expands the declared browser projects, six viewports and four QA locales into 120 deterministic cases.
+
+`runStudioBrowserQa()` executes those cases through a pinned `StudioBrowserQaAdapter` and validates:
+
+- load success;
+- horizontal overflow;
+- broken links;
+- console errors;
+- keyboard reachability;
+- single H1;
+- locale/direction agreement;
+- title/description/canonical presence;
+- external script origins.
+
+This report is deliberately marked `promotionEvidenceCompatible: false`. Passing structural/browser checks does not prove a complete WCAG manual audit, OWASP ASVS review, field Core Web Vitals or production deployment.
