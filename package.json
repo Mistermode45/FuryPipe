@@ -134,6 +134,10 @@
       "types": "./dist/knowledge-recovery.d.ts",
       "import": "./dist/knowledge-recovery.js"
     },
+    "./long-term-memory": {
+      "types": "./dist/long-term-memory.d.ts",
+      "import": "./dist/long-term-memory.js"
+    },
     "./web-studio": {
       "types": "./dist/web-studio/index.d.ts",
       "import": "./dist/web-studio/index.js"
@@ -195,6 +199,7 @@
     "docs/OPENCLAW.md",
     "docs/AGENT_FABRIC.md",
     "docs/LEARNING_KNOWLEDGE.md",
+    "docs/LONG_TERM_MEMORY.md",
     "docs/POLICY.md",
     "docs/RECEIPTS.md",
     "LICENSE"

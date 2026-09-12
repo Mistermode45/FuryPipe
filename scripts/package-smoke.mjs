@@ -165,6 +165,12 @@ try {
     "const m = await import('furypipe/knowledge-recovery'); if (typeof m.createRecoveryKnowledgeStore !== 'function') process.exit(1);",
   ], installDir);
   assert(knowledgeRecoveryExport.stderr === '', `Knowledge Recovery package export wrote stderr: ${knowledgeRecoveryExport.stderr}`);
+  const longTermMemoryExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/long-term-memory'); if (typeof m.createLongTermMemoryStore !== 'function' || typeof m.promoteValidatedLessonToLongTermMemory !== 'function') process.exit(1);",
+  ], installDir);
+  assert(longTermMemoryExport.stderr === '', `Long-term memory package export wrote stderr: ${longTermMemoryExport.stderr}`);
   const controlRoomEvidenceExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
