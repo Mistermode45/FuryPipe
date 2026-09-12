@@ -917,6 +917,28 @@ FuryPipe integration:
 - profile augments FuryPrompt constraints/plan/acceptance/verification sections;
 - it does not grant tools, network access, skills or MCP permissions.
 
+## Multica / Andrej Karpathy coding guidelines
+
+Source:
+
+- `multica-ai/andrej-karpathy-skills@2c606141936f1eeef17fa3043a72095b4765b9c2`;
+- primary instruction source: `CLAUDE.md`;
+- README, skill frontmatter and Claude plugin metadata report MIT;
+- no root `LICENSE` file was resolved during this audit.
+
+Decision: `ADAPT_NATIVE / REFERENCE_ONLY_UPSTREAM`
+
+High-value principles:
+
+- surface assumptions and ambiguity before committing to a design;
+- prefer the minimum implementation that solves the requested behavior;
+- make surgical diffs rather than opportunistic adjacent refactors;
+- translate tasks into observable success criteria and verification loops.
+
+FuryPipe already exposes these ideas through the native `karpathy-coding-discipline` instruction profile. The upstream `CLAUDE.md` is not copied verbatim, and the repository is not installed automatically.
+
+The licence signal is sufficient for reference/adaptation but remains weaker than a repository-level LICENSE file, so the external source does not become a vendored dependency merely because README/plugin metadata says MIT.
+
 ## Agent Skills open standard
 
 Sources:
