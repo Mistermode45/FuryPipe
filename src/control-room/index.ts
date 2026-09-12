@@ -20,7 +20,7 @@ export interface ReceiptEvidence {
 export interface RecoveryEvidence {
   readonly objects: number;
   readonly verifiedObjects: number;
-  readonly encryption: 'disabled' | 'aes-256-gcm';
+  readonly encryption: 'unknown' | 'disabled' | 'aes-256-gcm';
   readonly activeKeyId?: string;
   readonly backupEvidence: 'NOT_CHECKED' | 'BACKUP_EXISTS' | 'RESTORE_VERIFIED';
   readonly crashRecovery: ControlRoomEvidenceStatus;
@@ -340,6 +340,8 @@ export function createControlRoomSnapshot(input: ControlRoomInput): ControlRoomS
     recovery: section(recoveryStatus, input.recovery, [
       ...(input.recovery.backupEvidence === 'BACKUP_EXISTS'
         ? ['Backup exists but restore has not been verified.'] : []),
+      ...(input.recovery.encryption === 'unknown'
+        ? ['Recovery encryption state is not observed by this runtime provider.'] : []),
     ]),
     agent: section(agentStatus, input.agent),
     learning: section(learningStatus, input.learning),
