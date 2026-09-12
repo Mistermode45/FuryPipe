@@ -327,3 +327,181 @@ sélectionné
 ```
 
 Une capacité n’est considérée comme exécutée que lorsqu’un composant réel l’a exécutée et que FuryPipe possède la preuve correspondante.
+
+
+## Routage universel — tous les domaines
+
+Les packs prédéfinis ne constituent pas une liste fermée.
+
+Pour une tâche qui ne correspond pas assez précisément à un pack connu, FuryPipe peut utiliser un `FuryUniversalCapabilityAnalyzer`.
+
+L'analyzer reçoit uniquement l'inventaire réellement disponible :
+
+- catégories de skills enregistrées ;
+- IDs de skills enregistrés ;
+- plugins enregistrés ;
+- packs FuryPipe connus ;
+- objectif utilisateur.
+
+Il retourne un profil structuré :
+
+- `domainId` ;
+- catégories de skills requises ;
+- catégories optionnelles ;
+- skills spécialisés préférés ;
+- profils d'instructions ;
+- plugins/MCP souhaités ;
+- quality gates ;
+- ajouts FuryPrompt.
+
+FuryPipe valide ensuite ce profil avant toute exécution.
+
+Un analyzer ne peut pas :
+
+- sélectionner un skill qui n'est pas enregistré ;
+- inventer une section FuryPrompt ;
+- marquer un plugin absent comme prêt ;
+- contourner la provenance d'un skill ;
+- contourner son health check ;
+- donner un accès réseau implicite ;
+- élever les permissions d'un stage.
+
+Cela permet d'utiliser le même pipeline pour un domaine futur ou rarement utilisé sans retomber artificiellement sur un pack générique inadapté.
+
+Exemple conceptuel :
+
+```text
+Demande inconnue
+    │
+    ▼
+Universal Capability Analyzer
+    │
+    ├── discipline(s)
+    ├── skills spécialisés disponibles
+    ├── plugins/MCP disponibles
+    ├── instructions
+    └── quality gates
+    │
+    ▼
+Validation FuryPipe
+    │
+    ▼
+Agent Runtime
+```
+
+## Plugin Minecraft
+
+Une demande telle que :
+
+```text
+Crée un plugin Minecraft Paper 1.21.x compatible Velocity.
+```
+
+active le pack `minecraft-plugin` et le compose avec `software-engineering`.
+
+Le plan vérifie notamment :
+
+- plateforme réelle : Paper / Velocity / API compatible ;
+- version Minecraft ;
+- Java ;
+- build system ;
+- dépendances plugin ;
+- commandes ;
+- permissions ;
+- listeners ;
+- lifecycle ;
+- scheduler ;
+- stockage ;
+- configuration ;
+- persistent data ;
+- plugin messaging ;
+- compatibilité proxy ;
+- comportement restart/reload ;
+- performance sous charge ;
+- cohérence des déclarations Paper/Folia.
+
+Les opérations lentes de base de données, réseau, fichiers ou calcul lourd ne doivent pas bloquer le thread serveur principal.
+
+## Mod Minecraft
+
+Le pack `minecraft-mod` cible notamment les projets Fabric-like.
+
+Il vérifie :
+
+- loader ;
+- version Minecraft ;
+- mappings ;
+- API ;
+- Java ;
+- client/server split ;
+- packets ;
+- registries ;
+- mixins ;
+- datagen ;
+- ressources ;
+- launch client ;
+- launch dedicated server ;
+- performance.
+
+## FiveM
+
+Le pack `fivem-resource` couvre :
+
+- `fxmanifest.lua` ;
+- scripts client ;
+- scripts serveur ;
+- scripts partagés ;
+- événements réseau ;
+- exports ;
+- NUI ;
+- persistance ;
+- dépendances framework ;
+- lifecycle de resource ;
+- OneSync si déclaré ;
+- performance sous charge.
+
+Le serveur reste autoritaire pour les données sensibles.
+
+Une information envoyée par le client concernant par exemple :
+
+- argent ;
+- inventaire ;
+- permissions ;
+- identité ;
+- état métier ;
+- propriété d'entité ;
+- position utilisée pour une récompense ;
+
+doit être validée côté serveur avant mutation.
+
+## Principe général
+
+Pour **chaque sujet**, FuryPipe doit viser ce pipeline :
+
+```text
+comprendre le sujet
+→ identifier les disciplines
+→ identifier les meilleurs skills disponibles
+→ identifier les instructions utiles
+→ identifier les plugins/MCP utiles
+→ vérifier provenance + santé + permissions
+→ charger uniquement le nécessaire
+→ exécuter au bon stage
+→ vérifier avec les quality gates
+→ conserver les preuves
+→ apprendre les informations durables utiles
+```
+
+La notion de « meilleur outil » signifie dans FuryPipe :
+
+1. pertinent pour la tâche ;
+2. présent dans l'inventaire ;
+3. compatible avec le stage ;
+4. provenance acceptable ;
+5. licence acceptable ;
+6. health acceptable ;
+7. permissions compatibles ;
+8. version et source suffisamment déterministes ;
+9. priorité la plus élevée parmi les candidats éligibles.
+
+Un outil populaire mais non vérifié ne gagne pas face à un outil moins populaire mais correctement sourcé et compatible.
