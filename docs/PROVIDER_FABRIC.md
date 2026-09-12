@@ -78,3 +78,24 @@ The host supplies an explicit ordered candidate list. FuryPipe keeps that order 
 A stale health observation is treated as `unknown`, not as healthy. Unknown providers, family mismatches and unsupported models remain visible as rejected assessments. Duplicate canonical provider/model candidates are rejected.
 
 The decision returns `networkCallExecuted: false`. This closes the local planning gap only; actual failover requests, credential handling, retries and hosted provider validation remain responsibilities of the host/provider adapter.
+
+
+## OmniRoute gateway adapter
+
+`src/core/omniroute.ts` provides an explicit adapter for an operator-owned OmniRoute instance.
+
+It maps one validated gateway root to Anthropic, OpenAI and Google/Gemini upstreams and injects the dedicated OmniRoute bearer credential through FuryPipe's gateway boundary. OmniRoute is modeled as a gateway spanning provider protocols, not as a fake model family.
+
+Security rules:
+
+- no hard-coded OmniRoute port;
+- root or `/v1` base URLs accepted;
+- remote HTTP rejected; loopback HTTP is permitted for a local instance;
+- URL credentials/query/fragment rejected;
+- inbound `Authorization`, `x-api-key`, Google API-key headers, cookies and credential query parameters are removed before forwarding;
+- generic gateway headers cannot supply authorization/cookies;
+- the dedicated API key is never exposed by adapter inspection.
+
+Node enables it with `PXPIPE_PROVIDER=omniroute`, `OMNIROUTE_BASE_URL` and optional `OMNIROUTE_API_KEY`.
+
+See `docs/OMNIROUTE.md`.
