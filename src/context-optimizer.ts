@@ -558,7 +558,8 @@ export function optimizeContext(input: FuryContextOptimizerInput): FuryContextOp
         throw new Error(`required context item does not fit the configured budgets: ${candidate.item.id}`);
       }
       const minimumRepresentation = candidate.item.representations.get(candidate.minimumLevel)!;
-      const reason = minimumRepresentation.bytes > remainingKindBytes
+      const reason = minimumRepresentation.bytes <= remainingBytes
+        && minimumRepresentation.bytes > remainingKindBytes
         ? 'kind-byte-budget'
         : 'byte-budget';
       deferred.push(Object.freeze({ id: candidate.item.id, kind: candidate.item.kind, reason }));
