@@ -123,6 +123,12 @@ try {
     "const m = await import('furypipe/skill-registry'); if (typeof m.createAgentSkillRegistry !== 'function' || !Array.isArray(m.SKILL_CATEGORIES)) process.exit(1);",
   ], installDir);
   assert(skillRegistryExport.stderr === '', `Skill registry package export wrote stderr: ${skillRegistryExport.stderr}`);
+  const externalReferencesExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/external-references'); if (!Array.isArray(m.EXTERNAL_REFERENCE_CATALOG) || typeof m.referencesByCapability !== 'function') process.exit(1);",
+  ], installDir);
+  assert(externalReferencesExport.stderr === '', `External references package export wrote stderr: ${externalReferencesExport.stderr}`);
   const learningExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
