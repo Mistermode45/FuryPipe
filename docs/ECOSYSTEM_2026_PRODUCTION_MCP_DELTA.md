@@ -666,3 +666,76 @@ When a source becomes `DEPRECATED` or `SUPERSEDED`:
 4. do not silently move trust to the replacement;
 5. perform a fresh licence/permission/security review.
 
+
+
+## MCP reference implementations worth retaining
+
+### ClickHouse MCP
+
+- Source: `ClickHouse/mcp-clickhouse`
+- Inspected commit: `5ed5dadbc2c4042a30c02793c94073ec2ecde3bf` (2026-09-11)
+- Licence: Apache-2.0 verified
+- Decision: **WRAP / ADAPT PROTOCOL-COMPATIBILITY PATTERNS**
+- Runtime: **NOT_INSTALLED**
+
+This server is a useful interoperability reference because its current implementation documents MCP `2026-07-28` while accepting older initialize handshakes.
+
+FuryPipe should adapt the principle, not the database implementation:
+- explicit modern protocol target;
+- bounded legacy compatibility;
+- exact-value preservation for large integers;
+- query-cost/estimate preflight where the backend supports it;
+- read-only database profile by default.
+
+### Docker MCP Gateway
+
+- Source: `docker/mcp-gateway`
+- Inspected commit: `a21c0ac1c1e7a9f01a4b713a40d9a3b4c32d722b` (2026-08-26)
+- Licence: MIT verified
+- Decision: **REFERENCE_ONLY / ADAPT CONTAINMENT PATTERNS**
+- Runtime: **NOT_INSTALLED**
+
+Useful patterns:
+- server isolation;
+- per-server/per-tool selection;
+- host allowlists;
+- secret mediation;
+- profiles;
+- OCI image digests;
+- centralized tool-call logging.
+
+Security lesson:
+
+The gateway's 2026 advisory history is also evidence that gateways create a large trust boundary. FuryPipe must specifically test:
+- tool-name shadowing/collisions;
+- image/source signature policy;
+- config-driven mounts;
+- argument injection through catalog metadata;
+- authentication on proxied tools;
+- DNS rebinding / Host validation;
+- filesystem URL/path handling.
+
+Do not treat containerization as sufficient trust.
+
+### Qdrant MCP
+
+- Source: `qdrant/mcp-server-qdrant`
+- Inspected commit: `c56ae5adf62bb78d852bf7bbcbc5d7b75e2bbe41` (2026-08-11)
+- Licence: Apache-2.0 verified
+- Decision: **OPTIONAL ADAPTER CANDIDATE / DEFER DEFAULT**
+- Runtime: **NOT_INSTALLED**
+
+Use case:
+- external semantic/vector retrieval backend when a project explicitly needs it.
+
+FuryPipe's native Recovery + Knowledge + Long-Term Memory remains the default. Qdrant should not be added merely to claim semantic memory.
+
+Any future adapter requires:
+- explicit embedding provider/model;
+- namespace isolation;
+- deletion/purge semantics;
+- metadata privacy;
+- deterministic fallback when embeddings are unavailable;
+- no secret/plaintext logging;
+- documented consistency and restart behavior.
+
