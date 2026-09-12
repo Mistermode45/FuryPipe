@@ -54,3 +54,16 @@ Properties:
 No plaintext search term or edge-evidence text is introduced by persistence.
 
 This closes local graph durability, but does not claim multi-writer transactional semantics. Concurrent hosts still require an external coordinator or a future transactional backend when strict read-modify-write serialization is required.
+
+
+## Long-term memory promotion
+
+Validated Learning lessons can now be promoted into the durable long-term memory subsystem through `promoteValidatedLessonToLongTermMemory()`.
+
+The long-term layer is separate from the Knowledge graph:
+
+- Knowledge indexes metadata relationships and hashed retrieval terms.
+- Long-term memory owns durable scoped revisions, validity windows, confidence/importance, update/delete semantics and hard purge.
+- Recovery remains the durability/encryption/integrity substrate.
+
+See `docs/LONG_TERM_MEMORY.md`.
