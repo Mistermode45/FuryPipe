@@ -129,10 +129,12 @@ export function applyInstructionProfiles(
   }
   const unique = new Set<FuryInstructionProfileId>();
   let sections = input.sections;
-  for (const profileId of profileIds) {
-    if (!FURY_INSTRUCTION_PROFILE_IDS.includes(profileId)) {
-      throw new Error(`unknown FuryPipe instruction profile: ${String(profileId)}`);
+  for (const rawProfileId of profileIds as readonly unknown[]) {
+    if (typeof rawProfileId !== 'string'
+      || !FURY_INSTRUCTION_PROFILE_IDS.includes(rawProfileId as FuryInstructionProfileId)) {
+      throw new Error(`unknown FuryPipe instruction profile: ${String(rawProfileId)}`);
     }
+    const profileId = rawProfileId as FuryInstructionProfileId;
     if (unique.has(profileId)) throw new Error(`duplicate FuryPipe instruction profile: ${profileId}`);
     unique.add(profileId);
     sections = applyOne(sections, FURY_INSTRUCTION_PROFILES[profileId]);
