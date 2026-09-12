@@ -98,6 +98,58 @@ describe('FuryPipe Agent runtime', () => {
     expect(result.contextUsedTokens).toBe(53);
   });
 
+  it('automatically executes capability-selected skills once before the stage executor', async () => {
+    const executions: string[] = [];
+    const result = await runAgent({
+      objective: 'Build the selected capability workflow.',
+      executors: {
+        ...stageExecutors([]),
+        research: async (context) => {
+          expect(context.autoSkillExecutions).toEqual([{
+            id: 'research-skill',
+            evidence: ['auto-research-evidence'],
+            consumedTokens: 2,
+          }]);
+          const repeated = await context.invokeSkill('research-skill');
+          expect(repeated).toMatchObject({ evidence: ['auto-research-evidence'], consumedTokens: 2 });
+          return { evidence: ['research-stage-evidence'], consumedTokens: 3 };
+        },
+      },
+      skills: [{
+        id: 'research-skill',
+        version: '1.0.0',
+        stages: ['research'],
+        health: async () => ({ status: 'healthy' }),
+        execute: async () => {
+          executions.push('research-skill');
+          return { evidence: ['auto-research-evidence'], consumedTokens: 2 };
+        },
+      }],
+      autoInvokeSkillsByStage: {
+        research: ['research-skill'],
+      },
+    });
+
+    expect(result.status).toBe('completed');
+    expect(executions).toEqual(['research-skill']);
+    expect(result.skillHealth).toEqual({ 'research-skill': 'healthy' });
+    expect(result.contextUsedTokens).toBe(45);
+  });
+
+  it('rejects invalid automatic skill schedules before execution', async () => {
+    const result = await runAgent({
+      objective: 'Reject bad routing metadata.',
+      executors: stageExecutors([]),
+      autoInvokeSkillsByStage: {
+        research: ['same', 'same'],
+      },
+    });
+    expect(result).toMatchObject({
+      status: 'failed',
+      failure: { code: 'INVALID_REQUEST' },
+    });
+  });
+
   it('keeps implementation read-only unless scoped write is explicitly enabled', async () => {
     const readSeen: string[] = [];
     const readOnly = await runAgent({ objective: 'Review only.', executors: stageExecutors(readSeen) });
