@@ -73,3 +73,24 @@ Doctor locale detection is intentionally bounded and human-output-only:
 - the Node `Intl` locale is the final OS signal;
 - automatic CLI selection is limited to real EN/FR catalogs;
 - JSON output remains language-neutral and unchanged.
+
+
+## Primary dashboard fragments
+
+The active dashboard locale is now propagated to the primary htmx fragments instead of stopping at the page shell and Control Room.
+
+Localized human UI currently includes:
+
+- compression kill-switch banner/state/action/hint;
+- provider model-scope labels and hints;
+- session-summary empty state and token-direction wording;
+- recent-request empty state and Details action;
+- session tracking empty state/axis;
+- empty/evicted Context Map guidance;
+- basic stats empty/parsed-event labels.
+
+The English locale remains the default, preserving existing CLI/dashboard behavior and legacy test contracts.
+
+Machine values remain untranslated: model IDs, HTTP statuses, paths, environment variable names, token counts, pricing figures, request IDs, hashes, protocol values and raw technical error strings.
+
+Some deep analytical copy (formula explanations, detailed Responses-composition labels and legacy stat table row names) still remains English. M18 therefore remains PARTIAL rather than claiming full dashboard translation.
