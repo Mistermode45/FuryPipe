@@ -55,7 +55,4 @@ textuelles sont refusées.
 l’ordre canonique, la déterminisme, les valeurs exactes, le manifest
 ExactGuard, le signal security-critical et les bornes d’entrée.
 
-Le statut M12 reste `PARTIAL` : le wiring explicite Transform/Agent Fabric/
-Agent Runtime est testé localement, mais il ne constitue ni un modèle réel, ni
-une exécution multi-agent, ni une validation provider hébergée. Les callbacks,
-outils, skills et MCP restent sous l’autorité de leurs contrats propres.
+Le statut M12 reste `PARTIAL` : le wiring explicite Transform/Agent Fabric/Agent Runtime est testé localement et le niveau `MULTI_AGENT` peut désormais être exécuté par plusieurs subagents locaux via le runtime borné. Cela ne constitue toujours ni un modèle/provider réel, ni un orchestrateur distribué, ni une validation provider hébergée. Les callbacks, outils, skills, MCP et subagents restent sous l’autorité de leurs contrats propres.
