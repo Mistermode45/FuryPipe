@@ -526,9 +526,16 @@ async function dispatchDashboard(
 ): Promise<Response | undefined> {
   const method = req.method ?? 'GET';
   switch (route.kind) {
-    case 'html':
+    case 'html': {
       if (method !== 'GET') return undefined;
-      return dashboard.serveHtml(port, url.searchParams.get('locale') ?? undefined);
+      const header = req.headers['accept-language'];
+      const acceptLanguage = Array.isArray(header) ? header.join(',') : header;
+      return dashboard.serveHtml(
+        port,
+        url.searchParams.get('locale') ?? undefined,
+        acceptLanguage,
+      );
+    }
     case 'stats':
       if (method !== 'GET') return undefined;
       return dashboard.serveStats();
