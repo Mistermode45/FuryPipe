@@ -281,6 +281,90 @@ describe('FuryPipe capability router', () => {
     ]));
   });
 
+  it('uses the universal analyzer for a domain with no built-in pack and selects the registered specialist', async () => {
+    const skills = createAgentSkillRegistry();
+    registerSkill(skills, 'legal-source-research', 'research', 'research', 300);
+    registerSkill(skills, 'general-research', 'research', 'research', 100);
+
+    const plan = await resolveFuryCapabilities({
+      objective: 'Analyse un contrat commercial français et vérifie les clauses à risque.',
+      skillRegistry: skills,
+      pluginRegistry: createFuryPluginBundleRegistry(BUILTIN_FURY_PLUGIN_BUNDLES),
+      universalAnalyzer: {
+        async analyze(input) {
+          expect(input.availableSkillCategories).toContain('research');
+          return {
+            domainId: 'legal-contract-review',
+            requiredSkillCategories: ['research'],
+            optionalSkillCategories: ['documentation'],
+            preferredSkillIds: ['legal-source-research'],
+            pluginBundleIds: ['exa', 'legal-mcp-not-installed'],
+            qualityGates: [
+              'primary-law-source-check',
+              'jurisdiction-and-date-check',
+              'fact-advice-separation',
+              'human-legal-review',
+            ],
+            promptAdditions: {
+              role: ['Operate as a legal research analyst, not as a substitute for licensed counsel.'],
+              constraints: ['Separate source-backed legal facts from interpretation and recommendations.'],
+            },
+          };
+        },
+      },
+    });
+
+    expect(plan.packIds).toEqual([]);
+    expect(plan.dynamicDomainIds).toEqual(['legal-contract-review']);
+    expect(plan.selectedSkillIds).toContain('legal-source-research');
+    expect(plan.autoInvokeSkillsByStage.research).toContain('legal-source-research');
+    expect(plan.qualityGates).toEqual(expect.arrayContaining([
+      'primary-law-source-check',
+      'jurisdiction-and-date-check',
+      'human-legal-review',
+    ]));
+    const plugins = Object.fromEntries(plan.pluginActivations.map((plugin) => [plugin.id, plugin.state]));
+    expect(plugins).toMatchObject({
+      exa: 'approval_required',
+      'legal-mcp-not-installed': 'unavailable',
+    });
+  });
+
+  it('rejects a universal analyzer that selects unregistered skills or unsupported prompt sections', async () => {
+    const skills = createAgentSkillRegistry();
+    registerSkill(skills, 'known-research', 'research', 'research');
+
+    await expect(resolveFuryCapabilities({
+      objective: 'Unknown specialist domain.',
+      skillRegistry: skills,
+      universalAnalyzer: {
+        async analyze() {
+          return {
+            domainId: 'unknown-domain',
+            requiredSkillCategories: ['research'],
+            preferredSkillIds: ['missing-specialist'],
+          };
+        },
+      },
+    })).rejects.toThrow(/unregistered skill/);
+
+    await expect(resolveFuryCapabilities({
+      objective: 'Another unknown domain.',
+      skillRegistry: skills,
+      universalAnalyzer: {
+        async analyze() {
+          return {
+            domainId: 'unknown-domain',
+            requiredSkillCategories: ['research'],
+            promptAdditions: {
+              deployment: ['not a FuryPrompt section'],
+            } as never,
+          };
+        },
+      },
+    })).rejects.toThrow(/promptAdditions/);
+  });
+
   it('routes business automation to operations plus automation without granting external writes', async () => {
     const skills = createAgentSkillRegistry();
     registerSkill(skills, 'ops-map', 'operations', 'plan');
