@@ -118,6 +118,10 @@
       "types": "./dist/knowledge-recovery.d.ts",
       "import": "./dist/knowledge-recovery.js"
     },
+    "./web-studio": {
+      "types": "./dist/web-studio/index.d.ts",
+      "import": "./dist/web-studio/index.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"
