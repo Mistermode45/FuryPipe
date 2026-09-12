@@ -221,7 +221,7 @@ describe('FuryPipe capability router', () => {
     }, plan);
 
     const encoded = JSON.stringify(compiledInput);
-    expect(encoded).toContain('Karpathy');
+    expect(encoded).toContain('Prefer the smallest implementation that satisfies the requested behavior');
     expect(encoded).toContain('Pass FuryPipe quality gate: technical-seo');
     expect(encoded).toContain('playwright-cli=ready');
     expect(encoded).toContain('Capability gap:');
