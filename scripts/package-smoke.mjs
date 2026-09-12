@@ -111,6 +111,12 @@ try {
     "const m = await import('furypipe/fury-prompt'); if (typeof m.compileFuryPrompt !== 'function') process.exit(1);",
   ], installDir);
   assert(furyPromptExport.stderr === '', `FuryPrompt package export wrote stderr: ${furyPromptExport.stderr}`);
+  const instructionProfilesExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/instruction-profiles'); if (typeof m.applyInstructionProfiles !== 'function' || !m.FURY_INSTRUCTION_PROFILES) process.exit(1);",
+  ], installDir);
+  assert(instructionProfilesExport.stderr === '', `Instruction profiles package export wrote stderr: ${instructionProfilesExport.stderr}`);
   const agentRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
