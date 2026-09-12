@@ -45,6 +45,7 @@ export interface FuryMcpProfile {
 export interface FuryCliProfile {
   readonly id: string;
   readonly packageName: string;
+  readonly packageVersion: string;
   readonly executable: string;
   readonly permissions: readonly FuryPluginPermission[];
   /** FuryPipe does not install this automatically. */
@@ -222,6 +223,7 @@ function validateMcp(profile: FuryMcpProfile): FuryMcpProfile {
 function validateCli(profile: FuryCliProfile): FuryCliProfile {
   id(profile.id, 'CLI profile id');
   if (!PACKAGE.test(profile.packageName)) throw new Error('CLI packageName is invalid');
+  if (!SEMVER.test(profile.packageVersion)) throw new Error('CLI packageVersion must be pinned semver');
   bounded(profile.executable, 'CLI executable', 256);
   if (profile.autoInstall !== false) throw new Error('CLI profiles must never auto-install');
   return Object.freeze({
@@ -443,8 +445,42 @@ export const SUPABASE_PLUGIN_BUNDLE: FuryPluginBundle = validateFuryPluginBundle
   }],
 });
 
+export const PLAYWRIGHT_CLI_PLUGIN_BUNDLE: FuryPluginBundle = validateFuryPluginBundle({
+  format: 'furypipe-plugin-bundle/v1',
+  id: 'playwright-cli',
+  name: 'Microsoft Playwright CLI',
+  version: '1.0.0',
+  mode: 'EXTERNAL_OPT_IN',
+  source: {
+    url: 'https://github.com/microsoft/playwright-cli',
+    commitSha: '655530f6d0dc71a0d6bf46ae165877d3c7311099',
+    licenseStatus: 'VERIFIED',
+    licenseSpdx: 'Apache-2.0',
+  },
+  skills: ['browser-qa', 'web-studio-validation'],
+  mcpProfiles: [],
+  cliProfiles: [{
+    id: 'playwright-cli',
+    packageName: '@playwright/cli',
+    packageVersion: '0.1.19',
+    executable: 'playwright-cli',
+    permissions: ['browser', 'process', 'network'],
+    autoInstall: false,
+  }],
+  providerProfiles: [],
+  permissions: ['browser', 'process', 'network'],
+  secrets: [],
+  healthChecks: [{
+    id: 'playwright-cli-health',
+    kind: 'adapter-health',
+    targetProfileId: 'playwright-cli',
+    required: true,
+  }],
+});
+
 export const BUILTIN_FURY_PLUGIN_BUNDLES: readonly FuryPluginBundle[] = Object.freeze([
   CONTEXT7_PLUGIN_BUNDLE,
   GITHUB_MCP_PLUGIN_BUNDLE,
+  PLAYWRIGHT_CLI_PLUGIN_BUNDLE,
   SUPABASE_PLUGIN_BUNDLE,
 ]);
