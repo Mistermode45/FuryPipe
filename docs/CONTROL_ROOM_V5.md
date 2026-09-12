@@ -10,7 +10,7 @@ The Control Room V5 kernel provides a fail-visible metadata snapshot for FuryPip
 - `GET /fragments/control-room`;
 - the server-rendered Control Room panel.
 
-The Node host currently constructs `DashboardState` without a Control Room evidence provider. The production panel therefore remains `NOT_AVAILABLE` until the host explicitly supplies a metadata-only snapshot. The dashboard does not infer green states from unrelated counters.
+The Node host wires the Control Room provider only when an exact `FURYPIPE_SOURCE_COMMIT` is supplied. Without that build identity the panel remains `NOT_AVAILABLE`. The dashboard never infers green states from implementation presence or unrelated counters.
 
 ## Evidence sections
 
@@ -87,3 +87,23 @@ Subsystems not observed by the Node proxy remain `NOT_AVAILABLE` / `NOT_EXECUTED
 If `FURYPIPE_SOURCE_COMMIT` is absent or malformed, the dashboard keeps the previous `503 NOT_AVAILABLE` behavior. This is intentional: evidence without exact build identity is not trustworthy enough for release decisions.
 
 Recovery encryption is represented as `unknown` when the collector sees Recovery handles but does not own the backing Recovery configuration.
+
+
+## Agent and Learning runtime observations
+
+The live collector can now ingest the metadata-only outputs already returned by FuryPipe runtime APIs:
+
+- `observeAgentRun(result)` consumes `furypipe-agent-run/v1`;
+- `observeLearningCycle(result)` consumes `furypipe-agent-learning-cycle/v1`.
+
+Agent observations are keyed by opaque `runId`. Re-observing the same run replaces its prior state, so a legitimate `handoff_required -> completed` resume remains one run instead of being counted twice. Control Room exposes only aggregate run counts and context-token counts.
+
+Learning observations are keyed by opaque `cycleId`. Only completed cycles contribute new lesson/reuse counts, and reused lesson IDs are deduplicated inside the current cycle state.
+
+These observers deliberately do **not** infer stronger guarantees:
+
+- observing an Agent result does not prove Recovery-backed memory;
+- observing a handoff does not prove distributed orchestration;
+- observing a Learning cycle does not prove durable storage or semantic retrieval.
+
+Those statuses remain `NOT_AVAILABLE` unless the host supplies separate verified evidence. Run IDs, cycle IDs, lesson IDs, content handles, objectives, task text and evidence text are not emitted in the Control Room snapshot.
