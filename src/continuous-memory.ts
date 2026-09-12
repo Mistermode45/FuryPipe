@@ -584,7 +584,7 @@ export function createContinuousMemoryEngine(options: CreateContinuousMemoryEngi
   return Object.freeze({
     longTermMemory: memory,
 
-    async beforeTurn(input) {
+    async beforeTurn(input: ContinuousMemoryBeforeTurnInput) {
       if (!input || typeof input !== 'object') throw new Error('continuous memory beforeTurn input is required');
       const messages = validateMessages(input.messages, configured);
       const scopes = validateScopes(input.scopes);
@@ -652,7 +652,7 @@ export function createContinuousMemoryEngine(options: CreateContinuousMemoryEngi
       });
     },
 
-    async afterTurn(input) {
+    async afterTurn(input: ContinuousMemoryAfterTurnInput) {
       if (!input || typeof input !== 'object') throw new Error('continuous memory afterTurn input is required');
       const messages = validateMessages(input.messages, configured);
       const scopes = validateScopes(input.scopes);
@@ -775,7 +775,7 @@ export function createContinuousMemoryEngine(options: CreateContinuousMemoryEngi
       });
     },
 
-    async forget(input) {
+    async forget(input: ContinuousMemoryForgetInput) {
       if (!input || typeof input !== 'object') throw new Error('continuous memory forget input is required');
       const scopes = validateScopes(input.scopes);
       const scoped = scopeInput(scopes, input.scopeKind);
