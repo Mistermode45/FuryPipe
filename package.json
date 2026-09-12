@@ -110,6 +110,10 @@
       "types": "./dist/learning.d.ts",
       "import": "./dist/learning.js"
     },
+    "./knowledge": {
+      "types": "./dist/knowledge.d.ts",
+      "import": "./dist/knowledge.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"
