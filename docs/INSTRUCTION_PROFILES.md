@@ -69,3 +69,21 @@ Future external instruction profiles must be:
 - unable to grant tool/network/write permissions.
 
 Instruction profiles are deliberately separate from the Skill Registry. Skills can execute callbacks and therefore require stronger permission/health gates.
+
+
+## spec-driven-development
+
+Source pattern: GitHub Spec Kit, pinned at `d848fb4e18f44640ad6b42e60a280551ee90cdce` (MIT).
+
+This is a FuryPipe-native adaptation, not an embedded Spec Kit runtime.
+
+It adds a durable engineering contract around FuryPrompt:
+
+- stable specification/intent before implementation;
+- architecture and technical plan before task decomposition;
+- explicit risks, assumptions, dependencies and non-functional requirements;
+- implementation tasks mapped to acceptance criteria;
+- verification against the specification;
+- blockers remain visible when a criterion is unmet.
+
+Use it together with `karpathy-coding-discipline` when both minimal-change discipline and spec-first traceability are useful.
