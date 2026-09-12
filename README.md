@@ -233,6 +233,7 @@ Le package exporte notamment :
 furypipe/capability-router
 furypipe/instruction-fabric
 furypipe/context-optimizer
+furypipe/task-orchestrator
 furypipe/continuous-memory
 furypipe/continuous-memory-turn
 furypipe/agent-runtime
@@ -246,8 +247,6 @@ furypipe/mcp-modern
 furypipe/context-fabric
 furypipe/exact-guard
 ```
-
-Le **Task Orchestrator** est présent dans le code de hardening ; son export package suit le même processus de validation séparé avant d’être considéré public.
 
 ### Documentation
 
