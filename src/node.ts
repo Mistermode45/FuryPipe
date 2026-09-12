@@ -1302,7 +1302,7 @@ async function main(): Promise<void> {
   const config: ProxyConfig = {
     ...(omniRouteConfig ?? {
       authToken: anthropicAuthToken,
-      provider: opts.provider,
+      provider: opts.provider === 'cloudflare-ai-gateway' ? opts.provider : undefined,
       gatewayBaseUrl: opts.gatewayBaseUrl,
       gatewayHeaders: opts.gatewayHeaders,
       upstream: opts.upstream,
