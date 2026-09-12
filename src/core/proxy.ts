@@ -1464,9 +1464,27 @@ export function createProxy(config: ProxyConfig = {}) {
     ? (config.gatewayBaseUrl ?? '').trim().replace(/\/+$/, '')
     : upstream;
   const gatewayHeaders = config.gatewayHeaders ?? {};
+  const gatewayCredentialHeaderNames = [
+    'authorization',
+    'proxy-authorization',
+    'x-api-key',
+    'api-key',
+    'x-goog-api-key',
+    'cookie',
+  ] as const;
+  const gatewayCredentialQueryNames = ['key', 'api_key', 'apiKey', 'token', 'access_token'] as const;
   const applyGatewayHeaders = (h: Headers): Headers => {
+    if (config.gatewayCredentialIsolation) {
+      for (const name of gatewayCredentialHeaderNames) h.delete(name);
+    }
     for (const [k, v] of Object.entries(gatewayHeaders)) h.set(k, v);
     return h;
+  };
+  const applyGatewayUrlIsolation = (value: string): string => {
+    if (!config.gatewayCredentialIsolation) return value;
+    const isolated = new URL(value);
+    for (const name of gatewayCredentialQueryNames) isolated.searchParams.delete(name);
+    return isolated.toString();
   };
 
   return async function handle(req: Request): Promise<Response> {
@@ -1785,8 +1803,8 @@ let responseContentType: string | undefined;
           for (const [key, value] of url.searchParams) countUrl.searchParams.append(key, value);
           countUrl.searchParams.delete('alt');
           const [baseline, transformed] = await Promise.all([
-            countGoogleTokensUpstream(countUrl.toString(), bodyIn, countHeaders, model!),
-            countGoogleTokensUpstream(countUrl.toString(), r.body, countHeaders, model!),
+            countGoogleTokensUpstream(applyGatewayUrlIsolation(countUrl.toString()), bodyIn, countHeaders, model!),
+            countGoogleTokensUpstream(applyGatewayUrlIsolation(countUrl.toString()), r.body, countHeaders, model!),
           ]);
           if (baseline !== null && transformed !== null) {
             if (transformed >= baseline) {
@@ -1854,7 +1872,7 @@ let responseContentType: string | undefined;
             // `<messages-path>/count_tokens`, so provider-prefixed routes like
             // `/anthropic/messages` probe `/anthropic/messages/count_tokens`.
             const ctBase = providerPrefixed ? passthroughUpstream : upstream;
-            const ctUrl = ctBase + url.pathname + '/count_tokens';
+            const ctUrl = applyGatewayUrlIsolation(ctBase + url.pathname + '/count_tokens');
             baselinePromise = countTokensUpstream(ctUrl, ctBody, ctHeaders);
             // Null = no markers → cacheable=0 by definition, no probe needed.
             const ctCacheableBody = buildCacheablePrefixCountTokensBody(bodyIn);
@@ -1955,18 +1973,6 @@ let responseContentType: string | undefined;
       if (bearer) outHeaders.set('authorization', `Bearer ${bearer}`);
     }
 
-    if (config.gatewayCredentialIsolation) {
-      for (const name of [
-        'authorization',
-        'proxy-authorization',
-        'x-api-key',
-        'api-key',
-        'x-goog-api-key',
-        'cookie',
-      ]) {
-        outHeaders.delete(name);
-      }
-    }
     applyGatewayHeaders(outHeaders);
 
     // Claude Code smuggles its volatile per-turn billing line inside system
@@ -2000,13 +2006,7 @@ let responseContentType: string | undefined;
       const requestUpstreamBase = bridgedGptMessages ? openAIUpstream : upstreamBase;
       upstreamUrl = requestUpstreamBase + outPath;
     }
-    if (config.gatewayCredentialIsolation) {
-      const isolated = new URL(upstreamUrl);
-      for (const name of ['key', 'api_key', 'apiKey', 'token', 'access_token']) {
-        isolated.searchParams.delete(name);
-      }
-      upstreamUrl = isolated.toString();
-    }
+    upstreamUrl = applyGatewayUrlIsolation(upstreamUrl);
     let releaseInFlight = (): void => {};
     if (reqBodySha256 && duplicateHoldMs > 0) {
       const headers: [string, string][] = [];
