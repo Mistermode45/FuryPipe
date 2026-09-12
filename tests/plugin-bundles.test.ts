@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_FURY_PLUGIN_BUNDLES,
+  CLOUDFLARE_PLUGIN_BUNDLE,
   CONTEXT7_PLUGIN_BUNDLE,
+  EXA_PLUGIN_BUNDLE,
+  FIGMA_PLUGIN_BUNDLE,
   GITHUB_MCP_PLUGIN_BUNDLE,
   PLAYWRIGHT_CLI_PLUGIN_BUNDLE,
   SUPABASE_PLUGIN_BUNDLE,
@@ -11,17 +14,22 @@ import {
 } from '../src/plugin-bundles.js';
 
 describe('Fury plugin bundles', () => {
-  it('ships only explicit opt-in built-in bundles with pinned GitHub provenance', () => {
+  it('ships only explicit opt-in built-in bundles and pins every GitHub-backed source', () => {
     expect(BUILTIN_FURY_PLUGIN_BUNDLES.map((bundle) => bundle.id)).toEqual([
+      'cloudflare',
       'context7',
+      'exa',
+      'figma',
       'github-mcp',
       'playwright-cli',
       'supabase',
     ]);
     for (const bundle of BUILTIN_FURY_PLUGIN_BUNDLES) {
       expect(bundle.mode).toBe('EXTERNAL_OPT_IN');
-      expect(bundle.source.url).toMatch(/^https:\/\/github\.com\//);
-      expect(bundle.source.commitSha).toMatch(/^[0-9a-f]{40}$/);
+      expect(bundle.source.url).toMatch(/^https:\/\//);
+      if (new URL(bundle.source.url).hostname === 'github.com') {
+        expect(bundle.source.commitSha).toMatch(/^[0-9a-f]{40}$/);
+      }
     }
   });
 
@@ -60,6 +68,41 @@ describe('Fury plugin bundles', () => {
     });
     expect(PLAYWRIGHT_CLI_PLUGIN_BUNDLE.source.commitSha)
       .toBe('655530f6d0dc71a0d6bf46ae165877d3c7311099');
+  });
+
+  it('models Figma as OAuth design-read only by default', () => {
+    expect(FIGMA_PLUGIN_BUNDLE.mcpProfiles[0]).toMatchObject({
+      url: 'https://mcp.figma.com/mcp',
+      authentication: 'oauth',
+      readOnlyPreferred: true,
+      permissions: ['network', 'design-read'],
+    });
+    expect(FIGMA_PLUGIN_BUNDLE.permissions).not.toContain('design-write');
+    expect(FIGMA_PLUGIN_BUNDLE.source.licenseStatus).toBe('NOT_APPLICABLE');
+  });
+
+  it('models Cloudflare API MCP as OAuth cloud-read only by default', () => {
+    expect(CLOUDFLARE_PLUGIN_BUNDLE.mcpProfiles[0]).toMatchObject({
+      url: 'https://mcp.cloudflare.com/mcp',
+      authentication: 'oauth',
+      readOnlyPreferred: true,
+      permissions: ['network', 'cloud-read'],
+    });
+    expect(CLOUDFLARE_PLUGIN_BUNDLE.permissions).not.toContain('cloud-write');
+    expect(CLOUDFLARE_PLUGIN_BUNDLE.source.commitSha)
+      .toBe('1027dbd2865fc1932120db42ed53749bc30d2af0');
+  });
+
+  it('models Exa as a bounded research MCP profile without embedding an API key', () => {
+    expect(EXA_PLUGIN_BUNDLE.mcpProfiles[0]).toMatchObject({
+      url: 'https://mcp.exa.ai/mcp',
+      authentication: 'oauth',
+      readOnlyPreferred: true,
+      permissions: ['network'],
+    });
+    expect(EXA_PLUGIN_BUNDLE.secrets).toEqual([]);
+    expect(EXA_PLUGIN_BUNDLE.source.commitSha)
+      .toBe('15ffb50519e719dc791cdc750ce5ed1934c0a1ed');
   });
 
   it('marks Supabase as project-scoped and read-only preferred by default', () => {
