@@ -457,3 +457,13 @@
 - `executePolicyHybrid()` n'appelle le transformeur fourni par l'hôte qu'après une retrieval non vide ; sans preuve retrieval, le payload reste inchangé.
 - `PolicyFabricRequest.runtimeCapabilities` rend l'éligibilité retrieval/hybrid explicite et fail-visible.
 - Cette tranche ne simule pas le prompt-cache natif d'un provider et ne revendique aucun canary hébergé.
+
+
+## 2026-09-12 — M15 Control Room live Node evidence
+
+- Ajout de `src/control-room/runtime.ts` : collecteur metadata-only alimenté par les `ProxyEvent` réels.
+- Le Node host active ce provider uniquement avec `FURYPIPE_SOURCE_COMMIT=<40-char SHA>`; un SHA absent/invalide laisse Control Room en `NOT_AVAILABLE` au lieu de rattacher des preuves au mauvais build.
+- Quand le provider est actif, le transform active `emitReceipt` et le collecteur compte receipts, receipts vérifiés, spans ExactGuard et handles Recovery sans conserver le corps de requête ni `imageSourceText`.
+- Les sous-systèmes non observés par ce processus restent `NOT_AVAILABLE`; des overrides hôte explicites existent pour les runtimes séparés.
+- L'état de chiffrement Recovery gagne la valeur honnête `unknown` lorsque le collecteur ne possède pas la configuration du store.
+- M15 reste `PARTIAL` : Agent/Learning/MCP/security doivent encore alimenter leurs preuves depuis leurs propres runtimes et la validation hébergée n'est pas exécutée.
