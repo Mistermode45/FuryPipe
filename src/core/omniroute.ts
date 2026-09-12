@@ -130,6 +130,7 @@ export function createOmniRouteProxyConfig(options: OmniRouteAdapterOptions): Pr
     openAIUpstream: baseUrl,
     googleUpstream: baseUrl,
     gatewayHeaders: Object.freeze(gatewayHeaders),
+    gatewayCredentialIsolation: true,
   });
 }
 
