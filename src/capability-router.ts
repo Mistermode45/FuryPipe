@@ -11,6 +11,7 @@ import type {
 } from './plugin-bundles.js';
 import {
   applyInstructionProfiles,
+  FURY_INSTRUCTION_PROFILE_IDS,
   type FuryInstructionProfileId,
 } from './instruction-profiles.js';
 import type {
@@ -74,12 +75,20 @@ export interface FuryUniversalCapabilitySkillInventoryItem {
   readonly description?: string;
 }
 
+export interface FuryUniversalCapabilityMcpInventoryItem {
+  readonly id: string;
+  readonly transport: 'remote-http' | 'stdio';
+  readonly readOnlyPreferred: boolean;
+  readonly projectScoped: boolean;
+  readonly permissions: readonly FuryPluginPermission[];
+}
+
 export interface FuryUniversalCapabilityPluginInventoryItem {
   readonly id: string;
   readonly name: string;
   readonly skills: readonly string[];
   readonly permissions: readonly FuryPluginPermission[];
-  readonly mcpProfileIds: readonly string[];
+  readonly mcpProfiles: readonly FuryUniversalCapabilityMcpInventoryItem[];
   readonly cliProfileIds: readonly string[];
   readonly providerProfileIds: readonly string[];
 }
@@ -87,6 +96,7 @@ export interface FuryUniversalCapabilityPluginInventoryItem {
 export interface FuryUniversalCapabilityAnalyzerInput {
   readonly objective: string;
   readonly knownPackIds: readonly FuryCapabilityPackId[];
+  readonly availableInstructionProfileIds: readonly FuryInstructionProfileId[];
   readonly availableSkillCategories: readonly SkillCategory[];
   readonly availableSkills: readonly FuryUniversalCapabilitySkillInventoryItem[];
   readonly availablePluginIds: readonly string[];
@@ -925,7 +935,7 @@ function validateDynamicAnalysis(
     throw new Error('universal instructionProfiles must be a unique bounded list');
   }
   for (const id of profiles) {
-    if (!['karpathy-coding-discipline', 'spec-driven-development'].includes(id)) {
+    if (!FURY_INSTRUCTION_PROFILE_IDS.includes(id)) {
       throw new Error('universal analyzer returned unknown instruction profile: ' + String(id));
     }
   }
@@ -975,6 +985,7 @@ export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput)
     : validateDynamicAnalysis(await input.universalAnalyzer.analyze({
       objective: input.objective.trim(),
       knownPackIds: FURY_CAPABILITY_PACK_IDS,
+      availableInstructionProfileIds: FURY_INSTRUCTION_PROFILE_IDS,
       availableSkillCategories: uniqueOrdered(input.skillRegistry.inspect().map((item) => item.category)),
       availableSkills: Object.freeze(input.skillRegistry.inspect().map((item) => Object.freeze({
         id: item.id,
@@ -990,7 +1001,13 @@ export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput)
         name: plugin.name,
         skills: plugin.skills,
         permissions: plugin.permissions,
-        mcpProfileIds: Object.freeze(plugin.mcpProfiles.map((profile) => profile.id)),
+        mcpProfiles: Object.freeze(plugin.mcpProfiles.map((profile) => Object.freeze({
+          id: profile.id,
+          transport: profile.transport,
+          readOnlyPreferred: profile.readOnlyPreferred,
+          projectScoped: profile.projectScoped,
+          permissions: profile.permissions,
+        }))),
         cliProfileIds: Object.freeze(plugin.cliProfiles.map((profile) => profile.id)),
         providerProfileIds: Object.freeze(plugin.providerProfiles.map((profile) => profile.id)),
       }))),
