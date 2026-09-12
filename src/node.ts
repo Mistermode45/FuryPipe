@@ -39,6 +39,7 @@ import {
 import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
 import { createControlRoomRuntime } from './control-room/runtime.js';
+import { loadControlRoomHostEvidence, type ControlRoomHostEvidence } from './control-room/evidence-file.js';
 
 /** Runtime config. The core transform tuning comes from DEFAULTS in
  *  transform.ts; startup knobs cover deployment plus emergency GPT scope
@@ -80,6 +81,19 @@ function controlRoomSourceCommit(): string | undefined {
     return undefined;
   }
   return value;
+}
+
+function controlRoomHostEvidence(sourceCommit: string | undefined): ControlRoomHostEvidence | undefined {
+  if (sourceCommit === undefined) return undefined;
+  const file = process.env.FURYPIPE_CONTROL_ROOM_EVIDENCE?.trim();
+  if (!file) return undefined;
+  try {
+    return loadControlRoomHostEvidence(file, sourceCommit);
+  } catch (caught) {
+    const reason = caught instanceof Error ? caught.message : 'invalid evidence';
+    console.warn(`[furypipe] ignored Control Room host evidence: ${reason}`);
+    return undefined;
+  }
 }
 
 function normalizeModelsConfig(value: unknown): string | undefined {
@@ -1236,9 +1250,21 @@ async function main(): Promise<void> {
   // Control Room snapshots must be pinned to an exact build identity. The host
   // enables live runtime evidence only when that identity is supplied explicitly.
   const sourceCommit = controlRoomSourceCommit();
+  const hostEvidence = controlRoomHostEvidence(sourceCommit);
   const controlRoomRuntime = sourceCommit === undefined
     ? undefined
-    : createControlRoomRuntime({ sourceCommit });
+    : createControlRoomRuntime({
+        sourceCommit,
+        ...(hostEvidence?.recovery === undefined ? {} : { recovery: hostEvidence.recovery }),
+        ...(hostEvidence?.agent === undefined ? {} : { agent: hostEvidence.agent }),
+        ...(hostEvidence?.learning === undefined ? {} : { learning: hostEvidence.learning }),
+        ...(hostEvidence?.mcp === undefined ? {} : { mcp: hostEvidence.mcp }),
+        ...(hostEvidence?.i18n === undefined ? {} : { i18n: hostEvidence.i18n }),
+        ...(hostEvidence?.webStudio === undefined ? {} : { webStudio: hostEvidence.webStudio }),
+        ...(hostEvidence?.security === undefined ? {} : { security: hostEvidence.security }),
+        ...(hostEvidence?.benchmarks === undefined ? {} : { benchmarks: hostEvidence.benchmarks }),
+        ...(hostEvidence?.releaseReadiness === undefined ? {} : { releaseReadiness: hostEvidence.releaseReadiness }),
+      });
 
   // Live dashboard state — populated on every request via onRequest below,
   // served via the route interception in front of the proxy handler. The
