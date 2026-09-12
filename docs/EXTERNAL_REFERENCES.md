@@ -78,11 +78,13 @@ HorizonX is commercial. FuryPipe must not vendor or reproduce paid components un
 
 ### OmniRoute
 
+Official service surface: <https://www.omniroute.online/fr/>
+
 Pinned repository: `diegosouzapw/OmniRoute@152d95108c9c3d557562311ffed63240a511eb31`.
 
 Licence: MIT verified.
 
-Decision: `ADAPTER_CANDIDATE`.
+Decision: `ADAPTER_IMPLEMENTED_EXTERNAL_OPT_IN`.
 
 OmniRoute exposes OpenAI-compatible, Anthropic-compatible and Gemini-compatible surfaces and is therefore a natural candidate for the Provider Fabric. The actual FuryPipe adapter belongs in the Provider track, not in the skills runtime.
 
