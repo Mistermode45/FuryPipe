@@ -477,6 +477,29 @@ describe('serveFragment', () => {
 });
 
 describe('dashboard locale surface', () => {
+  it('auto-negotiates the initial page from Accept-Language when no explicit locale exists', async () => {
+    const html = await (await dash.serveHtml(47821, undefined, 'en-US;q=0.3, fr-CA;q=0.9')).text();
+    expect(html).toContain('<html lang="fr" dir="ltr">');
+    expect(html).toContain('<title>FuryPipe — tableau de bord en direct</title>');
+    expect(html).toContain('window.ppLocale = "fr"');
+  });
+
+  it('keeps an explicit locale authoritative over Accept-Language, including pseudo-locales', async () => {
+    const explicit = await (await dash.serveHtml(47821, 'en', 'fr-FR')).text();
+    expect(explicit).toContain('<html lang="en" dir="ltr">');
+
+    const pseudo = await (await dash.serveHtml(47821, 'ar-XB', 'fr-FR')).text();
+    expect(pseudo).toContain('<html lang="ar-XB" dir="rtl">');
+  });
+
+  it('falls back to English for unsupported or oversized Accept-Language input', async () => {
+    const unsupported = await (await dash.serveHtml(47821, undefined, 'de-DE, es-ES;q=0.8')).text();
+    expect(unsupported).toContain('<html lang="en" dir="ltr">');
+
+    const oversized = await (await dash.serveHtml(47821, undefined, 'f'.repeat(4097))).text();
+    expect(oversized).toContain('<html lang="en" dir="ltr">');
+  });
+
   it('renders French lang metadata, shell labels and browser persistence controls', () => {
     const html = renderPage(47821, '', 'fr');
     expect(html).toContain('<html lang="fr" dir="ltr">');
