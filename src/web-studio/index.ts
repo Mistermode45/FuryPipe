@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { directionForLocale } from '../i18n/index.js';
+
 export type StudioStatus =
   | 'DRAFT'
   | 'RESEARCHED'
@@ -222,4 +225,300 @@ export function assertSafeFigmaAdapter(adapter: FigmaAdapter): void {
   if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/.test(adapter.version)) {
     throw new Error('Figma adapter version must be pinned semver');
   }
+}
+
+
+export interface StaticStudioPageInput {
+  readonly locale: string;
+  readonly path: string;
+  readonly title: string;
+  readonly description: string;
+  readonly heading: string;
+  readonly paragraphs: readonly string[];
+  readonly canonicalUrl: string;
+}
+
+export interface StaticStudioPageArtifact {
+  readonly format: 'furypipe-web-studio-page/v1';
+  readonly projectId: string;
+  readonly variantId: string;
+  readonly locale: string;
+  readonly direction: Direction;
+  readonly path: string;
+  readonly canonicalUrl: string;
+  readonly html: string;
+  readonly sha256: string;
+  readonly externalScripts: readonly string[];
+}
+
+export interface StudioQaCase {
+  readonly id: string;
+  readonly browserProject: typeof REQUIRED_QA_PROJECTS[number];
+  readonly viewport: typeof REQUIRED_VIEWPORTS[number];
+  readonly locale: typeof REQUIRED_TEST_LOCALES[number];
+}
+
+export interface StudioBrowserObservation {
+  readonly caseId: string;
+  readonly loaded: boolean;
+  readonly horizontalOverflow: boolean;
+  readonly keyboardReachable: boolean;
+  readonly singleH1: boolean;
+  readonly lang: string;
+  readonly direction: Direction;
+  readonly hasTitle: boolean;
+  readonly hasMetaDescription: boolean;
+  readonly hasCanonical: boolean;
+  readonly brokenLinks: number;
+  readonly consoleErrors: number;
+  readonly externalScriptOrigins: readonly string[];
+}
+
+export interface StudioBrowserQaAdapter {
+  readonly id: string;
+  readonly version: string;
+  run(testCase: StudioQaCase, targetUrl: string): Promise<StudioBrowserObservation>;
+}
+
+export interface StudioBrowserQaReport {
+  readonly format: 'furypipe-web-studio-browser-qa/v1';
+  readonly adapter: { readonly id: string; readonly version: string };
+  readonly totalCases: number;
+  readonly browserQa: GateStatus;
+  readonly structuralAccessibility: GateStatus;
+  readonly structuralSeo: GateStatus;
+  readonly thirdPartyScriptSurface: GateStatus;
+  readonly productionPerformance: 'NOT_RUN';
+  readonly deployment: 'NOT_RUN';
+  readonly promotionEvidenceCompatible: false;
+  readonly failures: readonly { readonly caseId: string; readonly reasons: readonly string[] }[];
+}
+
+function boundedStudioText(value: string, label: string, maxLength: number): string {
+  if (typeof value !== 'string' || value.trim().length === 0 || value.length > maxLength || value.includes('\0')) {
+    throw new Error(`${label} must be a bounded non-empty string`);
+  }
+  return value.trim();
+}
+
+function escapeStudioHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function canonicalStudioLocale(locale: string): string {
+  try {
+    const [canonical] = Intl.getCanonicalLocales(locale.trim());
+    if (!canonical) throw new Error('empty canonical locale');
+    return canonical;
+  } catch {
+    throw new Error('studio page locale must be a valid BCP-47 tag');
+  }
+}
+
+function selectedVariant(project: StudioProject): DesignVariant {
+  const issues = validateStudioProject(project);
+  if (issues.length > 0) throw new Error(`studio project is invalid: ${issues[0]!.code}`);
+  if (!['APPROVED', 'IMPLEMENTED', 'VERIFIED', 'DEPLOYMENT_VERIFIED'].includes(project.status)) {
+    throw new Error('static site generation requires an approved project');
+  }
+  const id = project.selectedVariantId;
+  const variant = id === null ? undefined : project.variants.find((candidate) => candidate.id === id);
+  if (!variant) throw new Error('approved project has no selected variant');
+  return variant;
+}
+
+export function renderStaticStudioPage(
+  project: StudioProject,
+  input: StaticStudioPageInput,
+): StaticStudioPageArtifact {
+  const variant = selectedVariant(project);
+  const locale = canonicalStudioLocale(input.locale);
+  const path = boundedStudioText(input.path, 'studio page path', 512);
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('?') || path.includes('#')) {
+    throw new Error('studio page path must be an absolute site path without query or fragment');
+  }
+  const title = boundedStudioText(input.title, 'studio page title', 70);
+  const description = boundedStudioText(input.description, 'studio page description', 180);
+  if (description.length < 40) throw new Error('studio page description must contain at least 40 characters');
+  const heading = boundedStudioText(input.heading, 'studio page heading', 200);
+  if (!Array.isArray(input.paragraphs) || input.paragraphs.length < 1 || input.paragraphs.length > 64) {
+    throw new Error('studio page paragraphs must contain between 1 and 64 items');
+  }
+  const paragraphs = input.paragraphs.map((paragraph, index) =>
+    boundedStudioText(paragraph, `studio paragraph ${index}`, 16_384)
+  );
+
+  let canonical: URL;
+  try {
+    canonical = new URL(input.canonicalUrl);
+  } catch {
+    throw new Error('studio canonicalUrl must be a valid URL');
+  }
+  if (canonical.protocol !== 'https:' || canonical.username || canonical.password || canonical.hash) {
+    throw new Error('studio canonicalUrl must be credential-free HTTPS');
+  }
+
+  const direction = directionForLocale(locale);
+  const html = [
+    '<!doctype html>',
+    `<html lang="${escapeStudioHtml(locale)}" dir="${direction}">`,
+    '<head>',
+    '<meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    `<title>${escapeStudioHtml(title)}</title>`,
+    `<meta name="description" content="${escapeStudioHtml(description)}">`,
+    `<link rel="canonical" href="${escapeStudioHtml(canonical.toString())}">`,
+    '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;; frame-ancestors &#39;none&#39;">',
+    '</head>',
+    `<body data-studio-project="${escapeStudioHtml(project.id)}" data-studio-variant="${escapeStudioHtml(variant.id)}">`,
+    '<main>',
+    `<h1>${escapeStudioHtml(heading)}</h1>`,
+    ...paragraphs.map((paragraph) => `<p>${escapeStudioHtml(paragraph)}</p>`),
+    '</main>',
+    '</body>',
+    '</html>',
+    '',
+  ].join('\n');
+
+  return Object.freeze({
+    format: 'furypipe-web-studio-page/v1',
+    projectId: project.id,
+    variantId: variant.id,
+    locale,
+    direction,
+    path,
+    canonicalUrl: canonical.toString(),
+    html,
+    sha256: createHash('sha256').update(html, 'utf8').digest('hex'),
+    externalScripts: Object.freeze([]),
+  });
+}
+
+export function buildStudioQaMatrix(): readonly StudioQaCase[] {
+  const cases: StudioQaCase[] = [];
+  for (const browserProject of REQUIRED_QA_PROJECTS) {
+    for (const viewport of REQUIRED_VIEWPORTS) {
+      for (const locale of REQUIRED_TEST_LOCALES) {
+        cases.push(Object.freeze({
+          id: `${browserProject}:${viewport.id}:${locale}`,
+          browserProject,
+          viewport,
+          locale,
+        }));
+      }
+    }
+  }
+  return Object.freeze(cases);
+}
+
+export function assertSafeStudioBrowserAdapter(adapter: StudioBrowserQaAdapter): void {
+  if (!adapter || typeof adapter !== 'object' || !nonEmpty(adapter.id) || typeof adapter.run !== 'function') {
+    throw new Error('studio browser QA adapter is invalid');
+  }
+  if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/.test(adapter.version)) {
+    throw new Error('studio browser QA adapter version must be pinned semver');
+  }
+}
+
+function safeQaBaseUrl(value: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('studio QA baseUrl must be a valid URL');
+  }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new Error('studio QA baseUrl must be credential-free HTTP(S) without query or fragment');
+  }
+  return url;
+}
+
+export async function runStudioBrowserQa(
+  adapter: StudioBrowserQaAdapter,
+  baseUrl: string,
+  cases: readonly StudioQaCase[] = buildStudioQaMatrix(),
+): Promise<StudioBrowserQaReport> {
+  assertSafeStudioBrowserAdapter(adapter);
+  const origin = safeQaBaseUrl(baseUrl);
+  if (!Array.isArray(cases) || cases.length === 0 || cases.length > 500) {
+    throw new Error('studio QA cases must contain between 1 and 500 items');
+  }
+  const ids = new Set<string>();
+  const failures: Array<{ caseId: string; reasons: readonly string[] }> = [];
+  let qaOk = true;
+  let accessibilityOk = true;
+  let seoOk = true;
+  let scriptsOk = true;
+
+  for (const testCase of cases) {
+    if (ids.has(testCase.id)) throw new Error(`duplicate studio QA case id: ${testCase.id}`);
+    ids.add(testCase.id);
+    const target = new URL('/', origin);
+    target.searchParams.set('locale', testCase.locale);
+
+    const observation = await adapter.run(testCase, target.toString());
+    if (!observation || observation.caseId !== testCase.id) {
+      throw new Error(`studio QA adapter returned mismatched case evidence: ${testCase.id}`);
+    }
+    if (!Number.isSafeInteger(observation.brokenLinks) || observation.brokenLinks < 0
+      || !Number.isSafeInteger(observation.consoleErrors) || observation.consoleErrors < 0
+      || !Array.isArray(observation.externalScriptOrigins)) {
+      throw new Error(`studio QA adapter returned invalid counters: ${testCase.id}`);
+    }
+
+    const reasons: string[] = [];
+    const caseQaOk = observation.loaded
+      && !observation.horizontalOverflow
+      && observation.brokenLinks === 0
+      && observation.consoleErrors === 0;
+    if (!caseQaOk) {
+      qaOk = false;
+      if (!observation.loaded) reasons.push('page did not load');
+      if (observation.horizontalOverflow) reasons.push('horizontal overflow');
+      if (observation.brokenLinks > 0) reasons.push('broken links');
+      if (observation.consoleErrors > 0) reasons.push('console errors');
+    }
+
+    const expectedDirection = directionForLocale(testCase.locale);
+    const caseAccessibilityOk = observation.keyboardReachable
+      && observation.singleH1
+      && observation.direction === expectedDirection
+      && canonicalStudioLocale(observation.lang) === canonicalStudioLocale(testCase.locale);
+    if (!caseAccessibilityOk) {
+      accessibilityOk = false;
+      reasons.push('structural accessibility mismatch');
+    }
+
+    const caseSeoOk = observation.hasTitle && observation.hasMetaDescription && observation.hasCanonical;
+    if (!caseSeoOk) {
+      seoOk = false;
+      reasons.push('SEO structure incomplete');
+    }
+
+    if (observation.externalScriptOrigins.length > 0) {
+      scriptsOk = false;
+      reasons.push('external script origin observed');
+    }
+
+    if (reasons.length > 0) failures.push(Object.freeze({ caseId: testCase.id, reasons: Object.freeze(reasons) }));
+  }
+
+  return Object.freeze({
+    format: 'furypipe-web-studio-browser-qa/v1',
+    adapter: Object.freeze({ id: adapter.id, version: adapter.version }),
+    totalCases: cases.length,
+    browserQa: qaOk ? 'VERIFIED' : 'FAILED',
+    structuralAccessibility: accessibilityOk ? 'VERIFIED' : 'FAILED',
+    structuralSeo: seoOk ? 'VERIFIED' : 'FAILED',
+    thirdPartyScriptSurface: scriptsOk ? 'VERIFIED' : 'FAILED',
+    productionPerformance: 'NOT_RUN',
+    deployment: 'NOT_RUN',
+    promotionEvidenceCompatible: false,
+    failures: Object.freeze(failures),
+  });
 }
