@@ -105,7 +105,15 @@ Instruction Fabric answers:
 
 > Which reusable instructions should shape the execution of those capabilities?
 
-A later integration can pass Capability Router pack IDs directly into Instruction Fabric before FuryPrompt compilation.
+`prepareCapabilityRun()` now composes both layers automatically:
+
+1. apply the validated Capability Router plan to FuryPrompt;
+2. pass the selected capability pack IDs and objective into Instruction Fabric;
+3. resolve only relevant instruction facets under the configured byte/facet budgets;
+4. merge Capability Router and Instruction Fabric quality gates;
+5. return the prepared FuryPrompt plus the explicit instruction plan and security-critical recommendation.
+
+Callers that need only the lower-level Capability Router prompt transformation can continue to use `applyCapabilityPlanToPrompt()` directly.
 
 ## Relationship to future model adapters
 
