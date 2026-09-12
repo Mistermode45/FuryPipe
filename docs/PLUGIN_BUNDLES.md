@@ -59,6 +59,39 @@ This bundle is intended to back the Web Studio browser QA adapter after explicit
 
 Database writes, migrations and function deployments require a separate explicit bundle/profile with scoped-write approval.
 
+
+### Figma
+
+- official remote MCP: `https://mcp.figma.com/mcp`;
+- OAuth;
+- permission: network + `design-read`;
+- read-only preferred;
+- no default `design-write`.
+
+The built-in profile is for design context, variables/components and implementation context. Canvas mutation belongs in a distinct future write-capable profile with explicit approval.
+
+### Cloudflare
+
+- source: `cloudflare/mcp@1027dbd2865fc1932120db42ed53749bc30d2af0`;
+- official API MCP: `https://mcp.cloudflare.com/mcp`;
+- OAuth;
+- permission: network + `cloud-read`;
+- read-only preferred;
+- no default `cloud-write` or deployment authority.
+
+Cloudflare product-specific MCPs can be added as narrower profiles when they materially reduce scope. A general read profile must not silently become a deploy profile.
+
+### Exa
+
+- source: `exa-labs/exa-mcp-server@15ffb50519e719dc791cdc750ce5ed1934c0a1ed`;
+- MIT verified;
+- hosted MCP: `https://mcp.exa.ai/mcp`;
+- OAuth;
+- permission: network;
+- read-only preferred.
+
+Exa is one optional primary research connector. FuryPipe should not enable Exa, Firecrawl and Tavily simultaneously by default because duplicated search schemas increase context and attack surface.
+
 ## Secret boundary
 
 Bundle manifests contain only secret **names**, for example `CONTEXT7_API_KEY`.
@@ -88,3 +121,33 @@ For Firecrawl, Codebase Memory, Graft, Sentry, Cloudflare, Notion or another res
 9. only then register it as built-in.
 
 The plugin bundle contract is configuration/provenance. Runtime authorization still belongs to MCP policy, Agent Runtime, Provider Runtime and the operator.
+
+
+## Permission separation added in the 2026 audit
+
+Design and cloud surfaces are not represented by generic write access.
+
+- `design-read` — inspect design context/components/tokens;
+- `design-write` — mutate design documents; never granted by the built-in Figma profile;
+- `cloud-read` — inspect cloud configuration/resources;
+- `cloud-write` — change/deploy cloud resources; never granted by the built-in Cloudflare profile.
+
+Repository and database permissions remain separate as before.
+
+A bundle's permission list is descriptive policy metadata. It does not itself authenticate, connect, execute, install or escalate another runtime.
+
+## Portable ecosystem boundary
+
+The 2026 audit also tracks Agent Skills and Agent Plugins as portability standards. FuryPipe does not treat portable format support as trust.
+
+A future Agent Plugins importer/exporter must preserve:
+
+- package-root containment;
+- component identity;
+- skill/MCP separation;
+- secret names without values;
+- FuryPipe permission classification;
+- immutable source provenance;
+- per-artifact licence state.
+
+No incomplete importer is shipped merely to claim compatibility.

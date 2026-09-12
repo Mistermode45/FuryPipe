@@ -6,6 +6,10 @@ export type FuryPluginPermission =
   | 'repository-write'
   | 'database-read'
   | 'database-write'
+  | 'design-read'
+  | 'design-write'
+  | 'cloud-read'
+  | 'cloud-write'
   | 'provider-inference'
   | 'provider-management';
 
@@ -117,6 +121,10 @@ const PERMISSIONS = new Set<FuryPluginPermission>([
   'repository-write',
   'database-read',
   'database-write',
+  'design-read',
+  'design-write',
+  'cloud-read',
+  'cloud-write',
   'provider-inference',
   'provider-management',
 ]);
@@ -478,8 +486,111 @@ export const PLAYWRIGHT_CLI_PLUGIN_BUNDLE: FuryPluginBundle = validateFuryPlugin
   }],
 });
 
+export const FIGMA_PLUGIN_BUNDLE: FuryPluginBundle = validateFuryPluginBundle({
+  format: 'furypipe-plugin-bundle/v1',
+  id: 'figma',
+  name: 'Figma MCP design context',
+  version: '1.0.0',
+  mode: 'EXTERNAL_OPT_IN',
+  source: {
+    url: 'https://developers.figma.com/docs/figma-mcp-server/',
+    licenseStatus: 'NOT_APPLICABLE',
+  },
+  skills: ['figma-design-context', 'figma-code-connect'],
+  mcpProfiles: [{
+    id: 'figma-remote-mcp',
+    transport: 'remote-http',
+    url: 'https://mcp.figma.com/mcp',
+    authentication: 'oauth',
+    readOnlyPreferred: true,
+    projectScoped: false,
+    permissions: ['network', 'design-read'],
+  }],
+  cliProfiles: [],
+  providerProfiles: [],
+  permissions: ['network', 'design-read'],
+  secrets: [],
+  healthChecks: [{
+    id: 'figma-mcp-connect',
+    kind: 'mcp-connect',
+    targetProfileId: 'figma-remote-mcp',
+    required: true,
+  }],
+});
+
+export const CLOUDFLARE_PLUGIN_BUNDLE: FuryPluginBundle = validateFuryPluginBundle({
+  format: 'furypipe-plugin-bundle/v1',
+  id: 'cloudflare',
+  name: 'Cloudflare API MCP',
+  version: '1.0.0',
+  mode: 'EXTERNAL_OPT_IN',
+  source: {
+    url: 'https://github.com/cloudflare/mcp',
+    commitSha: '1027dbd2865fc1932120db42ed53749bc30d2af0',
+    licenseStatus: 'VERIFIED',
+    licenseSpdx: 'Apache-2.0',
+  },
+  skills: ['cloudflare-app-development'],
+  mcpProfiles: [{
+    id: 'cloudflare-api-mcp',
+    transport: 'remote-http',
+    url: 'https://mcp.cloudflare.com/mcp',
+    authentication: 'oauth',
+    readOnlyPreferred: true,
+    projectScoped: false,
+    permissions: ['network', 'cloud-read'],
+  }],
+  cliProfiles: [],
+  providerProfiles: [],
+  permissions: ['network', 'cloud-read'],
+  secrets: [],
+  healthChecks: [{
+    id: 'cloudflare-mcp-connect',
+    kind: 'mcp-connect',
+    targetProfileId: 'cloudflare-api-mcp',
+    required: true,
+  }],
+});
+
+export const EXA_PLUGIN_BUNDLE: FuryPluginBundle = validateFuryPluginBundle({
+  format: 'furypipe-plugin-bundle/v1',
+  id: 'exa',
+  name: 'Exa research MCP',
+  version: '1.0.0',
+  mode: 'EXTERNAL_OPT_IN',
+  source: {
+    url: 'https://github.com/exa-labs/exa-mcp-server',
+    commitSha: '15ffb50519e719dc791cdc750ce5ed1934c0a1ed',
+    licenseStatus: 'VERIFIED',
+    licenseSpdx: 'MIT',
+  },
+  skills: ['research-router', 'web-research'],
+  mcpProfiles: [{
+    id: 'exa-remote-mcp',
+    transport: 'remote-http',
+    url: 'https://mcp.exa.ai/mcp',
+    authentication: 'oauth',
+    readOnlyPreferred: true,
+    projectScoped: false,
+    permissions: ['network'],
+  }],
+  cliProfiles: [],
+  providerProfiles: [],
+  permissions: ['network'],
+  secrets: [],
+  healthChecks: [{
+    id: 'exa-mcp-connect',
+    kind: 'mcp-connect',
+    targetProfileId: 'exa-remote-mcp',
+    required: true,
+  }],
+});
+
 export const BUILTIN_FURY_PLUGIN_BUNDLES: readonly FuryPluginBundle[] = Object.freeze([
+  CLOUDFLARE_PLUGIN_BUNDLE,
   CONTEXT7_PLUGIN_BUNDLE,
+  EXA_PLUGIN_BUNDLE,
+  FIGMA_PLUGIN_BUNDLE,
   GITHUB_MCP_PLUGIN_BUNDLE,
   PLAYWRIGHT_CLI_PLUGIN_BUNDLE,
   SUPABASE_PLUGIN_BUNDLE,
