@@ -219,6 +219,12 @@ try {
     "const m = await import('furypipe/context-optimizer'); if (typeof m.optimizeContext !== 'function' || !Array.isArray(m.FURY_CONTEXT_LEVELS)) process.exit(1);",
   ], installDir);
   assert(contextOptimizerExport.stderr === '', `Context Optimizer package export wrote stderr: ${contextOptimizerExport.stderr}`);
+  const continuousMemoryTurnExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/continuous-memory-turn'); if (typeof m.runContinuousMemoryTurn !== 'function') process.exit(1);",
+  ], installDir);
+  assert(continuousMemoryTurnExport.stderr === '', `Continuous Memory turn package export wrote stderr: ${continuousMemoryTurnExport.stderr}`);
   await runMcp(process.execPath, [mcp], {
     jsonrpc: '2.0',
     id: 1,
