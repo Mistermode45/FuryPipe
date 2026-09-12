@@ -187,6 +187,32 @@ furypipe
 
 La publication npm n’est pas encore considérée comme une étape autorisée du workflow de hardening.
 
+### Portée modèle par défaut
+
+La configuration publique FuryPipe utilise `FURYPIPE_MODELS`. Le scope sans configuration est maintenu comme contrat avec le runtime :
+
+Default model scope: `FURYPIPE_MODELS=claude-fable-5,gemini`
+
+Exemples :
+
+```bash
+FURYPIPE_MODELS=off furypipe start
+FURYPIPE_MODELS=claude-fable-5,gpt-5.6-sol furypipe start
+```
+
+Une ancienne variable d’environnement reste acceptée en fallback de compatibilité interne lorsqu’aucune valeur `FURYPIPE_MODELS` n’est fournie, mais elle n’est plus l’interface documentée.
+
+### Export hors ligne
+
+FuryPipe peut produire les artefacts de contexte sans démarrer le proxy :
+
+```bash
+furypipe export --stdin < prompt.txt
+furypipe export --git
+```
+
+Selon l’entrée, l’export peut produire `page-*.png`, `factsheet.txt` et `prompt.txt`. Ce workflow permet de préparer ou inspecter les artefacts en mode offline.
+
 ### Commandes de développement
 
 ```bash
@@ -317,6 +343,17 @@ pnpm run audit
 pnpm run package:smoke
 node bin/cli.js doctor
 ```
+
+## Offline export (no proxy)
+
+FuryPipe can prepare context artifacts without running the proxy.
+
+```bash
+furypipe export --stdin < prompt.txt
+furypipe export --git
+```
+
+Depending on the input, the export can emit `page-*.png`, `factsheet.txt` and `prompt.txt`. This is useful for inspecting or handing off generated context artifacts while keeping proxy execution out of the workflow.
 
 ### Documentation
 
