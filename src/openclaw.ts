@@ -231,7 +231,8 @@ function normalizeProbeOrigin(baseUrl: string, allowRemote: boolean): URL {
     throw new Error('OpenClaw probe baseUrl must be an origin without path, query or fragment');
   }
   const host = url.hostname.toLowerCase();
-  const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  const normalizedHost = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+  const loopback = normalizedHost === 'localhost' || normalizedHost === '127.0.0.1' || normalizedHost === '::1';
   if (!loopback && !allowRemote) {
     throw new Error('remote OpenClaw probe requires allowRemote=true');
   }
