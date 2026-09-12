@@ -20,6 +20,8 @@ import { setRenderCacheMaxBytes } from './core/render.js';
 
 export interface Env {
   /** Optional single upstream base for every API family. Family-specific env vars override it. */
+  FURYPIPE_UPSTREAM?: string;
+  /** @deprecated Compatibility fallback. */
   PXPIPE_UPSTREAM?: string;
   ANTHROPIC_UPSTREAM?: string;
   /** Optional override — if set, replaces whatever x-api-key the client sent. */
@@ -38,15 +40,21 @@ export interface Env {
   MIN_TOOL_RESULT_CHARS?: string;
   COLS?: string;
   /** Comma-separated model bases eligible for compression. */
+  FURYPIPE_MODELS?: string;
+  /** @deprecated Compatibility fallback. */
   PXPIPE_MODELS?: string;
   /** Ceiling on a buffered inbound request body, in bytes. A Worker is publicly
    *  reachable by default, so this is the setting that keeps one caller from
    *  choosing the isolate's memory ceiling. Unset uses the core 16 MiB default;
    *  a non-numeric or non-positive value is ignored rather than obeyed. */
+  FURYPIPE_MAX_REQUEST_BYTES?: string;
+  /** @deprecated Compatibility fallback. */
   PXPIPE_MAX_REQUEST_BYTES?: string;
   /** When "0" / "false", disable per-request event JSON logs. Default-on.
    *  Cloudflare ingests console.log as Workers Logs; pipe via Logpush to
    *  R2/S3 for the same JSONL shape Node writes to disk. */
+  FURYPIPE_TRACK?: string;
+  /** @deprecated Compatibility fallback. */
   PXPIPE_TRACK?: string;
   /** Max bytes of rendered pages held in memory, or "0" to disable the cache.
    *  Unset uses the core edge default (8 MiB), which is deliberately far below
@@ -55,12 +63,12 @@ export interface Env {
    *  not visible to core at module-init time, so this is applied per request via
    *  `setRenderCacheMaxBytes`. A negative or non-numeric value is ignored rather
    *  than obeyed; `0` is a real setting and must not be read as "unset". */
+  FURYPIPE_RENDER_CACHE_BYTES?: string;
+  /** @deprecated Compatibility fallback. */
   PXPIPE_RENDER_CACHE_BYTES?: string;
-  /** Shared secret callers must present via the `x-pxpipe-secret` header
-   *  whenever an API-key override is configured. Without this gate a
-   *  discovered workers.dev URL is an open key-spender: the Worker would
-   *  attach your key to any stranger's request. Set with:
-   *    npx wrangler secret put PXPIPE_WORKER_SECRET */
+  /** Shared secret callers should present via the `x-furypipe-secret` header. */
+  FURYPIPE_WORKER_SECRET?: string;
+  /** @deprecated Compatibility fallback for existing Worker deployments. */
   PXPIPE_WORKER_SECRET?: string;
 }
 
@@ -102,7 +110,7 @@ const nonNegativeInt = (v: string | undefined): number | undefined => {
 
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
-    const configuredModels = env.PXPIPE_MODELS?.trim();
+    const configuredModels = (env.FURYPIPE_MODELS ?? env.PXPIPE_MODELS)?.trim();
     setAllowedModelBases(
       configuredModels === undefined || configuredModels === ''
         ? null
@@ -113,14 +121,15 @@ export default {
     // Bindings only exist inside `fetch`, so the render cache budget is applied here
     // rather than at module init the way the Node host does it. Cheap and idempotent:
     // assigning the same value evicts nothing. Left unset, core keeps its edge default.
-    const renderCacheBytes = nonNegativeInt(env.PXPIPE_RENDER_CACHE_BYTES);
+    const renderCacheBytes = nonNegativeInt(env.FURYPIPE_RENDER_CACHE_BYTES ?? env.PXPIPE_RENDER_CACHE_BYTES);
     if (renderCacheBytes !== undefined) setRenderCacheMaxBytes(renderCacheBytes);
     // ── Caller auth ────────────────────────────────────────────────────
     // If this deployment injects API keys, never serve anonymous callers:
     // workers.dev URLs are discoverable, and without this gate anyone who
     // finds the URL spends this deployment's API credits.
     if (env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY || env.CLOUDFLARE_API_TOKEN) {
-      if (!env.PXPIPE_WORKER_SECRET) {
+      const workerSecret = env.FURYPIPE_WORKER_SECRET ?? env.PXPIPE_WORKER_SECRET;
+      if (!workerSecret) {
         return new Response(
           JSON.stringify({
             error:
@@ -131,15 +140,16 @@ export default {
           { status: 503, headers: { 'content-type': 'application/json' } },
         );
       }
-      const presented = req.headers.get('x-pxpipe-secret') ?? '';
-      if (!(await secretsMatch(presented, env.PXPIPE_WORKER_SECRET))) {
+      const presented = req.headers.get('x-furypipe-secret') ?? req.headers.get('x-pxpipe-secret') ?? '';
+      if (!(await secretsMatch(presented, workerSecret))) {
         return new Response(
-          JSON.stringify({ error: 'missing or invalid x-pxpipe-secret header' }),
+          JSON.stringify({ error: 'missing or invalid x-furypipe-secret header' }),
           { status: 401, headers: { 'content-type': 'application/json' } },
         );
       }
       // Don't forward the shared secret upstream.
       req = new Request(req);
+      req.headers.delete('x-furypipe-secret');
       req.headers.delete('x-pxpipe-secret');
     }
 
@@ -157,13 +167,13 @@ export default {
       // COLS remains an explicit operator override for every family.
       ...(env.COLS ? { cols: Number(env.COLS) } : {}),
     };
-    const trackingOn = truthy(env.PXPIPE_TRACK, true);
+    const trackingOn = truthy(env.FURYPIPE_TRACK ?? env.PXPIPE_TRACK, true);
     // Workers Logs ingests stdout as separate log lines. Emit one JSON line
     // per event so downstream (Logpush → R2/S3) reads the same JSONL shape
     // the Node host writes to disk.
     const tracker: Tracker = trackingOn ? new JsonLogTracker((s) => console.log(s)) : noopTracker;
 
-    const sharedUpstream = env.PXPIPE_UPSTREAM;
+    const sharedUpstream = env.FURYPIPE_UPSTREAM ?? env.PXPIPE_UPSTREAM;
     const parseModels = (value: string | undefined): string[] | undefined =>
       value === undefined ? undefined : value.split(',').map((model) => model.trim()).filter(Boolean);
     const cfAccount = env.CLOUDFLARE_ACCOUNT_ID?.trim();
@@ -182,8 +192,8 @@ export default {
       cloudflareModels: parseModels(env.CLOUDFLARE_MODELS),
       // A Worker cannot exit on bad config the way the Node host does, so an
       // unparseable value is dropped here and the core default applies.
-      ...(positiveInt(env.PXPIPE_MAX_REQUEST_BYTES) !== undefined
-        ? { maxRequestBytes: positiveInt(env.PXPIPE_MAX_REQUEST_BYTES) }
+      ...(positiveInt(env.FURYPIPE_MAX_REQUEST_BYTES ?? env.PXPIPE_MAX_REQUEST_BYTES) !== undefined
+        ? { maxRequestBytes: positiveInt(env.FURYPIPE_MAX_REQUEST_BYTES ?? env.PXPIPE_MAX_REQUEST_BYTES) }
         : {}),
       transform,
       onRequest: (e) => {
@@ -201,7 +211,7 @@ export default {
 
         if (e.info?.unknownStaticTags && e.info.unknownStaticTags.length > 0) {
           console.warn(
-            `[pxpipe warn] unknown tag(s) in static slab: ${e.info.unknownStaticTags.join(', ')}`,
+            `[furypipe warn] unknown tag(s) in static slab: ${e.info.unknownStaticTags.join(', ')}`,
           );
         }
 
