@@ -883,3 +883,360 @@ Never activate every connector in one session by default: tool-schema/context bl
 6. Add multi-harness exporter for FuryPipe skills.
 7. Add optional Control Room connector health section.
 8. Run external integration probes only with explicit credentials/environment authorization.
+
+
+---
+
+# 2026 follow-up — portable standards and current official integrations
+
+This section records the second 2026 pass performed on 2026-09-12. It extends the earlier repository audit with current official standards and active skill ecosystems. The decisions below do not replace FuryPipe's provenance, licence, permission or explicit-opt-in gates.
+
+## Karpathy-inspired coding discipline
+
+Source:
+
+- `multica-ai/andrej-karpathy-skills@2c606141936f1eeef17fa3043a72095b4765b9c2`
+- reviewed source file: `CLAUDE.md` (blob `daced9bd64f25908ebedeb4701fb406985dc8366`)
+- plugin metadata version: `1.0.0`
+- licence posture: MIT is declared in README/plugin metadata, but no root `LICENSE` file was found during this audit.
+
+Decision: `ADAPT`
+
+High-value principles:
+
+- surface material ambiguity rather than silently selecting assumptions;
+- prefer the smallest implementation that satisfies the requested behavior;
+- keep diffs surgical and avoid unrelated cleanup;
+- define observable success criteria and verify them.
+
+FuryPipe integration:
+
+- implemented as the native `karpathy-coding-discipline` instruction profile;
+- profile is paraphrased into FuryPipe-owned wording rather than copying upstream `CLAUDE.md`;
+- source commit/path/licence state remain inspectable;
+- profile augments FuryPrompt constraints/plan/acceptance/verification sections;
+- it does not grant tools, network access, skills or MCP permissions.
+
+## Agent Skills open standard
+
+Sources:
+
+- Agent Skills official standard / Anthropic engineering documentation;
+- `anthropics/skills@34040c9c568585f6929bedeaad110ad08f079624`.
+
+Decision: `ADOPT_STANDARD / PER_SKILL_REVIEW`
+
+2026 relevance:
+
+- Agent Skills is a cross-platform portable format built around `SKILL.md`;
+- progressive disclosure keeps name/description cheap and loads deeper instructions/resources only when relevant;
+- skills may contain scripts/references and therefore must not be treated as harmless Markdown.
+
+FuryPipe posture:
+
+- align native skill metadata with the portable standard where practical;
+- never bulk-import `anthropics/skills` as a trusted catalogue;
+- Anthropic's repository has no single root licence file in the audited state, so every executable/copied artifact needs its own licence/provenance review;
+- FuryPipe Skill Registry remains the execution trust gate.
+
+## Agent Plugins 1.0
+
+Source:
+
+- <https://agent-plugins.org/specification>
+- specification version: `1.0.0`.
+
+Decision: `ADOPT_STANDARD`
+
+Why it matters:
+
+Agent Plugins provides a vendor-neutral package floor combining:
+
+- `plugin.json`;
+- `skills/` using Agent Skills;
+- `mcp.json`;
+- namespaced client-specific extensions.
+
+FuryPipe plan:
+
+1. export FuryPipe bundles toward Agent Plugins-compatible metadata where lossless;
+2. future importer must enforce the standard's root/path-containment rules;
+3. imported components still pass FuryPipe provenance/licence/permission/health review;
+4. discovery/import never implies installation or execution;
+5. secret values remain outside manifests.
+
+A partial importer is intentionally not shipped in this checkpoint because the containment and component-discovery requirements are security-relevant and should be implemented against the full normative schema, not guessed from examples.
+
+## Superpowers
+
+Source:
+
+- `obra/superpowers@b36e0829c6d0140e93cfef2ca599b1b07d4a7797`
+- MIT verified;
+- active plugin version observed: `6.3.0`.
+
+Decision: `ADAPT`
+
+Strong 2026 patterns:
+
+- multi-harness skill portability;
+- systematic debugging;
+- TDD and verification-before-completion;
+- skills themselves are pressure-tested/evaluated instead of being accepted because their prose looks good;
+- context-specific tool mappings per harness;
+- evidence over completion claims.
+
+FuryPipe plan:
+
+- adapt systematic-debugging / verification / skill-evaluation methodology into native skills and tests;
+- do not auto-install the whole plugin;
+- do not make Superpowers a dependency of Agent Runtime.
+
+## Vercel skills CLI/ecosystem
+
+Source:
+
+- `vercel-labs/skills@d667282815248da03a08a18272b5d2eef9caf77c`
+- MIT verified;
+- current repository commit identifies release `v1.5.26`.
+
+Decision: `ADAPT_DISCOVERY`
+
+Use:
+
+- cross-agent skill discovery;
+- interactive and machine-oriented search/update UX;
+- broad harness support.
+
+FuryPipe posture:
+
+- borrow discovery/update UX and metadata concepts;
+- do not invoke `npx skills ...` automatically;
+- discovery results remain untrusted until Skill Registry review;
+- updates must be explicit and re-pin provenance.
+
+## Figma MCP
+
+Official endpoint:
+
+- `https://mcp.figma.com/mcp`
+- OAuth authentication.
+
+Decision: `ADOPT / WRAP`
+
+FuryPipe integration:
+
+- new builtin opt-in `figma` bundle;
+- default permission: `design-read` + network;
+- `readOnlyPreferred=true`;
+- no default `design-write`;
+- design creation/update must use a separate future scoped-write profile;
+- useful for Web Studio design context, variables, components and Code Connect.
+
+## Cloudflare MCP + Skills
+
+Sources:
+
+- MCP: `cloudflare/mcp@1027dbd2865fc1932120db42ed53749bc30d2af0`;
+- skills: `cloudflare/skills@b052c32bab7dd493513260228a36c88294f343f1`;
+- skills licence: Apache-2.0 verified;
+- official MCP endpoint: `https://mcp.cloudflare.com/mcp`.
+
+Decision: `ADOPT / WRAP`
+
+FuryPipe integration:
+
+- new builtin opt-in `cloudflare` bundle;
+- OAuth;
+- `cloud-read` by default;
+- no implicit deployment/configuration mutation;
+- `cloud-write` must be a separate explicit profile;
+- product-specific Cloudflare MCPs should be selected only when they reduce tool/schema scope.
+
+## Exa MCP / Agent Plugin
+
+Source:
+
+- `exa-labs/exa-mcp-server@15ffb50519e719dc791cdc750ce5ed1934c0a1ed`;
+- MIT verified;
+- hosted MCP: `https://mcp.exa.ai/mcp`.
+
+Decision: `WRAP`
+
+FuryPipe integration:
+
+- new builtin opt-in `exa` research bundle;
+- OAuth/read-only network profile;
+- default research profile should still choose one primary search provider;
+- advanced Exa Agent tools are not silently enabled.
+
+## Official MCP Registry
+
+Source:
+
+- <https://registry.modelcontextprotocol.io/docs>
+- registry API `v1.0.0` observed.
+
+Decision: `ADOPT_DISCOVERY_ONLY`
+
+FuryPipe plan:
+
+- use the registry for discovery/version metadata;
+- never treat registry membership as licence/security/execution trust;
+- never auto-install;
+- discovered servers must be converted to bounded FuryPluginBundle candidates and revalidated.
+
+## MCP Apps
+
+Source:
+
+- official MCP extension announced production-ready on 2026-01-26.
+
+Decision: `ADAPT_FUTURE`
+
+Potential FuryPipe use:
+
+- interactive Control Room panels returned by MCP tools;
+- forms/visualizations for configuration and evidence review;
+- app-building previews.
+
+Boundary:
+
+- UI resources must not bypass tool permissions or origin/content isolation;
+- no production claim until a supported client/browser surface is exercised.
+
+## Docker MCP Toolkit
+
+Source:
+
+- official Docker MCP Toolkit/Catalog docs for Docker Desktop 4.62+;
+- current status in docs: beta.
+
+Decision: `REFERENCE_ONLY / WRAP`
+
+Useful pattern:
+
+- containerized local MCP execution;
+- catalog/profile grouping;
+- OAuth handling;
+- signed local server distribution.
+
+FuryPipe should not depend on Docker Desktop. A future optional container-runtime adapter can reuse the isolation/profile ideas when Docker is explicitly available.
+
+## Sources not promoted to builtins
+
+### Anthropic public skills repository
+
+Keep as `PER_SKILL_REVIEW`; high quality and official does not make every skill suitable or licence-compatible for FuryPipe redistribution.
+
+### Sentry MCP prototype
+
+Keep `REFERENCE_ONLY` for now. The current official repository describes itself as a prototype. FuryPipe should wait for a mature supported contract before adding it to the builtin set.
+
+### Full marketplace imports
+
+Remain rejected. Current standards make portable installation easier, not safer by default.
+
+---
+
+# Revised recommended profiles
+
+## Default development
+
+- Context7;
+- GitHub MCP read-only;
+- native `karpathy-coding-discipline` instruction profile.
+
+## App building
+
+- Context7;
+- GitHub MCP read-only;
+- Playwright CLI;
+- Figma MCP read-only;
+- Supabase read-only;
+- optional Cloudflare read-only when the target stack uses Cloudflare;
+- optional 21st.dev component discovery.
+
+## Research
+
+Select one primary:
+
+- Exa;
+- Firecrawl;
+- Tavily.
+
+Add ScrapeGraphAI only for specialized extraction workflows.
+
+## UI/debugging
+
+- Playwright CLI for functional QA;
+- Chrome DevTools MCP for deep diagnostics;
+- Figma MCP for design context.
+
+## Cloud application
+
+- Cloudflare MCP read-only;
+- Context7;
+- GitHub MCP read-only;
+- explicit separate mutation/deploy approval when required.
+
+---
+
+# Updated native skill roadmap
+
+In addition to the twelve previously listed skills, prioritize:
+
+## 13. skill-authoring-evals
+
+Patterns:
+
+- Agent Skills progressive disclosure;
+- Superpowers skill pressure tests;
+- Vercel skill discovery/update UX.
+
+Behavior:
+
+- define trigger/description first;
+- test a baseline without the skill;
+- test with the skill under pressure/ambiguity;
+- inspect tool/network needs;
+- pin source and licence;
+- publish only after the skill changes behavior in the intended direction.
+
+## 14. portable-plugin-review
+
+Backed by Agent Plugins 1.0.
+
+Behavior:
+
+- validate package root;
+- validate contained component paths;
+- enumerate skills and MCP servers;
+- classify permissions;
+- strip secret values;
+- reject implicit installs;
+- produce a FuryPipe registry candidate only.
+
+## 15. design-to-code
+
+Backed by Figma MCP + Web Studio.
+
+Behavior:
+
+- obtain explicit design context;
+- reuse components/tokens where available;
+- preserve accessibility semantics;
+- verify responsive/browser output with Playwright;
+- do not enable Figma writes unless explicitly requested.
+
+## 16. cloud-deploy-review
+
+Backed by Cloudflare MCP patterns.
+
+Behavior:
+
+- read current configuration first;
+- diff intended changes;
+- separate read/plan from mutation;
+- require explicit scoped write/deploy approval;
+- capture post-change evidence and rollback identifiers.
