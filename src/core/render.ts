@@ -1123,7 +1123,7 @@ function isWorkersRuntime(): boolean {
  *  after the module has already loaded. Node still resolves it once, below. */
 let renderCacheMaxBytesValue = (() => {
   // Edge-safe: `process` is undefined off-Node.
-  const raw = typeof process !== 'undefined' ? process.env?.PXPIPE_RENDER_CACHE_BYTES : undefined;
+  const raw = typeof process !== 'undefined' ? process.env?.FURYPIPE_RENDER_CACHE_BYTES ?? process.env?.PXPIPE_RENDER_CACHE_BYTES : undefined;
   const parsed = raw !== undefined && raw.trim() !== '' ? Number(raw) : NaN;
   // 0 disables the cache outright; negative/garbage falls back to the default.
   if (Number.isFinite(parsed) && parsed >= 0) return Math.floor(parsed);
