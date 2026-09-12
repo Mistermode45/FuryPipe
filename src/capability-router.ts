@@ -30,6 +30,10 @@ export const FURY_CAPABILITY_PACK_IDS = Object.freeze([
   'business-operations',
   'automation',
   'data-analytics',
+  'minecraft-plugin',
+  'minecraft-mod',
+  'fivem-resource',
+  'game-server-extension',
 ] as const);
 
 export type FuryCapabilityPackId = typeof FURY_CAPABILITY_PACK_IDS[number];
@@ -398,6 +402,205 @@ export const FURY_CAPABILITY_PACKS: Readonly<Record<FuryCapabilityPackId, FuryCa
     },
   }),
 
+  'minecraft-plugin': pack({
+    id: 'minecraft-plugin',
+    name: 'Minecraft Plugin Engineering',
+    triggers: [
+      'minecraft plugin', 'plugin minecraft', 'paper plugin', 'papermc plugin',
+      'velocity plugin', 'spigot plugin', 'bukkit plugin', 'purpur plugin',
+      'paper 1.21', 'velocity proxy plugin',
+    ],
+    bonusTriggers: [
+      'paper', 'papermc', 'velocity', 'spigot', 'bukkit', 'purpur',
+      'plugin.yml', 'paper-plugin.yml', 'placeholderapi', 'worldguard',
+      'nexo', 'luckperms', 'vault', 'gradle',
+    ],
+    requiredSkillCategories: [
+      'minecraft', 'game-server', 'architecture', 'testing', 'security', 'performance',
+    ],
+    optionalSkillCategories: [
+      'repository', 'debugging', 'documentation', 'context', 'research',
+      'data', 'automation',
+    ],
+    instructionProfiles: ['karpathy-coding-discipline', 'spec-driven-development'],
+    pluginBundleIds: ['context7', 'github-mcp', 'exa'],
+    qualityGates: [
+      'minecraft-target-platform-and-version',
+      'api-and-dependency-compatibility',
+      'command-permission-validation',
+      'event-lifecycle-review',
+      'scheduler-thread-safety',
+      'no-blocking-io-on-server-thread',
+      'configuration-schema-and-migration',
+      'persistent-data-integrity',
+      'plugin-messaging-trust-boundary',
+      'paper-folia-declaration-consistency',
+      'server-boot-smoke',
+      'reload-restart-safety',
+      'performance-under-player-load',
+      'security-review',
+    ],
+    promptAdditions: {
+      role: [
+        'Operate as a senior Minecraft server plugin engineer familiar with modern Paper, Velocity and Bukkit-compatible plugin architecture.',
+      ],
+      plan: [
+        'Detect the actual target platform, Minecraft version, Java version, build system, installed plugin APIs, proxy topology, persistence layer and threading model before changing code.',
+        'Map commands, permissions, listeners, schedulers, services, storage, configuration, hooks and cross-server messaging before implementation.',
+      ],
+      constraints: [
+        'Use the target server API instead of reflection or NMS unless the requested feature genuinely requires internals and the compatibility cost is documented.',
+        'Never block the primary server thread with database, HTTP, filesystem or long-running computation.',
+        'Treat player-controlled chat, commands, plugin messages, NBT/PDC-like data and proxy messages as untrusted input.',
+        'Do not claim Paper/Folia support unless scheduler and entity/region access patterns actually satisfy that runtime.',
+        'Preserve project-specific build constraints and supported server versions already declared by the repository.',
+      ],
+      acceptanceCriteria: [
+        'The plugin must boot on the declared server target, register commands/listeners/services cleanly, enforce permissions, survive restart, and preserve persisted player/project data according to its schema.',
+      ],
+      verification: [
+        'Compile against the declared API, run unit/integration tests, perform a server boot smoke test, inspect startup/shutdown logs, and verify no synchronous blocking path is introduced in hot events or commands.',
+      ],
+    },
+  }),
+
+  'minecraft-mod': pack({
+    id: 'minecraft-mod',
+    name: 'Minecraft Mod Engineering',
+    triggers: [
+      'minecraft mod', 'mod minecraft', 'fabric mod', 'fabricmc', 'quilt mod',
+      'minecraft fabric', 'mod loader',
+    ],
+    bonusTriggers: [
+      'fabric', 'fabric api', 'mixin', 'datagen', 'networking', 'client mod',
+      'server mod', 'resource pack',
+    ],
+    requiredSkillCategories: [
+      'minecraft', 'modding', 'architecture', 'testing', 'security', 'performance',
+    ],
+    optionalSkillCategories: [
+      'repository', 'debugging', 'documentation', 'design', 'research', 'context',
+    ],
+    instructionProfiles: ['karpathy-coding-discipline', 'spec-driven-development'],
+    pluginBundleIds: ['context7', 'github-mcp', 'exa'],
+    qualityGates: [
+      'minecraft-loader-and-version-lock',
+      'mapping-and-api-compatibility',
+      'client-server-side-separation',
+      'network-packet-validation',
+      'mixin-scope-review',
+      'data-generation-reproducibility',
+      'resource-registration',
+      'performance-review',
+      'game-launch-smoke',
+      'security-review',
+    ],
+    promptAdditions: {
+      role: [
+        'Operate as a senior Minecraft mod engineer with modern Fabric-style loader, networking, rendering and data-generation discipline.',
+      ],
+      plan: [
+        'Identify loader, game version, mappings, Java version, client/server boundaries, networking, registries, mixins and generated data before implementation.',
+      ],
+      constraints: [
+        'Keep client-only code out of dedicated-server execution paths and validate all network payloads crossing the client/server boundary.',
+        'Prefer stable loader/API extension points over broad mixins; every mixin must have a narrow documented reason.',
+      ],
+      verification: [
+        'Run compile/tests plus client and dedicated-server launch smoke tests when the changed surface can affect either side.',
+      ],
+    },
+  }),
+
+  'fivem-resource': pack({
+    id: 'fivem-resource',
+    name: 'FiveM Resource Engineering',
+    triggers: [
+      'fivem', 'five m', 'cfx.re', 'cfx resource', 'fivem resource',
+      'fivem script', 'script fivem', 'fxmanifest', 'txadmin',
+    ],
+    bonusTriggers: [
+      'lua', 'nui', 'onesync', 'server event', 'client event', 'qbcore',
+      'esx', 'ox_lib', 'oxmysql',
+    ],
+    requiredSkillCategories: [
+      'game-server', 'modding', 'architecture', 'testing', 'security', 'performance',
+    ],
+    optionalSkillCategories: [
+      'frontend', 'data', 'repository', 'debugging', 'documentation',
+      'research', 'context',
+    ],
+    instructionProfiles: ['karpathy-coding-discipline', 'spec-driven-development'],
+    pluginBundleIds: ['context7', 'github-mcp', 'exa', 'playwright-cli'],
+    qualityGates: [
+      'fxmanifest-validity',
+      'client-server-boundary',
+      'network-event-validation',
+      'server-authoritative-state',
+      'permission-and-identity-checks',
+      'database-query-safety',
+      'nui-message-validation',
+      'resource-start-stop-restart',
+      'onesync-compatibility-if-declared',
+      'performance-under-player-load',
+      'security-review',
+    ],
+    promptAdditions: {
+      role: [
+        'Operate as a senior FiveM/Cfx.re resource engineer across server scripts, client scripts, NUI, persistence and multiplayer security.',
+      ],
+      plan: [
+        'Map fxmanifest, client/server/shared scripts, exported APIs, network events, framework dependencies, database access, NUI messages and server authority before implementation.',
+      ],
+      constraints: [
+        'Assume a malicious client can trigger exposed network events; validate authorization, state, values and ownership on the server.',
+        'Use local event handlers for same-context events and networked events only when cross-context communication is required.',
+        'Do not trust client-provided money, inventory, permissions, positions, entity ownership or business state without server-side validation.',
+      ],
+      verification: [
+        'Validate fxmanifest, start/stop/restart the resource, exercise authorized and unauthorized event paths, inspect server/client logs, and test NUI/browser behavior when present.',
+      ],
+    },
+  }),
+
+  'game-server-extension': pack({
+    id: 'game-server-extension',
+    name: 'Game Server Extension Engineering',
+    triggers: [
+      'game server plugin', 'server plugin', 'game plugin', 'server extension',
+      'mod server', 'server mod', 'dedicated server plugin',
+    ],
+    bonusTriggers: [
+      'multiplayer', 'plugin', 'mod', 'resource', 'server api', 'game server',
+    ],
+    requiredSkillCategories: [
+      'game-server', 'architecture', 'testing', 'security', 'performance',
+    ],
+    optionalSkillCategories: [
+      'modding', 'repository', 'debugging', 'documentation', 'research', 'context',
+    ],
+    instructionProfiles: ['karpathy-coding-discipline', 'spec-driven-development'],
+    pluginBundleIds: ['context7', 'github-mcp', 'exa'],
+    qualityGates: [
+      'platform-and-version-detection',
+      'server-authoritative-state',
+      'lifecycle-start-stop-restart',
+      'permission-model',
+      'untrusted-client-input',
+      'hot-path-performance',
+      'persistence-integrity',
+      'security-review',
+    ],
+    promptAdditions: {
+      plan: [
+        'Identify the game server, extension API, supported versions, lifecycle, networking model, persistence, permissions and hot paths before implementation.',
+      ],
+      constraints: [
+        'Treat all remote/client-controlled input as untrusted and preserve server authority for security-sensitive state.',
+      ],
+    },
+  }),
+
   'data-analytics': pack({
     id: 'data-analytics',
     name: 'Data and Analytics',
@@ -520,7 +723,12 @@ function chosenPacks(objective: string, explicit: readonly FuryCapabilityPackId[
   // A coding-heavy site/app task benefits from engineering discipline even if
   // the generic pack did not independently score high enough.
   const selectedIds = new Set(selected.map((item) => item.id));
-  if ((selectedIds.has('marketing-website') || selectedIds.has('web-application'))
+  if ((selectedIds.has('marketing-website')
+      || selectedIds.has('web-application')
+      || selectedIds.has('minecraft-plugin')
+      || selectedIds.has('minecraft-mod')
+      || selectedIds.has('fivem-resource')
+      || selectedIds.has('game-server-extension'))
     && !selectedIds.has('software-engineering')) {
     selected.push({ id: 'software-engineering', score: 1 });
     selectedIds.add('software-engineering');
