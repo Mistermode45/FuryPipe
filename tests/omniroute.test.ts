@@ -43,6 +43,7 @@ describe('OmniRoute adapter', () => {
         authorization: 'Bearer om_test_key',
         'x-session-id': 'furypipe-test',
       },
+      gatewayCredentialIsolation: true,
     });
   });
 
@@ -100,10 +101,11 @@ describe('OmniRoute adapter', () => {
       transform: { compress: false },
     });
 
-    const response = await handler(new Request('http://127.0.0.1:47821/v1/chat/completions', {
+    const response = await handler(new Request('http://127.0.0.1:47821/v1/chat/completions?api_key=client-query-secret&trace=1', {
       method: 'POST',
       headers: {
         authorization: 'Bearer sk-client-must-not-leak',
+        'x-api-key': 'sk-ant-client-must-not-leak',
         'content-type': 'application/json',
       },
       body: JSON.stringify({
@@ -115,9 +117,11 @@ describe('OmniRoute adapter', () => {
     expect(response.status).toBe(200);
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual({
-      url: 'https://omni.example.test/v1/chat/completions',
+      url: 'https://omni.example.test/v1/chat/completions?trace=1',
       authorization: 'Bearer om_gateway_key',
     });
     expect(JSON.stringify(calls)).not.toContain('sk-client-must-not-leak');
+    expect(JSON.stringify(calls)).not.toContain('client-query-secret');
+    expect(JSON.stringify(calls)).not.toContain('sk-ant-client-must-not-leak');
   });
 });
