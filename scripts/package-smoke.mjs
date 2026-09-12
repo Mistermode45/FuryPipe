@@ -183,6 +183,12 @@ try {
     "const m = await import('furypipe/provider-runtime'); if (typeof m.createProviderRuntimeState !== 'function') process.exit(1);",
   ], installDir);
   assert(providerRuntimeExport.stderr === '', `Provider runtime package export wrote stderr: ${providerRuntimeExport.stderr}`);
+  const omniRouteExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/omniroute'); if (typeof m.createOmniRouteProxyConfig !== 'function' || typeof m.normalizeOmniRouteBaseUrl !== 'function') process.exit(1);",
+  ], installDir);
+  assert(omniRouteExport.stderr === '', `OmniRoute package export wrote stderr: ${omniRouteExport.stderr}`);
   const policyRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
