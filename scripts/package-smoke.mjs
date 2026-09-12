@@ -201,6 +201,24 @@ try {
     "const m = await import('furypipe/policy-runtime'); if (typeof m.createInMemoryPolicyCache !== 'function' || typeof m.executeRecoveryRetrieval !== 'function') process.exit(1);",
   ], installDir);
   assert(policyRuntimeExport.stderr === '', `Policy runtime package export wrote stderr: ${policyRuntimeExport.stderr}`);
+  const continuousMemoryExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/continuous-memory'); if (typeof m.createContinuousMemoryEngine !== 'function' || typeof m.DEFAULT_CONTINUOUS_MEMORY_POLICY !== 'object') process.exit(1);",
+  ], installDir);
+  assert(continuousMemoryExport.stderr === '', `Continuous memory package export wrote stderr: ${continuousMemoryExport.stderr}`);
+  const instructionFabricExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/instruction-fabric'); if (typeof m.resolveInstructionPlan !== 'function' || !Array.isArray(m.FURY_INSTRUCTION_FACET_IDS)) process.exit(1);",
+  ], installDir);
+  assert(instructionFabricExport.stderr === '', `Instruction Fabric package export wrote stderr: ${instructionFabricExport.stderr}`);
+  const contextOptimizerExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/context-optimizer'); if (typeof m.optimizeContext !== 'function' || !Array.isArray(m.FURY_CONTEXT_LEVELS)) process.exit(1);",
+  ], installDir);
+  assert(contextOptimizerExport.stderr === '', `Context Optimizer package export wrote stderr: ${contextOptimizerExport.stderr}`);
   await runMcp(process.execPath, [mcp], {
     jsonrpc: '2.0',
     id: 1,

@@ -185,6 +185,18 @@
     "./capability-router": {
       "types": "./dist/capability-router.d.ts",
       "import": "./dist/capability-router.js"
+    },
+    "./continuous-memory": {
+      "types": "./dist/continuous-memory.d.ts",
+      "import": "./dist/continuous-memory.js"
+    },
+    "./instruction-fabric": {
+      "types": "./dist/instruction-fabric.d.ts",
+      "import": "./dist/instruction-fabric.js"
+    },
+    "./context-optimizer": {
+      "types": "./dist/context-optimizer.d.ts",
+      "import": "./dist/context-optimizer.js"
     }
   },
   "files": [
@@ -212,7 +224,10 @@
     "docs/POLICY.md",
     "docs/RECEIPTS.md",
     "LICENSE",
-    "docs/CAPABILITY_ROUTER.md"
+    "docs/CAPABILITY_ROUTER.md",
+    "docs/CONTINUOUS_MEMORY.md",
+    "docs/INSTRUCTION_FABRIC.md",
+    "docs/CONTEXT_OPTIMIZER.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
