@@ -142,3 +142,105 @@ Every executable skill still requires immutable provenance, licence review, perm
 - OpenMontage and Claude Squad remain external/reference-only because their audited source licence is AGPL.
 - Strix remains reference-only/high-privilege; no automatic offensive tooling.
 - HorizonX remains commercial/reference-only; no paid code/component reproduction without independently held rights.
+
+
+## 2026 portable standards and official integrations
+
+### Karpathy-inspired guidelines
+
+Pinned source: `multica-ai/andrej-karpathy-skills@2c606141936f1eeef17fa3043a72095b4765b9c2`.
+
+Decision: `ADAPT`.
+
+FuryPipe integrates the principles through the native `karpathy-coding-discipline` instruction profile. The upstream text is not copied verbatim. MIT is declared by README/plugin metadata, but no root LICENSE file was present in the audited repository state.
+
+### Agent Skills
+
+Official standard/implementation references:
+
+- Agent Skills open standard;
+- `anthropics/skills@34040c9c568585f6929bedeaad110ad08f079624`.
+
+Decision: `ADOPT_STANDARD / PER_SKILL_REVIEW`.
+
+FuryPipe should interoperate with portable `SKILL.md` concepts while keeping provenance/licence/permission review separate. The Anthropic repository is not bulk-trusted.
+
+### Agent Plugins
+
+Official specification: <https://agent-plugins.org/specification> version 1.0.0.
+
+Decision: `ADOPT_STANDARD`.
+
+Future FuryPipe import/export should support the portable `plugin.json + skills/ + mcp.json` floor while enforcing package-root containment and FuryPipe permission gates.
+
+### Superpowers
+
+Pinned source: `obra/superpowers@b36e0829c6d0140e93cfef2ca599b1b07d4a7797`.
+
+Licence: MIT verified.
+
+Decision: `ADAPT`.
+
+Use its current skill-testing, systematic debugging, verification and multi-harness methodology as design input; do not make the full plugin a mandatory FuryPipe dependency.
+
+### Vercel skills
+
+Pinned source: `vercel-labs/skills@d667282815248da03a08a18272b5d2eef9caf77c`.
+
+Licence: MIT verified.
+
+Decision: `ADAPT_DISCOVERY`.
+
+Use discovery/update UX ideas only. FuryPipe does not auto-run `npx skills` or auto-install discovered skills.
+
+### Figma MCP
+
+Official endpoint: `https://mcp.figma.com/mcp`.
+
+Decision: `EXTERNAL_OPT_IN`.
+
+The built-in FuryPipe bundle is read-only preferred with `design-read`. Canvas writes require a separate future scoped-write profile.
+
+### Cloudflare MCP
+
+Pinned source: `cloudflare/mcp@1027dbd2865fc1932120db42ed53749bc30d2af0`.
+
+Official endpoint: `https://mcp.cloudflare.com/mcp`.
+
+Decision: `EXTERNAL_OPT_IN`.
+
+The built-in bundle is `cloud-read` by default. Mutation/deployment is not granted by bundle presence.
+
+### Exa
+
+Pinned source: `exa-labs/exa-mcp-server@15ffb50519e719dc791cdc750ce5ed1934c0a1ed`.
+
+Licence: MIT verified.
+
+Decision: `EXTERNAL_OPT_IN`.
+
+The builtin research bundle exposes the hosted MCP over OAuth/network. FuryPipe still selects one primary research provider per profile.
+
+### Official MCP Registry
+
+Reference: <https://registry.modelcontextprotocol.io/docs>.
+
+Decision: `DISCOVERY_ONLY`.
+
+Registry membership is not execution trust. FuryPipe must revalidate provenance, licence, permissions and health before any discovered server can become a bundle.
+
+### MCP Apps
+
+Official extension reference: <https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/>.
+
+Decision: `ADAPT_FUTURE`.
+
+Potential fit: interactive Control Room and plugin UIs. No client/UI production evidence is claimed yet.
+
+### Docker MCP Toolkit
+
+Official docs: <https://docs.docker.com/ai/mcp-catalog-and-toolkit/toolkit/>.
+
+Decision: `REFERENCE_ONLY / OPTIONAL_WRAP`.
+
+Useful for containerized MCP isolation/profile ideas, but Docker Desktop is not a FuryPipe baseline dependency.
