@@ -1473,7 +1473,6 @@ async function main(): Promise<void> {
   const isLoopbackHost =
     opts.host === '127.0.0.1' || opts.host === 'localhost' || opts.host === '::1';
   const announce = () => {
-    const routes = resolveUpstreams(config);
     console.log('[furypipe] Anthropic upstream configured');
     console.log('[furypipe] OpenAI upstream configured');
     if (opts.cloudflareUpstream !== undefined) {
