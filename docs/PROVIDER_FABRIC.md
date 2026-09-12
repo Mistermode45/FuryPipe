@@ -78,3 +78,22 @@ The host supplies an explicit ordered candidate list. FuryPipe keeps that order 
 A stale health observation is treated as `unknown`, not as healthy. Unknown providers, family mismatches and unsupported models remain visible as rejected assessments. Duplicate canonical provider/model candidates are rejected.
 
 The decision returns `networkCallExecuted: false`. This closes the local planning gap only; actual failover requests, credential handling, retries and hosted provider validation remain responsibilities of the host/provider adapter.
+
+
+## OmniRoute gateway adapter
+
+FuryPipe can route its Anthropic, OpenAI and Gemini-compatible proxy surfaces through an explicitly configured OmniRoute gateway.
+
+The adapter is intentionally separate from Provider Runtime health/cost evidence:
+
+- `PXPIPE_PROVIDER=omniroute` enables the gateway mode;
+- `OMNIROUTE_BASE_URL` selects the actual instance;
+- `OMNIROUTE_API_KEY` is optional and host-owned;
+- remote plaintext HTTP is rejected; loopback HTTP is allowed for local development;
+- caller provider credentials and credential-like query parameters are removed before the OmniRoute credential is applied;
+- generic gateway headers cannot carry Authorization/cookie credentials;
+- the adapter never infers provider health, quota, pricing or benchmark state.
+
+One configured OmniRoute origin is used for the existing protocol-specific Anthropic/OpenAI/Gemini request paths; FuryPipe does not invent a new prompt protocol.
+
+See `docs/OMNIROUTE.md`.
