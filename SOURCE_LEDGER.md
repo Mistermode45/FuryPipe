@@ -38,3 +38,9 @@ Ce ledger sera enrichi avec les sources réellement consultées. Une URL listée
 | SRC-031 | https://context7.com/docs/clients/claude-code | current-library documentation integration | current docs | 2026-09-12 | documentation/service; no code licence claimed | External opt-in CLI/MCP/plugin reference | verified documentary |
 | SRC-032 | https://horizonx.so | commercial design/code library | current site | 2026-09-12 | commercial licence; paid content | Reference-only; no copying/vendoring without user-held rights | verified documentary |
 | SRC-033 | https://github.com/diegosouzapw/OmniRoute | multi-provider gateway | `152d95108c9c3d557562311ffed63240a511eb31` | 2026-09-12 | MIT file verified | Provider Fabric adapter candidate | verified |
+
+
+| SRC-040 | https://github.com/agentskills/agentskills | standard Agent Skills | standard consulté 2026-09-12 | 2026-09-12 | code Apache-2.0, docs CC-BY-4.0 observés | ADOPT format portable SKILL.md ; trust FuryPipe reste séparé | vérifiée docs officielles |
+| SRC-041 | https://www.anthropic.com/engineering/harness-design-long-running-apps | harness long-running agents | article 2026-03-24 | 2026-09-12 | documentation publique | ADAPT bounded sessions, validators, durable state, anti-cycle | vérifiée officielle |
+| SRC-042 | https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/prompt-templates-and-variables | subagent prompting/runtime guidance | docs consultées 2026-09-12 | 2026-09-12 | documentation publique | ADAPT subagent damping et isolation contextuelle | vérifiée officielle |
+| SRC-043 | https://openai.com/index/codex-for-every-role-tool-workflow/ | architecture plugins Codex 2026 | publication 2026-06-02 | 2026-09-12 | documentation publique | REFERENCE architecture bundles skills/apps/workflows | vérifiée officielle |
