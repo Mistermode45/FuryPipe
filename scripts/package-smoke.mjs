@@ -123,6 +123,12 @@ try {
     "const m = await import('furypipe/learning'); if (typeof m.runAgentLearningCycle !== 'function' || typeof m.createHumanLearningPath !== 'function') process.exit(1);",
   ], installDir);
   assert(learningExport.stderr === '', `Learning package export wrote stderr: ${learningExport.stderr}`);
+  const knowledgeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/knowledge'); if (typeof m.createKnowledgeIndex !== 'function') process.exit(1);",
+  ], installDir);
+  assert(knowledgeExport.stderr === '', `Knowledge package export wrote stderr: ${knowledgeExport.stderr}`);
   const providerRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
