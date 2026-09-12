@@ -41,12 +41,18 @@ export interface PolicyFabricDecision {
   };
 }
 
+export interface PolicyRuntimeCapabilities {
+  readonly retrieval?: boolean;
+  readonly hybrid?: boolean;
+}
+
 export interface PolicyFabricRequest {
   readonly provider: string;
   readonly mode: PolicyMode;
   readonly blocks: readonly ContextIRBlock[];
   readonly costs: PolicyCostInputs;
   readonly providerState?: Partial<PolicyProviderState>;
+  readonly runtimeCapabilities?: PolicyRuntimeCapabilities;
 }
 
 function finiteCost(value: number): number {
@@ -73,15 +79,27 @@ function strategyCost(costs: PolicyCostInputs, strategy: PolicyFabricStrategy): 
 function strategyEligible(
   blocks: readonly ContextIRBlock[],
   strategy: PolicyFabricStrategy,
+  capabilities: PolicyRuntimeCapabilities | undefined,
 ): boolean {
   if (strategy === 'raw' || strategy === 'native-cache') return true;
-  if (strategy === 'retrieval') return false;
-  return blocks.length > 0 && blocks.every((block) => block.compressionEligibility === 'allow');
+  if (strategy === 'retrieval') return capabilities?.retrieval === true;
+  const lossyEligible = blocks.length > 0 && blocks.every((block) => block.compressionEligibility === 'allow');
+  if (strategy === 'hybrid') return lossyEligible && capabilities?.hybrid === true;
+  return lossyEligible;
 }
 
-function reasonFor(strategy: PolicyFabricStrategy, eligible: boolean): string {
-  if (strategy === 'retrieval') return 'retrieval executor is not wired in this runtime';
-  if (strategy === 'hybrid') return eligible ? 'hybrid is eligible but requires provider and retrieval contracts' : 'protected blocks prevent a fully lossy hybrid';
+function reasonFor(
+  strategy: PolicyFabricStrategy,
+  eligible: boolean,
+  capabilities: PolicyRuntimeCapabilities | undefined,
+): string {
+  if (strategy === 'retrieval') {
+    return eligible ? 'retrieval executor is explicitly available' : 'retrieval executor is not wired in this runtime';
+  }
+  if (strategy === 'hybrid') {
+    if (capabilities?.hybrid !== true) return 'hybrid executor is not wired in this runtime';
+    return eligible ? 'hybrid executor is available and blocks are lossy-eligible' : 'protected blocks prevent a fully lossy hybrid';
+  }
   return eligible ? 'strategy has a typed local estimate' : 'strategy is blocked by a hard local constraint';
 }
 
@@ -105,12 +123,14 @@ export function evaluatePolicyFabric(input: PolicyFabricRequest): PolicyFabricDe
   });
   const strategies: readonly PolicyFabricStrategy[] = ['raw', 'native-cache', 'guarded-lossy', 'retrieval', 'hybrid'];
   const alternatives = strategies.map((strategy) => {
-    const eligible = strategyEligible(input.blocks, strategy) && !(providerBlocked && strategy !== 'raw');
+    const eligible = strategyEligible(input.blocks, strategy, input.runtimeCapabilities) && !(providerBlocked && strategy !== 'raw');
     return {
       strategy,
       estimatedCostUsd: strategyCost(input.costs, strategy),
       eligible,
-      reason: providerBlocked && strategy !== 'raw' ? 'provider circuit is open or unavailable' : reasonFor(strategy, eligible),
+      reason: providerBlocked && strategy !== 'raw'
+        ? 'provider circuit is open or unavailable'
+        : reasonFor(strategy, eligible, input.runtimeCapabilities),
     };
   });
   const fallbackEligible = providerState.fallbackAvailable === true && providerState.fallbackProvider !== undefined;

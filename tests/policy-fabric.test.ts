@@ -38,6 +38,25 @@ describe('policy fabric', () => {
     expect(result.providerState.status).toBe('unknown');
   });
 
+  it('enables retrieval and hybrid only when runtime executors are explicitly available', () => {
+    const result = evaluatePolicyFabric({
+      provider: 'anthropic',
+      mode: 'research',
+      blocks,
+      costs: { regularInput: 10, cacheWrite: 2, cacheRead: 1, visualInput: 3, retrieval: 4, localCompute: 1, retry: 0, output: 2 },
+      runtimeCapabilities: { retrieval: true, hybrid: true },
+    });
+
+    expect(result.alternatives.find((item) => item.strategy === 'retrieval')).toMatchObject({
+      eligible: true,
+      reason: 'retrieval executor is explicitly available',
+    });
+    expect(result.alternatives.find((item) => item.strategy === 'hybrid')).toMatchObject({
+      eligible: true,
+      reason: 'hybrid executor is available and blocks are lossy-eligible',
+    });
+  });
+
   it('blocks lossy strategies when the circuit is open and exposes safe fallback state', () => {
     const result = evaluatePolicyFabric({
       provider: 'anthropic',

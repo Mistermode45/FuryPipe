@@ -58,6 +58,10 @@
       "types": "./dist/core/policy-fabric.d.ts",
       "import": "./dist/core/policy-fabric.js"
     },
+    "./policy-runtime": {
+      "types": "./dist/core/policy-runtime.d.ts",
+      "import": "./dist/core/policy-runtime.js"
+    },
     "./receipt": {
       "types": "./dist/core/receipt.d.ts",
       "import": "./dist/core/receipt.js"

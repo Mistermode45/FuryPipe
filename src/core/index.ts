@@ -126,9 +126,23 @@ export {
   type PolicyFabricRequest,
   type PolicyFabricStrategy,
   type PolicyProviderState,
+  type PolicyRuntimeCapabilities,
   type PolicyStrategyAssessment,
   type ProviderHealthStatus,
 } from './policy-fabric.js';
+export {
+  createInMemoryPolicyCache,
+  derivePolicyCacheKey,
+  executePolicyHybrid,
+  executeRecoveryRetrieval,
+  type PolicyCacheExecutor,
+  type PolicyCacheGetResult,
+  type PolicyCacheOptions,
+  type PolicyCacheStats,
+  type PolicyHybridContext,
+  type PolicyHybridResult,
+  type PolicyRetrievalResult,
+} from './policy-runtime.js';
 export {
   COST_UNKNOWN,
   createProviderRegistry,
