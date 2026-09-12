@@ -1240,3 +1240,312 @@ Behavior:
 - separate read/plan from mutation;
 - require explicit scoped write/deploy approval;
 - capture post-change evidence and rollback identifiers.
+
+
+---
+
+# 2026 official production pass — cloud, billing, workspace and component ecosystems
+
+This pass focuses on official vendor-maintained sources that are actively relevant to application creation in 2026. These integrations are intentionally classified by **blast radius**, not popularity.
+
+A connector that can create resources, deploy code, modify billing/customer records or mutate project-management state is not eligible for a default FuryPipe profile merely because it is official.
+
+## AWS Agent Toolkit / AWS MCP
+
+Sources:
+
+- `aws/agent-toolkit-for-aws@68d9e8541c45afd2510662bcea69fe1e433ea9db`;
+- Apache-2.0 root licence verified;
+- official AWS MCP documentation/catalog.
+
+Current 2026 signals:
+
+- AWS provides a production MCP/agent toolchain rather than only examples;
+- IAM remains the correct authorization boundary;
+- CloudTrail/CloudWatch-style auditability and account/role scoping are central;
+- AWS has continued hardening skill implementations. A recent source commit fixed a predictable global S3 bucket ownership risk by requiring explicit owner verification.
+
+Decision: `PER_SKILL_REVIEW / REFERENCE_ONLY_DEFAULT`
+
+Why not a default builtin:
+
+The AWS surface can reach broad infrastructure APIs. A generic “AWS enabled” switch would violate FuryPipe's least-privilege model.
+
+Recommended FuryPipe design:
+
+1. discover/account-read profile first;
+2. plan/diff profile second;
+3. resource mutation/deployment only in a separate `cloud-write` bundle;
+4. exact account/region/role evidence exposed before every write-capable run;
+5. host IAM remains authoritative;
+6. capture rollback/resource identifiers;
+7. never embed AWS credentials in plugin/skill metadata.
+
+High-value skill patterns to adapt:
+
+- ownership/identity verification before resource writes;
+- architecture planning from current account state;
+- infrastructure security review;
+- explicit account + region context;
+- deterministic preflight checks.
+
+## Microsoft Azure Skills
+
+Source:
+
+- `microsoft/azure-skills@9d46511c1828eee052d6d0ef4652dcd548565e27`;
+- MIT root licence verified.
+
+Decision: `ADAPT_SELECTED_SKILLS`
+
+Recommended use:
+
+- Azure architecture/readiness planning;
+- service selection;
+- deployment-plan generation;
+- diagnostics and verification methodology.
+
+Boundary:
+
+- native FuryPipe adaptations should be read/plan first;
+- Azure resource creation or deployment must map to a separate `cloud-write` permission;
+- do not bulk-copy the entire upstream skill set merely because the repository is official/MIT.
+
+## Azure DevOps MCP
+
+Source:
+
+- `microsoft/azure-devops-mcp@9a81b90b67623ebc68c25b281d7fbf4f6e791eb0`;
+- MIT verified.
+
+Decision: `FUTURE_EXTERNAL_OPT_IN`
+
+Recommended first profile:
+
+- repositories/work items/build status read;
+- no default work-item edits, branch mutation, pipeline mutation or release action.
+
+This belongs beside GitHub MCP as an enterprise SCM/project-management connector, not inside Provider Fabric.
+
+## Netlify MCP
+
+Sources:
+
+- `netlify/netlify-mcp@7bbb718b182fc77b34aaae3b2d575aef9163cf8b`;
+- official remote endpoint documented as `https://netlify-mcp.netlify.app/mcp`;
+- no root licence file was found during the source audit.
+
+Decision: `FUTURE_EXTERNAL_OPT_IN / HIGH_WRITE_RISK`
+
+Why useful:
+
+- app/project discovery;
+- Netlify configuration;
+- site creation/deployment workflows;
+- framework/deployment context.
+
+Why not builtin yet:
+
+The same connector can cross from “inspect app” into deployment/infrastructure mutation. FuryPipe needs tool-level capability filtering or a safe read-only profile before including it in the built-in list.
+
+Target split:
+
+- `netlify-read`: project/site/config/deploy status inspection;
+- `netlify-deploy`: explicit `cloud-write` + deployment approval.
+
+## Stripe AI / Stripe MCP
+
+Sources:
+
+- `stripe/ai@583467aab18cc7113dcd2c2e20028fe73c26eaa3`;
+- MIT root licence verified;
+- official remote MCP documented at `https://mcp.stripe.com`.
+
+Decision: `PER_SKILL_REVIEW / REFERENCE_ONLY_DEFAULT`
+
+Useful app-building capabilities:
+
+- Stripe SDK/API integration guidance;
+- billing architecture;
+- product/pricing/subscription setup guidance;
+- test-mode debugging.
+
+Reason for conservative connector posture:
+
+Customer, billing, product and payment tools can have direct financial impact.
+
+FuryPipe should first adapt **instructional/diagnostic skills**. A future live Stripe connector must:
+
+- prefer test mode;
+- expose account/mode before action;
+- split read vs mutation;
+- deny payment/customer mutation in the default profile;
+- require explicit user authorization for financially consequential operations.
+
+## Notion MCP
+
+Official source:
+
+- Notion MCP developer documentation.
+
+Decision: `REFERENCE_ONLY / FUTURE_SCOPED_PROFILE`
+
+Notion's official MCP is useful for:
+
+- product requirements;
+- architecture docs;
+- knowledge retrieval;
+- task/project context.
+
+It is also write-capable. A FuryPipe default workspace connector must not silently create/update pages.
+
+Future profile split:
+
+- `notion-read`;
+- `notion-write` separately approved.
+
+## Linear MCP
+
+Official source:
+
+- Linear MCP documentation.
+
+Decision: `REFERENCE_ONLY / FUTURE_SCOPED_PROFILE`
+
+Useful for:
+
+- issue/project context;
+- planning;
+- status lookup;
+- implementation traceability.
+
+Risks:
+
+- creating/updating issues/projects/comments changes the external source of truth.
+
+Recommended boundary:
+
+- read-only planning profile first;
+- mutations only after explicit workspace + action approval;
+- never let an autonomous subagent silently close/change project state.
+
+## shadcn MCP / registry ecosystem
+
+Source:
+
+- `shadcn-ui/ui@7bc5604869dedd6f63975da6bf326bc966deac9c`;
+- MIT `LICENSE.md` verified.
+
+Decision: `ADAPT_APP_BUILDING / FUTURE_WRITE_PROFILE`
+
+High-value use:
+
+- component discovery;
+- registry browsing;
+- UI composition;
+- project-specific component installation.
+
+Important distinction:
+
+shadcn MCP/CLI is not merely documentation retrieval: installing a component modifies the repository.
+
+FuryPipe should therefore model:
+
+- component search/inspect as read;
+- installation/update as explicit `repository-write`;
+- CLI version pinned rather than invoking an unbounded `@latest`;
+- diff inspection + tests after every installed component.
+
+## Updated app-building profile — 2026 production
+
+### Safe default
+
+- native `karpathy-coding-discipline`;
+- Context7;
+- GitHub MCP read-only;
+- Figma MCP design-read;
+- Playwright CLI;
+- Web Studio local QA;
+- Supabase read-only when backend context is needed.
+
+### Optional research
+
+Choose one primary:
+
+- Exa;
+- Firecrawl;
+- Tavily.
+
+### Stack-specific read profiles
+
+Enable only when relevant:
+
+- Cloudflare read;
+- AWS read/discovery;
+- Azure read/plan;
+- Netlify read;
+- Notion read;
+- Linear read;
+- Azure DevOps read.
+
+### Explicit write/deploy profiles
+
+Never automatic:
+
+- GitHub repository-write;
+- Supabase database-write/migrations/deploy;
+- Figma design-write;
+- Cloudflare cloud-write/deploy;
+- AWS/Azure/Netlify cloud-write/deploy;
+- shadcn repository-write/component installation;
+- Notion/Linear workspace mutation;
+- Stripe billing/customer/payment mutation.
+
+## New native skill priorities
+
+### 17. cloud-identity-preflight
+
+Before any cloud write:
+
+- provider/account/tenant/project;
+- region;
+- role/principal;
+- resource ownership;
+- current state;
+- target state;
+- rollback identifiers.
+
+Inspired by AWS's current production-hardening patterns but implemented natively.
+
+### 18. billing-safety
+
+Before any billing/payment/customer mutation:
+
+- environment/test/live mode;
+- account;
+- exact object IDs;
+- idempotency/duplicate risk;
+- financial effect;
+- explicit authorization.
+
+### 19. workspace-change-review
+
+For Notion/Linear/project systems:
+
+- read current object;
+- show exact intended mutation;
+- preserve immutable IDs;
+- require write permission;
+- verify post-change state;
+- never infer permission from connector availability.
+
+### 20. component-install-review
+
+For shadcn/component registries:
+
+- pin source/version;
+- inspect target files;
+- require repository-write;
+- capture diff;
+- run typecheck/tests/browser QA;
+- reject unrelated package churn.
