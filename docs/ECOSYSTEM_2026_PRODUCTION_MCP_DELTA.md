@@ -420,3 +420,87 @@ FuryPipe must therefore retain the rule:
 
 Even an apparently popular skill remains non-executable until provenance, immutable version, licence, permissions, scripts/hooks, network behavior and secret access are independently reviewed.
 
+
+
+## Official Agent Skills sources added after the broad 2026 pass
+
+### Microsoft Skills
+
+- Source: `microsoft/skills`
+- Inspected commit: `903dc62b1e4c833235b54db918a9a51cb6d3cc8f` (2026-09-11)
+- Root licence: MIT verified
+- Repository state: active / work-in-progress
+- Surface: Agent Skills, custom agents, `AGENTS.md` templates and MCP configurations for Azure SDKs and Microsoft AI Foundry
+- Decision: **ADAPT / PER_SKILL_REVIEW**
+- Runtime: **NOT_INSTALLED**
+
+Useful FuryPipe patterns:
+
+- metadata-first progressive disclosure instead of loading every skill body;
+- explicit guidance to load only task-relevant skills to prevent context dilution;
+- combine current documentation via MCP with stable implementation patterns via skills;
+- language/runtime-specific skill IDs;
+- keep custom-agent personas distinct from reusable skills;
+- keep MCP configurations separate from the trust decision for the corresponding skill.
+
+FuryPipe must not reproduce the repository's example use of floating `npx -y` commands as a production default. External executable packages remain version-pinned and host-approved.
+
+### MicrosoftDocs Agent Skills
+
+- Source: `MicrosoftDocs/Agent-Skills`
+- Inspected commit: `90ec55f3dc95837df8b9f7bd6265fb5935ccdca6` (2026-09-07)
+- Root content licence: CC-BY-4.0 verified
+- Generation pipeline observed: `docs2skills/1.0.0`
+- Decision: **ADAPT / REFERENCE_ONLY / PER_SKILL_REVIEW**
+- Runtime: **NOT_INSTALLED**
+
+Useful FuryPipe patterns:
+
+- generated-at metadata with explicit stale-content detection;
+- local quick-reference material plus authoritative documentation retrieval;
+- category indexes and bounded line/file retrieval;
+- declared network requirement in the skill;
+- preferred authoritative docs connector with a documented fallback.
+
+Important boundary:
+
+A generated documentation skill is still data/instructions from outside the repository. Its age, source URLs, network requirement and generator version should become provenance metadata, not implicit execution trust.
+
+### NVIDIA Agent Skills
+
+- Source: `NVIDIA/skills`
+- Inspected commit: `27fa3e16d95f32b55843da712f163754395bd05f` (2026-09-12)
+- Repository README SPDX: Apache-2.0 AND CC-BY-4.0 observed
+- Individual skill files can carry their own SPDX declarations and must be checked per artifact
+- Repository role: NVIDIA-verified catalogue; product teams maintain source skills in their respective repositories and the catalogue mirrors them
+- Decision: **ADOPT DISCOVERY MODEL / PER_SKILL_REVIEW**
+- Runtime: **NOT_INSTALLED**
+
+Useful FuryPipe patterns:
+
+- separate catalogue provenance from the product repository that owns the source skill;
+- verification/certification metadata does not replace immutable source provenance;
+- per-skill install rather than full-catalogue install;
+- catalogue synchronization should preserve original source identity and version;
+- generated catalogue metadata can support discovery, health and update checks.
+
+For FuryPipe, a mirrored skill should record both:
+1. catalogue pin;
+2. original product-repository pin.
+
+A mirror SHA alone is insufficient provenance for executable trust.
+
+## Updated source-priority order for FuryPipe
+
+When multiple sources provide overlapping skills or instructions, prefer:
+
+1. open standard / normative specification;
+2. official vendor/product repository;
+3. official documentation-derived skill;
+4. maintained first-party integration;
+5. well-maintained independent project;
+6. curated community repository;
+7. marketplace/catalogue entry only as discovery evidence.
+
+Popularity, stars, marketplace rank or a vendor badge do not override licence, permission, provenance or blast-radius review.
+
