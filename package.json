@@ -197,6 +197,10 @@
     "./context-optimizer": {
       "types": "./dist/context-optimizer.d.ts",
       "import": "./dist/context-optimizer.js"
+    },
+    "./continuous-memory-turn": {
+      "types": "./dist/continuous-memory-turn.d.ts",
+      "import": "./dist/continuous-memory-turn.js"
     }
   },
   "files": [
@@ -227,7 +231,8 @@
     "docs/CAPABILITY_ROUTER.md",
     "docs/CONTINUOUS_MEMORY.md",
     "docs/INSTRUCTION_FABRIC.md",
-    "docs/CONTEXT_OPTIMIZER.md"
+    "docs/CONTEXT_OPTIMIZER.md",
+    "docs/CONTINUOUS_MEMORY_TURN.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
