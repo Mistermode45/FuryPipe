@@ -36,6 +36,13 @@ export {
 export { transformOpenAIChatCompletions, transformOpenAIResponses, resolveVisionCost, openAIVisionTokens } from './openai.js';
 export { createProxy, type ProxyConfig, type ProxyEvent } from './proxy.js';
 export {
+  createOmniRouteProxyConfig,
+  inspectOmniRouteAdapter,
+  normalizeOmniRouteBaseUrl,
+  type OmniRouteAdapterInspection,
+  type OmniRouteAdapterOptions,
+} from './omniroute.js';
+export {
   createProviderRouter,
   parseProviderRoute,
   assertProviderId,
