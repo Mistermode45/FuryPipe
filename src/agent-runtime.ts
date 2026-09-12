@@ -111,7 +111,7 @@ export interface AgentStageExecutionContext {
   readonly secrets: 'never_requested';
   readonly completedStages: readonly AgentFabricStageId[];
   /** Skills selected by FuryPipe's capability router and executed before this stage. */
-  readonly autoSkillExecutions: readonly AgentSubagentBatchItem[];
+  readonly autoSkillExecutions: readonly AgentSkillBatchItem[];
   readonly invokeSkill: (skillId: string) => Promise<AgentSkillExecution>;
   readonly invokeMcp: (serverId: string, method: string, params?: unknown) => Promise<unknown>;
   readonly invokeSubagent: (subagentId: string) => Promise<AgentSubagentExecution>;
@@ -578,7 +578,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
           return Object.freeze({ id: subagentId, ...execution });
         });
       };
-      const autoSkillExecutions: AgentSubagentBatchItem[] = [];
+      const autoSkillExecutions: AgentSkillBatchItem[] = [];
       for (const skillId of request.autoInvokeSkillsByStage?.[stage] ?? []) {
         const execution = await invokeSkillForStage(skillId);
         autoSkillExecutions.push(Object.freeze({ id: skillId, ...execution }));
