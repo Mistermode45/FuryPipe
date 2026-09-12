@@ -488,3 +488,17 @@
 - Aucun `/v1/chat/completions`, session, tool invoke ou appel modèle n'est exécuté.
 - Tests dédiés : healthy, startup/readiness 503, invalid contract/catch-all, unreachable sans fuite d'erreur, remote deny/opt-in, IPv6 loopback et timeout.
 - Le vrai Gateway OpenClaw de l'environnement cible n'est pas accessible depuis cette CI : M9 reste `PARTIAL` et la validation externe reste `OPENCLAW_NOT_TESTED/BLOCKED_EXTERNAL_ENV`.
+
+
+## 2026-09-12 — M13 durable long-term memory
+
+- Ajout de `src/long-term-memory.ts`, basé sur Recovery et séparé de la Working memory.
+- Classes durables : Episodic, Semantic, Procedural, Project, User, Skills.
+- Scopes : global/workspace/project/user/agent ; les IDs bruts de scope ne sont jamais persistés.
+- Consolidation explicite `ADD / UPDATE / DELETE / NOOP` ; chaque écriture produit une révision Recovery immuable.
+- `DELETE` écrit une tombstone audit-preserving ; `purge()` supprime physiquement toutes les révisions d'une mémoire.
+- Les termes de retrieval, sources et raisons sont persistés uniquement sous forme SHA-256 domain-separated.
+- Recall borné avec temporalité `validFrom/validTo/expiresAt`, importance, confiance, recency et filtres de classe/scope.
+- Les collisions de plus haute révision restent fail-closed au lieu d'élire silencieusement un gagnant.
+- `promoteValidatedLessonToLongTermMemory()` relie Learning à la mémoire durable ; Working memory est refusée sans reclassification.
+- Aucun embedding, vector DB, provider ou extraction LLM implicite n'est ajouté au baseline.
