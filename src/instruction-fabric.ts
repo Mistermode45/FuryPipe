@@ -117,7 +117,7 @@ const BUILTIN_FACETS: Readonly<Record<FuryInstructionFacetId, FuryInstructionFac
     profileIds: Object.freeze([
       'karpathy-coding-discipline',
       'spec-driven-development',
-    ]),
+    ] as const),
     additions: Object.freeze({
       verification: Object.freeze([
         'Run the narrowest deterministic checks that prove the changed behavior, then expand to integration or end-to-end checks when the risk surface requires it.',
