@@ -93,7 +93,7 @@ function validateId(value: unknown, label: string): asserts value is string {
 }
 
 function validatePriority(value: unknown): asserts value is number {
-  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_PRIORITY) {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > MAX_PRIORITY) {
     throw new Error('skill priority must be an integer between 0 and 1000000');
   }
 }
