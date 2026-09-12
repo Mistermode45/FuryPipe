@@ -23,7 +23,11 @@ export type ExternalReferenceCapability =
   | 'app-backend'
   | 'ui-design'
   | 'documentation-retrieval'
-  | 'provider-gateway';
+  | 'provider-gateway'
+  | 'skill-standard'
+  | 'spec-driven-development'
+  | 'memory-backend'
+  | 'temporal-knowledge';
 
 export interface ExternalReferenceEntry {
   readonly id: string;
@@ -307,6 +311,66 @@ export const EXTERNAL_REFERENCE_CATALOG: readonly ExternalReferenceEntry[] = Obj
     licenseStatus: 'VERIFIED',
     licenseSpdx: 'MIT',
     notes: 'Multi-provider gateway with OpenAI, Anthropic and Gemini compatibility surfaces. Candidate for an explicit Provider Fabric gateway adapter.',
+  }),
+  ref({
+    id: 'agent-skills-standard',
+    name: 'Agent Skills Open Standard',
+    url: 'https://github.com/agentskills/agentskills',
+    kind: 'github',
+    mode: 'ADAPTER_CANDIDATE',
+    capabilities: ['agent-skills', 'skill-standard'],
+    commitSha: '69ef37e9424c0a7ea9dd2293b559e43ec8176379',
+    licenseStatus: 'VERIFIED',
+    licenseSpdx: 'Apache-2.0',
+    notes: 'Open Agent Skills format. FuryPipe adopts format compatibility while preserving its own provenance, permission, health and licence trust gates.',
+  }),
+  ref({
+    id: 'github-spec-kit',
+    name: 'GitHub Spec Kit',
+    url: 'https://github.com/github/spec-kit',
+    kind: 'github',
+    mode: 'REFERENCE_ONLY',
+    capabilities: ['spec-driven-development', 'agent-skills', 'multi-agent-orchestration'],
+    commitSha: 'd848fb4e18f44640ad6b42e60a280551ee90cdce',
+    licenseStatus: 'VERIFIED',
+    licenseSpdx: 'MIT',
+    notes: 'Spec-driven development reference. FuryPipe adapts spec-before-plan-before-task workflow into a native instruction profile rather than importing the toolkit runtime.',
+  }),
+  ref({
+    id: 'mem0',
+    name: 'Mem0',
+    url: 'https://github.com/mem0ai/mem0',
+    kind: 'github',
+    mode: 'ADAPTER_CANDIDATE',
+    capabilities: ['memory-backend', 'agent-framework'],
+    commitSha: 'c7ee362aff94a369af70f13f2b4f853f6793ff4c',
+    licenseStatus: 'VERIFIED',
+    licenseSpdx: 'Apache-2.0',
+    notes: 'Optional external memory backend/reference for consolidation semantics. Native FuryPipe Long-Term Memory remains the default durable store.',
+  }),
+  ref({
+    id: 'letta',
+    name: 'Letta',
+    url: 'https://github.com/letta-ai/letta',
+    kind: 'github',
+    mode: 'ADAPTER_CANDIDATE',
+    capabilities: ['memory-backend', 'agent-framework'],
+    commitSha: '5bcdd177d70fa2b31a754cfcd801e77b2e1ab16a',
+    licenseStatus: 'VERIFIED',
+    licenseSpdx: 'Apache-2.0',
+    notes: 'Stateful-agent memory architecture reference and optional external adapter. FuryPipe does not replace Agent Fabric or Recovery with Letta by default.',
+  }),
+  ref({
+    id: 'graphiti',
+    name: 'Zep Graphiti',
+    url: 'https://github.com/getzep/graphiti',
+    kind: 'github',
+    mode: 'ADAPTER_CANDIDATE',
+    capabilities: ['memory-backend', 'temporal-knowledge'],
+    commitSha: 'c035afb7990b6077331a81e98b04efcfd9bf8184',
+    licenseStatus: 'VERIFIED',
+    licenseSpdx: 'Apache-2.0',
+    notes: 'Temporal knowledge graph candidate for a future semantic/temporal backend behind FuryPipe Knowledge and Long-Term Memory interfaces.',
   }),
 ]);
 
