@@ -201,6 +201,12 @@ try {
     "const m = await import('furypipe/policy-runtime'); if (typeof m.createInMemoryPolicyCache !== 'function' || typeof m.executeRecoveryRetrieval !== 'function') process.exit(1);",
   ], installDir);
   assert(policyRuntimeExport.stderr === '', `Policy runtime package export wrote stderr: ${policyRuntimeExport.stderr}`);
+  const continuousMemoryExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/continuous-memory'); if (typeof m.createContinuousMemoryEngine !== 'function' || typeof m.DEFAULT_CONTINUOUS_MEMORY_POLICY !== 'object') process.exit(1);",
+  ], installDir);
+  assert(continuousMemoryExport.stderr === '', `Continuous memory package export wrote stderr: ${continuousMemoryExport.stderr}`);
   await runMcp(process.execPath, [mcp], {
     jsonrpc: '2.0',
     id: 1,

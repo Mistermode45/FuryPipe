@@ -185,6 +185,10 @@
     "./capability-router": {
       "types": "./dist/capability-router.d.ts",
       "import": "./dist/capability-router.js"
+    },
+    "./continuous-memory": {
+      "types": "./dist/continuous-memory.d.ts",
+      "import": "./dist/continuous-memory.js"
     }
   },
   "files": [
@@ -212,7 +216,8 @@
     "docs/POLICY.md",
     "docs/RECEIPTS.md",
     "LICENSE",
-    "docs/CAPABILITY_ROUTER.md"
+    "docs/CAPABILITY_ROUTER.md",
+    "docs/CONTINUOUS_MEMORY.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
