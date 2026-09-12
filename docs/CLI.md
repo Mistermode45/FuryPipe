@@ -1,11 +1,8 @@
-# FuryPipe CLI — état local
+# FuryPipe CLI
 
-Le package local s’appelle `furypipe` et expose deux binaires identiques :
+Le binaire public documenté est `furypipe`.
 
-- `furypipe` : nom FuryPipe destiné à la future distribution ;
-- `pxpipe` : alias de compatibilité conservé pour les configurations existantes.
-
-Commandes réellement disponibles dans cette tranche :
+## Commandes
 
 ```text
 furypipe start
@@ -15,13 +12,47 @@ furypipe export [...]
 furypipe warp [...] -- <agent>
 ```
 
-`furypipe doctor` ne lit pas les credentials et ne les imprime pas. Les URL
-upstream sont normalisées sans identifiant, query string ni fragment avant
-affichage. Les outils absents sont indiqués `unavailable`; aucune installation
-automatique n’est déclenchée. La sortie humaine conserve l’anglais historique
-par défaut et accepte `--locale=fr`, `--locale=en` ou une variante BCP-47
-résolue vers ces catalogues. La sortie `--json` reste stable et non traduite.
+## Doctor
 
-La commande `npx furypipe@latest` ne peut pas encore être validée : le package
-n’a pas été publié et aucun dist-tag n’est configuré. `npm pack --dry-run` est
-le seul contrôle de packaging exécuté localement.
+`furypipe doctor` inspecte l’environnement runtime sans lire ni afficher les credentials.
+
+Les URL upstream sont normalisées avant affichage : identifiants, query string et fragments sensibles ne sont pas exposés dans le rapport.
+
+Les outils absents sont signalés comme `unavailable`. FuryPipe ne déclenche aucune installation automatique à partir de `doctor`.
+
+La sortie humaine accepte notamment :
+
+```text
+--locale=fr
+--locale=en
+--locale=<variante BCP-47 résolue vers un catalogue supporté>
+```
+
+La sortie `--json` reste stable et non traduite afin de conserver un contrat machine exploitable.
+
+## Export
+
+`furypipe export` permet de préparer des artefacts de contexte sans imposer le démarrage du proxy.
+
+Les modes disponibles incluent notamment les entrées stdin et Git selon les options réellement exposées par la commande.
+
+## Warp
+
+`furypipe warp ... -- <agent>` applique l’environnement FuryPipe au processus enfant demandé. Les permissions, credentials et capacités du processus cible ne sont pas élargis par la documentation CLI.
+
+## État de distribution
+
+Le package n’est pas considéré comme publiable uniquement parce que `npm pack` fonctionne.
+
+Le hardening exige les gates configurées dans le dépôt, notamment :
+
+- CI multi-OS / multi-Node ;
+- analyse statique ;
+- secret scan ;
+- supply-chain ;
+- licences ;
+- provenance ;
+- benchmark contract ;
+- package smoke.
+
+Aucune publication npm, release GitHub ou promotion finale ne doit être déduite de cette documentation.
