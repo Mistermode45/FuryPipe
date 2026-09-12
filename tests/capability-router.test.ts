@@ -50,6 +50,10 @@ describe('FuryPipe capability router', () => {
       'business-operations',
       'automation',
       'data-analytics',
+      'minecraft-plugin',
+      'minecraft-mod',
+      'fivem-resource',
+      'game-server-extension',
     ]);
     expect(new Set(FURY_CAPABILITY_PACK_IDS).size).toBe(FURY_CAPABILITY_PACK_IDS.length);
   });
@@ -164,6 +168,117 @@ describe('FuryPipe capability router', () => {
       reason: 'network_required',
     });
     expect(plan.missingRequiredSkillCategories).toEqual(['context']);
+  });
+
+  it('routes Minecraft Paper/Velocity plugin work through specialized server engineering capabilities', async () => {
+    const skills = createAgentSkillRegistry();
+    registerSkill(skills, 'minecraft-api', 'minecraft', 'research', 220);
+    registerSkill(skills, 'server-lifecycle', 'game-server', 'plan', 210);
+    registerSkill(skills, 'plugin-architecture', 'architecture', 'plan', 200);
+    registerSkill(skills, 'plugin-security', 'security', 'review', 190);
+    registerSkill(skills, 'plugin-performance', 'performance', 'verify', 180);
+    registerSkill(skills, 'plugin-tests', 'testing', 'verify', 170);
+    registerSkill(skills, 'repository-analysis', 'repository', 'research', 160);
+
+    const plan = await resolveFuryCapabilities({
+      objective: 'Crée un plugin Minecraft Paper 1.21.8 compatible Velocity avec commandes, permissions, config et stockage.',
+      skillRegistry: skills,
+      pluginRegistry: createFuryPluginBundleRegistry(BUILTIN_FURY_PLUGIN_BUNDLES),
+      enabledPluginIds: ['context7', 'github-mcp'],
+    });
+
+    expect(plan.packIds).toContain('minecraft-plugin');
+    expect(plan.packIds).toContain('software-engineering');
+    expect(plan.requiredSkillCategories).toEqual(expect.arrayContaining([
+      'minecraft',
+      'game-server',
+      'architecture',
+      'testing',
+      'security',
+      'performance',
+      'repository',
+    ]));
+    expect(plan.selectedSkillIds).toEqual(expect.arrayContaining([
+      'minecraft-api',
+      'server-lifecycle',
+      'plugin-architecture',
+      'plugin-security',
+      'plugin-performance',
+      'plugin-tests',
+    ]));
+    expect(plan.qualityGates).toEqual(expect.arrayContaining([
+      'minecraft-target-platform-and-version',
+      'scheduler-thread-safety',
+      'no-blocking-io-on-server-thread',
+      'paper-folia-declaration-consistency',
+      'server-boot-smoke',
+    ]));
+    const states = Object.fromEntries(plan.pluginActivations.map((plugin) => [plugin.id, plugin.state]));
+    expect(states).toMatchObject({
+      context7: 'ready',
+      'github-mcp': 'ready',
+      exa: 'approval_required',
+    });
+  });
+
+  it('routes Fabric mod work through Minecraft modding and client/server boundary checks', async () => {
+    const skills = createAgentSkillRegistry();
+    registerSkill(skills, 'minecraft-loader', 'minecraft', 'research');
+    registerSkill(skills, 'modding-runtime', 'modding', 'implement');
+    registerSkill(skills, 'mod-security', 'security', 'review');
+    registerSkill(skills, 'mod-performance', 'performance', 'verify');
+    registerSkill(skills, 'mod-tests', 'testing', 'verify');
+    registerSkill(skills, 'mod-architecture', 'architecture', 'plan');
+
+    const plan = await resolveFuryCapabilities({
+      objective: 'Développe un mod Minecraft Fabric avec networking, datagen et code client/serveur.',
+      skillRegistry: skills,
+    });
+
+    expect(plan.packIds).toContain('minecraft-mod');
+    expect(plan.packIds).toContain('software-engineering');
+    expect(plan.qualityGates).toEqual(expect.arrayContaining([
+      'minecraft-loader-and-version-lock',
+      'client-server-side-separation',
+      'network-packet-validation',
+      'mixin-scope-review',
+      'game-launch-smoke',
+    ]));
+  });
+
+  it('routes FiveM resource work through server-authoritative event and NUI security checks', async () => {
+    const skills = createAgentSkillRegistry();
+    registerSkill(skills, 'game-server-runtime', 'game-server', 'research');
+    registerSkill(skills, 'resource-modding', 'modding', 'implement');
+    registerSkill(skills, 'resource-security', 'security', 'review');
+    registerSkill(skills, 'resource-performance', 'performance', 'verify');
+    registerSkill(skills, 'resource-tests', 'testing', 'verify');
+    registerSkill(skills, 'resource-architecture', 'architecture', 'plan');
+
+    const plan = await resolveFuryCapabilities({
+      objective: 'Crée une resource FiveM avec fxmanifest.lua, événements client/serveur, base de données et NUI.',
+      skillRegistry: skills,
+      pluginRegistry: createFuryPluginBundleRegistry(BUILTIN_FURY_PLUGIN_BUNDLES),
+    });
+
+    expect(plan.packIds).toContain('fivem-resource');
+    expect(plan.packIds).toContain('software-engineering');
+    expect(plan.qualityGates).toEqual(expect.arrayContaining([
+      'fxmanifest-validity',
+      'network-event-validation',
+      'server-authoritative-state',
+      'database-query-safety',
+      'nui-message-validation',
+      'resource-start-stop-restart',
+    ]));
+    expect(plan.requiredSkillCategories).toEqual(expect.arrayContaining([
+      'game-server',
+      'modding',
+      'architecture',
+      'testing',
+      'security',
+      'performance',
+    ]));
   });
 
   it('routes business automation to operations plus automation without granting external writes', async () => {
