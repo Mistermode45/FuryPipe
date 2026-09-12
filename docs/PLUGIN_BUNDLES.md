@@ -151,3 +151,21 @@ A future Agent Plugins importer/exporter must preserve:
 - per-artifact licence state.
 
 No incomplete importer is shipped merely to claim compatibility.
+
+
+## Vercel
+
+Builtin bundle ID: `vercel`.
+
+The bundle points to the official hosted MCP endpoint `https://mcp.vercel.com` and uses OAuth.
+
+Default posture:
+
+- external opt-in;
+- network + `cloud-read`;
+- read-only preferred;
+- no embedded credentials;
+- no `cloud-write` permission;
+- MCP connectivity is a required health check.
+
+Deployment creation, environment mutation or other write operations must use a future separate scoped-write profile. The read-only builtin must not silently expand its permissions.
