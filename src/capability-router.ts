@@ -1,4 +1,4 @@
-import type { AgentFabricStageId } from './agent-fabric.js';
+import type { AgentFabricPermission, AgentFabricStageId } from './agent-fabric.js';
 import type {
   AgentMcpPlannedCall,
   AgentMcpServerDefinition,
@@ -75,7 +75,7 @@ export interface FuryUniversalCapabilitySkillInventoryItem {
   readonly category: SkillCategory;
   readonly priority: number;
   readonly stages: readonly AgentFabricStageId[];
-  readonly permission: 'read' | 'write';
+  readonly permission: AgentFabricPermission;
   readonly network: 'disabled' | 'required';
   readonly description?: string;
 }
