@@ -251,7 +251,8 @@ function validateRecord(value: unknown): LongTermMemoryRecord {
   const record = value as Partial<LongTermMemoryRecord>;
   if (record.format !== MEMORY_FORMAT) throw new Error('long-term memory record format is invalid');
   const id = memoryId(record.memoryId as string);
-  if (!Number.isSafeInteger(record.version) || (record.version as number) < 1 || (record.version as number) > 1_000_000_000) {
+  const version = record.version;
+  if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1 || version > 1_000_000_000) {
     throw new Error('long-term memory version is invalid');
   }
   const cls = memoryClass(record.memoryClass);
@@ -289,13 +290,13 @@ function validateRecord(value: unknown): LongTermMemoryRecord {
   validateTemporal(validFrom, validTo, expiresAt);
   if (updatedAt < createdAt) throw new Error('long-term memory updatedAt must not precede createdAt');
   if (record.supersedesVersion !== undefined
-    && (!Number.isSafeInteger(record.supersedesVersion) || record.supersedesVersion < 1 || record.supersedesVersion >= record.version)) {
+    && (!Number.isSafeInteger(record.supersedesVersion) || record.supersedesVersion < 1 || record.supersedesVersion >= version)) {
     throw new Error('long-term memory supersedesVersion is invalid');
   }
   return Object.freeze({
     format: MEMORY_FORMAT,
     memoryId: id,
-    version: record.version,
+    version,
     memoryClass: cls,
     scope: Object.freeze({ kind: record.scope.kind, idDigest: record.scope.idDigest }),
     state: record.state,
