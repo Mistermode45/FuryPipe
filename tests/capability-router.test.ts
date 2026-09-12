@@ -290,15 +290,34 @@ describe('FuryPipe capability router', () => {
       objective: 'Analyse un contrat commercial français et vérifie les clauses à risque.',
       skillRegistry: skills,
       pluginRegistry: createFuryPluginBundleRegistry(BUILTIN_FURY_PLUGIN_BUNDLES),
+      runtimeMcpServers: [{
+        id: 'legal-readonly',
+        allowedMethods: ['search-law'],
+        execute: async () => ({ sources: [] }),
+      }],
       universalAnalyzer: {
         async analyze(input) {
           expect(input.availableSkillCategories).toContain('research');
+          expect(input.availableSkills.map((item) => item.id)).toContain('legal-source-research');
+          expect(input.availableInstructionProfileIds).toContain('spec-driven-development');
+          expect(input.availableRuntimeMcpServers).toEqual([{
+            id: 'legal-readonly',
+            allowedMethods: ['search-law'],
+            network: 'disabled',
+          }]);
           return {
             domainId: 'legal-contract-review',
             requiredSkillCategories: ['research'],
             optionalSkillCategories: ['documentation'],
             preferredSkillIds: ['legal-source-research'],
             pluginBundleIds: ['exa', 'legal-mcp-not-installed'],
+            autoMcpCallsByStage: {
+              research: [{
+                serverId: 'legal-readonly',
+                method: 'search-law',
+                params: { jurisdiction: 'FR' },
+              }],
+            },
             qualityGates: [
               'primary-law-source-check',
               'jurisdiction-and-date-check',
@@ -323,6 +342,13 @@ describe('FuryPipe capability router', () => {
       'jurisdiction-and-date-check',
       'human-legal-review',
     ]));
+    expect(plan.autoInvokeMcpByStage).toEqual({
+      research: [{
+        serverId: 'legal-readonly',
+        method: 'search-law',
+        params: { jurisdiction: 'FR' },
+      }],
+    });
     const plugins = Object.fromEntries(plan.pluginActivations.map((plugin) => [plugin.id, plugin.state]));
     expect(plugins).toMatchObject({
       exa: 'approval_required',
@@ -426,6 +452,7 @@ describe('FuryPipe capability router', () => {
     expect(encoded).toContain('Capability gap:');
     expect(prepared.skills.map((skill) => skill.id)).toEqual(expect.arrayContaining(['frontend', 'testing', 'security']));
     expect(prepared.autoInvokeSkillsByStage).toEqual(plan.autoInvokeSkillsByStage);
+    expect(prepared.autoInvokeMcpByStage).toEqual(plan.autoInvokeMcpByStage);
   });
 
   it('rejects unknown explicit packs and impossible skill fan-out', async () => {
