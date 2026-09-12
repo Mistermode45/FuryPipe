@@ -54,6 +54,35 @@ export interface OpenClawDiscoveryOptions {
   readonly checkRuntime?: boolean;
 }
 
+export type OpenClawProbeVerdict = 'healthy' | 'not_ready' | 'unreachable' | 'invalid_contract';
+
+export interface OpenClawProbeEndpointResult {
+  readonly endpoint: '/healthz' | '/startupz' | '/readyz';
+  readonly verdict: OpenClawProbeVerdict;
+  readonly httpStatus?: number;
+  readonly durationMs: number;
+}
+
+export interface OpenClawGatewayProbe {
+  readonly format: 'furypipe-openclaw-gateway-probe/v1';
+  readonly origin: string;
+  readonly liveness: OpenClawProbeEndpointResult;
+  readonly startup: OpenClawProbeEndpointResult;
+  readonly readiness: OpenClawProbeEndpointResult;
+  readonly overall: 'healthy' | 'degraded' | 'unavailable';
+  readonly modelCallExecuted: false;
+}
+
+export interface OpenClawGatewayProbeOptions {
+  /** HTTP(S) origin of the Gateway. No path, query, fragment or embedded credentials. */
+  readonly baseUrl: string;
+  /** Remote hosts are denied by default; explicitly enable only for a trusted private/TLS ingress. */
+  readonly allowRemote?: boolean;
+  readonly timeoutMs?: number;
+  readonly fetchImpl?: typeof fetch;
+  readonly now?: () => number;
+}
+
 const SECRET_KEY = /(?:token|password|secret|apikey|api_key|privatekey|private_key|credential|accesskey|access_key)/i;
 const WORKSPACE_FILES = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md', 'USER.md', 'HEARTBEAT.md', 'MEMORY.md'] as const;
 
@@ -180,6 +209,158 @@ function runtimeCheck(): OpenClawDiscovery['runtime'] {
     const version = output.trim().split(/\r?\n/, 1)[0];
     return version ? { status: 'available', version } : { status: 'available' };
   } catch { return { status: 'unavailable' }; }
+}
+
+function normalizeProbeOrigin(baseUrl: string, allowRemote: boolean): URL {
+  if (typeof baseUrl !== 'string' || baseUrl.length < 1 || baseUrl.length > 2048 || baseUrl.includes('\0')) {
+    throw new Error('OpenClaw probe baseUrl must be a bounded non-empty URL');
+  }
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new Error('OpenClaw probe baseUrl is invalid');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('OpenClaw probe baseUrl must use http or https');
+  }
+  if (url.username || url.password) {
+    throw new Error('OpenClaw probe baseUrl must not embed credentials');
+  }
+  if ((url.pathname !== '/' && url.pathname !== '') || url.search || url.hash) {
+    throw new Error('OpenClaw probe baseUrl must be an origin without path, query or fragment');
+  }
+  const host = url.hostname.toLowerCase();
+  const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  if (!loopback && !allowRemote) {
+    throw new Error('remote OpenClaw probe requires allowRemote=true');
+  }
+  url.pathname = '/';
+  return url;
+}
+
+function boundedProbeTimeout(value: number | undefined): number {
+  const timeout = value ?? 5_000;
+  if (!Number.isSafeInteger(timeout) || timeout < 100 || timeout > 30_000) {
+    throw new RangeError('OpenClaw probe timeoutMs must be between 100 and 30000');
+  }
+  return timeout;
+}
+
+function validProbeClock(value: number): number {
+  if (!Number.isFinite(value) || value < 0) throw new RangeError('OpenClaw probe clock must be non-negative and finite');
+  return value;
+}
+
+function objectPayload(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function probeContractVerdict(
+  endpoint: OpenClawProbeEndpointResult['endpoint'],
+  payload: unknown,
+): 'healthy' | 'not_ready' | 'invalid_contract' {
+  const object = objectPayload(payload);
+  if (!object) return 'invalid_contract';
+
+  if (endpoint === '/healthz') {
+    if (typeof object.ok !== 'boolean' || typeof object.status !== 'string') return 'invalid_contract';
+    return object.ok === true && object.status === 'live' ? 'healthy' : 'not_ready';
+  }
+
+  if (endpoint === '/startupz') {
+    if (typeof object.ok !== 'boolean' || !['started', 'starting', 'draining'].includes(String(object.status))) {
+      return 'invalid_contract';
+    }
+    return object.ok === true && object.status === 'started' ? 'healthy' : 'not_ready';
+  }
+
+  if (typeof object.ready !== 'boolean') return 'invalid_contract';
+  return object.ready ? 'healthy' : 'not_ready';
+}
+
+async function probeOpenClawEndpoint(
+  origin: URL,
+  endpoint: OpenClawProbeEndpointResult['endpoint'],
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  now: () => number,
+): Promise<OpenClawProbeEndpointResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const start = validProbeClock(now());
+  try {
+    const target = new URL(endpoint, origin);
+    const response = await fetchImpl(target, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      redirect: 'error',
+      signal: controller.signal,
+    });
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      return {
+        endpoint,
+        verdict: 'invalid_contract',
+        httpStatus: response.status,
+        durationMs: Math.max(0, Math.round(validProbeClock(now()) - start)),
+      };
+    }
+    const verdict = probeContractVerdict(endpoint, payload);
+    return {
+      endpoint,
+      verdict,
+      httpStatus: response.status,
+      durationMs: Math.max(0, Math.round(validProbeClock(now()) - start)),
+    };
+  } catch {
+    return {
+      endpoint,
+      verdict: 'unreachable',
+      durationMs: Math.max(0, Math.round(validProbeClock(now()) - start)),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Probe only OpenClaw's documented HTTP health surfaces.
+ * No Gateway credential, session, agent turn, tool call or model call is created.
+ */
+export async function probeOpenClawGateway(options: OpenClawGatewayProbeOptions): Promise<OpenClawGatewayProbe> {
+  if (!options || typeof options !== 'object') throw new Error('OpenClaw probe options are required');
+  const origin = normalizeProbeOrigin(options.baseUrl, options.allowRemote === true);
+  const timeoutMs = boundedProbeTimeout(options.timeoutMs);
+  const fetchImpl = options.fetchImpl ?? fetch;
+  if (typeof fetchImpl !== 'function') throw new Error('OpenClaw probe fetch implementation is unavailable');
+  const now = options.now ?? (() => performance.now());
+
+  const [liveness, startup, readiness] = await Promise.all([
+    probeOpenClawEndpoint(origin, '/healthz', fetchImpl, timeoutMs, now),
+    probeOpenClawEndpoint(origin, '/startupz', fetchImpl, timeoutMs, now),
+    probeOpenClawEndpoint(origin, '/readyz', fetchImpl, timeoutMs, now),
+  ]);
+
+  const overall = liveness.verdict !== 'healthy'
+    ? 'unavailable'
+    : startup.verdict === 'healthy' && readiness.verdict === 'healthy'
+      ? 'healthy'
+      : 'degraded';
+
+  return Object.freeze({
+    format: 'furypipe-openclaw-gateway-probe/v1',
+    origin: origin.origin,
+    liveness: Object.freeze(liveness),
+    startup: Object.freeze(startup),
+    readiness: Object.freeze(readiness),
+    overall,
+    modelCallExecuted: false,
+  });
 }
 
 /** Read-only OpenClaw adapter. It returns metadata and never returns config values. */
