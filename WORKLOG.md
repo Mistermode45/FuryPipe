@@ -457,3 +457,13 @@
 - `executePolicyHybrid()` n'appelle le transformeur fourni par l'hôte qu'après une retrieval non vide ; sans preuve retrieval, le payload reste inchangé.
 - `PolicyFabricRequest.runtimeCapabilities` rend l'éligibilité retrieval/hybrid explicite et fail-visible.
 - Cette tranche ne simule pas le prompt-cache natif d'un provider et ne revendique aucun canary hébergé.
+
+
+## 2026-09-12 — M13 Knowledge metadata graph / retrieval
+
+- Ajout de `src/knowledge.ts` et de l'export package `furypipe/knowledge`.
+- Les leçons validées peuvent être enregistrées avec des termes explicites fournis par l'hôte ; les termes sont normalisés puis stockés uniquement en SHA-256 domain-separated.
+- La recherche renvoie lesson/task digests, memory class, reuse count et `contentHandle` opaque ; ni les termes d'index ni le contenu de leçon ne sont retournés.
+- Le graphe accepte uniquement des relations explicites `depends_on/supports/contradicts/related_to`; la preuve de relation est hashée et les dangling/self edges sont refusés.
+- Décision backend : metadata index adopté ; SQLite FTS différé tant que le contenu reste opaque ; embeddings/vector DB rejetés pour le baseline faute de provider/modèle validé.
+- M13 reste `PARTIAL` : pas de semantic RAG, pas de persistance durable du graphe, pas de validation hébergée et pas de transaction multi-instance.
