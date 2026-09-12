@@ -135,6 +135,12 @@ try {
     "const m = await import('furypipe/plugin-bundles'); if (typeof m.createFuryPluginBundleRegistry !== 'function' || !Array.isArray(m.BUILTIN_FURY_PLUGIN_BUNDLES)) process.exit(1);",
   ], installDir);
   assert(pluginBundlesExport.stderr === '', `Plugin bundles package export wrote stderr: ${pluginBundlesExport.stderr}`);
+  const capabilityRouterExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-router'); if (typeof m.resolveFuryCapabilities !== 'function' || !Array.isArray(m.FURY_CAPABILITY_PACK_IDS)) process.exit(1);",
+  ], installDir);
+  assert(capabilityRouterExport.stderr === '', `Capability Router package export wrote stderr: ${capabilityRouterExport.stderr}`);
   const externalReferencesExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
