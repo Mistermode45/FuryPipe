@@ -86,7 +86,7 @@ FuryPipe can route its Anthropic, OpenAI and Gemini-compatible proxy surfaces th
 
 The adapter is intentionally separate from Provider Runtime health/cost evidence:
 
-- `PXPIPE_PROVIDER=omniroute` enables the gateway mode;
+- `FURYPIPE_PROVIDER=omniroute` enables the gateway mode;
 - `OMNIROUTE_BASE_URL` selects the actual instance;
 - `OMNIROUTE_API_KEY` is optional and host-owned;
 - remote plaintext HTTP is rejected; loopback HTTP is allowed for local development;
