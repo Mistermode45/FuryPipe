@@ -4,14 +4,14 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { readExportTextFile, looksLikeBinary, MAX_FILE_BYTES } from '../src/export-collect.js';
 
-// readExportTextFile is the single gate now shared by every `pxpipe export`
+// readExportTextFile is the single gate now shared by every `furypipe export`
 // collection mode (directory walk, single-file target, and --git untracked).
 // Before this, the --git untracked path applied none of these checks — it
 // ignored --include/--exclude and read files of any size fully into memory.
 describe('readExportTextFile — shared export file gate', () => {
   let tmpDir: string;
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxpipe-collect-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'furypipe-collect-test-'));
   });
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
