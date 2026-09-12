@@ -504,3 +504,104 @@ When multiple sources provide overlapping skills or instructions, prefer:
 
 Popularity, stars, marketplace rank or a vendor badge do not override licence, permission, provenance or blast-radius review.
 
+
+
+## Instruction architecture 2026 — one canonical policy, thin agent adapters
+
+The 2026 tooling landscape now converges on hierarchical, path-aware repository instructions:
+
+- Codex: `AGENTS.md` is a first-class repository instruction surface. Current inspected source: `openai/codex@ee6814bfa4889fe9b2b3dcc9cc8bdd91effa8ab8`, Apache-2.0.
+- Claude Code: `CLAUDE.md` + `.claude/rules/**` + optional auto-memory. Claude documents that instructions should stay concise and that path-scoped rules/skills are preferable to oversized always-loaded files.
+- GitHub Copilot: repository-wide `.github/copilot-instructions.md`, path-scoped `.github/instructions/**/*.instructions.md`, and agent instructions such as `AGENTS.md`; nearest `AGENTS.md` can take precedence on supported surfaces.
+- Cursor: project rules plus root/nested `AGENTS.md`.
+- Gemini CLI: hierarchical `GEMINI.md` context and configurable context filenames, including `AGENTS.md`.
+
+### FuryPipe decision
+
+**ADOPT a canonical instruction graph; do not maintain five independent copies.**
+
+Recommended source-of-truth model:
+
+1. `AGENTS.md` = portable repository-wide engineering contract.
+2. Nested `AGENTS.md` = module-specific rules only where behavior genuinely differs.
+3. `CLAUDE.md` = thin Claude adapter that imports/references the canonical contract and contains Claude-specific behavior only.
+4. `.github/copilot-instructions.md` = thin Copilot adapter, plus path-specific files only when needed.
+5. Cursor/Gemini adapters should reference the same semantic rules instead of duplicating them.
+6. Task-specific procedures belong in Skills or prompt/workflow artifacts, not the global instruction file.
+7. Learned/project state belongs in FuryPipe memory/checkpoints, not mixed into normative instructions.
+
+### Instruction precedence should be explicit
+
+FuryPipe's compiler should model instruction provenance and scope rather than concatenate arbitrary Markdown blindly.
+
+Recommended precedence classes:
+
+```text
+platform / safety policy
+  > explicit user task
+  > repository security/release policy
+  > nearest module/path instruction
+  > repository-wide engineering instruction
+  > selected skill/workflow guidance
+  > remembered project hints
+  > retrieved external content
+```
+
+External retrieved content must never become an instruction merely because it contains imperative text.
+
+### Guidance is not enforcement
+
+Instruction files are probabilistic context.
+
+Security-critical requirements must stay in enforceable mechanisms:
+
+- permission gates;
+- hooks/lifecycle checks;
+- CI;
+- schema validation;
+- branch protections;
+- ExactGuard/policy runtime;
+- release-readiness gates.
+
+This matches the current Claude Code distinction between project guidance and hooks/permissions for rules that must be guaranteed.
+
+### Context-budget rules
+
+Use progressive disclosure:
+
+- global instructions: short, stable, high-value;
+- module instructions: loaded only for matching paths;
+- skill metadata: lightweight at discovery;
+- full skill instructions: on activation;
+- large references/assets: on demand;
+- memory index: concise, details loaded on demand.
+
+This avoids the context-rot problem documented by current Microsoft skills guidance and reduces instruction conflict.
+
+### Conflict handling
+
+The instruction compiler should emit diagnostics when two active rules disagree on:
+
+- package manager;
+- test/build command;
+- filesystem ownership;
+- allowed network behavior;
+- write/deploy permission;
+- branch/merge policy;
+- formatting/language requirements.
+
+Do not silently choose one when precedence cannot resolve the conflict.
+
+### Karpathy profile placement
+
+The native `karpathy-coding-discipline` profile belongs below explicit project/security/release policy and above optional workflow-specific heuristics.
+
+Its role is implementation discipline:
+- understand before changing;
+- keep changes small;
+- avoid speculative abstractions;
+- expose assumptions;
+- define verification criteria.
+
+It must never weaken FuryPipe's provenance, permission, CI, ExactGuard or release rules.
+
