@@ -109,6 +109,12 @@ describe('production MCP HTTP boundary', () => {
     const oversized = modernRequest('tools/list', {}, { body: 'x'.repeat(1025) });
     expect((await mcp.fetch(oversized)).status).toBe(413);
 
+    const missingVersion = modernRequest('tools/list', {});
+    missingVersion.headers.delete('mcp-protocol-version');
+    const missingVersionResponse = await mcp.fetch(missingVersion);
+    expect(missingVersionResponse.status).toBe(400);
+    expect((await json(missingVersionResponse)).error).toMatchObject({ code: -32020 });
+
     const mismatch = modernRequest('tools/list', {});
     mismatch.headers.set('mcp-method', 'tools/call');
     const mismatchBody = await json(await mcp.fetch(mismatch));
