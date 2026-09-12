@@ -4,6 +4,8 @@
 import { HTMX_JS, ALPINE_JS } from './vendor.js';
 import { CACHE_CREATE_RATE, CACHE_READ_RATE } from '../core/baseline.js';
 import type { ControlRoomSnapshot } from '../control-room/index.js';
+import { createI18n } from '../i18n/index.js';
+import { CORE_CATALOGS } from '../i18n/catalogs.js';
 import type {
   StatsPayload,
   RecentPayload,
@@ -15,6 +17,22 @@ import type {
 } from './types.js';
 
 // ---- helpers --------------------------------------------------------
+
+const DASHBOARD_I18N = createI18n({ catalogs: CORE_CATALOGS, defaultLocale: 'en' });
+const DASHBOARD_LOCALES = ['en', 'fr', 'en-XA', 'ar-XB'] as const;
+
+function resolveDashboardLocale(locale: string | undefined) {
+  try {
+    return DASHBOARD_I18N.resolve(locale ?? 'en');
+  } catch {
+    return DASHBOARD_I18N.resolve('en');
+  }
+}
+
+function dashboardT(locale: string | undefined, key: string, params?: Readonly<Record<string, string | number | boolean>>): string {
+  const resolved = resolveDashboardLocale(locale);
+  return DASHBOARD_I18N.translate(resolved.canonical, key, params ? { params } : undefined);
+}
 
 export function escapeHtml(s: string | null | undefined): string {
   if (s == null) return '';
@@ -797,25 +815,26 @@ export function renderSessionsFragment(p: SessionsPayload): string {
 
 // ---- Control Room V5 ------------------------------------------------------
 
-export function renderControlRoomFragment(snapshot: ControlRoomSnapshot | null): string {
+export function renderControlRoomFragment(snapshot: ControlRoomSnapshot | null, locale = 'en'): string {
+  const t = (key: string): string => dashboardT(locale, key);
   if (!snapshot) {
     return (
-      `<div class="status"><strong>Control Room V5 · NOT_AVAILABLE</strong> — no evidence provider is wired to this dashboard.</div>` +
+      `<div class="status"><strong>Control Room V5 · NOT_AVAILABLE</strong> — ${escapeHtml(t('dashboard.controlRoom.noEvidence'))}</div>` +
       `<table class="dtable"><tbody></tbody></table>`
     );
   }
 
   const labels: Readonly<Record<keyof ControlRoomSnapshot['sections'], string>> = {
-    receipts: 'Receipts / ExactGuard',
-    recovery: 'Recovery',
-    agent: 'Agent runtime',
-    learning: 'Learning / Knowledge',
-    mcp: 'MCP',
-    i18n: 'i18n',
-    webStudio: 'Web / Figma Studio',
-    security: 'Security / Supply Chain',
-    benchmarks: 'Benchmarks',
-    release: 'Release readiness',
+    receipts: t('dashboard.controlRoom.receipts'),
+    recovery: t('dashboard.controlRoom.recovery'),
+    agent: t('dashboard.controlRoom.agent'),
+    learning: t('dashboard.controlRoom.learning'),
+    mcp: t('dashboard.controlRoom.mcp'),
+    i18n: t('dashboard.controlRoom.i18n'),
+    webStudio: t('dashboard.controlRoom.webStudio'),
+    security: t('dashboard.controlRoom.security'),
+    benchmarks: t('dashboard.controlRoom.benchmarks'),
+    release: t('dashboard.controlRoom.releaseReadiness'),
   };
 
   const rows = (Object.entries(snapshot.sections) as Array<[
@@ -832,9 +851,9 @@ export function renderControlRoomFragment(snapshot: ControlRoomSnapshot | null):
 
   const release = snapshot.sections.release.evidence;
   const releaseSummary =
-    `<div class="status">Release readiness · <strong>${escapeHtml(release.technicalStatus)}</strong>` +
-    ` · required gates ${numFmt(release.verifiedRequiredGates)}/${numFmt(release.requiredGates)}` +
-    ` · blockers ${numFmt(release.blockers)} · release actions executed: no</div>`;
+    `<div class="status">${escapeHtml(t('dashboard.controlRoom.releaseReadiness'))} · <strong>${escapeHtml(release.technicalStatus)}</strong>` +
+    ` · ${escapeHtml(t('dashboard.controlRoom.requiredGates'))} ${numFmt(release.verifiedRequiredGates)}/${numFmt(release.requiredGates)}` +
+    ` · ${escapeHtml(t('dashboard.controlRoom.blockers'))} ${numFmt(release.blockers)} · ${escapeHtml(t('dashboard.controlRoom.releaseActions'))}</div>`;
 
   return (
     `<div class="status"><strong>Control Room V5 · ${escapeHtml(snapshot.overall)}</strong> · commit <code>${escapeHtml(snapshot.sourceCommit.slice(0, 12))}</code></div>` +
@@ -1271,8 +1290,8 @@ const THEME_JS = `
       document.documentElement.dataset.theme = t;
       var b = document.getElementById('theme-btn');
       if (b) {
-        b.textContent = t === 'dark' ? '☀ Light' : '☾ Dark';
-        b.setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+        b.textContent = t === 'dark' ? '☀ ' + b.dataset.lightLabel : '☾ ' + b.dataset.darkLabel;
+        b.setAttribute('aria-label', b.dataset.toggleLabel || '');
       }
     }
     window.ppTheme = function () {
@@ -1288,15 +1307,20 @@ const THEME_JS = `
  *  byte-identical across hosts, so a tab opened against a remote host through
  *  the tailnet front is indistinguishable from the local one - which is how a
  *  session gets read on the wrong box. Empty label = render as before. */
-export function renderPage(port: number, hostLabel = ''): string {
+export function renderPage(port: number, hostLabel = '', locale = 'en'): string {
   const host = escapeHtml(hostLabel.trim());
+  const localeResolution = resolveDashboardLocale(locale);
+  const activeLocale = localeResolution.canonical;
+  const languageOptions = DASHBOARD_LOCALES.map((candidate) =>
+    `<option value="${candidate}"${candidate === activeLocale ? ' selected' : ''}>${candidate}</option>`
+  ).join('');
   // hx-trigger="load, every Ns": paint on load then poll (2s live, 5s aggregates).
   return `<!doctype html>
-<html lang="en">
+<html lang="${escapeHtml(activeLocale)}" dir="${localeResolution.direction}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${host ? `${host} · pxpipe dashboard` : 'pxpipe — live dashboard'}</title>
+<title>${host ? `${host} · ${escapeHtml(dashboardT(activeLocale, 'dashboard.title'))}` : escapeHtml(dashboardT(activeLocale, 'dashboard.liveTitle'))}</title>
 <link rel="icon" href="${FAVICON}" />
 <style>${CSS}</style>
 <script>
@@ -1307,6 +1331,29 @@ export function renderPage(port: number, hostLabel = ''): string {
       var dark = s ? s === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     } catch (e) { document.documentElement.dataset.theme = 'light'; }
+  })();
+  window.ppLocale = ${JSON.stringify(activeLocale)};
+  (function () {
+    try {
+      var params = new URLSearchParams(location.search);
+      var requested = params.get('locale');
+      var saved = localStorage.getItem('furypipe-locale');
+      if (!requested && saved && saved !== window.ppLocale) {
+        params.set('locale', saved);
+        location.replace(location.pathname + '?' + params.toString() + location.hash);
+        return;
+      }
+      localStorage.setItem('furypipe-locale', window.ppLocale);
+    } catch (e) {}
+    window.ppSetLocale = function (next) {
+      try { localStorage.setItem('furypipe-locale', next); } catch (e) {}
+      var params = new URLSearchParams(location.search);
+      params.set('locale', next);
+      location.search = params.toString();
+    };
+    document.addEventListener('htmx:configRequest', function (event) {
+      if (event.detail && event.detail.parameters) event.detail.parameters.locale = window.ppLocale;
+    });
   })();
 </script>
 </head>
@@ -1320,11 +1367,17 @@ export function renderPage(port: number, hostLabel = ''): string {
         <div class="wordmark">pxpipe</div>
         ${host ? `<span class="hostchip" title="proxy host">${host}</span>` : ''}
       </div>
-      <div class="tagline">See exactly what got turned into images to shrink your Claude Code bill.</div>
+      <div class="tagline">${escapeHtml(dashboardT(activeLocale, 'dashboard.tagline'))}</div>
     </div>
   </div>
   <div class="controls">
-    <button type="button" id="theme-btn" class="theme-btn" onclick="ppTheme()" aria-label="Toggle dark mode" title="Toggle dark / light mode">☾ Dark</button>
+    <label class="hint">${escapeHtml(dashboardT(activeLocale, 'dashboard.language'))} <select class="mini-btn" onchange="ppSetLocale(this.value)">${languageOptions}</select></label>
+    <button type="button" id="theme-btn" class="theme-btn" onclick="ppTheme()"
+      data-dark-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeDark'))}"
+      data-light-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeLight'))}"
+      data-toggle-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeToggle'))}"
+      aria-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeToggle'))}"
+      title="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeToggle'))}">☾ ${escapeHtml(dashboardT(activeLocale, 'dashboard.themeDark'))}</button>
     <div id="frag-toggle" hx-get="/fragments/toggle" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
   </div>
 </header>

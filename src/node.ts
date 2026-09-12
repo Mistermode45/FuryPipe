@@ -517,7 +517,7 @@ async function dispatchDashboard(
   switch (route.kind) {
     case 'html':
       if (method !== 'GET') return undefined;
-      return dashboard.serveHtml(port);
+      return dashboard.serveHtml(port, url.searchParams.get('locale') ?? undefined);
     case 'stats':
       if (method !== 'GET') return undefined;
       return dashboard.serveStats();
