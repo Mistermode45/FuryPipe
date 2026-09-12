@@ -78,6 +78,8 @@ HorizonX is commercial. FuryPipe must not vendor or reproduce paid components un
 
 ### OmniRoute
 
+Official service surface: <https://www.omniroute.online/fr/>
+
 Pinned repository: `diegosouzapw/OmniRoute@152d95108c9c3d557562311ffed63240a511eb31`.
 
 Licence: MIT verified.
