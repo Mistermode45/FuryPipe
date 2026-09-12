@@ -85,7 +85,10 @@ import type {
   FullStatsPayload,
   CurrentSessionPayload,
 } from './dashboard/types.js';
+import { parseAcceptLanguage, resolveSupportedLocale } from './i18n/runtime.js';
+import { CORE_CATALOGS } from './i18n/catalogs.js';
 
+const DASHBOARD_AUTO_LOCALES = Object.freeze(Object.keys(CORE_CATALOGS));
 const RECENT_CAP = 50;
 
 /** How many rendered PNGs to keep in the in-memory image ring. Matches
@@ -1523,8 +1526,13 @@ export class DashboardState {
     );
   }
 
-  serveHtml(port: number, locale?: string): Response {
-    return htmlResponse(renderPage(port, dashboardHostLabel(), locale));
+  serveHtml(port: number, locale?: string, acceptLanguage?: string): Response {
+    const initialLocale = locale ?? resolveSupportedLocale(
+      parseAcceptLanguage(acceptLanguage),
+      DASHBOARD_AUTO_LOCALES,
+      'en',
+    );
+    return htmlResponse(renderPage(port, dashboardHostLabel(), initialLocale));
   }
 
   private async readControlRoomSnapshot(): Promise<ControlRoomSnapshot | null> {
