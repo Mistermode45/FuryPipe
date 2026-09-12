@@ -107,3 +107,32 @@ These observers deliberately do **not** infer stronger guarantees:
 - observing a Learning cycle does not prove durable storage or semantic retrieval.
 
 Those statuses remain `NOT_AVAILABLE` unless the host supplies separate verified evidence. Run IDs, cycle IDs, lesson IDs, content handles, objectives, task text and evidence text are not emitted in the Control Room snapshot.
+
+
+## Source-bound host evidence file
+
+The Node host can now combine live runtime observations with bounded evidence produced by CI or another trusted host process.
+
+Set:
+
+```text
+FURYPIPE_SOURCE_COMMIT=<exact 40-char commit SHA>
+FURYPIPE_CONTROL_ROOM_EVIDENCE=/absolute/path/to/control-room-evidence.json
+```
+
+The file format is `furypipe-control-room-host-evidence/v1`. Its `sourceCommit` must match the running `FURYPIPE_SOURCE_COMMIT` exactly.
+
+Accepted optional sections are Recovery, Agent, Learning, MCP, i18n, Web Studio, security/supply-chain, benchmarks and Release Readiness. The loader reconstructs only known bounded fields; unknown fields are discarded rather than passed through. This prevents an evidence file from becoming an accidental secret/prompt transport.
+
+Safety boundaries:
+
+- maximum file size: 256 KiB;
+- regular files only; symlinks are rejected;
+- JSON only;
+- exact source-commit binding;
+- release-readiness evidence must use the same source commit;
+- release actions must remain `false`;
+- counts/statuses are revalidated through the canonical Control Room snapshot validator;
+- invalid host evidence is ignored by Node while live receipt/Agent/Learning observation continues.
+
+This mechanism does not make local implementation presence equal VERIFIED. CI or the host must explicitly supply the evidence status for the exact source commit.
