@@ -1,5 +1,5 @@
 /**
- * The README's stated zero-config model scope must be the one the code applies.
+ * The README's stated FuryPipe zero-config model scope must be the one the code applies.
  *
  * These two drifted apart once already. Opus 5 was removed from the runtime
  * default after a measured recall regression, and the README kept listing it, so
@@ -23,19 +23,19 @@ const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
 
 describe('README model scope', () => {
   it('states exactly one zero-config default', () => {
-    const matches = readme.match(/default `PXPIPE_MODELS=([^`]+)`/g) ?? [];
+    const matches = readme.match(/default `FURYPIPE_MODELS=([^`]+)`/g) ?? [];
     expect(matches).toHaveLength(1);
   });
 
   it('states the same default the runtime applies', () => {
-    const match = readme.match(/default `PXPIPE_MODELS=([^`]+)`/);
+    const match = readme.match(/default `FURYPIPE_MODELS=([^`]+)`/);
     expect(match).not.toBeNull();
     const documented = (match?.[1] ?? '').split(',').map((m) => m.trim()).filter(Boolean);
     expect(documented).toEqual([...DEFAULT_MODEL_BASES]);
   });
 
   it('does not present an opt-in model as part of the default', () => {
-    const match = readme.match(/default `PXPIPE_MODELS=([^`]+)`/);
+    const match = readme.match(/default `FURYPIPE_MODELS=([^`]+)`/);
     const documented = (match?.[1] ?? '').split(',').map((m) => m.trim());
     // Opus 5 is a supported profile but an explicit opt-in, and the difference is
     // the whole point of the recall caveat published next to it.
