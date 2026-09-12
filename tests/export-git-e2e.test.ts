@@ -40,7 +40,7 @@ describe('pxpipe export --git (end-to-end)', () => {
     fs.writeFileSync(path.join(repo, 'bin.ts'), Buffer.from([0x41, 0x00, 0x42])); // binary
   }, PROCESS_HOOK_TIMEOUT_MS);
   afterEach(() => {
-    fs.rmSync(repo, { recursive: true, force: true });
+    fs.rmSync(repo, { recursive: true, force: true, maxRetries: 30, retryDelay: 100 });
     fs.rmSync(outDir, { recursive: true, force: true, maxRetries: 30, retryDelay: 100 });
   }, PROCESS_HOOK_TIMEOUT_MS);
 
