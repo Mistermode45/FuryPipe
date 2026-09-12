@@ -154,6 +154,18 @@ function modernEnvelope(value: Record<string, unknown>, request: Request): boole
 
 function validateModernRoutingHeaders(value: Record<string, unknown>, request: Request): Response | undefined {
   if (!modernEnvelope(value, request)) return undefined;
+  const params = requestBody(value.params);
+  const metadata = requestBody(params?._meta);
+  const bodyVersion = typeof metadata?.['io.modelcontextprotocol/protocolVersion'] === 'string'
+    ? metadata['io.modelcontextprotocol/protocolVersion']
+    : undefined;
+  const headerVersion = request.headers.get('mcp-protocol-version');
+  // 2026-07-28 requires the per-request body claim and HTTP header to agree.
+  // Leave a header-only modern request to the SDK so it can return the
+  // canonical missing-envelope -32602 response.
+  if (bodyVersion !== undefined && headerVersion !== bodyVersion) {
+    return jsonRpcHttpError(400, -32020, 'MCP-Protocol-Version must match the request envelope');
+  }
   const method = typeof value.method === 'string' ? value.method : undefined;
   const routeMethod = request.headers.get('mcp-method');
   if (!method || routeMethod !== method) {
