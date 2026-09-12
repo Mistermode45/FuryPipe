@@ -4,6 +4,7 @@ import { createI18n } from '../src/i18n/index.js';
 import {
   assertCatalogParity,
   createLocaleRuntime,
+  parseAcceptLanguage,
   resolveSupportedLocale,
 } from '../src/i18n/runtime.js';
 
@@ -18,6 +19,24 @@ describe('i18n runtime', () => {
 
   it('ignores invalid preference tags instead of corrupting runtime state', () => {
     expect(resolveSupportedLocale(['not_a_locale', 'fr-FR'], ['en', 'fr'], 'en')).toBe('fr');
+  });
+
+  it('parses bounded Accept-Language quality ordering and excludes q=0/wildcards', () => {
+    expect(parseAcceptLanguage('en-US;q=0.4, fr-CA;q=0.9, fr;q=0, *;q=1')).toEqual([
+      'fr-CA',
+      'en-US',
+    ]);
+    expect(resolveSupportedLocale(
+      parseAcceptLanguage('en-US;q=0.4, fr-CA;q=0.9'),
+      ['en', 'fr'],
+      'en',
+    )).toBe('fr');
+  });
+
+  it('isolates malformed Accept-Language items and rejects oversized headers', () => {
+    expect(parseAcceptLanguage('not_a_locale, fr-FR;q=0.8, en;q=bogus')).toEqual(['fr-FR']);
+    expect(parseAcceptLanguage('x'.repeat(4097))).toEqual([]);
+    expect(parseAcceptLanguage('fr;q=0, en;q=0')).toEqual([]);
   });
 
   it('requires the default locale to be supported', () => {
