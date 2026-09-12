@@ -39,3 +39,23 @@ The existence of a source in `SOURCE_LEDGER.md` or in this matrix is not authori
 | Claude Squad | `ce1ffb4392b01f38e2c4599c7c84d2a93973b138` | AGPL-3.0 verified | reference only |
 
 No entry above is automatically registered as executable. The runtime registry still requires a separate host-provided definition plus provenance, permission, network and health gates.
+
+
+## 2026 candidate sources
+
+These are research candidates, not installed skills.
+
+| Source | Pinned reference | License status | FuryPipe decision | Runtime status |
+|---|---|---|---|---|
+| Addy Osmani agent-skills | `be4e44a9fbc5e8df0beaefadbb28bd22ee61cc39` | MIT observed | ADAPT selected engineering skills | NOT_INSTALLED |
+| Ponytail | `356918eba965ee1eac64bd3a7f0dd02108350de5` | MIT observed | ADAPT minimalism/review skills | NOT_INSTALLED |
+| Agency Agents | `6d29a9b08785a0e49ffc9818bbdd381164c2df5f` | MIT observed | ADAPT a small specialist set | NOT_INSTALLED |
+| OneWave AI claude-skills | `82859c0ebaff803889be6ca2efa0834ba8787773` | MIT observed | ADAPT selected orchestration skills | NOT_INSTALLED |
+| Tons of Skills Marketplace | `a58233ed4b9a9fda3ff0d37a304a570f4cc98083` | marketplace-level MIT; plugin licenses vary | REFERENCE_ONLY discovery | NOT_EXECUTABLE |
+| OpenMontage | `08e2151fa02de28a5d6a312b3d575692bf147ad7` | AGPLv3 observed | REFERENCE_ONLY core | NOT_EXECUTABLE |
+| Strix Claude Code | `55d7a39768ce7c4ff2e1e140114246cfbcaf9ff2` | verify before any reuse | REFERENCE_ONLY / sandbox | NOT_EXECUTABLE |
+| Agent Skills standard | public standard | code Apache-2.0 / docs CC-BY-4.0 observed | ADOPT portable package format | FORMAT_ONLY |
+
+No row in this table bypasses `AgentSkillRegistry`. Before execution, a
+source-specific manifest must still declare exact provenance, license state,
+permissions, network posture, health policy and version.
