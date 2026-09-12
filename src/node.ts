@@ -316,15 +316,15 @@ Environment:
   FURYPIPE_GATEWAY_HEADERS extra gateway headers; OmniRoute rejects auth/cookie names
   OMNIROUTE_BASE_URL      OmniRoute root or /v1 URL; required for omniroute
   OMNIROUTE_API_KEY       optional OmniRoute Bearer API key; never logged
-  PXPIPE_MODELS           comma-separated model bases to image (Claude/Gemini/GPT/Grok);
+  FURYPIPE_MODELS         comma-separated model bases to image (Claude/Gemini/GPT/Grok);
                           default claude-fable-5,gemini (every Gemini; Sol/Opus/GPT-5.5/Grok opt-in);
                           off disables
-  PXPIPE_CONFIG           JSON config path (default ~/.config/pxpipe/config.json)
+  FURYPIPE_CONFIG         JSON config path (default ~/.config/furypipe/config.json)
                           supports {"models": [...]} or {"models": "off"}
-  PXPIPE_LOG              JSONL events path (default ~/.pxpipe/events.jsonl)
-  PXPIPE_DUMP_DIR         debug: write every rendered PNG here (what the model
+  FURYPIPE_LOG            JSONL events path (default ~/.furypipe/events.jsonl)
+  FURYPIPE_DUMP_DIR       debug: write every rendered PNG here (what the model
                           sees); off unless set. Compress arm only.
-  PXPIPE_RENDER_CACHE_BYTES  max bytes of rendered pages to keep in memory
+  FURYPIPE_RENDER_CACHE_BYTES max bytes of rendered pages to keep in memory
                           (default 64 MiB here; 8 MiB on Workers, where the
                           isolate has ~128 MiB for everything). Frozen history
                           chunks are byte-identical across turns, so
@@ -1233,7 +1233,7 @@ async function main(): Promise<void> {
   // Debug aid: when FURYPIPE_DUMP_DIR is set, persist every rendered PNG this
   // process emits, so you can eyeball exactly what the model received (OCR /
   // legibility audits, demo inspection). Best-effort — never affects requests.
-  // Note: the PXPIPE_DISABLE arm renders nothing, so only the compress proxy
+  // Note: the FURYPIPE_DISABLE arm renders nothing, so only the compress proxy
   // produces files here.
   let imageDumpDir: string | undefined = envCompat('FURYPIPE_DUMP_DIR', 'PXPIPE_DUMP_DIR')?.trim() || undefined;
   let imageDumpSeq = 0;
@@ -1351,7 +1351,7 @@ async function main(): Promise<void> {
       // info.firstImagePng, so capturing has to happen on the raw event.
       dashboard.update(e);
       controlRoomRuntime?.observeProxyEvent(e);
-      // Debug: persist this request's rendered PNGs (see PXPIPE_DUMP_DIR above).
+      // Debug: persist this request's rendered PNGs (see FURYPIPE_DUMP_DIR above).
       // Filenames sort by request order: <stamp>_reqNNN_<model>_pNN.png.
       if (imageDumpDir && e.info?.imagePngs && e.info.imagePngs.length > 0) {
         const seq = ++imageDumpSeq;
