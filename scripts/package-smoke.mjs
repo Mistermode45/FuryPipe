@@ -225,6 +225,12 @@ try {
     "const m = await import('furypipe/continuous-memory-turn'); if (typeof m.runContinuousMemoryTurn !== 'function') process.exit(1);",
   ], installDir);
   assert(continuousMemoryTurnExport.stderr === '', `Continuous Memory turn package export wrote stderr: ${continuousMemoryTurnExport.stderr}`);
+  const taskOrchestratorExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/task-orchestrator'); if (typeof m.prepareFuryTask !== 'function') process.exit(1);",
+  ], installDir);
+  assert(taskOrchestratorExport.stderr === '', `Task Orchestrator package export wrote stderr: ${taskOrchestratorExport.stderr}`);
   await runMcp(process.execPath, [mcp], {
     jsonrpc: '2.0',
     id: 1,
