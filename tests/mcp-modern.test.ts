@@ -115,6 +115,58 @@ describe('modern MCP SDK adapter', () => {
     await handler.close();
   });
 
+  it('acknowledges a valid modern notification with HTTP 202 and no body', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-modern-notification-'));
+    roots.push(root);
+    const handler = createModernMcpHandler(createRecoveryStore(root));
+    const response = await handler.fetch(new Request('https://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        'mcp-protocol-version': '2026-07-28',
+        'mcp-method': 'notifications/progress',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'notifications/progress',
+        params: {
+          progressToken: 'furypipe-modern-notification',
+          progress: 1,
+          _meta: modernMeta,
+        },
+      }),
+    }));
+    expect(response.status).toBe(202);
+    expect(await response.text()).toBe('');
+    await handler.close();
+  });
+
+  it('rejects a protocol-version header/body mismatch with HeaderMismatch', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-modern-header-mismatch-'));
+    roots.push(root);
+    const handler = createModernMcpHandler(createRecoveryStore(root));
+    const response = await handler.fetch(new Request('https://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        'mcp-protocol-version': '2025-11-25',
+        'mcp-method': 'tools/list',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 10,
+        method: 'tools/list',
+        params: { _meta: modernMeta },
+      }),
+    }));
+    const body = JSON.parse(await response.text()) as { error?: { code: number } };
+    expect(response.status).toBe(400);
+    expect(body.error?.code).toBe(-32020);
+    await handler.close();
+  });
+
   it('rejects a modern request without its required envelope', async () => {
     const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-modern-invalid-'));
     roots.push(root);
