@@ -61,7 +61,7 @@ interface RuntimeConfig {
   omniRouteApiKey?: string;
   eventsFile: string;
   /** Persist 4xx request and upstream error bodies for debugging. Off unless
-   *  PXPIPE_DEBUG_CAPTURE_4XX=1. */
+   *  FURYPIPE_DEBUG_CAPTURE_4XX=1. */
   captureErrorReqBody: boolean;
   /** Ceiling on a buffered inbound request body. Unset leaves the core default
    *  (16 MiB). Raise it only if a real client needs more; the default binding is
@@ -146,7 +146,7 @@ function applyConfigFileDefaults(): void {
  *  NOTE: on the next start an explicit FURYPIPE_MODELS env still wins over the
  *  persisted value (same precedence as every other config-file default). */
 function persistModelBasesToConfig(bases: readonly string[]): void {
-  const file = process.env.PXPIPE_CONFIG ?? DEFAULT_CONFIG_FILE;
+  const file = envCompat('FURYPIPE_CONFIG', 'PXPIPE_CONFIG') ?? DEFAULT_CONFIG_FILE;
   let cfg: Record<string, unknown> = {};
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
@@ -184,7 +184,7 @@ function persistModelBasesToConfig(bases: readonly string[]): void {
 
 function parseCli(argv: string[]): RuntimeConfig {
   // Only flags accepted are --help and --version. Anything else is an
-  // error — there is exactly ONE way to run pxpipe and the dashboard
+  // error — there is exactly ONE way to run FuryPipe and the dashboard
   // exposes every metric the operator might want to inspect.
   for (const a of argv) {
     if (a === '-h' || a === '--help') {
@@ -197,7 +197,7 @@ function parseCli(argv: string[]): RuntimeConfig {
     }
     if (a.startsWith('-')) {
       console.error(`[furypipe] unknown option: ${a}`);
-      console.error(`[furypipe] this build accepts no flags; run \`pxpipe --help\` for env vars`);
+      console.error(`[furypipe] this build accepts no flags; run \`furypipe --help\` for env vars`);
       process.exit(2);
     }
   }
@@ -346,7 +346,7 @@ Use with OpenAI-compatible GPT clients:
 // `define`. Under a non-bundled dev runner (tsx) the identifier is not defined;
 // `typeof` returns "undefined" instead of throwing (ECMA-262 §13.5.3), so the
 // guard is safe. `npm_package_version` is only a dev fallback: npm sets it just
-// inside its own run-script env, so for `npx pxpipe-proxy` or a global bin it is
+// inside its own run-script env, so for `npx furypipe` or a global bin it is
 // undefined (or reflects the *consumer's* package), never this tool's version.
 declare const __PXPIPE_VERSION__: string | undefined;
 
@@ -624,7 +624,7 @@ async function dispatchDashboard(
         return dashboard.serveFragment('toggle', url, port);
       }
       // /fragments/models POSTs one chip flip {model, on}, or a whole-scope
-      // rewrite {list: "csv"} from the PXPIPE_MODELS textbox. Server mutates
+      // rewrite {list: "csv"} from the FURYPIPE_MODELS textbox. Server mutates
       // the runtime compress scope and returns the re-rendered rows.
       if (route.name === 'models' && method === 'POST') {
         let model = '';
@@ -1144,7 +1144,7 @@ async function main(): Promise<void> {
   }
   if (argv[0] === 'stats') {
     // Offline log analysis — reads the events JSONL without a running proxy.
-    // The live dashboard covers the same data while pxpipe is up.
+    // The live dashboard covers the same data while FuryPipe is running.
     const defaultFile = envCompat('FURYPIPE_LOG', 'PXPIPE_LOG') ?? DEFAULT_EVENTS_FILE;
     const { code, out, err } = await runStats(argv.slice(1), defaultFile);
     if (out) process.stdout.write(out + '\n');
@@ -1230,19 +1230,19 @@ async function main(): Promise<void> {
   if (authTokenFile) {
     console.log('[furypipe] ANTHROPIC_OAUTH_TOKEN_FILE set — bearer resolved per request');
   }
-  // Debug aid: when PXPIPE_DUMP_DIR is set, persist every rendered PNG this
+  // Debug aid: when FURYPIPE_DUMP_DIR is set, persist every rendered PNG this
   // process emits, so you can eyeball exactly what the model received (OCR /
   // legibility audits, demo inspection). Best-effort — never affects requests.
   // Note: the PXPIPE_DISABLE arm renders nothing, so only the compress proxy
   // produces files here.
-  let imageDumpDir: string | undefined = process.env.PXPIPE_DUMP_DIR?.trim() || undefined;
+  let imageDumpDir: string | undefined = envCompat('FURYPIPE_DUMP_DIR', 'PXPIPE_DUMP_DIR')?.trim() || undefined;
   let imageDumpSeq = 0;
   if (imageDumpDir) {
     try {
       ensurePrivateDirectory(imageDumpDir);
-      console.log('[furypipe] PXPIPE_DUMP_DIR set — rendered PNG dumping enabled');
+      console.log('[furypipe] FURYPIPE_DUMP_DIR set — rendered PNG dumping enabled');
     } catch (err) {
-      console.warn('[furypipe] PXPIPE_DUMP_DIR unusable — image dumping disabled');
+      console.warn('[furypipe] FURYPIPE_DUMP_DIR unusable — image dumping disabled');
       imageDumpDir = undefined;
     }
   }
@@ -1251,7 +1251,7 @@ async function main(): Promise<void> {
   // reminders, tool_results, and history compression all run
   // unconditionally; the per-block break-even gate decides per-call
   // whether to actually image each piece. The function-form `transform`
-  // below is ONLY a kill switch (PXPIPE_DISABLE / dashboard toggle →
+  // below is ONLY a kill switch (FURYPIPE_DISABLE / dashboard toggle →
   // compress:false); on the active path it returns {}, so the gate always
   // runs on static DEFAULTS — charsPerToken=4, priorWarm*=0 — which leaves
   // the warm-baseline and anti-flapping burn terms inert. That is
@@ -1333,9 +1333,9 @@ async function main(): Promise<void> {
     //      when upstream is unhealthy without restarting.
     //   2. Otherwise use DEFAULTS in transform.ts for break-even gating.
     transform: () => {
-      // A/B harness: PXPIPE_DISABLE=1 forces passthrough (compress=false) for the
+      // A/B harness: FURYPIPE_DISABLE=1 forces passthrough (compress=false) for the
       // whole process, so the "normal" arm can be scripted on its own port while
-      // still logging real usage + count_tokens baselines to its own PXPIPE_LOG.
+      // still logging real usage + count_tokens baselines to its own FURYPIPE_LOG.
       // (The dashboard kill switch does the same thing at runtime.)
       if (forcePassthrough || !dashboard.getCompressionEnabled()) {
         return controlRoomRuntime === undefined
@@ -1407,20 +1407,20 @@ async function main(): Promise<void> {
         `[${new Date().toISOString()}] ${e.method} ${e.path} → ${e.status} (${timing}) ${tag}${usageTag}`,
       );
 
-      // Upstream error bodies are present only under PXPIPE_DEBUG_CAPTURE_4XX;
+      // Upstream error bodies are present only under FURYPIPE_DEBUG_CAPTURE_4XX;
       // custom gateways may echo prompt fragments or credentials in them.
       if (e.errorBody) {
         const trimmed = e.errorBody.length > 400
           ? e.errorBody.slice(0, 400) + '…'
           : e.errorBody;
-        console.warn(`[pxpipe ${e.status}] upstream body: ${trimmed}`);
+        console.warn(`[furypipe ${e.status}] upstream body: ${trimmed}`);
       }
 
       // Canary: surface unknown tag-shaped blocks so a Claude Code release
       // that adds a new dynamic tag is caught within hours.
       if (e.info?.unknownStaticTags && e.info.unknownStaticTags.length > 0) {
         console.warn(
-          `[pxpipe warn] unknown tag(s) in static slab: ${e.info.unknownStaticTags.join(', ')}  ` +
+          `[furypipe warn] unknown tag(s) in static slab: ${e.info.unknownStaticTags.join(', ')}  ` +
             `— may need to add to DYNAMIC_BLOCK_TAGS (per-turn) or KNOWN_STATIC_TAGS (static) in src/core/transform.ts`,
         );
       }
@@ -1442,7 +1442,7 @@ async function main(): Promise<void> {
         // it (still too big to inline). We never lose the sha8 / error_body.
       }
 
-      // Persistent JSONL event for offline analysis (pxpipe stats etc.).
+      // Persistent JSONL event for offline analysis (furypipe stats etc.).
       tracker.emit(toTrackEvent(e));
     },
   };
@@ -1498,7 +1498,7 @@ async function main(): Promise<void> {
     console.log('[furypipe] event tracking enabled');
     if (opts.captureErrorReqBody) {
       console.warn(
-        '[furypipe] PXPIPE_DEBUG_CAPTURE_4XX=1 — persisting full 4xx request and upstream error bodies; debugging only.',
+        '[furypipe] FURYPIPE_DEBUG_CAPTURE_4XX=1 — persisting full 4xx request and upstream error bodies; debugging only.',
       );
     }
   };
