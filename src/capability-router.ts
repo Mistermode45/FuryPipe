@@ -24,6 +24,11 @@ import type {
   FuryPromptSectionValue,
   FuryPromptSections,
 } from './fury-prompt.js';
+import {
+  resolveInstructionPlan,
+  type FuryInstructionFacetId,
+  type FuryInstructionPlan,
+} from './instruction-fabric.js';
 
 export const FURY_CAPABILITY_PACK_IDS = Object.freeze([
   'software-engineering',
@@ -181,13 +186,21 @@ export interface FuryCapabilityResolveInput {
   readonly maxSkillsPerCategoryPerStage?: number;
 }
 
+export interface FuryCapabilityRunOptions {
+  readonly explicitInstructionFacetIds?: readonly FuryInstructionFacetId[];
+  readonly maxInstructionFacets?: number;
+  readonly maxInstructionBytes?: number;
+}
+
 export interface PreparedCapabilityRun {
   readonly furyPrompt: FuryPromptCompileInput;
+  readonly instructionPlan: FuryInstructionPlan;
   readonly skills: readonly AgentSkillDefinition[];
   readonly autoInvokeSkillsByStage: Readonly<Partial<Record<AgentFabricStageId, readonly string[]>>>;
   readonly autoInvokeMcpByStage: Readonly<Partial<Record<AgentFabricStageId, readonly AgentMcpPlannedCall[]>>>;
   readonly pluginActivations: readonly CapabilityPluginActivation[];
   readonly qualityGates: readonly string[];
+  readonly recommendedSecurityCritical: boolean;
 }
 
 const STAGES = ['research', 'plan', 'implement', 'review', 'verify'] as const satisfies readonly AgentFabricStageId[];
@@ -1249,13 +1262,36 @@ export function applyCapabilityPlanToPrompt(
 export function prepareCapabilityRun(
   furyPrompt: FuryPromptCompileInput,
   plan: FuryCapabilityPlan,
+  options: FuryCapabilityRunOptions = {},
 ): PreparedCapabilityRun {
+  const capabilityPrompt = applyCapabilityPlanToPrompt(furyPrompt, plan);
+  const instructionPlan = resolveInstructionPlan({
+    objective: plan.objective,
+    prompt: capabilityPrompt,
+    capabilityPackIds: plan.packIds,
+    ...(options.explicitInstructionFacetIds === undefined
+      ? {}
+      : { explicitFacetIds: options.explicitInstructionFacetIds }),
+    ...(options.maxInstructionFacets === undefined
+      ? {}
+      : { maxFacets: options.maxInstructionFacets }),
+    ...(options.maxInstructionBytes === undefined
+      ? {}
+      : { maxAddedBytes: options.maxInstructionBytes }),
+  });
+  const qualityGates = uniqueOrdered([
+    ...plan.qualityGates,
+    ...instructionPlan.qualityGates,
+  ]);
+
   return Object.freeze({
-    furyPrompt: applyCapabilityPlanToPrompt(furyPrompt, plan),
+    furyPrompt: instructionPlan.input,
+    instructionPlan,
     skills: plan.skills,
     autoInvokeSkillsByStage: plan.autoInvokeSkillsByStage,
     autoInvokeMcpByStage: plan.autoInvokeMcpByStage,
     pluginActivations: plan.pluginActivations,
-    qualityGates: plan.qualityGates,
+    qualityGates,
+    recommendedSecurityCritical: instructionPlan.recommendedSecurityCritical,
   });
 }
