@@ -56,6 +56,8 @@ export interface FuryUniversalCapabilityAnalysis {
   readonly domainId: string;
   readonly requiredSkillCategories: readonly SkillCategory[];
   readonly optionalSkillCategories?: readonly SkillCategory[];
+  /** Explicit specialized skills selected from the registered inventory. */
+  readonly preferredSkillIds?: readonly string[];
   readonly instructionProfiles?: readonly FuryInstructionProfileId[];
   readonly pluginBundleIds?: readonly string[];
   readonly qualityGates?: readonly string[];
@@ -711,7 +713,11 @@ function mergePromptAdditions(
   )) as Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>;
 }
 
-function chosenPacks(objective: string, explicit: readonly FuryCapabilityPackId[] | undefined): {
+function chosenPacks(
+  objective: string,
+  explicit: readonly FuryCapabilityPackId[] | undefined,
+  allowDynamicOnly = false,
+): {
   readonly packs: readonly FuryCapabilityPack[];
   readonly scores: Readonly<Record<string, number>>;
 } {
@@ -738,10 +744,12 @@ function chosenPacks(objective: string, explicit: readonly FuryCapabilityPackId[
     .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
 
   if (scored.length === 0) {
-    return Object.freeze({
-      packs: Object.freeze([FURY_CAPABILITY_PACKS['software-engineering']]),
-      scores: Object.freeze({ 'software-engineering': 0 }),
-    });
+    return allowDynamicOnly
+      ? Object.freeze({ packs: Object.freeze([]), scores: Object.freeze({}) })
+      : Object.freeze({
+        packs: Object.freeze([FURY_CAPABILITY_PACKS['software-engineering']]),
+        scores: Object.freeze({ 'software-engineering': 0 }),
+      });
   }
 
   const top = scored[0]!.score;
@@ -864,6 +872,19 @@ function validateDynamicAnalysis(
   const required = validateCategories(analysis.requiredSkillCategories, 'universal requiredSkillCategories');
   const optional = validateCategories(analysis.optionalSkillCategories, 'universal optionalSkillCategories')
     .filter((category) => !required.includes(category));
+  const availableSkillIds = new Set(input.skillRegistry.inspect().map((item) => item.id));
+  const preferredSkillIds = analysis.preferredSkillIds ?? [];
+  if (!Array.isArray(preferredSkillIds)
+    || preferredSkillIds.length > 64
+    || new Set(preferredSkillIds).size !== preferredSkillIds.length
+    || preferredSkillIds.some((id) => typeof id !== 'string' || id.length < 1 || id.length > 128 || id.includes('\0'))) {
+    throw new Error('universal preferredSkillIds must be a unique bounded list');
+  }
+  for (const id of preferredSkillIds) {
+    if (!availableSkillIds.has(id)) {
+      throw new Error('universal analyzer selected an unregistered skill: ' + id);
+    }
+  }
   const knownPlugins = new Set(input.pluginRegistry?.list().map((bundle) => bundle.id) ?? []);
   const pluginIds = analysis.pluginBundleIds ?? [];
   if (!Array.isArray(pluginIds) || pluginIds.length > 32 || new Set(pluginIds).size !== pluginIds.length) {
@@ -904,6 +925,7 @@ function validateDynamicAnalysis(
     domainId: analysis.domainId,
     requiredSkillCategories: required,
     optionalSkillCategories: Object.freeze(optional),
+    preferredSkillIds: Object.freeze([...preferredSkillIds]),
     instructionProfiles: Object.freeze([...profiles]),
     pluginBundleIds: Object.freeze([...pluginIds]),
     qualityGates: Object.freeze([...quality]),
@@ -925,7 +947,7 @@ export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput)
     throw new Error('capability resolution requires a skill registry');
   }
   const objective = normalizeObjective(input.objective);
-  const selected = chosenPacks(objective, input.explicitPackIds);
+  const selected = chosenPacks(objective, input.explicitPackIds, input.universalAnalyzer !== undefined);
   const dynamicAnalysis = input.universalAnalyzer === undefined
     ? undefined
     : validateDynamicAnalysis(await input.universalAnalyzer.analyze({
@@ -949,6 +971,7 @@ export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput)
   }
 
   const selectedDefinitions = new Map<string, AgentSkillDefinition>();
+  const preferredSkillIds = new Set(dynamicAnalysis?.preferredSkillIds ?? []);
   const autoByStage: Partial<Record<AgentFabricStageId, readonly string[]>> = {};
   const blocked = new Map<string, { id: string; category: SkillCategory; reason: SkillResolution['reason'] }>();
   const coveredRequired = new Set<SkillCategory>();
@@ -959,8 +982,25 @@ export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput)
     const stageIds: string[] = [];
 
     for (const resolution of resolutions) {
+      if (!preferredSkillIds.has(resolution.metadata.id)) continue;
+      if (!resolution.eligible || !resolution.definition) {
+        if (!blocked.has(resolution.metadata.id)) {
+          blocked.set(resolution.metadata.id, Object.freeze({
+            id: resolution.metadata.id,
+            category: resolution.metadata.category,
+            reason: resolution.reason,
+          }));
+        }
+        continue;
+      }
+      stageIds.push(resolution.definition.id);
+      selectedDefinitions.set(resolution.definition.id, resolution.definition);
+      if (required.includes(resolution.metadata.category)) coveredRequired.add(resolution.metadata.category);
+    }
+
+    for (const resolution of resolutions) {
       const category = resolution.metadata.category;
-      if (!wanted.has(category)) continue;
+      if (!wanted.has(category) || preferredSkillIds.has(resolution.metadata.id)) continue;
       if (!resolution.eligible || !resolution.definition) {
         if (!blocked.has(resolution.metadata.id)) {
           blocked.set(resolution.metadata.id, Object.freeze({
@@ -979,6 +1019,7 @@ export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput)
       if (required.includes(category)) coveredRequired.add(category);
     }
 
+    if (stageIds.length > 32) throw new Error('universal analyzer selected more than 32 skills for one stage');
     if (stageIds.length > 0) autoByStage[stage] = Object.freeze(stageIds);
   }
 
