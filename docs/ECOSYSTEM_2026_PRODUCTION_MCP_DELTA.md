@@ -739,3 +739,48 @@ Any future adapter requires:
 - no secret/plaintext logging;
 - documented consistency and restart behavior.
 
+
+
+## OWASP agent/skill security sources
+
+### OWASP Secure Agent Playbook
+
+- Source: `OWASP/secure-agent-playbook`
+- Inspected commit: `79fea6b9115b55687818f8c4073844ee9ba907a6`
+- Observed release state: 0.2.7
+- Licence: CC-BY-4.0 verified
+- Decision: **ADAPT SECURITY PROCEDURES / REFERENCE_ONLY CONTENT**
+- Runtime: **NOT_INSTALLED**
+
+High-value procedures for FuryPipe:
+- code-security review;
+- dependency/SCA review;
+- secret scanning;
+- API/web security review;
+- IaC security review;
+- MCP server review;
+- prompt-injection testing;
+- agent-security assessment;
+- multi-agent threat modeling.
+
+FuryPipe should implement these as evidence-producing native review skills where practical. Do not copy the whole playbook into executable FuryPipe runtime.
+
+### OWASP Agentic Skills Top 10
+
+- Source: `OWASP/www-project-agentic-skills-top-10`
+- Inspected commit: `d6f7d7d0de314f52a83a85d1828e06ab096e595c` (2026-08-12)
+- Licence: CC-BY-SA-4.0 verified
+- Project maturity: **pre-1.0 / work in progress in the current 2026 roadmap**
+- Decision: **REFERENCE_ONLY SECURITY MODEL**
+- Runtime: **NOT_EXECUTABLE**
+
+Use it as a threat-model input for:
+- malicious skills;
+- unsafe lifecycle scripts/hooks;
+- excessive privileges;
+- provenance/signature gaps;
+- cross-platform semantic drift;
+- supply-chain replacement/rug-pull risk.
+
+Do not claim FuryPipe conforms to a final Agentic Skills Top 10 until OWASP publishes the final normative release and FuryPipe has an explicit evidence matrix.
+
