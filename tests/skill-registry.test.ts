@@ -23,7 +23,7 @@ const localSkill = (id: string, priority = 10) => ({
 });
 
 describe('Agent skill registry', () => {
-  it('defines the twelve bounded FuryPipe skill categories', () => {
+  it('defines the bounded FuryPipe skill categories across engineering, growth, data and business', () => {
     expect(SKILL_CATEGORIES).toEqual([
       'repository',
       'debugging',
@@ -33,12 +33,26 @@ describe('Agent skill registry', () => {
       'documentation',
       'frontend',
       'design',
+      'content',
+      'marketing',
       'seo',
+      'accessibility',
+      'performance',
+      'analytics',
+      'data',
+      'automation',
+      'business',
+      'sales',
+      'operations',
+      'finance',
+      'minecraft',
+      'modding',
+      'game-server',
       'research',
       'context',
       'learning',
     ]);
-    expect(new Set(SKILL_CATEGORIES).size).toBe(12);
+    expect(new Set(SKILL_CATEGORIES).size).toBe(26);
   });
 
   it('resolves executable local skills by priority with health evidence', async () => {
