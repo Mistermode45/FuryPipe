@@ -30,6 +30,10 @@ export interface AgentSkillExecution {
   readonly consumedTokens: number;
 }
 
+export interface AgentSkillBatchItem extends AgentSkillExecution {
+  readonly id: string;
+}
+
 export interface AgentSkillDefinition {
   readonly id: string;
   readonly version: string;
