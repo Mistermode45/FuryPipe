@@ -148,7 +148,7 @@ export function isPxpipeSupportedGptModel(model: string | null | undefined): boo
   return isFuryPipeSupportedGptModel(model);
 }
 
-/** Canonical set of Anthropic Messages routes pxpipe transforms. Shared with
+/** Canonical set of Anthropic Messages routes FuryPipe transforms. Shared with
  *  createProxy (src/core/proxy.ts) so the public applicability helper and the
  *  proxy router can never disagree on which paths are eligible — they did: the
  *  proxy accepts /anthropic/messages, but the helper's old `endsWith` check
