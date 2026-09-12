@@ -357,3 +357,66 @@ These are separate candidates and should remain separate in FuryPipe:
 
 Do not mark one as superseding the other without a Web Studio use-case comparison. Both require pinned versions and no implicit browser download/install in FuryPipe.
 
+
+
+## MCP 2026-07-28 protocol drift — compatibility review required
+
+The current hardening source ledger still cites MCP `2025-11-25` as the normative authorization/basic-protocol reference.
+
+The official MCP documentation now exposes a `2026-07-28` specification generation.
+
+This is a **review gap**, not evidence of incompatibility and not evidence of compliance.
+
+Security-sensitive deltas that must be checked against FuryPipe M8 include:
+
+- OAuth 2.1-oriented authorization behavior for HTTP transports;
+- mandatory PKCE checks where authorization is used;
+- Resource Indicators / token audience binding;
+- resource-server validation of token audience;
+- explicit prohibition of token passthrough;
+- secure token storage and short-lived credentials;
+- exact redirect URI validation;
+- HTTPS requirements outside localhost;
+- mix-up/confused-deputy protections;
+- current Streamable HTTP interoperability.
+
+Recommended status until reviewed: `PARTIAL / SPEC_REVIEW_REQUIRED`.
+
+Do not rewrite working M8 code merely because the date changed. First create a conformance matrix from the exact 2026-07-28 requirements to the existing implementation and tests, then patch only demonstrated gaps.
+
+## OWASP MCP security delta
+
+The OWASP MCP Top 10 is currently a beta/living project rather than a normative FuryPipe protocol source, but it is useful as an adversarial review checklist.
+
+Relevant threat classes for FuryPipe:
+
+- token mismanagement / secret exposure;
+- privilege escalation through scope creep;
+- tool poisoning and rug pulls;
+- supply-chain attacks and dependency tampering;
+- command injection;
+- prompt injection through contextual payloads;
+- insufficient authentication/authorization;
+- memory/context trust-boundary failures.
+
+Recommended decision: **ADAPT SECURITY CHECKLIST**, never treat OWASP beta status as proof that FuryPipe is secure.
+
+### Native hardening follow-ups suggested by the 2026 evidence
+
+- `mcp-tool-schema-diff`: persist the approved tool-name/schema digest and fail closed when a remote server changes it unexpectedly.
+- `mcp-output-trust-boundary`: label external MCP content as untrusted data before model ingestion.
+- `mcp-credential-audience-check`: ensure credentials are bound to the intended resource and cannot be forwarded to another upstream.
+- `skill-install-static-review`: inspect scripts/hooks/network/filesystem/secret access before an executable skill can become eligible.
+- `skill-update-rugpull-check`: compare a newly proposed skill version against the last approved immutable version.
+- `external-context-instruction-isolation`: never let retrieved data silently become higher-priority instructions.
+
+## Why marketplace bulk import remains rejected
+
+2026 empirical research on public Agent Skills reports a non-trivial malicious/vulnerable population, including prompt-injection, exfiltration, privilege-escalation and supply-chain patterns.
+
+FuryPipe must therefore retain the rule:
+
+`registry/marketplace discovery != trust != installation != execution`.
+
+Even an apparently popular skill remains non-executable until provenance, immutable version, licence, permissions, scripts/hooks, network behavior and secret access are independently reviewed.
+
