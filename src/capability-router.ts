@@ -51,6 +51,28 @@ export interface FuryCapabilityPack {
   readonly promptAdditions: Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>;
 }
 
+export interface FuryUniversalCapabilityAnalysis {
+  /** Stable short identifier chosen by the analyzer, e.g. "legal-research" or "video-production". */
+  readonly domainId: string;
+  readonly requiredSkillCategories: readonly SkillCategory[];
+  readonly optionalSkillCategories?: readonly SkillCategory[];
+  readonly instructionProfiles?: readonly FuryInstructionProfileId[];
+  readonly pluginBundleIds?: readonly string[];
+  readonly qualityGates?: readonly string[];
+  readonly promptAdditions?: Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>;
+}
+
+export interface FuryUniversalCapabilityAnalyzerInput {
+  readonly objective: string;
+  readonly knownPackIds: readonly FuryCapabilityPackId[];
+  readonly availableSkillCategories: readonly SkillCategory[];
+  readonly availablePluginIds: readonly string[];
+}
+
+export interface FuryUniversalCapabilityAnalyzer {
+  analyze(input: FuryUniversalCapabilityAnalyzerInput): Promise<FuryUniversalCapabilityAnalysis>;
+}
+
 export type CapabilityPluginState =
   | 'ready'
   | 'available'
@@ -74,6 +96,7 @@ export interface FuryCapabilityPlan {
   readonly format: 'furypipe-capability-plan/v1';
   readonly objective: string;
   readonly packIds: readonly FuryCapabilityPackId[];
+  readonly dynamicDomainIds: readonly string[];
   readonly matchedScores: Readonly<Record<string, number>>;
   readonly requiredSkillCategories: readonly SkillCategory[];
   readonly optionalSkillCategories: readonly SkillCategory[];
@@ -101,6 +124,12 @@ export interface FuryCapabilityResolveInput {
   /** Optional host health/availability override. */
   readonly pluginStates?: Readonly<Record<string, 'ready' | 'available' | 'blocked'>>;
   readonly explicitPackIds?: readonly FuryCapabilityPackId[];
+  /**
+   * Optional host-owned semantic analyzer for domains not fully represented by
+   * the built-in packs. It selects from the real registered inventory; FuryPipe
+   * still validates and gates every returned capability.
+   */
+  readonly universalAnalyzer?: FuryUniversalCapabilityAnalyzer;
   /** Maximum eligible skills selected per category and stage. Default 2. */
   readonly maxSkillsPerCategoryPerStage?: number;
 }
@@ -809,15 +838,110 @@ function pluginState(
   });
 }
 
+
+function validateDynamicAnalysis(
+  analysis: FuryUniversalCapabilityAnalysis,
+  input: FuryCapabilityResolveInput,
+): FuryUniversalCapabilityAnalysis {
+  if (!analysis || typeof analysis !== 'object') throw new Error('universal capability analyzer returned invalid output');
+  if (typeof analysis.domainId !== 'string'
+    || !/^[a-z0-9][a-z0-9._-]{0,127}$/u.test(analysis.domainId)) {
+    throw new Error('universal capability domainId is invalid');
+  }
+  const skillCategories = new Set<SkillCategory>(input.skillRegistry.inspect().map((item) => item.category));
+  const validateCategories = (values: readonly SkillCategory[] | undefined, label: string): readonly SkillCategory[] => {
+    if (values === undefined) return Object.freeze([]);
+    if (!Array.isArray(values) || values.length > 32 || new Set(values).size !== values.length) {
+      throw new Error(label + ' must be a unique bounded category list');
+    }
+    for (const value of values) {
+      if (!skillCategories.has(value) && !SKILL_CATEGORY_SET.has(value)) {
+        throw new Error(label + ' contains unknown category: ' + String(value));
+      }
+    }
+    return Object.freeze([...values]);
+  };
+  const required = validateCategories(analysis.requiredSkillCategories, 'universal requiredSkillCategories');
+  const optional = validateCategories(analysis.optionalSkillCategories, 'universal optionalSkillCategories')
+    .filter((category) => !required.includes(category));
+  const knownPlugins = new Set(input.pluginRegistry?.list().map((bundle) => bundle.id) ?? []);
+  const pluginIds = analysis.pluginBundleIds ?? [];
+  if (!Array.isArray(pluginIds) || pluginIds.length > 32 || new Set(pluginIds).size !== pluginIds.length) {
+    throw new Error('universal pluginBundleIds must be a unique bounded list');
+  }
+  for (const id of pluginIds) {
+    if (typeof id !== 'string' || id.length < 1 || id.length > 128 || id.includes('\0')) {
+      throw new Error('universal pluginBundleIds contains an invalid id');
+    }
+    // Unknown IDs are retained as unavailable so the plan truthfully reports
+    // the capability gap instead of pretending the integration exists.
+    void knownPlugins;
+  }
+  const profiles = analysis.instructionProfiles ?? [];
+  if (!Array.isArray(profiles) || profiles.length > 16 || new Set(profiles).size !== profiles.length) {
+    throw new Error('universal instructionProfiles must be a unique bounded list');
+  }
+  for (const id of profiles) {
+    if (!['karpathy-coding-discipline', 'spec-driven-development'].includes(id)) {
+      throw new Error('universal analyzer returned unknown instruction profile: ' + String(id));
+    }
+  }
+  const quality = analysis.qualityGates ?? [];
+  if (!Array.isArray(quality) || quality.length > 64 || new Set(quality).size !== quality.length
+    || quality.some((gate) => typeof gate !== 'string' || gate.length < 1 || gate.length > 256 || gate.includes('\0'))) {
+    throw new Error('universal qualityGates must be bounded unique text');
+  }
+  const additions = analysis.promptAdditions ?? {};
+  for (const [section, values] of Object.entries(additions)) {
+    if (!['role','objective','intent','context','constraints','plan','tasks','acceptanceCriteria','testing','security','deployment','outputContract','verification','sources','skills','mcp','plugins','subagents','recovery','instructions','custom'].includes(section)
+      || !Array.isArray(values)
+      || values.length > 32
+      || values.some((value) => typeof value !== 'string' || value.length < 1 || value.length > 2048 || value.includes('\0'))) {
+      throw new Error('universal promptAdditions is invalid');
+    }
+  }
+  return Object.freeze({
+    domainId: analysis.domainId,
+    requiredSkillCategories: required,
+    optionalSkillCategories: Object.freeze(optional),
+    instructionProfiles: Object.freeze([...profiles]),
+    pluginBundleIds: Object.freeze([...pluginIds]),
+    qualityGates: Object.freeze([...quality]),
+    promptAdditions: Object.freeze(Object.fromEntries(
+      Object.entries(additions).map(([section, values]) => [section, Object.freeze([...(values ?? [])])]),
+    )) as Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>,
+  });
+}
+
+const SKILL_CATEGORY_SET = new Set<SkillCategory>([
+  'repository','debugging','security','architecture','testing','documentation',
+  'frontend','design','content','marketing','seo','accessibility','performance',
+  'analytics','data','automation','business','sales','operations','finance',
+  'minecraft','modding','game-server','research','context','learning',
+]);
+
 export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput): Promise<FuryCapabilityPlan> {
   if (!input || typeof input !== 'object' || !input.skillRegistry) {
     throw new Error('capability resolution requires a skill registry');
   }
   const objective = normalizeObjective(input.objective);
   const selected = chosenPacks(objective, input.explicitPackIds);
-  const required = uniqueOrdered(selected.packs.flatMap((definition) => definition.requiredSkillCategories));
-  const optional = uniqueOrdered(selected.packs.flatMap((definition) => definition.optionalSkillCategories)
-    .filter((category) => !required.includes(category)));
+  const dynamicAnalysis = input.universalAnalyzer === undefined
+    ? undefined
+    : validateDynamicAnalysis(await input.universalAnalyzer.analyze({
+      objective: input.objective.trim(),
+      knownPackIds: FURY_CAPABILITY_PACK_IDS,
+      availableSkillCategories: uniqueOrdered(input.skillRegistry.inspect().map((item) => item.category)),
+      availablePluginIds: Object.freeze(input.pluginRegistry?.list().map((bundle) => bundle.id) ?? []),
+    }), input);
+  const required = uniqueOrdered([
+    ...selected.packs.flatMap((definition) => definition.requiredSkillCategories),
+    ...(dynamicAnalysis?.requiredSkillCategories ?? []),
+  ]);
+  const optional = uniqueOrdered([
+    ...selected.packs.flatMap((definition) => definition.optionalSkillCategories),
+    ...(dynamicAnalysis?.optionalSkillCategories ?? []),
+  ].filter((category) => !required.includes(category)));
   const wanted = new Set<SkillCategory>([...required, ...optional]);
   const maxSkills = input.maxSkillsPerCategoryPerStage ?? 2;
   if (!Number.isSafeInteger(maxSkills) || maxSkills < 1 || maxSkills > 8) {
@@ -858,16 +982,40 @@ export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput)
     if (stageIds.length > 0) autoByStage[stage] = Object.freeze(stageIds);
   }
 
-  const pluginIds = uniqueOrdered(selected.packs.flatMap((definition) => definition.pluginBundleIds));
+  const pluginIds = uniqueOrdered([
+    ...selected.packs.flatMap((definition) => definition.pluginBundleIds),
+    ...(dynamicAnalysis?.pluginBundleIds ?? []),
+  ]);
   const pluginActivations = Object.freeze(pluginIds.map((id) => pluginState(id, input)));
-  const instructionProfileIds = uniqueOrdered(selected.packs.flatMap((definition) => definition.instructionProfiles));
-  const qualityGates = uniqueOrdered(selected.packs.flatMap((definition) => definition.qualityGates));
-  const promptAdditions = mergePromptAdditions(selected.packs);
+  const instructionProfileIds = uniqueOrdered([
+    ...selected.packs.flatMap((definition) => definition.instructionProfiles),
+    ...(dynamicAnalysis?.instructionProfiles ?? []),
+  ]);
+  const qualityGates = uniqueOrdered([
+    ...selected.packs.flatMap((definition) => definition.qualityGates),
+    ...(dynamicAnalysis?.qualityGates ?? []),
+  ]);
+  const basePromptAdditions = mergePromptAdditions(selected.packs);
+  const promptAdditions = dynamicAnalysis?.promptAdditions === undefined
+    ? basePromptAdditions
+    : Object.freeze(Object.fromEntries(
+      [...new Set([
+        ...Object.keys(basePromptAdditions),
+        ...Object.keys(dynamicAnalysis.promptAdditions),
+      ])].map((rawSection) => {
+        const section = rawSection as FuryPromptSection;
+        return [section, uniqueOrdered([
+          ...(basePromptAdditions[section] ?? []),
+          ...(dynamicAnalysis.promptAdditions?.[section] ?? []),
+        ])];
+      }),
+    )) as Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>;
 
   return Object.freeze({
     format: 'furypipe-capability-plan/v1',
     objective: input.objective.trim(),
     packIds: Object.freeze(selected.packs.map((definition) => definition.id)),
+    dynamicDomainIds: Object.freeze(dynamicAnalysis ? [dynamicAnalysis.domainId] : []),
     matchedScores: selected.scores,
     requiredSkillCategories: required,
     optionalSkillCategories: optional,
