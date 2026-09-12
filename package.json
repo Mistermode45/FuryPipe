@@ -90,6 +90,10 @@
       "types": "./dist/core/provider-runtime.d.ts",
       "import": "./dist/core/provider-runtime.js"
     },
+    "./omniroute": {
+      "types": "./dist/core/omniroute.d.ts",
+      "import": "./dist/core/omniroute.js"
+    },
     "./openclaw": {
       "types": "./dist/openclaw.d.ts",
       "import": "./dist/openclaw.js"
@@ -192,6 +196,7 @@
     "docs/PLUGIN_BUNDLES.md",
     "docs/CONTEXT_FABRIC.md",
     "docs/PROVIDER_FABRIC.md",
+    "docs/OMNIROUTE.md",
     "docs/OPENCLAW.md",
     "docs/AGENT_FABRIC.md",
     "docs/LEARNING_KNOWLEDGE.md",
