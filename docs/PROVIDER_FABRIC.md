@@ -61,3 +61,20 @@ Le runtime ne contacte aucun endpoint tout seul et ne lit aucun credential. Une 
 Les identifiants de modèles utilisés par le cost oracle sont exacts : aucun alias ou suffixe `latest` n'est transformé en tarif connu. Si des tokens cache sont déclarés sans tarif cache correspondant, le résultat reste `COST_UNKNOWN`.
 
 M7 reste `PARTIAL` : la frontière runtime et le cost oracle sont réels, mais aucun probe hébergé, fallback provider live, credentialed adapter ou validation externe n'est déclaré exécuté.
+
+
+## Deterministic fallback planner
+
+`ProviderRuntimeState.selectFallback()` plans a provider fallback without performing a network call.
+
+The host supplies an explicit ordered candidate list. FuryPipe keeps that order and selects the first candidate that satisfies every local proof requirement:
+
+- provider is registered;
+- health observation is fresh;
+- provider availability is explicitly `available`;
+- requested model family matches the provider;
+- local model capability is `supported` and transform-compatible.
+
+A stale health observation is treated as `unknown`, not as healthy. Unknown providers, family mismatches and unsupported models remain visible as rejected assessments. Duplicate canonical provider/model candidates are rejected.
+
+The decision returns `networkCallExecuted: false`. This closes the local planning gap only; actual failover requests, credential handling, retries and hosted provider validation remain responsibilities of the host/provider adapter.
