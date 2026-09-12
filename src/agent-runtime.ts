@@ -110,6 +110,8 @@ export interface AgentStageExecutionContext {
   readonly network: 'disabled';
   readonly secrets: 'never_requested';
   readonly completedStages: readonly AgentFabricStageId[];
+  /** Skills selected by FuryPipe's capability router and executed before this stage. */
+  readonly autoSkillExecutions: readonly AgentSubagentBatchItem[];
   readonly invokeSkill: (skillId: string) => Promise<AgentSkillExecution>;
   readonly invokeMcp: (serverId: string, method: string, params?: unknown) => Promise<unknown>;
   readonly invokeSubagent: (subagentId: string) => Promise<AgentSubagentExecution>;
@@ -135,6 +137,11 @@ export interface AgentRuntimeRequest {
   readonly runId?: string;
   readonly executors: Partial<Record<AgentFabricStageId, AgentStageExecutor>>;
   readonly skills?: readonly AgentSkillDefinition[];
+  /**
+   * Optional deterministic skill schedule produced by the capability router.
+   * Scheduled skills execute once before the owning stage executor.
+   */
+  readonly autoInvokeSkillsByStage?: Readonly<Partial<Record<AgentFabricStageId, readonly string[]>>>;
   readonly mcpServers?: readonly AgentMcpServerDefinition[];
   readonly subagents?: readonly AgentSubagentDefinition[];
   /** Maximum simultaneous subagent callbacks within one stage. Default 4, hard max 8. */
@@ -222,6 +229,20 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
     return { code: 'INVALID_REQUEST', reason: 'agent stage executors are required' };
   }
   if (request.skills !== undefined && !Array.isArray(request.skills)) return { code: 'INVALID_REQUEST', reason: 'agent skills must be an array' };
+  if (request.autoInvokeSkillsByStage !== undefined) {
+    if (!request.autoInvokeSkillsByStage || typeof request.autoInvokeSkillsByStage !== 'object' || Array.isArray(request.autoInvokeSkillsByStage)) {
+      return { code: 'INVALID_REQUEST', reason: 'autoInvokeSkillsByStage must be a stage map' };
+    }
+    for (const [rawStage, rawIds] of Object.entries(request.autoInvokeSkillsByStage)) {
+      if (!AGENT_FABRIC_STAGE_ORDER.includes(rawStage as AgentFabricStageId)
+        || !Array.isArray(rawIds)
+        || rawIds.length > 32
+        || rawIds.some((id) => typeof id !== 'string' || id.length < 1 || id.length > 256 || id.includes('\0'))
+        || new Set(rawIds).size !== rawIds.length) {
+        return { code: 'INVALID_REQUEST', reason: 'autoInvokeSkillsByStage contains an invalid stage or skill list' };
+      }
+    }
+  }
   if (request.mcpServers !== undefined && !Array.isArray(request.mcpServers)) return { code: 'INVALID_REQUEST', reason: 'agent MCP servers must be an array' };
   if (request.subagents !== undefined && !Array.isArray(request.subagents)) return { code: 'INVALID_REQUEST', reason: 'agent subagents must be an array' };
   const subagentConcurrency = request.maxSubagentConcurrency ?? DEFAULT_SUBAGENT_CONCURRENCY;
@@ -531,9 +552,13 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     let nestedConsumedTokens = 0;
     let result: AgentStageResult;
     try {
+      const stageSkillCache = new Map<string, AgentSkillExecution>();
       const invokeSkillForStage = async (skillId: string): Promise<AgentSkillExecution> => {
+        const cached = stageSkillCache.get(skillId);
+        if (cached) return cached;
         const skillResult = await invokeSkill(stage, skillId);
         nestedConsumedTokens += skillResult.consumedTokens;
+        stageSkillCache.set(skillId, skillResult);
         return skillResult;
       };
       const invokeSubagentForStage = async (subagentId: string): Promise<AgentSubagentExecution> => {
@@ -553,11 +578,17 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
           return Object.freeze({ id: subagentId, ...execution });
         });
       };
+      const autoSkillExecutions: AgentSubagentBatchItem[] = [];
+      for (const skillId of request.autoInvokeSkillsByStage?.[stage] ?? []) {
+        const execution = await invokeSkillForStage(skillId);
+        autoSkillExecutions.push(Object.freeze({ id: skillId, ...execution }));
+      }
       result = await executor({
         runId, stage, objective: request.objective, prompt, objectiveDigest, permission,
         allowedWritePaths: request.allowWrites === true ? [...(request.allowedWritePaths ?? [])] : [],
         contextBudgetTokens: budget, contextUsedTokens, remainingContextTokens: budget - contextUsedTokens,
         network: 'disabled', secrets: 'never_requested', completedStages: [...completedStages],
+        autoSkillExecutions: Object.freeze(autoSkillExecutions),
         invokeSkill: invokeSkillForStage,
         invokeMcp: (serverId, method, params) => invokeMcp(stage, serverId, method, params),
         invokeSubagent: invokeSubagentForStage,
