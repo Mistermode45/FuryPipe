@@ -112,11 +112,25 @@ describe('production MCP HTTP boundary', () => {
     const mismatch = modernRequest('tools/list', {});
     mismatch.headers.set('mcp-method', 'tools/call');
     const mismatchBody = await json(await mcp.fetch(mismatch));
-    expect(mismatchBody.error).toMatchObject({ code: -32600 });
+    expect(mismatchBody.error).toMatchObject({ code: -32020 });
+
+    const missingMethod = modernRequest('tools/list', {});
+    missingMethod.headers.delete('mcp-method');
+    const missingMethodResponse = await mcp.fetch(missingMethod);
+    expect(missingMethodResponse.status).toBe(400);
+    expect((await json(missingMethodResponse)).error).toMatchObject({ code: -32020 });
 
     const nameMismatch = modernRequest('tools/call', { name: 'index_text', arguments: { text: 'x' } });
     nameMismatch.headers.set('mcp-name', 'fetch_text');
-    expect((await mcp.fetch(nameMismatch)).status).toBe(400);
+    const nameMismatchResponse = await mcp.fetch(nameMismatch);
+    expect(nameMismatchResponse.status).toBe(400);
+    expect((await json(nameMismatchResponse)).error).toMatchObject({ code: -32020 });
+
+    const missingName = modernRequest('tools/call', { name: 'index_text', arguments: { text: 'x' } });
+    missingName.headers.delete('mcp-name');
+    const missingNameResponse = await mcp.fetch(missingName);
+    expect(missingNameResponse.status).toBe(400);
+    expect((await json(missingNameResponse)).error).toMatchObject({ code: -32020 });
 
     const malformed = new Request('https://localhost/mcp', {
       method: 'POST',
