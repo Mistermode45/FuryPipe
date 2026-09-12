@@ -71,7 +71,7 @@ describe('OmniRoute adapter', () => {
   });
 
   it('overrides an inbound OpenAI credential with the configured OmniRoute key', async () => {
-    const calls: Array<{ url: string; authorization: string | null }> = [];
+    const calls: Array<{ url: string; authorization: string | null; xApiKey: string | null }> = [];
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
       const request = input instanceof Request
         ? input
@@ -82,6 +82,7 @@ describe('OmniRoute adapter', () => {
       calls.push({
         url: request.url,
         authorization: request.headers.get('authorization'),
+        xApiKey: request.headers.get('x-api-key'),
       });
       return new Response(JSON.stringify({
         id: 'chatcmpl-test',
@@ -119,6 +120,7 @@ describe('OmniRoute adapter', () => {
     expect(calls[0]).toEqual({
       url: 'https://omni.example.test/v1/chat/completions?trace=1',
       authorization: 'Bearer om_gateway_key',
+      xApiKey: null,
     });
     expect(JSON.stringify(calls)).not.toContain('sk-client-must-not-leak');
     expect(JSON.stringify(calls)).not.toContain('client-query-secret');
