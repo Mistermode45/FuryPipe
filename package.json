@@ -211,7 +211,8 @@
     "docs/LONG_TERM_MEMORY.md",
     "docs/POLICY.md",
     "docs/RECEIPTS.md",
-    "LICENSE"
+    "LICENSE",
+    "docs/CAPABILITY_ROUTER.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
