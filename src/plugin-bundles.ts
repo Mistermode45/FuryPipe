@@ -586,6 +586,38 @@ export const EXA_PLUGIN_BUNDLE: FuryPluginBundle = validateFuryPluginBundle({
   }],
 });
 
+export const VERCEL_PLUGIN_BUNDLE: FuryPluginBundle = validateFuryPluginBundle({
+  format: 'furypipe-plugin-bundle/v1',
+  id: 'vercel',
+  name: 'Vercel MCP',
+  version: '1.0.0',
+  mode: 'EXTERNAL_OPT_IN',
+  source: {
+    url: 'https://vercel.com/changelog/vercels-mcp',
+    licenseStatus: 'NOT_APPLICABLE',
+  },
+  skills: ['vercel-deployment-diagnostics', 'vercel-documentation'],
+  mcpProfiles: [{
+    id: 'vercel-remote-mcp',
+    transport: 'remote-http',
+    url: 'https://mcp.vercel.com',
+    authentication: 'oauth',
+    readOnlyPreferred: true,
+    projectScoped: false,
+    permissions: ['network', 'cloud-read'],
+  }],
+  cliProfiles: [],
+  providerProfiles: [],
+  permissions: ['network', 'cloud-read'],
+  secrets: [],
+  healthChecks: [{
+    id: 'vercel-mcp-connect',
+    kind: 'mcp-connect',
+    targetProfileId: 'vercel-remote-mcp',
+    required: true,
+  }],
+});
+
 export const BUILTIN_FURY_PLUGIN_BUNDLES: readonly FuryPluginBundle[] = Object.freeze([
   CLOUDFLARE_PLUGIN_BUNDLE,
   CONTEXT7_PLUGIN_BUNDLE,
@@ -594,4 +626,5 @@ export const BUILTIN_FURY_PLUGIN_BUNDLES: readonly FuryPluginBundle[] = Object.f
   GITHUB_MCP_PLUGIN_BUNDLE,
   PLAYWRIGHT_CLI_PLUGIN_BUNDLE,
   SUPABASE_PLUGIN_BUNDLE,
+  VERCEL_PLUGIN_BUNDLE,
 ]);
