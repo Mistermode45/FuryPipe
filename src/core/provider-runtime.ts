@@ -1,6 +1,8 @@
 import {
   COST_UNKNOWN,
   createProviderRegistry,
+  resolveProviderFabric,
+  type ModelCapabilityStatus,
   type ProviderAvailability,
   type ProviderEvidenceKind,
   type ProviderRegistry,
@@ -66,6 +68,37 @@ export interface ProviderRuntimeHealth {
   readonly evidenceKind?: ProviderHealthEvidenceKind;
 }
 
+export interface ProviderFallbackCandidate {
+  readonly providerId: string;
+  readonly model: string;
+}
+
+export type ProviderFallbackRejectionReason =
+  | 'unknown_provider'
+  | 'health_not_fresh'
+  | 'provider_unavailable'
+  | 'model_not_supported'
+  | 'model_family_mismatch';
+
+export interface ProviderFallbackAssessment {
+  readonly providerId: string;
+  readonly model: string;
+  readonly availability: ProviderAvailability;
+  readonly modelStatus: ModelCapabilityStatus | 'not_evaluated';
+  readonly eligible: boolean;
+  readonly reason: 'eligible' | ProviderFallbackRejectionReason;
+}
+
+export interface ProviderFallbackDecision {
+  readonly format: 'furypipe-provider-fallback/v1';
+  readonly selected?: {
+    readonly providerId: string;
+    readonly model: string;
+  };
+  readonly assessments: readonly ProviderFallbackAssessment[];
+  readonly networkCallExecuted: false;
+}
+
 export interface ProviderRuntimeInspection {
   readonly health: readonly ProviderRuntimeHealth[];
   readonly pricedModels: readonly {
@@ -81,6 +114,12 @@ export interface ProviderRuntimeState {
   registerPrice(price: ProviderModelPrice): void;
   health(providerId: string, now?: number): ProviderRuntimeHealth;
   estimateCost(providerId: string, model: string, usage: ProviderCostUsage): ProviderCostEstimate;
+  /**
+   * Select the first explicitly ordered candidate that has fresh available
+   * health evidence and a locally supported matching model capability.
+   * This plans a fallback only; it never performs a provider request.
+   */
+  selectFallback(candidates: readonly ProviderFallbackCandidate[], now?: number): ProviderFallbackDecision;
   registry(now?: number): ProviderRegistry;
   inspect(now?: number): ProviderRuntimeInspection;
 }
@@ -228,6 +267,117 @@ export function createProviderRuntimeState(baseRegistry: ProviderRegistry): Prov
         source: price.source,
         observedAt: price.observedAt,
       };
+    },
+
+    selectFallback(candidates, now = Date.now()) {
+      finiteTimestamp(now, 'provider fallback now');
+      if (!Array.isArray(candidates) || candidates.length < 1 || candidates.length > 32) {
+        throw new Error('provider fallback candidates must contain between 1 and 32 entries');
+      }
+
+      const seen = new Set<string>();
+      const derivedRegistry = this.registry(now);
+      const assessments: ProviderFallbackAssessment[] = [];
+      let selected: ProviderFallbackDecision['selected'];
+
+      for (const candidate of candidates) {
+        if (!candidate || typeof candidate !== 'object') {
+          throw new Error('provider fallback candidate must be an object');
+        }
+        const rawProvider = typeof candidate.providerId === 'string' ? candidate.providerId.trim() : '';
+        if (!rawProvider || rawProvider.length > 128 || /[\u0000-\u001f\u007f]/u.test(rawProvider)) {
+          throw new Error('provider fallback providerId must be a bounded printable identifier');
+        }
+        const model = exactModel(candidate.model);
+        const baseProvider = baseRegistry.get(rawProvider);
+        const canonicalProviderId = baseProvider?.id ?? rawProvider;
+        const key = `${canonicalProviderId}\u0000${model}`;
+        if (seen.has(key)) throw new Error('provider fallback candidates must be unique');
+        seen.add(key);
+
+        if (!baseProvider) {
+          assessments.push(Object.freeze({
+            providerId: rawProvider,
+            model,
+            availability: 'unknown',
+            modelStatus: 'not_evaluated',
+            eligible: false,
+            reason: 'unknown_provider',
+          }));
+          continue;
+        }
+
+        const health = getHealth(baseProvider.id, now);
+        if (!health.fresh) {
+          assessments.push(Object.freeze({
+            providerId: baseProvider.id,
+            model,
+            availability: 'unknown',
+            modelStatus: 'not_evaluated',
+            eligible: false,
+            reason: 'health_not_fresh',
+          }));
+          continue;
+        }
+        if (health.availability !== 'available') {
+          assessments.push(Object.freeze({
+            providerId: baseProvider.id,
+            model,
+            availability: health.availability,
+            modelStatus: 'not_evaluated',
+            eligible: false,
+            reason: 'provider_unavailable',
+          }));
+          continue;
+        }
+
+        const decision = resolveProviderFabric({
+          providerId: baseProvider.id,
+          model,
+          registry: derivedRegistry,
+        });
+        if (!decision.routing.providerMatchesModelFamily) {
+          assessments.push(Object.freeze({
+            providerId: baseProvider.id,
+            model,
+            availability: health.availability,
+            modelStatus: decision.model.status,
+            eligible: false,
+            reason: 'model_family_mismatch',
+          }));
+          continue;
+        }
+        if (decision.model.status !== 'supported' || decision.model.transform !== 'supported') {
+          assessments.push(Object.freeze({
+            providerId: baseProvider.id,
+            model,
+            availability: health.availability,
+            modelStatus: decision.model.status,
+            eligible: false,
+            reason: 'model_not_supported',
+          }));
+          continue;
+        }
+
+        assessments.push(Object.freeze({
+          providerId: baseProvider.id,
+          model,
+          availability: health.availability,
+          modelStatus: decision.model.status,
+          eligible: true,
+          reason: 'eligible',
+        }));
+        if (selected === undefined) {
+          selected = Object.freeze({ providerId: baseProvider.id, model });
+        }
+      }
+
+      return Object.freeze({
+        format: 'furypipe-provider-fallback/v1',
+        ...(selected === undefined ? {} : { selected }),
+        assessments: Object.freeze(assessments),
+        networkCallExecuted: false,
+      });
     },
 
     registry(now = Date.now()) {

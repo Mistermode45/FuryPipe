@@ -187,4 +187,112 @@ describe('provider runtime evidence and cost oracle', () => {
     expect(JSON.stringify(result.info.contextFabric)).not.toContain('short request');
   });
 
+
+  it('selects the first explicitly ordered fresh healthy compatible fallback without a network call', () => {
+    const runtime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
+    runtime.observeHealth({
+      providerId: 'anthropic',
+      availability: 'unavailable',
+      observedAt: 100,
+      expiresAt: 200,
+      source: 'primary-health',
+      evidenceKind: 'live-probe',
+    });
+    runtime.observeHealth({
+      providerId: 'openai',
+      availability: 'available',
+      observedAt: 100,
+      expiresAt: 200,
+      source: 'fallback-health',
+      evidenceKind: 'live-probe',
+    });
+
+    const decision = runtime.selectFallback([
+      { providerId: 'anthropic', model: 'claude-opus-5' },
+      { providerId: 'openai', model: 'gpt-5.6-sol' },
+    ], 150);
+
+    expect(decision.selected).toEqual({ providerId: 'openai', model: 'gpt-5.6-sol' });
+    expect(decision.assessments).toMatchObject([
+      { providerId: 'anthropic', eligible: false, reason: 'provider_unavailable' },
+      { providerId: 'openai', eligible: true, reason: 'eligible' },
+    ]);
+    expect(decision.networkCallExecuted).toBe(false);
+  });
+
+  it('refuses stale health and unknown providers instead of guessing a route', () => {
+    const runtime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
+    runtime.observeHealth({
+      providerId: 'anthropic',
+      availability: 'available',
+      observedAt: 10,
+      expiresAt: 20,
+      source: 'old-health',
+      evidenceKind: 'operator-config',
+    });
+
+    const decision = runtime.selectFallback([
+      { providerId: 'anthropic', model: 'claude-opus-5' },
+      { providerId: 'unregistered', model: 'custom-model' },
+    ], 21);
+
+    expect(decision.selected).toBeUndefined();
+    expect(decision.assessments).toMatchObject([
+      { providerId: 'anthropic', availability: 'unknown', reason: 'health_not_fresh' },
+      { providerId: 'unregistered', availability: 'unknown', reason: 'unknown_provider' },
+    ]);
+  });
+
+  it('rejects family-mismatched and unsupported models even when provider health is green', () => {
+    const runtime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
+    runtime.observeHealth({
+      providerId: 'openai',
+      availability: 'available',
+      observedAt: 1,
+      expiresAt: 100,
+      source: 'green',
+      evidenceKind: 'live-probe',
+    });
+
+    const decision = runtime.selectFallback([
+      { providerId: 'openai', model: 'claude-opus-5' },
+      { providerId: 'openai', model: 'totally-unknown-model' },
+    ], 50);
+
+    expect(decision.selected).toBeUndefined();
+    expect(decision.assessments[0]).toMatchObject({
+      eligible: false,
+      reason: 'model_family_mismatch',
+    });
+    expect(decision.assessments[1]).toMatchObject({
+      eligible: false,
+      reason: 'model_not_supported',
+    });
+  });
+
+  it('keeps fallback order deterministic and rejects duplicate candidate identities', () => {
+    const runtime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
+    for (const providerId of ['anthropic', 'openai'] as const) {
+      runtime.observeHealth({
+        providerId,
+        availability: 'available',
+        observedAt: 1,
+        expiresAt: 100,
+        source: `health-${providerId}`,
+        evidenceKind: 'operator-config',
+      });
+    }
+
+    const first = runtime.selectFallback([
+      { providerId: 'openai', model: 'gpt-5.6-sol' },
+      { providerId: 'anthropic', model: 'claude-opus-5' },
+    ], 50);
+    expect(first.selected?.providerId).toBe('openai');
+
+    expect(() => runtime.selectFallback([
+      { providerId: 'anthropic', model: 'claude-opus-5' },
+      { providerId: 'claude', model: 'claude-opus-5' },
+    ], 50)).toThrow(/unique/);
+  });
+
 });
