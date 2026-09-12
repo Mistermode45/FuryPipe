@@ -484,17 +484,19 @@ function chosenPacks(objective: string, explicit: readonly FuryCapabilityPackId[
   readonly scores: Readonly<Record<string, number>>;
 } {
   if (explicit !== undefined) {
-    if (!Array.isArray(explicit) || explicit.length < 1 || explicit.length > 5 || new Set(explicit).size !== explicit.length) {
+    const explicitIds = [...explicit];
+    if (explicitIds.length < 1 || explicitIds.length > 5 || new Set(explicitIds).size !== explicitIds.length) {
       throw new Error('explicit capability packs must contain 1 to 5 unique pack IDs');
     }
-    for (const id of explicit as readonly unknown[]) {
+    for (const id of explicitIds as readonly unknown[]) {
       if (typeof id !== 'string' || !FURY_CAPABILITY_PACK_IDS.includes(id as FuryCapabilityPackId)) {
         throw new Error('unknown FuryPipe capability pack: ' + String(id));
       }
     }
+    const validatedIds = explicitIds as FuryCapabilityPackId[];
     return Object.freeze({
-      packs: Object.freeze(explicit.map((id) => FURY_CAPABILITY_PACKS[id])),
-      scores: Object.freeze(Object.fromEntries(explicit.map((id) => [id, 1_000_000]))),
+      packs: Object.freeze(validatedIds.map((id) => FURY_CAPABILITY_PACKS[id])),
+      scores: Object.freeze(Object.fromEntries(validatedIds.map((id) => [id, 1_000_000]))),
     });
   }
 
