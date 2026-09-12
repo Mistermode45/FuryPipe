@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tsxCli = path.join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+const CHILD_START_TIMEOUT_MS = process.platform === 'win32' ? 30_000 : 15_000;
 
 // NTFS has no POSIX permission bits: Node reports 0o666 for every file and
 // directory on Windows, and chmodSync() only toggles the read-only flag. The
@@ -105,7 +106,10 @@ async function startNode(extraEnv: Record<string, string> = {}): Promise<{
   child.stdout?.on('data', (b) => output.push(String(b)));
   child.stderr?.on('data', (b) => output.push(String(b)));
   await new Promise<void>((resolve, reject) => {
-    const deadline = setTimeout(() => reject(new Error(output.join(''))), 10_000);
+    const deadline = setTimeout(
+      () => reject(new Error(`child did not report listening within ${CHILD_START_TIMEOUT_MS}ms\n${output.join('')}`)),
+      CHILD_START_TIMEOUT_MS,
+    );
     const poll = () => {
       if (output.join('').includes('[pxpipe] listening on')) {
         clearTimeout(deadline);

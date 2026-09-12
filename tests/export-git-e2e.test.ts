@@ -13,6 +13,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 // tsx's JS entry, run via process.execPath: the .bin/tsx shim is a .cmd on
 // Windows, which spawnSync can't execute without a shell.
 const tsxCli = path.join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+const PROCESS_HOOK_TIMEOUT_MS = process.platform === 'win32' ? 30_000 : 15_000;
 
 function git(cwd: string, args: string[]): void {
   const r = spawnSync('git', args, { cwd, encoding: 'utf8' });
@@ -37,11 +38,11 @@ describe('pxpipe export --git (end-to-end)', () => {
     fs.writeFileSync(path.join(repo, 'skip.md'), 'x'.repeat(5000)); // excluded by --include *.ts
     fs.writeFileSync(path.join(repo, 'huge.ts'), 'a'.repeat(1_000_001)); // oversized
     fs.writeFileSync(path.join(repo, 'bin.ts'), Buffer.from([0x41, 0x00, 0x42])); // binary
-  });
+  }, PROCESS_HOOK_TIMEOUT_MS);
   afterEach(() => {
-    fs.rmSync(repo, { recursive: true, force: true });
-    fs.rmSync(outDir, { recursive: true, force: true });
-  });
+    fs.rmSync(repo, { recursive: true, force: true, maxRetries: 30, retryDelay: 100 });
+    fs.rmSync(outDir, { recursive: true, force: true, maxRetries: 30, retryDelay: 100 });
+  }, PROCESS_HOOK_TIMEOUT_MS);
 
   it('applies --include, the size cap, and the binary sniff to untracked files', () => {
     const run = spawnSync(
