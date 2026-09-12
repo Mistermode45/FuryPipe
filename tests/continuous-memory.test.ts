@@ -120,7 +120,7 @@ describe('continuous memory', () => {
     });
 
     expect(afterRestart.entries.map((entry) => entry.text)).toEqual(['The user prefers dark mode.']);
-    expect(await recovery.verify(learned.receipts[0]!.memoryId)).toBeDefined();
+    expect((await recovery.list?.({ metadata: { source: 'continuous-memory-content' }, limit: 10 })) ?? []).toHaveLength(1);
   });
 
   it('updates a stable memory key when the user corrects it and deduplicates identical content', async () => {
@@ -387,6 +387,13 @@ describe('continuous memory', () => {
       scopes,
       messages: [{ role: 'user', content: 'Duplicate analyzer fixture.' }],
     })).rejects.toThrow(/duplicate candidate keys/);
+
+    const payloads = await (engine as typeof engine).longTermMemory.recall({
+      scopes: [{ kind: 'user', id: scopes.user }],
+      terms: ['editor'],
+      now: Date.now(),
+    });
+    expect(payloads).toEqual([]);
   });
 
   it('does not persist raw conversation IDs, turn IDs, scope IDs, semantic keys or transcript text', async () => {
