@@ -1,5 +1,9 @@
 import type { AgentFabricStageId } from './agent-fabric.js';
-import type { AgentSkillDefinition } from './agent-runtime.js';
+import type {
+  AgentMcpPlannedCall,
+  AgentMcpServerDefinition,
+  AgentSkillDefinition,
+} from './agent-runtime.js';
 import type {
   AgentSkillRegistry,
   SkillCategory,
@@ -62,6 +66,7 @@ export interface FuryUniversalCapabilityAnalysis {
   readonly instructionProfiles?: readonly FuryInstructionProfileId[];
   readonly pluginBundleIds?: readonly string[];
   readonly qualityGates?: readonly string[];
+  readonly autoMcpCallsByStage?: Readonly<Partial<Record<AgentFabricStageId, readonly AgentMcpPlannedCall[]>>>;
   readonly promptAdditions?: Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>;
 }
 
@@ -101,6 +106,11 @@ export interface FuryUniversalCapabilityAnalyzerInput {
   readonly availableSkills: readonly FuryUniversalCapabilitySkillInventoryItem[];
   readonly availablePluginIds: readonly string[];
   readonly availablePlugins: readonly FuryUniversalCapabilityPluginInventoryItem[];
+  readonly availableRuntimeMcpServers: readonly {
+    readonly id: string;
+    readonly allowedMethods: readonly string[];
+    readonly network: 'disabled' | 'required';
+  }[];
 }
 
 export interface FuryUniversalCapabilityAnalyzer {
@@ -137,6 +147,7 @@ export interface FuryCapabilityPlan {
   readonly selectedSkillIds: readonly string[];
   readonly skills: readonly AgentSkillDefinition[];
   readonly autoInvokeSkillsByStage: Readonly<Partial<Record<AgentFabricStageId, readonly string[]>>>;
+  readonly autoInvokeMcpByStage: Readonly<Partial<Record<AgentFabricStageId, readonly AgentMcpPlannedCall[]>>>;
   readonly blockedSkills: readonly {
     readonly id: string;
     readonly category: SkillCategory;
@@ -157,6 +168,8 @@ export interface FuryCapabilityResolveInput {
   readonly enabledPluginIds?: readonly string[];
   /** Optional host health/availability override. */
   readonly pluginStates?: Readonly<Record<string, 'ready' | 'available' | 'blocked'>>;
+  /** Runtime MCP servers that are actually mounted for this run. */
+  readonly runtimeMcpServers?: readonly AgentMcpServerDefinition[];
   readonly explicitPackIds?: readonly FuryCapabilityPackId[];
   /**
    * Optional host-owned semantic analyzer for domains not fully represented by
@@ -172,6 +185,7 @@ export interface PreparedCapabilityRun {
   readonly furyPrompt: FuryPromptCompileInput;
   readonly skills: readonly AgentSkillDefinition[];
   readonly autoInvokeSkillsByStage: Readonly<Partial<Record<AgentFabricStageId, readonly string[]>>>;
+  readonly autoInvokeMcpByStage: Readonly<Partial<Record<AgentFabricStageId, readonly AgentMcpPlannedCall[]>>>;
   readonly pluginActivations: readonly CapabilityPluginActivation[];
   readonly qualityGates: readonly string[];
 }
@@ -879,6 +893,66 @@ function pluginState(
 }
 
 
+
+function validateAutoMcpPlan(
+  value: FuryUniversalCapabilityAnalysis['autoMcpCallsByStage'],
+  input: FuryCapabilityResolveInput,
+): Readonly<Partial<Record<AgentFabricStageId, readonly AgentMcpPlannedCall[]>>> {
+  if (value === undefined) return Object.freeze({});
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('universal autoMcpCallsByStage must be a stage map');
+  }
+  const servers = new Map((input.runtimeMcpServers ?? []).map((server) => [server.id, server] as const));
+  const output: Partial<Record<AgentFabricStageId, readonly AgentMcpPlannedCall[]>> = {};
+  for (const [rawStage, rawCalls] of Object.entries(value)) {
+    if (!STAGES.includes(rawStage as AgentFabricStageId)
+      || !Array.isArray(rawCalls)
+      || rawCalls.length > 32) {
+      throw new Error('universal autoMcpCallsByStage contains an invalid stage or call list');
+    }
+    const stage = rawStage as AgentFabricStageId;
+    const normalized: AgentMcpPlannedCall[] = [];
+    const seen = new Set<string>();
+    for (const rawCall of rawCalls) {
+      if (!rawCall || typeof rawCall !== 'object' || Array.isArray(rawCall)) {
+        throw new Error('universal MCP call is invalid');
+      }
+      const call = rawCall as AgentMcpPlannedCall;
+      if (typeof call.serverId !== 'string' || call.serverId.length < 1 || call.serverId.length > 256
+        || typeof call.method !== 'string' || call.method.length < 1 || call.method.length > 256) {
+        throw new Error('universal MCP call serverId/method is invalid');
+      }
+      const server = servers.get(call.serverId);
+      if (!server) throw new Error('universal analyzer selected unavailable MCP server: ' + call.serverId);
+      if (!server.allowedMethods.includes(call.method)) {
+        throw new Error('universal analyzer selected disallowed MCP method: ' + call.serverId + '/' + call.method);
+      }
+      if (server.network === 'required') {
+        throw new Error('universal analyzer selected MCP server requiring disabled network access: ' + call.serverId);
+      }
+      let paramsJson: string;
+      try {
+        paramsJson = JSON.stringify(call.params ?? null);
+      } catch {
+        throw new Error('universal MCP call params must be JSON serializable');
+      }
+      if (Buffer.byteLength(paramsJson, 'utf8') > 65_536) {
+        throw new Error('universal MCP call params exceed 64 KiB');
+      }
+      const key = call.serverId + '\0' + call.method + '\0' + paramsJson;
+      if (seen.has(key)) throw new Error('universal autoMcpCallsByStage contains duplicate calls');
+      seen.add(key);
+      normalized.push(Object.freeze({
+        serverId: call.serverId,
+        method: call.method,
+        ...(call.params === undefined ? {} : { params: call.params }),
+      }));
+    }
+    output[stage] = Object.freeze(normalized);
+  }
+  return Object.freeze(output);
+}
+
 function validateDynamicAnalysis(
   analysis: FuryUniversalCapabilityAnalysis,
   input: FuryCapabilityResolveInput,
@@ -944,6 +1018,7 @@ function validateDynamicAnalysis(
     || quality.some((gate) => typeof gate !== 'string' || gate.length < 1 || gate.length > 256 || gate.includes('\0'))) {
     throw new Error('universal qualityGates must be bounded unique text');
   }
+  const autoMcpCallsByStage = validateAutoMcpPlan(analysis.autoMcpCallsByStage, input);
   const additions = analysis.promptAdditions ?? {};
   for (const [section, values] of Object.entries(additions)) {
     if (!['intent','role','objective','context','inputs','constraints','task','plan','tools','skills','mcp','subagents','outputContract','acceptanceCriteria','verification'].includes(section)
@@ -961,6 +1036,7 @@ function validateDynamicAnalysis(
     instructionProfiles: Object.freeze([...profiles]),
     pluginBundleIds: Object.freeze([...pluginIds]),
     qualityGates: Object.freeze([...quality]),
+    autoMcpCallsByStage,
     promptAdditions: Object.freeze(Object.fromEntries(
       Object.entries(additions).map(([section, values]) => [section, Object.freeze([...(values ?? [])])]),
     )) as Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>,
@@ -1010,6 +1086,11 @@ export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput)
         }))),
         cliProfileIds: Object.freeze(plugin.cliProfiles.map((profile) => profile.id)),
         providerProfileIds: Object.freeze(plugin.providerProfiles.map((profile) => profile.id)),
+      }))),
+      availableRuntimeMcpServers: Object.freeze((input.runtimeMcpServers ?? []).map((server) => Object.freeze({
+        id: server.id,
+        allowedMethods: Object.freeze([...server.allowedMethods]),
+        network: server.network ?? 'disabled',
       }))),
     }), input);
   const required = uniqueOrdered([
@@ -1119,6 +1200,7 @@ export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput)
     selectedSkillIds: Object.freeze([...selectedDefinitions.keys()]),
     skills: Object.freeze([...selectedDefinitions.values()]),
     autoInvokeSkillsByStage: Object.freeze(autoByStage),
+    autoInvokeMcpByStage: dynamicAnalysis?.autoMcpCallsByStage ?? Object.freeze({}),
     blockedSkills: Object.freeze([...blocked.values()].sort((a, b) => a.id.localeCompare(b.id))),
     missingRequiredSkillCategories: Object.freeze(required.filter((category) => !coveredRequired.has(category))),
     instructionProfileIds,
@@ -1172,6 +1254,7 @@ export function prepareCapabilityRun(
     furyPrompt: applyCapabilityPlanToPrompt(furyPrompt, plan),
     skills: plan.skills,
     autoInvokeSkillsByStage: plan.autoInvokeSkillsByStage,
+    autoInvokeMcpByStage: plan.autoInvokeMcpByStage,
     pluginActivations: plan.pluginActivations,
     qualityGates: plan.qualityGates,
   });
