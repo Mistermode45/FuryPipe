@@ -1558,15 +1558,17 @@ export class DashboardState {
    *  the corresponding JSON endpoint's payload (via Response.json()) so the
    *  HTML and JSON surfaces can't drift apart. */
   async serveFragment(name: string, url: URL, port: number): Promise<Response> {
+    const locale = url.searchParams.get('locale') ?? 'en';
     switch (name) {
       case 'toggle':
-        return htmlResponse(renderToggleFragment(this.compressionEnabled));
+        return htmlResponse(renderToggleFragment(this.compressionEnabled, locale));
       case 'models':
         return htmlResponse(
           renderModelsFragment(
             getAllowedModelBases(),
             getConfiguredModelBases(),
             this.compressionEnabled,
+            locale,
           ),
         );
       case 'context-map': {
@@ -1576,18 +1578,18 @@ export class DashboardState {
           // or never recorded (no usage on that completion), say so — don't
           // silently fall back to the latest request's data under its label.
           const found = this.contextHistory.find((h) => h.id === Number(reqParam));
-          return htmlResponse(renderContextMapFragment(found, this.contextHistory, !found));
+          return htmlResponse(renderContextMapFragment(found, this.contextHistory, !found, locale));
         }
         // No specific request → default to the latest.
         return htmlResponse(
-          renderContextMapFragment(this.contextHistory[this.contextHistory.length - 1], this.contextHistory),
+          renderContextMapFragment(this.contextHistory[this.contextHistory.length - 1], this.contextHistory, false, locale),
         );
       }
       case 'session-summary': {
         // Lifetime hero — same cumulative payload as the header strip so the
         // headline and the "$ saved" tiles never disagree and it stops jumping.
         const s = (await this.serveStats().json()) as StatsPayload;
-        return htmlResponse(renderSessionSummaryFragment(s));
+        return htmlResponse(renderSessionSummaryFragment(s, locale));
       }
       case 'header': {
         const s = (await this.serveStats().json()) as StatsPayload;
@@ -1595,7 +1597,7 @@ export class DashboardState {
       }
       case 'recent': {
         const r = (await this.serveRecent().json()) as RecentPayload;
-        return htmlResponse(renderRecentFragment(r));
+        return htmlResponse(renderRecentFragment(r, locale));
       }
       case 'latest': {
         const r = (await this.serveRecent().json()) as RecentPayload;
@@ -1617,17 +1619,17 @@ export class DashboardState {
         const res = await this.serveSessionsJson();
         if (!res.ok) return htmlResponse(`<div class="status">sessions unavailable</div>`);
         const p = (await res.json()) as SessionsPayload;
-        return htmlResponse(renderSessionsFragment(p));
+        return htmlResponse(renderSessionsFragment(p, locale));
       }
       case 'stats': {
         const res = await this.serveApiStats();
         const p = (await res.json()) as FullStatsPayload;
-        return htmlResponse(renderStatsTableFragment(p));
+        return htmlResponse(renderStatsTableFragment(p, locale));
       }
       case 'control-room': {
         return htmlResponse(renderControlRoomFragment(
           await this.readControlRoomSnapshot(),
-          url.searchParams.get('locale') ?? 'en',
+          locale,
         ));
       }
       default:

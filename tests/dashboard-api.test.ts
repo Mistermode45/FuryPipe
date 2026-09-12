@@ -476,6 +476,51 @@ describe('serveFragment', () => {
   });
 });
 
+describe('dashboard localized fragments', () => {
+  it('propagates the active locale into toggle, models, recent and sessions fragments', async () => {
+    dash.handleCompressionToggle({ enabled: false });
+    const localeUrl = new URL('http://localhost/fragments/toggle?locale=fr');
+
+    const toggle = await (await dash.serveFragment('toggle', localeUrl, 1)).text();
+    expect(toggle).toContain('MODE PASSTHROUGH');
+    expect(toggle).toContain('Compression désactivée');
+    expect(toggle).toContain('Activer la compression');
+
+    const models = await (await dash.serveFragment(
+      'models',
+      new URL('http://localhost/fragments/models?locale=fr'),
+      1,
+    )).text();
+    expect(models).toContain('Modèles Claude en image');
+    expect(models).toContain('les modèles non listés restent en texte brut');
+
+    const recent = await (await dash.serveFragment(
+      'recent',
+      new URL('http://localhost/fragments/recent?locale=fr'),
+      1,
+    )).text();
+    expect(recent).toContain('Aucune requête pour le moment');
+
+    const sessions = await (await dash.serveFragment(
+      'sessions',
+      new URL('http://localhost/fragments/sessions?locale=fr'),
+      1,
+    )).text();
+    expect(sessions).toContain('sessions suivies');
+    expect(sessions).toContain('Aucune session pour le moment');
+  });
+
+  it('localizes empty context guidance while leaving machine identifiers untouched', async () => {
+    const html = await (await dash.serveFragment(
+      'context-map',
+      new URL('http://localhost/fragments/context-map?locale=fr'),
+      1,
+    )).text();
+    expect(html).toContain('Ouvrez Détails sur une requête');
+    expect(html).not.toContain('Pick <strong>Details</strong>');
+  });
+});
+
 describe('dashboard locale surface', () => {
   it('auto-negotiates the initial page from Accept-Language when no explicit locale exists', async () => {
     const html = await (await dash.serveHtml(47821, undefined, 'en-US;q=0.3, fr-CA;q=0.9')).text();

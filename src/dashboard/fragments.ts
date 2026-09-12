@@ -71,11 +71,12 @@ function shortPath(p: string | null | undefined): string {
 
 // ---- compression toggle (kill switch) ------------------------------------
 
-export function renderToggleFragment(enabled: boolean): string {
-  // NOTE: "PASSTHROUGH MODE", "Disable compression", "Enable compression" are asserted by tests.
+export function renderToggleFragment(enabled: boolean, locale = 'en'): string {
+  const t = (key: string): string => dashboardT(locale, key);
+  // NOTE: English default keeps legacy asserted strings stable.
   const banner = enabled
     ? ''
-    : `<div class="banner"><strong>PASSTHROUGH MODE</strong> — compression is off. Every request goes to Claude unchanged: no images, no savings. Use this to A/B test, or if the upstream API is having problems.</div>`;
+    : `<div class="banner"><strong>${escapeHtml(t('dashboard.toggle.passthroughMode'))}</strong> — ${escapeHtml(t('dashboard.toggle.passthroughDescription'))}</div>`;
   // Button POSTs the OPPOSITE of current state; 2s poll keeps it fresh.
   const confirm = enabled
     ? ` hx-confirm="Turn compression off?\n\nRequests will pass straight through to Claude, unchanged. Restarting the proxy turns it back on."`
@@ -83,11 +84,11 @@ export function renderToggleFragment(enabled: boolean): string {
   return (
     banner +
     `<div class="switch">` +
-    `<span class="switch-state ${enabled ? 'on' : 'off'}"><span class="switch-dot"></span>${enabled ? 'Compression on' : 'Compression off'}</span>` +
+    `<span class="switch-state ${enabled ? 'on' : 'off'}"><span class="switch-dot"></span>${escapeHtml(t(enabled ? 'dashboard.toggle.compressionOn' : 'dashboard.toggle.compressionOff'))}</span>` +
     `<button class="switch-btn" type="button" hx-post="/fragments/toggle" hx-target="#frag-toggle" hx-vals='{"enabled": ${!enabled}}'${confirm}>` +
-    (enabled ? 'Disable compression' : 'Enable compression') +
+    escapeHtml(t(enabled ? 'dashboard.toggle.disable' : 'dashboard.toggle.enable')) +
     `</button>` +
-    `<span class="hint">kill switch · resets to on when you restart</span>` +
+    `<span class="hint">${escapeHtml(t('dashboard.toggle.hint'))}</span>` +
     `</div>`
   );
 }
@@ -124,7 +125,9 @@ export function renderModelsFragment(
   active: string[],
   configured: string[],
   enabled: boolean,
+  locale = 'en',
 ): string {
+  const t = (key: string): string => dashboardT(locale, key);
   const on = new Set(active);
   const labelOf = new Map(
     [...MODEL_CATALOG, ...GPT_MODEL_CATALOG, ...GROK_MODEL_CATALOG, ...GEMINI_MODEL_CATALOG].map((m) => [m.id, m.label]),
@@ -166,25 +169,25 @@ export function renderModelsFragment(
     .join('');
   const moot = enabled
     ? ''
-    : `<div class="models"><span class="hint">compression is off — these settings have no effect right now</span></div>`;
+    : `<div class="models"><span class="hint">${escapeHtml(t('dashboard.models.offHint'))}</span></div>`;
   return (
     moot +
     `<div class="models">` +
-    `<span class="models-label">Image Claude models</span>` +
+    `<span class="models-label">${escapeHtml(t('dashboard.models.claude'))}</span>` +
     claudeChips +
-    `<span class="hint">unlisted models get plain text</span>` +
+    `<span class="hint">${escapeHtml(t('dashboard.models.unlisted'))}</span>` +
     `</div>` +
     `<div class="models">` +
-    `<span class="models-label">Image Gemini models</span>` +
+    `<span class="models-label">${escapeHtml(t('dashboard.models.gemini'))}</span>` +
     geminiChips +
-    `<span class="hint">on by default · toggle off to opt out · 100/100 vision reader</span>` +
+    `<span class="hint">${escapeHtml(t('dashboard.models.geminiHint'))}</span>` +
     `</div>` +
     `<div class="models">` +
-    `<span class="models-label">Image OpenAI Responses models</span>` +
+    `<span class="models-label">${escapeHtml(t('dashboard.models.openai'))}</span>` +
     gptChips +
     grokChips +
     otherChips +
-    `<span class="hint">opt-in · no Anthropic cache_control</span>` +
+    `<span class="hint">${escapeHtml(t('dashboard.models.openaiHint'))}</span>` +
     `</div>` +
     `<div class="models">` +
     `<span class="models-label">PXPIPE_MODELS</span>` +
@@ -207,14 +210,15 @@ void INPUT_USD_PER_MTOK; // suppress unused-var; renderHeaderFragment uses the s
 // the number stops swinging on tiny per-session samples. Cache-weighted on
 // purpose ("lifeweight"): it answers "did pxpipe move my real, cache-discounted
 // bill since this proxy started", not a raw token count.
-export function renderSessionSummaryFragment(s: StatsPayload): string {
+export function renderSessionSummaryFragment(s: StatsPayload, locale = 'en'): string {
+  const t = (key: string): string => dashboardT(locale, key);
   const measured = s.compressed_requests ?? 0;
   if (measured <= 0) {
     return (
       `<div class="hero hero-empty">` +
-      `<div class="hero-eyebrow">Since start</div>` +
-      `<div class="hero-headline">Warming up…</div>` +
-      `<div class="hero-sub">Point Claude Code at this proxy with <code>ANTHROPIC_BASE_URL</code>, or launch it with <code>pxpipe warp -- claude</code> to keep <code>/remote-control</code> and claude.ai connectors working. Send a message and your running savings show up right here.</div>` +
+      `<div class="hero-eyebrow">${escapeHtml(t('dashboard.summary.sinceStart'))}</div>` +
+      `<div class="hero-headline">${escapeHtml(t('dashboard.summary.warming'))}</div>` +
+      `<div class="hero-sub">${escapeHtml(t('dashboard.summary.warmingHelp'))}</div>` +
       `</div>`
     );
   }
@@ -230,7 +234,7 @@ export function renderSessionSummaryFragment(s: StatsPayload): string {
   const inputPct = baselineW > 0 ? (1 - actualW / baselineW) * 100 : 0;
   const positive = inputPct >= 0;
   const bigNum = `${Math.abs(inputPct).toFixed(0)}%`;
-  const word = positive ? 'fewer tokens' : 'more tokens';
+  const word = t(positive ? 'dashboard.summary.fewerTokens' : 'dashboard.summary.moreTokens');
 
   return (
     `<div class="hero${positive ? '' : ' hero-neg'}">` +
@@ -238,7 +242,7 @@ export function renderSessionSummaryFragment(s: StatsPayload): string {
     `<div class="hero-headline"><span class="hero-num">${bigNum}</span> ${word}</div>` +
     `<div class="hero-sub">` +
     `<strong>${kFmt(actualW)}</strong> provider-accounted input tokens vs <strong>${kFmt(baselineW)}</strong> if this same context ` +
-    `stayed plain text. Your latest messages and model output are never compressed.` +
+    `stayed plain text. ${escapeHtml(t('dashboard.summary.latestUntouched'))}` +
     `</div>` +
     `<div class="hero-meta">` +
     `Provider-token basis; cache discounts applied where measurable · ` +
@@ -481,13 +485,15 @@ export function renderContextMapFragment(
   c: ContextMapData | undefined,
   history: ContextMapData[] = [],
   notFound = false,
+  locale = 'en',
 ): string {
+  const t = (key: string): string => dashboardT(locale, key);
   const isLatest = c !== undefined && c.id === (history.at(-1)?.id ?? -1);
   if (notFound) {
-    return `<div class="ctxmap"><div class="empty-note">That request's breakdown isn't kept anymore — only the most recent requests are. Pick <strong>Details</strong> on a newer row.</div></div>`;
+    return `<div class="ctxmap"><div class="empty-note">${escapeHtml(t('dashboard.context.notFound'))}</div></div>`;
   }
   if (!c || (c.baselineTokens <= 0 && c.imageCount <= 0)) {
-    return `<div class="ctxmap"><div class="empty-note">Pick <strong>Details</strong> on a request to see exactly which parts became images and which stayed as text.</div></div>`;
+    return `<div class="ctxmap"><div class="empty-note">${escapeHtml(t('dashboard.context.empty'))}</div></div>`;
   }
   // Cache-aware billing-equivalent basis — identical to the recent row's
   // As-text / Sent / Saved/lost columns. These are not raw token counts; they apply
@@ -644,17 +650,18 @@ function statusCls(status: number): string {
   return 'good';
 }
 
-export function renderRecentFragment(p: RecentPayload): string {
+export function renderRecentFragment(p: RecentPayload, locale = 'en'): string {
+  const t = (key: string): string => dashboardT(locale, key);
   const rows = (p.recent ?? []).slice().reverse();
   const body =
     rows.length === 0
-      ? `<tr><td colspan="10" class="empty-cell">No requests yet — they stream in here live.</td></tr>`
+      ? `<tr><td colspan="10" class="empty-cell">${escapeHtml(t('dashboard.recent.empty'))}</td></tr>`
       : rows
           .map((e: RecentRow, i: number) => {
             const viewId = (e.img_ids ?? (e.img_id != null ? [e.img_id] : []))[0];
             const viewLink =
               viewId != null
-                ? `<a class="row-view" href="#" hx-get="/fragments/context-map?req=${viewId}" hx-target="#frag-context-map" hx-swap="innerHTML">Details →</a>`
+                ? `<a class="row-view" href="#" hx-get="/fragments/context-map?req=${viewId}" hx-target="#frag-context-map" hx-swap="innerHTML">${escapeHtml(t('dashboard.recent.details'))}</a>`
                 : `<span class="muted">—</span>`;
             const saved = e.session_saved_so_far_delta;
             // A loss that disappears when the newly written prefix is repriced at
@@ -775,7 +782,8 @@ export function renderLatestFragment(inp: LatestFragmentInput): string {
 
 const TOP_N = 8;
 
-export function renderSessionsFragment(p: SessionsPayload): string {
+export function renderSessionsFragment(p: SessionsPayload, locale = 'en'): string {
+  const t = (key: string): string => dashboardT(locale, key);
   const all = p.sessions ?? [];
   const rows = [...all]
     .sort((a, b) => (b.tokensSavedEst ?? 0) - (a.tokensSavedEst ?? 0))
@@ -788,8 +796,8 @@ export function renderSessionsFragment(p: SessionsPayload): string {
   };
   const barPct = (v: number) => (max <= 0 || v <= 0 ? 0 : (v / max) * 100);
 
-  const status = `<div class="status">${all.length} session${all.length === 1 ? '' : 's'} tracked</div>`;
-  if (rows.length === 0) return status + `<div class="empty">No sessions yet.</div>`;
+  const status = `<div class="status">${all.length} ${escapeHtml(t('dashboard.sessions.tracked'))}</div>`;
+  if (rows.length === 0) return status + `<div class="empty">${escapeHtml(t('dashboard.sessions.empty'))}</div>`;
 
   const chart = rows
     .map((s) => {
@@ -809,7 +817,7 @@ export function renderSessionsFragment(p: SessionsPayload): string {
   return (
     status +
     `<div class="bars">${chart}</div>` +
-    `<div class="axis">tokens saved per session (cache-aware) · top ${rows.length} of ${all.length}</div>`
+    `<div class="axis">${escapeHtml(t('dashboard.sessions.axis'))} · top ${rows.length} of ${all.length}</div>`
   );
 }
 
@@ -865,9 +873,10 @@ export function renderControlRoomFragment(snapshot: ControlRoomSnapshot | null, 
 
 // ---- full-history stats table --------------------------------------------
 
-export function renderStatsTableFragment(p: FullStatsPayload): string {
+export function renderStatsTableFragment(p: FullStatsPayload, locale = 'en'): string {
+  const t = (key: string): string => dashboardT(locale, key);
   if (p.error || !p.summary) {
-    return `<div class="status">${escapeHtml(p.error || 'no data')}</div><table class="dtable"><tbody></tbody></table>`;
+    return `<div class="status">${escapeHtml(p.error || t('dashboard.stats.noData'))}</div><table class="dtable"><tbody></tbody></table>`;
   }
   const s = p.summary;
   const totalIn = (s.inputTokensTotal || 0) + (s.cacheCreateTokensTotal || 0) + (s.cacheReadTokensTotal || 0);
@@ -880,7 +889,7 @@ export function renderStatsTableFragment(p: FullStatsPayload): string {
   // NOTE: the literal word "requests" is asserted by tests.
   const tr = (k: string, v: string) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`;
   return (
-    `<div class="status">${numFmt(p.parsed)} events parsed from disk</div>` +
+    `<div class="status">${numFmt(p.parsed)} ${escapeHtml(t('dashboard.stats.eventsParsed'))}</div>` +
     `<table class="dtable"><tbody>` +
     tr('requests', numFmt(s.total)) +
     tr('2xx / 4xx / 5xx', `${numFmt(s.ok2xx)} / ${numFmt(s.err4xx)} / ${numFmt(s.err5xx)}`) +
