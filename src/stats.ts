@@ -28,7 +28,7 @@ export interface Summary {
    *  from the text path by rendering to PNG. */
   origCharsTotal: number;
   imageBytesTotal: number;
-  /** Sum of pin_chars: text pxpipe moved out of the cacheable prefix and
+  /** Sum of pin_chars: text FuryPipe moved out of the cacheable prefix and
    *  re-emitted as the tail footer. Paid at full input price every turn, so it
    *  is a recurring charge against the one-time imaging win above. */
   pinCharsTotal: number;
@@ -199,7 +199,7 @@ export function renderTextReport(s: Summary): string {
   const sortedDur = [...s.durationMs].sort((a, b) => a - b);
   const sortedFB = [...s.firstByteMs].sort((a, b) => a - b);
 
-  lines.push('━━━ pxpipe stats ━━━');
+  lines.push('━━━ FuryPipe stats ━━━');
   lines.push('');
   lines.push(`requests:       ${fmtN(s.total)}`);
   lines.push(
@@ -398,7 +398,7 @@ export function summaryToJson(s: Summary): Record<string, unknown> {
   };
 }
 
-// ---- offline CLI (`pxpipe stats`) -----------------------------------------
+// ---- offline CLI (`furypipe stats`) -----------------------------------------
 
 const FLAG_JSON = '--json';
 const FLAG_FILE = '--file';
@@ -408,12 +408,12 @@ const EXIT_OK = 0;
 const EXIT_NO_FILE = 1;
 const EXIT_NO_EVENTS = 2;
 
-const STATS_HELP = `pxpipe stats — offline summary of the events JSONL (no proxy server)
+const STATS_HELP = `furypipe stats — offline summary of the events JSONL (no proxy server)
 
 Usage:
-  pxpipe stats                 report from $PXPIPE_LOG (default ~/.pxpipe/events.jsonl)
-  pxpipe stats --json          same aggregate as machine-readable JSON
-  pxpipe stats --file <path>   read a specific events log
+  furypipe stats                 report from $FURYPIPE_LOG (default ~/.furypipe/events.jsonl)
+  furypipe stats --json          same aggregate as machine-readable JSON
+  furypipe stats --file <path>   read a specific events log
 
 Exit codes:
   0  report printed
@@ -441,9 +441,9 @@ function parseStatsArgs(
 }
 
 /**
- * `pxpipe stats [--json] [--file <p>]` — summarize an events JSONL log offline,
+ * `furypipe stats [--json] [--file <p>]` — summarize an events JSONL log offline,
  * with NO proxy server running. The live dashboard covers the same data while
- * the proxy is up; this restores after-the-fact analysis of ~/.pxpipe/events.jsonl
+ * the proxy is up; this restores after-the-fact analysis of ~/.furypipe/events.jsonl
  * and adds a measured-savings headline the dashboard keeps behind its HTTP API.
  *
  * Returns a result rather than writing streams so it stays unit-testable; the
@@ -462,7 +462,7 @@ export async function runStats(
     return {
       code: EXIT_NO_FILE,
       out: '',
-      err: `events file not found: ${file}\n(run pxpipe and send a request first, or set PXPIPE_LOG)`,
+      err: `events file not found: ${file}\n(run furypipe and send a request first, or set FURYPIPE_LOG)`,
     };
   }
   if (agg.parsed === 0) {
