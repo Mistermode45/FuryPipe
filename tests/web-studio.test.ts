@@ -8,6 +8,10 @@ import {
   REQUIRED_QA_PROJECTS,
   REQUIRED_TEST_LOCALES,
   REQUIRED_VIEWPORTS,
+  assertSafeStudioBrowserAdapter,
+  buildStudioQaMatrix,
+  renderStaticStudioPage,
+  runStudioBrowserQa,
   validateStudioProject,
   type StudioProject,
 } from '../src/web-studio/index.js';
@@ -167,5 +171,175 @@ describe('Web/Figma Studio kernel', () => {
       async readApprovedDesign() { return {}; },
       async exportApprovedAssets() { return []; },
     })).toThrow(/pinned semver/);
+  });
+
+
+  it('renders a deterministic approved static page with escaped content and strict metadata', () => {
+    const artifact = renderStaticStudioPage(project(), {
+      locale: 'fr-FR',
+      path: '/fr/',
+      title: 'FuryPipe Studio',
+      description: 'Une description suffisamment longue pour produire des métadonnées SEO locales vérifiables.',
+      heading: '<Approved & safe>',
+      paragraphs: ['Body <script>alert(1)</script> content'],
+      canonicalUrl: 'https://example.test/fr/',
+    });
+
+    expect(artifact).toMatchObject({
+      format: 'furypipe-web-studio-page/v1',
+      projectId: 'project-1',
+      variantId: 'minimal',
+      locale: 'fr-FR',
+      direction: 'ltr',
+      path: '/fr/',
+      externalScripts: [],
+    });
+    expect(artifact.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(artifact.html).toContain('<html lang="fr-FR" dir="ltr">');
+    expect(artifact.html).toContain('&lt;Approved &amp; safe&gt;');
+    expect(artifact.html).toContain('Body &lt;script&gt;alert(1)&lt;/script&gt; content');
+    expect(artifact.html).not.toContain('<script>');
+    expect(artifact.html).toContain('Content-Security-Policy');
+  });
+
+  it('refuses static generation before explicit design approval and unsafe canonical URLs', () => {
+    const draft = project();
+    draft.status = 'DESIGNED';
+    draft.selectedVariantId = null;
+    expect(() => renderStaticStudioPage(draft, {
+      locale: 'en',
+      path: '/',
+      title: 'Site',
+      description: 'A sufficiently long description for deterministic structural SEO validation.',
+      heading: 'Heading',
+      paragraphs: ['Paragraph'],
+      canonicalUrl: 'https://example.test/',
+    })).toThrow();
+
+    expect(() => renderStaticStudioPage(project(), {
+      locale: 'en',
+      path: '/',
+      title: 'Site',
+      description: 'A sufficiently long description for deterministic structural SEO validation.',
+      heading: 'Heading',
+      paragraphs: ['Paragraph'],
+      canonicalUrl: 'http://user:pass@example.test/',
+    })).toThrow(/credential-free HTTPS/);
+  });
+
+  it('builds the full deterministic browser/viewport/locale QA matrix', () => {
+    const matrix = buildStudioQaMatrix();
+    expect(matrix).toHaveLength(
+      REQUIRED_QA_PROJECTS.length * REQUIRED_VIEWPORTS.length * REQUIRED_TEST_LOCALES.length,
+    );
+    expect(new Set(matrix.map((item) => item.id)).size).toBe(matrix.length);
+    expect(matrix.some((item) => item.locale === 'ar-XB')).toBe(true);
+  });
+
+  it('executes host browser QA evidence without promoting it to production verification', async () => {
+    const adapter = {
+      id: 'playwright-host',
+      version: '1.0.0',
+      async run(testCase: ReturnType<typeof buildStudioQaMatrix>[number]) {
+        return {
+          caseId: testCase.id,
+          loaded: true,
+          horizontalOverflow: false,
+          keyboardReachable: true,
+          singleH1: true,
+          lang: testCase.locale,
+          direction: testCase.locale === 'ar-XB' ? 'rtl' as const : 'ltr' as const,
+          hasTitle: true,
+          hasMetaDescription: true,
+          hasCanonical: true,
+          brokenLinks: 0,
+          consoleErrors: 0,
+          externalScriptOrigins: [],
+        };
+      },
+    };
+
+    const cases = buildStudioQaMatrix().slice(0, 8);
+    const report = await runStudioBrowserQa(adapter, 'http://127.0.0.1:4173', cases);
+    expect(report).toMatchObject({
+      totalCases: 8,
+      browserQa: 'VERIFIED',
+      structuralAccessibility: 'VERIFIED',
+      structuralSeo: 'VERIFIED',
+      thirdPartyScriptSurface: 'VERIFIED',
+      productionPerformance: 'NOT_RUN',
+      deployment: 'NOT_RUN',
+      promotionEvidenceCompatible: false,
+      failures: [],
+    });
+  });
+
+  it('fails visible on browser QA defects and external script origins', async () => {
+    const testCase = buildStudioQaMatrix()[0]!;
+    const report = await runStudioBrowserQa({
+      id: 'browser-adapter',
+      version: '1.2.3',
+      async run() {
+        return {
+          caseId: testCase.id,
+          loaded: true,
+          horizontalOverflow: true,
+          keyboardReachable: false,
+          singleH1: false,
+          lang: 'en',
+          direction: 'ltr' as const,
+          hasTitle: true,
+          hasMetaDescription: false,
+          hasCanonical: false,
+          brokenLinks: 2,
+          consoleErrors: 1,
+          externalScriptOrigins: ['https://third-party.example'],
+        };
+      },
+    }, 'https://preview.example.test', [testCase]);
+
+    expect(report.browserQa).toBe('FAILED');
+    expect(report.structuralAccessibility).toBe('FAILED');
+    expect(report.structuralSeo).toBe('FAILED');
+    expect(report.thirdPartyScriptSurface).toBe('FAILED');
+    expect(report.failures[0]?.reasons).toEqual(expect.arrayContaining([
+      'horizontal overflow',
+      'broken links',
+      'console errors',
+      'structural accessibility mismatch',
+      'SEO structure incomplete',
+      'external script origin observed',
+    ]));
+  });
+
+  it('requires pinned browser QA adapters and bounded unique case IDs', async () => {
+    expect(() => assertSafeStudioBrowserAdapter({
+      id: 'playwright',
+      version: 'latest',
+      async run() { throw new Error('never'); },
+    })).toThrow(/pinned semver/);
+
+    const testCase = buildStudioQaMatrix()[0]!;
+    await expect(runStudioBrowserQa({
+      id: 'adapter',
+      version: '1.0.0',
+      async run(input) {
+        return {
+          caseId: input.id,
+          loaded: true,
+          horizontalOverflow: false,
+          keyboardReachable: true,
+          singleH1: true,
+          lang: input.locale,
+          direction: input.locale === 'ar-XB' ? 'rtl' : 'ltr',
+          hasTitle: true,
+          hasMetaDescription: true,
+          hasCanonical: true,
+          brokenLinks: 0,
+          consoleErrors: 0,
+          externalScriptOrigins: [],
+        };
+      },
+    }, 'http://localhost:4173', [testCase, testCase])).rejects.toThrow(/duplicate studio QA case id/);
   });
 });
