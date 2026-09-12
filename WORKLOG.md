@@ -467,3 +467,14 @@
 - Les sous-systèmes non observés par ce processus restent `NOT_AVAILABLE`; des overrides hôte explicites existent pour les runtimes séparés.
 - L'état de chiffrement Recovery gagne la valeur honnête `unknown` lorsque le collecteur ne possède pas la configuration du store.
 - M15 reste `PARTIAL` : Agent/Learning/MCP/security doivent encore alimenter leurs preuves depuis leurs propres runtimes et la validation hébergée n'est pas exécutée.
+
+
+## 2026-09-12 — M9 OpenClaw HTTP gateway probe
+
+- Vérification de la documentation OpenClaw courante avant implémentation : `/healthz` = liveness, `/startupz` = startup/admission, `/readyz` = deep readiness ; ces probes HTTP sont non authentifiés.
+- Ajout de `probeOpenClawGateway()` dans `src/openclaw.ts`.
+- Le probe valide le JSON documenté afin de ne pas accepter un HTTP 200 du catch-all Control UI comme preuve de santé.
+- Loopback est la politique par défaut ; une origine distante nécessite `allowRemote: true`, les credentials URL/path/query/fragment sont refusés et le timeout est borné.
+- Aucun `/v1/chat/completions`, session, tool invoke ou appel modèle n'est exécuté.
+- Tests dédiés : healthy, startup/readiness 503, invalid contract/catch-all, unreachable sans fuite d'erreur, remote deny/opt-in et timeout.
+- Le vrai Gateway OpenClaw de l'environnement cible n'est pas accessible depuis cette CI : M9 reste `PARTIAL` et la validation externe reste `OPENCLAW_NOT_TESTED/BLOCKED_EXTERNAL_ENV`.
