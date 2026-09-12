@@ -201,6 +201,10 @@
     "./continuous-memory-turn": {
       "types": "./dist/continuous-memory-turn.d.ts",
       "import": "./dist/continuous-memory-turn.js"
+    },
+    "./task-orchestrator": {
+      "types": "./dist/task-orchestrator.d.ts",
+      "import": "./dist/task-orchestrator.js"
     }
   },
   "files": [
@@ -232,7 +236,8 @@
     "docs/CONTINUOUS_MEMORY.md",
     "docs/INSTRUCTION_FABRIC.md",
     "docs/CONTEXT_OPTIMIZER.md",
-    "docs/CONTINUOUS_MEMORY_TURN.md"
+    "docs/CONTINUOUS_MEMORY_TURN.md",
+    "docs/TASK_ORCHESTRATOR.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
