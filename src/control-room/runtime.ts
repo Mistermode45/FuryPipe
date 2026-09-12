@@ -1,4 +1,6 @@
 import type { ProxyEvent } from '../core/proxy.js';
+import type { AgentRunResult } from '../agent-runtime.js';
+import type { AgentLearningCycleResult } from '../learning.js';
 import type { ReleaseReadinessReport } from '../release-readiness/index.js';
 import {
   createControlRoomSnapshot,
@@ -29,6 +31,10 @@ export interface ControlRoomRuntimeOptions {
 
 export interface ControlRoomRuntime {
   observeProxyEvent(event: Pick<ProxyEvent, 'info'>): void;
+  /** Observe the latest state for one opaque Agent run ID. Re-observation replaces that run's prior state. */
+  observeAgentRun(result: AgentRunResult): void;
+  /** Observe the latest state for one opaque Learning cycle ID. Re-observation replaces that cycle's prior state. */
+  observeLearningCycle(result: AgentLearningCycleResult): void;
   snapshot(): ControlRoomSnapshot;
 }
 
@@ -107,6 +113,18 @@ function clone<T extends object>(value: T): T {
   return { ...value };
 }
 
+function boundedOpaqueId(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || value.length < 1 || value.length > 256 || value.includes('\0')) {
+    throw new Error(`${label} must be a bounded opaque identifier`);
+  }
+}
+
+function safeRuntimeCount(value: unknown, label: string): asserts value is number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 10_000_000_000) {
+    throw new Error(`${label} must be a bounded non-negative safe integer`);
+  }
+}
+
 export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): ControlRoomRuntime {
   if (!SHA40.test(options.sourceCommit)) {
     throw new Error('Control Room runtime sourceCommit must be a lowercase 40-character commit SHA');
@@ -120,6 +138,12 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
   let sawEstimatedConfidence = false;
   let sawUnknownConfidence = false;
   const uniqueRecoveryHandles = new Set<string>();
+  const observedAgentRuns = new Map<string, { status: AgentRunResult['status']; contextUsedTokens: number }>();
+  const observedLearningCycles = new Map<string, {
+    status: AgentLearningCycleResult['status'];
+    lessonId?: string;
+    reusedLessonIds: readonly string[];
+  }>();
 
   return {
     observeProxyEvent(event) {
@@ -132,6 +156,44 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
       for (const handle of receipt.recoveryHandles) uniqueRecoveryHandles.add(handle);
       if (receipt.confidence === 'estimated') sawEstimatedConfidence = true;
       if (receipt.confidence === 'unknown') sawUnknownConfidence = true;
+    },
+
+    observeAgentRun(result) {
+      if (!result || result.format !== 'furypipe-agent-run/v1') {
+        throw new Error('Control Room Agent observation format is invalid');
+      }
+      boundedOpaqueId(result.runId, 'Agent runId');
+      if (!['completed', 'failed', 'handoff_required'].includes(result.status)) {
+        throw new Error('Control Room Agent observation status is invalid');
+      }
+      safeRuntimeCount(result.contextUsedTokens, 'Agent contextUsedTokens');
+      observedAgentRuns.set(result.runId, {
+        status: result.status,
+        contextUsedTokens: result.contextUsedTokens,
+      });
+    },
+
+    observeLearningCycle(result) {
+      if (!result || result.format !== 'furypipe-agent-learning-cycle/v1') {
+        throw new Error('Control Room Learning observation format is invalid');
+      }
+      boundedOpaqueId(result.cycleId, 'Learning cycleId');
+      if (!['completed', 'failed'].includes(result.status)) {
+        throw new Error('Control Room Learning observation status is invalid');
+      }
+      if (result.lessonId !== undefined) boundedOpaqueId(result.lessonId, 'Learning lessonId');
+      if (!Array.isArray(result.reusedLessons) || result.reusedLessons.length > 10_000) {
+        throw new Error('Control Room Learning reusedLessons are invalid');
+      }
+      const reusedLessonIds = result.reusedLessons.map((lesson) => {
+        boundedOpaqueId(lesson?.lessonId, 'Learning reused lessonId');
+        return lesson.lessonId;
+      });
+      observedLearningCycles.set(result.cycleId, {
+        status: result.status,
+        ...(result.lessonId === undefined ? {} : { lessonId: result.lessonId }),
+        reusedLessonIds: Object.freeze([...new Set(reusedLessonIds)]),
+      });
     },
 
     snapshot() {
@@ -153,6 +215,27 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
             objects: uniqueRecoveryHandles.size,
           };
 
+      const baseAgent = options.agent ?? NOT_AVAILABLE_AGENT;
+      const agentRuns = [...observedAgentRuns.values()];
+      const agent: AgentEvidence = {
+        ...baseAgent,
+        runs: baseAgent.runs + observedAgentRuns.size,
+        completedRuns: baseAgent.completedRuns + agentRuns.filter((run) => run.status === 'completed').length,
+        handoffRuns: baseAgent.handoffRuns + agentRuns.filter((run) => run.status === 'handoff_required').length,
+        failedRuns: baseAgent.failedRuns + agentRuns.filter((run) => run.status === 'failed').length,
+        contextUsedTokens: baseAgent.contextUsedTokens + agentRuns.reduce((sum, run) => sum + run.contextUsedTokens, 0),
+      };
+
+      const baseLearning = options.learning ?? NOT_AVAILABLE_LEARNING;
+      const completedLearning = [...observedLearningCycles.values()].filter((cycle) => cycle.status === 'completed');
+      const learnedLessonIds = new Set(completedLearning.flatMap((cycle) => cycle.lessonId === undefined ? [] : [cycle.lessonId]));
+      const reusedLessonIds = new Set(completedLearning.flatMap((cycle) => cycle.reusedLessonIds));
+      const learning: LearningEvidence = {
+        ...baseLearning,
+        agentLessons: baseLearning.agentLessons + learnedLessonIds.size,
+        reusedLessons: baseLearning.reusedLessons + reusedLessonIds.size,
+      };
+
       return createControlRoomSnapshot({
         generatedAt,
         sourceCommit: options.sourceCommit,
@@ -164,8 +247,8 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
           confidence,
         },
         recovery,
-        agent: clone(options.agent ?? NOT_AVAILABLE_AGENT),
-        learning: clone(options.learning ?? NOT_AVAILABLE_LEARNING),
+        agent,
+        learning,
         mcp: clone(options.mcp ?? NOT_AVAILABLE_MCP),
         i18n: clone(options.i18n ?? NOT_AVAILABLE_I18N),
         webStudio: clone(options.webStudio ?? NOT_AVAILABLE_WEB_STUDIO),
