@@ -453,6 +453,78 @@ describe('FuryPipe capability router', () => {
     expect(prepared.skills.map((skill) => skill.id)).toEqual(expect.arrayContaining(['frontend', 'testing', 'security']));
     expect(prepared.autoInvokeSkillsByStage).toEqual(plan.autoInvokeSkillsByStage);
     expect(prepared.autoInvokeMcpByStage).toEqual(plan.autoInvokeMcpByStage);
+    expect(prepared.instructionPlan.selected.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+      'production-engineering',
+      'website-production',
+      'creative-direction',
+      'marketing-conversion',
+    ]));
+    expect(prepared.qualityGates).toEqual(expect.arrayContaining([
+      'responsive-qa',
+      'accessibility-qa',
+      'creative-divergence',
+      'offer-clarity',
+    ]));
+    expect(prepared.recommendedSecurityCritical).toBe(false);
+  });
+
+  it('automatically composes prompt-authoring instructions for a website prompt request', async () => {
+    const skills = createAgentSkillRegistry();
+    const plan = await resolveFuryCapabilities({
+      objective: 'Crée-moi un prompt complet pour produire un site web marketing premium.',
+      skillRegistry: skills,
+      pluginRegistry: createFuryPluginBundleRegistry(BUILTIN_FURY_PLUGIN_BUNDLES),
+    });
+
+    const prepared = prepareCapabilityRun({
+      level: 'ENGINEERING',
+      sections: {
+        objective: 'Produce the final reusable website creation prompt.',
+      },
+    }, plan);
+
+    expect(prepared.instructionPlan.selected.map((entry) => entry.id)).toEqual(expect.arrayContaining([
+      'prompt-authoring',
+      'website-production',
+      'creative-direction',
+      'marketing-conversion',
+    ]));
+    expect(prepared.furyPrompt.sections.outputContract).toEqual(expect.arrayContaining([
+      expect.stringContaining('self-contained prompt'),
+    ]));
+    expect(prepared.furyPrompt.sections.acceptanceCriteria).toEqual(expect.arrayContaining([
+      expect.stringContaining('directly usable by the target agent'),
+      expect.stringContaining('responsive'),
+    ]));
+    expect(prepared.instructionPlan.addedInstructionBytes)
+      .toBeLessThanOrEqual(prepared.instructionPlan.maxAddedBytes);
+  });
+
+  it('supports explicit instruction facets but fails closed when their budget is impossible', async () => {
+    const skills = createAgentSkillRegistry();
+    const plan = await resolveFuryCapabilities({
+      objective: 'Review this production change.',
+      skillRegistry: skills,
+      explicitPackIds: ['software-engineering'],
+    });
+
+    const prepared = prepareCapabilityRun({
+      sections: { task: 'Review the change.' },
+      level: 'ENGINEERING',
+    }, plan, {
+      explicitInstructionFacetIds: ['security-assurance'],
+      maxInstructionBytes: 12_288,
+    });
+    expect(prepared.instructionPlan.selected.map((entry) => entry.id)).toContain('security-assurance');
+    expect(prepared.recommendedSecurityCritical).toBe(true);
+
+    expect(() => prepareCapabilityRun({
+      sections: { task: 'Review the change.' },
+      level: 'ENGINEERING',
+    }, plan, {
+      explicitInstructionFacetIds: ['security-assurance'],
+      maxInstructionBytes: 512,
+    })).toThrow(/explicit instruction facet exceeds the byte budget/);
   });
 
   it('rejects unknown explicit packs and impossible skill fan-out', async () => {
