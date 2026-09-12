@@ -3,6 +3,7 @@ import {
   BUILTIN_FURY_PLUGIN_BUNDLES,
   CONTEXT7_PLUGIN_BUNDLE,
   GITHUB_MCP_PLUGIN_BUNDLE,
+  PLAYWRIGHT_CLI_PLUGIN_BUNDLE,
   SUPABASE_PLUGIN_BUNDLE,
   createFuryPluginBundleRegistry,
   inspectFuryPluginBundle,
@@ -14,6 +15,7 @@ describe('Fury plugin bundles', () => {
     expect(BUILTIN_FURY_PLUGIN_BUNDLES.map((bundle) => bundle.id)).toEqual([
       'context7',
       'github-mcp',
+      'playwright-cli',
       'supabase',
     ]);
     for (const bundle of BUILTIN_FURY_PLUGIN_BUNDLES) {
@@ -46,6 +48,18 @@ describe('Fury plugin bundles', () => {
       permissions: ['network', 'repository-read'],
     });
     expect(GITHUB_MCP_PLUGIN_BUNDLE.secrets).toEqual([]);
+  });
+
+  it('pins the Playwright CLI package and never auto-installs it', () => {
+    expect(PLAYWRIGHT_CLI_PLUGIN_BUNDLE.cliProfiles[0]).toMatchObject({
+      packageName: '@playwright/cli',
+      packageVersion: '0.1.19',
+      executable: 'playwright-cli',
+      autoInstall: false,
+      permissions: ['browser', 'process', 'network'],
+    });
+    expect(PLAYWRIGHT_CLI_PLUGIN_BUNDLE.source.commitSha)
+      .toBe('655530f6d0dc71a0d6bf46ae165877d3c7311099');
   });
 
   it('marks Supabase as project-scoped and read-only preferred by default', () => {
@@ -106,6 +120,7 @@ describe('Fury plugin bundles', () => {
       cliProfiles: [{
         id: 'browser-cli',
         packageName: '@playwright/cli',
+        packageVersion: '0.1.19',
         executable: 'playwright-cli',
         permissions: ['network', 'browser'],
         autoInstall: true as false,
