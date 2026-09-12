@@ -64,11 +64,33 @@ export interface FuryUniversalCapabilityAnalysis {
   readonly promptAdditions?: Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>;
 }
 
+export interface FuryUniversalCapabilitySkillInventoryItem {
+  readonly id: string;
+  readonly category: SkillCategory;
+  readonly priority: number;
+  readonly stages: readonly AgentFabricStageId[];
+  readonly permission: 'read' | 'write';
+  readonly network: 'disabled' | 'required';
+  readonly description?: string;
+}
+
+export interface FuryUniversalCapabilityPluginInventoryItem {
+  readonly id: string;
+  readonly name: string;
+  readonly skills: readonly string[];
+  readonly permissions: readonly FuryPluginPermission[];
+  readonly mcpProfileIds: readonly string[];
+  readonly cliProfileIds: readonly string[];
+  readonly providerProfileIds: readonly string[];
+}
+
 export interface FuryUniversalCapabilityAnalyzerInput {
   readonly objective: string;
   readonly knownPackIds: readonly FuryCapabilityPackId[];
   readonly availableSkillCategories: readonly SkillCategory[];
+  readonly availableSkills: readonly FuryUniversalCapabilitySkillInventoryItem[];
   readonly availablePluginIds: readonly string[];
+  readonly availablePlugins: readonly FuryUniversalCapabilityPluginInventoryItem[];
 }
 
 export interface FuryUniversalCapabilityAnalyzer {
@@ -954,7 +976,24 @@ export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput)
       objective: input.objective.trim(),
       knownPackIds: FURY_CAPABILITY_PACK_IDS,
       availableSkillCategories: uniqueOrdered(input.skillRegistry.inspect().map((item) => item.category)),
+      availableSkills: Object.freeze(input.skillRegistry.inspect().map((item) => Object.freeze({
+        id: item.id,
+        category: item.category,
+        priority: item.priority,
+        stages: item.stages,
+        permission: item.permission,
+        network: item.network,
+      }))),
       availablePluginIds: Object.freeze(input.pluginRegistry?.list().map((bundle) => bundle.id) ?? []),
+      availablePlugins: Object.freeze((input.pluginRegistry?.inspect() ?? []).map((plugin) => Object.freeze({
+        id: plugin.id,
+        name: plugin.name,
+        skills: plugin.skills,
+        permissions: plugin.permissions,
+        mcpProfileIds: Object.freeze(plugin.mcpProfiles.map((profile) => profile.id)),
+        cliProfileIds: Object.freeze(plugin.cliProfiles.map((profile) => profile.id)),
+        providerProfileIds: Object.freeze(plugin.providerProfiles.map((profile) => profile.id)),
+      }))),
     }), input);
   const required = uniqueOrdered([
     ...selected.packs.flatMap((definition) => definition.requiredSkillCategories),
