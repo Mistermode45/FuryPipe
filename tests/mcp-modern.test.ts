@@ -10,6 +10,20 @@ const modernMeta = {
   'io.modelcontextprotocol/clientCapabilities': {},
 };
 
+const expectedToolNames = [
+  'index_text',
+  'index_bytes',
+  'fetch_text',
+  'fetch_exact',
+  'fetch_bytes',
+  'fetch_bytes_base64',
+  'fetch_range',
+  'fetch_lines',
+  'manifest',
+  'delete_handle',
+  'verify_handle',
+] as const;
+
 const roots: string[] = [];
 
 async function request(handler: ReturnType<typeof createModernMcpHandler>, id: number, method: string, params: Record<string, unknown> = {}) {
@@ -44,15 +58,60 @@ describe('modern MCP SDK adapter', () => {
     expect(discovery.result).toMatchObject({ supportedVersions: expect.arrayContaining(['2026-07-28']) });
 
     const listed = await request(handler, 2, 'tools/list');
-    expect((listed.result as { tools: Array<{ name: string }> }).tools).toHaveLength(11);
-    expect((listed.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toContain('fetch_exact');
+    const listedResult = listed.result as {
+      tools: Array<{ name: string }>;
+      ttlMs: number;
+      cacheScope: string;
+    };
+    expect(listedResult.tools.map((tool) => tool.name)).toEqual(expectedToolNames);
+    expect(listedResult).toMatchObject({ ttlMs: 0, cacheScope: 'private' });
 
-    const indexed = await request(handler, 3, 'tools/call', { name: 'index_text', arguments: { text: 'modern-proof' } });
+    const listedAgain = await request(handler, 3, 'tools/list');
+    expect((listedAgain.result as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name)).toEqual(expectedToolNames);
+
+    const indexed = await request(handler, 4, 'tools/call', { name: 'index_text', arguments: { text: 'modern-proof' } });
     const handleObject = JSON.parse((indexed.result as { content: [{ text: string }] }).content[0].text).handle as { format: string; algorithm: string; digest: string };
     const handle = `${handleObject.format}/${handleObject.algorithm}/${handleObject.digest}`;
-    const fetched = await request(handler, 4, 'tools/call', { name: 'fetch_exact', arguments: { handle } });
+    const fetched = await request(handler, 5, 'tools/call', { name: 'fetch_exact', arguments: { handle } });
     expect((fetched.result as { content: [{ text: string }] }).content[0].text).toBe(Buffer.from('modern-proof').toString('base64'));
 
+    await handler.close();
+  });
+
+  it('rejects unsupported modern protocol revisions with the supported version list', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-modern-version-'));
+    roots.push(root);
+    const handler = createModernMcpHandler(createRecoveryStore(root));
+    const requestedVersion = '2030-01-01';
+    const response = await handler.fetch(new Request('https://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+        'mcp-protocol-version': requestedVersion,
+        'mcp-method': 'tools/list',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 9,
+        method: 'tools/list',
+        params: {
+          _meta: {
+            'io.modelcontextprotocol/protocolVersion': requestedVersion,
+            'io.modelcontextprotocol/clientCapabilities': {},
+          },
+        },
+      }),
+    }));
+    const body = JSON.parse(await response.text()) as {
+      error?: { code: number; data?: { requested?: string; supported?: string[] } };
+    };
+    expect(response.status).toBe(400);
+    expect(body.error?.code).toBe(-32022);
+    expect(body.error?.data).toMatchObject({
+      requested: requestedVersion,
+      supported: ['2026-07-28'],
+    });
     await handler.close();
   });
 
