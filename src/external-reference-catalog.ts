@@ -313,6 +313,17 @@ export const EXTERNAL_REFERENCE_CATALOG: readonly ExternalReferenceEntry[] = Obj
     notes: 'Multi-provider gateway with OpenAI, Anthropic and Gemini compatibility surfaces. Candidate for an explicit Provider Fabric gateway adapter.',
   }),
   ref({
+    id: 'multica-karpathy-guidelines',
+    name: 'Multica Andrej Karpathy Skills',
+    url: 'https://github.com/multica-ai/andrej-karpathy-skills',
+    kind: 'github',
+    mode: 'REFERENCE_ONLY',
+    capabilities: ['agent-skills', 'code-simplification'],
+    commitSha: '2c606141936f1eeef17fa3043a72095b4765b9c2',
+    licenseStatus: 'REPORTED',
+    notes: 'Karpathy-inspired coding discipline: surface assumptions, minimize code, keep diffs surgical and define verifiable goals. README/SKILL/plugin metadata report MIT, but no root LICENSE file was resolved; FuryPipe adapts the behavior into a native instruction profile instead of copying the upstream CLAUDE.md.',
+  }),
+  ref({
     id: 'agent-skills-standard',
     name: 'Agent Skills Open Standard',
     url: 'https://github.com/agentskills/agentskills',
