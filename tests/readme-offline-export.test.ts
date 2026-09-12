@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 const README_PATH = 'README.md';
 const OFFLINE_EXPORT_HEADING = '## Offline export (no proxy)';
 const REQUIRED_OFFLINE_EXPORT_TEXT = [
-  'pxpipe export',
+  'furypipe export',
   '--stdin',
   '--git',
   'page-*.png',
