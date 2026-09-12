@@ -1,7 +1,7 @@
 {
   "name": "furypipe",
   "version": "0.13.2",
-  "description": "FuryPipe context compiler and provider proxy, derived from pxpipe with exactness and recovery safeguards.",
+  "description": "FuryPipe — context, agents, skills, MCP, memory, provider routing and capability orchestration for production AI workflows.",
   "type": "module",
   "bin": {
     "furypipe": "bin/cli.js",
@@ -181,6 +181,10 @@
     "./worker": {
       "types": "./dist/worker.d.ts",
       "import": "./dist/worker.js"
+    },
+    "./capability-router": {
+      "types": "./dist/capability-router.d.ts",
+      "import": "./dist/capability-router.js"
     }
   },
   "files": [
