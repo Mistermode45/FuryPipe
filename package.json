@@ -106,6 +106,10 @@
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"
     },
+    "./plugin-bundles": {
+      "types": "./dist/plugin-bundles.d.ts",
+      "import": "./dist/plugin-bundles.js"
+    },
     "./external-references": {
       "types": "./dist/external-reference-catalog.d.ts",
       "import": "./dist/external-reference-catalog.js"
