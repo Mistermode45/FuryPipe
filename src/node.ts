@@ -15,6 +15,7 @@ import * as os from 'node:os';
 import { isIP } from 'node:net';
 import { spawnSync } from 'node:child_process';
 import { createProxy, parseGatewayHeaders, resolveUpstreams, type ProxyConfig } from './core/proxy.js';
+import { createOmniRouteProxyConfig } from './core/omniroute.js';
 import {
   chatCompletionsUrl,
 } from './core/messages-chat-bridge.js';
@@ -57,9 +58,10 @@ interface RuntimeConfig {
   cloudflareApiKey?: string;
   openAIModels?: string[];
   cloudflareModels?: string[];
-  provider?: 'cloudflare-ai-gateway';
+  provider?: 'cloudflare-ai-gateway' | 'omniroute';
   gatewayBaseUrl?: string;
   gatewayHeaders?: Record<string, string>;
+  omniRouteApiKey?: string;
   eventsFile: string;
   /** Persist 4xx request and upstream error bodies for debugging. Off unless
    *  PXPIPE_DEBUG_CAPTURE_4XX=1. */
@@ -198,6 +200,10 @@ function parseCli(argv: string[]): RuntimeConfig {
   const cloudflareUpstream = cfAccount && cfToken
     ? `https://api.cloudflare.com/client/v4/accounts/${cfAccount}/ai/v1`
     : undefined;
+  const provider = parseProvider(process.env.PXPIPE_PROVIDER);
+  const gatewayBaseUrl = provider === 'omniroute'
+    ? process.env.OMNIROUTE_BASE_URL ?? process.env.PXPIPE_GATEWAY_BASE_URL
+    : process.env.PXPIPE_GATEWAY_BASE_URL;
   return {
     port: Number(process.env.PORT ?? 47821),
     // Loopback by default; opt into all-interfaces exposure explicitly via HOST.
@@ -209,9 +215,10 @@ function parseCli(argv: string[]): RuntimeConfig {
     cloudflareApiKey: cfToken,
     openAIModels: parseModels(process.env.OPENAI_MODELS),
     cloudflareModels: parseModels(process.env.CLOUDFLARE_MODELS),
-    provider: parseProvider(process.env.PXPIPE_PROVIDER),
-    gatewayBaseUrl: process.env.PXPIPE_GATEWAY_BASE_URL,
+    provider,
+    gatewayBaseUrl,
     gatewayHeaders: parseGatewayHeaders(process.env.PXPIPE_GATEWAY_HEADERS),
+    omniRouteApiKey: process.env.OMNIROUTE_API_KEY,
     eventsFile: process.env.PXPIPE_LOG ?? DEFAULT_EVENTS_FILE,
     // Off by default: either side of a 4xx may hold prompts or secrets.
     // Opt in for debugging only. (issue #69)
@@ -236,9 +243,9 @@ function parseMaxRequestBytes(value: string | undefined): number | undefined {
   return bytes;
 }
 
-function parseProvider(v: string | undefined): 'cloudflare-ai-gateway' | undefined {
+function parseProvider(v: string | undefined): 'cloudflare-ai-gateway' | 'omniroute' | undefined {
   if (v === undefined || v === '') return undefined;
-  if (v === 'cloudflare-ai-gateway') return v;
+  if (v === 'cloudflare-ai-gateway' || v === 'omniroute') return v;
   console.error(`[pxpipe] unknown PXPIPE_PROVIDER: ${v}`);
   process.exit(2);
 }
@@ -292,10 +299,11 @@ Environment:
   CLOUDFLARE_MODELS       comma-separated exact model ids routed to Cloudflare
   CLOUDFLARE_ACCOUNT_ID   with CLOUDFLARE_API_TOKEN, zero-config Cloudflare
   CLOUDFLARE_API_TOKEN    Workers AI endpoint and bearer token
-  PXPIPE_PROVIDER         optional: 'cloudflare-ai-gateway' — route both API
-                          families through one gateway base URL
-  PXPIPE_GATEWAY_BASE_URL gateway base URL (required with PXPIPE_PROVIDER)
-  PXPIPE_GATEWAY_HEADERS  extra upstream headers: JSON object or k=v;k2=v2
+  PXPIPE_PROVIDER         optional: 'cloudflare-ai-gateway' or 'omniroute'
+  PXPIPE_GATEWAY_BASE_URL generic gateway base URL
+  PXPIPE_GATEWAY_HEADERS  extra gateway headers; OmniRoute rejects auth/cookie names
+  OMNIROUTE_BASE_URL      OmniRoute root or /v1 URL; required for omniroute
+  OMNIROUTE_API_KEY       optional OmniRoute Bearer API key; never logged
   PXPIPE_MODELS           comma-separated model bases to image (Claude/Gemini/GPT/Grok);
                           default claude-fable-5,gemini (every Gemini; Sol/Opus/GPT-5.5/Grok opt-in);
                           off disables
@@ -1283,14 +1291,24 @@ async function main(): Promise<void> {
   // doesn't reset what you can see in the UI. Best-effort; ignored on error.
   await dashboard.replay(opts.eventsFile).catch(() => {});
 
+  const omniRouteConfig = opts.provider === 'omniroute'
+    ? createOmniRouteProxyConfig({
+        baseUrl: opts.gatewayBaseUrl ?? '',
+        apiKey: opts.omniRouteApiKey,
+        headers: opts.gatewayHeaders,
+      })
+    : undefined;
+
   const config: ProxyConfig = {
-    authToken: anthropicAuthToken,
-    provider: opts.provider,
-    gatewayBaseUrl: opts.gatewayBaseUrl,
-    gatewayHeaders: opts.gatewayHeaders,
-    upstream: opts.upstream,
-    openAIUpstream: opts.openAIUpstream,
-    openAIApiKey: opts.openAIApiKey,
+    ...(omniRouteConfig ?? {
+      authToken: anthropicAuthToken,
+      provider: opts.provider === 'cloudflare-ai-gateway' ? opts.provider : undefined,
+      gatewayBaseUrl: opts.gatewayBaseUrl,
+      gatewayHeaders: opts.gatewayHeaders,
+      upstream: opts.upstream,
+      openAIUpstream: opts.openAIUpstream,
+      openAIApiKey: opts.openAIApiKey,
+    }),
     cloudflareUpstream: opts.cloudflareUpstream,
     cloudflareApiKey: opts.cloudflareApiKey,
     openAIModels: opts.openAIModels,
