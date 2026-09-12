@@ -133,6 +133,7 @@ describe('Fury plugin bundles', () => {
       cliProfiles: [{
         id: 'context7-mcp',
         packageName: '@playwright/cli',
+        packageVersion: '0.1.19',
         executable: 'playwright-cli',
         permissions: ['browser'],
         autoInstall: false,
@@ -151,7 +152,7 @@ describe('Fury plugin bundles', () => {
       'github-mcp',
       'supabase',
     ]);
-    expect(registry.get('context7')).toBe(CONTEXT7_PLUGIN_BUNDLE);
+    expect(registry.get('context7')).toStrictEqual(CONTEXT7_PLUGIN_BUNDLE);
     expect(() => registry.register(CONTEXT7_PLUGIN_BUNDLE)).toThrow(/already registered/);
   });
 
