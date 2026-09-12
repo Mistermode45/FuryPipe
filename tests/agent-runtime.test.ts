@@ -136,6 +136,87 @@ describe('FuryPipe Agent runtime', () => {
     expect(result.contextUsedTokens).toBe(45);
   });
 
+  it('automatically executes planned MCP calls once and reuses identical calls within the stage', async () => {
+    let calls = 0;
+    const result = await runAgent({
+      objective: 'Use the selected MCP context once.',
+      executors: {
+        ...stageExecutors([]),
+        research: async (context) => {
+          expect(context.autoMcpExecutions).toEqual([{
+            serverId: 'local-research',
+            method: 'search',
+            params: { q: 'furypipe' },
+            result: { hits: 3 },
+          }]);
+          const repeated = await context.invokeMcp('local-research', 'search', { q: 'furypipe' });
+          expect(repeated).toEqual({ hits: 3 });
+          return { evidence: ['mcp-stage-evidence'], consumedTokens: 2 };
+        },
+      },
+      mcpServers: [{
+        id: 'local-research',
+        allowedMethods: ['search'],
+        execute: async () => {
+          calls += 1;
+          return { hits: 3 };
+        },
+      }],
+      autoInvokeMcpByStage: {
+        research: [{ serverId: 'local-research', method: 'search', params: { q: 'furypipe' } }],
+      },
+    });
+
+    expect(result.status).toBe('completed');
+    expect(calls).toBe(1);
+  });
+
+  it('rejects invalid or duplicate automatic MCP schedules before execution', async () => {
+    const duplicate = { serverId: 'local', method: 'read', params: { id: 1 } };
+    const result = await runAgent({
+      objective: 'Reject duplicate MCP calls.',
+      executors: stageExecutors([]),
+      autoInvokeMcpByStage: {
+        research: [duplicate, duplicate],
+      },
+    });
+    expect(result).toMatchObject({
+      status: 'failed',
+      failure: { code: 'INVALID_REQUEST' },
+    });
+  });
+
+  it('fails closed when an automatically planned MCP call is unavailable or not allowed', async () => {
+    const missing = await runAgent({
+      objective: 'Missing MCP.',
+      executors: stageExecutors([]),
+      autoInvokeMcpByStage: {
+        research: [{ serverId: 'missing', method: 'search' }],
+      },
+    });
+    expect(missing).toMatchObject({
+      status: 'failed',
+      failure: { code: 'MCP_BLOCKED', stage: 'research' },
+    });
+
+    const disallowed = await runAgent({
+      objective: 'Disallowed MCP method.',
+      executors: stageExecutors([]),
+      mcpServers: [{
+        id: 'mcp',
+        allowedMethods: ['read'],
+        execute: async () => ({ ok: true }),
+      }],
+      autoInvokeMcpByStage: {
+        research: [{ serverId: 'mcp', method: 'delete' }],
+      },
+    });
+    expect(disallowed).toMatchObject({
+      status: 'failed',
+      failure: { code: 'MCP_BLOCKED', stage: 'research' },
+    });
+  });
+
   it('rejects invalid automatic skill schedules before execution', async () => {
     const result = await runAgent({
       objective: 'Reject bad routing metadata.',
