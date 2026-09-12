@@ -37,7 +37,7 @@ import {
   type DashboardRoute,
 } from './dashboard.js';
 import { runStats } from './stats.js';
-import { collectDoctorReport, renderDoctorReport } from './doctor.js';
+import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
 import { createControlRoomRuntime } from './control-room/runtime.js';
 
 /** Runtime config. The core transform tuning comes from DEFAULTS in
@@ -1097,7 +1097,11 @@ async function main(): Promise<void> {
       console.log('Usage: furypipe doctor [--json] [--locale=<BCP-47>]');
       return;
     }
-    console.log(renderDoctorReport(collectDoctorReport(), extra.includes('--json'), localeArg?.slice('--locale='.length) ?? 'en'));
+    console.log(renderDoctorReport(
+      collectDoctorReport(),
+      extra.includes('--json'),
+      resolveDoctorLocale(localeArg?.slice('--locale='.length)),
+    ));
     return;
   }
   if (argv[0] === 'export') {

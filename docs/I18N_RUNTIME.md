@@ -20,8 +20,7 @@ Implemented:
 - FR/EN catalog-key parity enforcement;
 - pseudo-locale compatibility through the existing core.
 
-The `doctor` human-readable CLI labels consume the shared catalog through
-`--locale=<BCP-47>`.
+The `doctor` human-readable CLI labels consume the shared catalog. `--locale=<BCP-47>` remains authoritative; without it, the Node CLI now resolves a bounded OS preference chain from `LC_ALL`, `LC_MESSAGES`, `LANGUAGE`, `LANG`, then `Intl.DateTimeFormat().resolvedOptions().locale`. POSIX forms such as `fr_FR.UTF-8` are normalized before matching FR/EN catalogs.
 
 The dashboard now has a real request-scoped locale surface:
 
@@ -38,7 +37,6 @@ The dashboard now has a real request-scoped locale surface:
 The following remain deliberately not claimed:
 
 - full translation of every legacy dashboard fragment;
-- CLI/OS locale auto-discovery outside HTTP browser negotiation;
 - translated MCP/protocol payloads;
 - translated code/config/IDs/hashes;
 - visual browser validation of every RTL layout.
@@ -60,3 +58,18 @@ The HTTP parser is deliberately bounded:
 - automatic dashboard selection is limited to real catalogs (`en`, `fr`).
 
 This keeps browser negotiation separate from the pseudo-locales used for localization QA.
+
+
+## CLI / OS locale boundary
+
+Doctor locale detection is intentionally bounded and human-output-only:
+
+- explicit `--locale` wins over every environment/OS signal;
+- `LC_ALL` and `LC_MESSAGES` precede `LANGUAGE` and `LANG`;
+- `LANGUAGE` is capped and at most 8 entries are considered;
+- POSIX `C` / `POSIX` are ignored;
+- encoding/modifier suffixes are stripped (`fr_FR.UTF-8@euro` -> `fr-FR`);
+- invalid tags are isolated;
+- the Node `Intl` locale is the final OS signal;
+- automatic CLI selection is limited to real EN/FR catalogs;
+- JSON output remains language-neutral and unchanged.

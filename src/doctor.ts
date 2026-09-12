@@ -4,6 +4,7 @@ import path from 'node:path';
 import { discoverOpenClaw, type OpenClawDiscovery } from './openclaw.js';
 import { createI18n } from './i18n/index.js';
 import { CORE_CATALOGS } from './i18n/catalogs.js';
+import { resolveSupportedLocale } from './i18n/runtime.js';
 
 export interface DoctorCheck {
   readonly status: 'available' | 'unavailable' | 'configured' | 'not_configured';
@@ -138,6 +139,59 @@ export function collectDoctorReport(): DoctorReport {
       security: openclaw.security,
     },
   };
+}
+
+function normalizeSystemLocaleCandidate(value: string | undefined): string | undefined {
+  const raw = value?.trim();
+  if (!raw || raw.length > 256 || raw.includes('\0')) return undefined;
+  const upper = raw.toUpperCase();
+  if (upper === 'C' || upper === 'POSIX' || upper.startsWith('C.')) return undefined;
+  const base = raw.split('@', 1)[0]!.split('.', 1)[0]!.replaceAll('_', '-').trim();
+  if (!base) return undefined;
+  try {
+    return new Intl.Locale(base).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+export interface DoctorLocaleOptions {
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly intlLocale?: string;
+}
+
+export function resolveDoctorLocale(
+  explicitLocale?: string,
+  options: DoctorLocaleOptions = {},
+): string {
+  const explicit = explicitLocale?.trim();
+  if (explicit) {
+    try {
+      return new Intl.Locale(explicit).toString();
+    } catch {
+      throw new RangeError(`invalid BCP-47 locale: ${explicitLocale}`);
+    }
+  }
+
+  const env = options.env ?? process.env;
+  const preferences: string[] = [];
+  const add = (value: string | undefined): void => {
+    const normalized = normalizeSystemLocaleCandidate(value);
+    if (normalized && !preferences.includes(normalized)) preferences.push(normalized);
+  };
+
+  add(env.LC_ALL);
+  add(env.LC_MESSAGES);
+
+  const language = env.LANGUAGE?.trim();
+  if (language && language.length <= 1024 && !language.includes('\0')) {
+    for (const value of language.split(':').slice(0, 8)) add(value);
+  }
+
+  add(env.LANG);
+  add(options.intlLocale ?? Intl.DateTimeFormat().resolvedOptions().locale);
+
+  return resolveSupportedLocale(preferences, ['en', 'fr'], 'en');
 }
 
 export function renderDoctorReport(report: DoctorReport, json = false, locale = 'en'): string {
