@@ -38,6 +38,7 @@ import {
 } from './dashboard.js';
 import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport } from './doctor.js';
+import { createControlRoomRuntime } from './control-room/runtime.js';
 
 /** Runtime config. The core transform tuning comes from DEFAULTS in
  *  transform.ts; startup knobs cover deployment plus emergency GPT scope
@@ -70,6 +71,16 @@ interface RuntimeConfig {
 
 const DEFAULT_CONFIG_FILE = path.join(os.homedir(), '.config', 'pxpipe', 'config.json');
 const DEFAULT_EVENTS_FILE = path.join(os.homedir(), '.pxpipe', 'events.jsonl');
+
+function controlRoomSourceCommit(): string | undefined {
+  const value = process.env.FURYPIPE_SOURCE_COMMIT?.trim();
+  if (!value) return undefined;
+  if (!/^[0-9a-f]{40}$/u.test(value)) {
+    console.warn('[furypipe] ignored invalid FURYPIPE_SOURCE_COMMIT; Control Room runtime evidence is disabled');
+    return undefined;
+  }
+  return value;
+}
 
 function normalizeModelsConfig(value: unknown): string | undefined {
   if (Array.isArray(value)) {
@@ -1211,6 +1222,13 @@ async function main(): Promise<void> {
   // sidecar write (see maybeWriteBodySidecar).
   const bodySidecarDir = path.join(path.dirname(opts.eventsFile), '4xx-bodies');
 
+  // Control Room snapshots must be pinned to an exact build identity. The host
+  // enables live runtime evidence only when that identity is supplied explicitly.
+  const sourceCommit = controlRoomSourceCommit();
+  const controlRoomRuntime = sourceCommit === undefined
+    ? undefined
+    : createControlRoomRuntime({ sourceCommit });
+
   // Live dashboard state — populated on every request via onRequest below,
   // served via the route interception in front of the proxy handler. The
   // SessionsPaths handle lets the dashboard surface session/disk/stats data
@@ -1222,6 +1240,7 @@ async function main(): Promise<void> {
     },
     undefined,
     persistModelBasesToConfig,
+    controlRoomRuntime === undefined ? undefined : () => controlRoomRuntime.snapshot(),
   );
   // Seed the "recent requests" table from the JSONL log so a process restart
   // doesn't reset what you can see in the UI. Best-effort; ignored on error.
@@ -1252,14 +1271,20 @@ async function main(): Promise<void> {
       // whole process, so the "normal" arm can be scripted on its own port while
       // still logging real usage + count_tokens baselines to its own PXPIPE_LOG.
       // (The dashboard kill switch does the same thing at runtime.)
-      if (forcePassthrough || !dashboard.getCompressionEnabled()) return { compress: false };
-      // Active path: use DEFAULTS in transform.ts for break-even gating.
-      return {};
+      if (forcePassthrough || !dashboard.getCompressionEnabled()) {
+        return controlRoomRuntime === undefined
+          ? { compress: false }
+          : { compress: false, emitReceipt: true };
+      }
+      // The Control Room collector consumes plaintext-free receipts only when
+      // an exact source identity enabled the runtime provider.
+      return controlRoomRuntime === undefined ? {} : { emitReceipt: true };
     },
     onRequest: async (e) => {
       // Feed the dashboard BEFORE tracker.emit — toTrackEvent strips
       // info.firstImagePng, so capturing has to happen on the raw event.
       dashboard.update(e);
+      controlRoomRuntime?.observeProxyEvent(e);
       // Debug: persist this request's rendered PNGs (see PXPIPE_DUMP_DIR above).
       // Filenames sort by request order: <stamp>_reqNNN_<model>_pNN.png.
       if (imageDumpDir && e.info?.imagePngs && e.info.imagePngs.length > 0) {

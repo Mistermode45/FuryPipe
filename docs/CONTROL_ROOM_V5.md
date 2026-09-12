@@ -2,7 +2,7 @@
 
 ## Status
 
-`DASHBOARD_WIRED_HOST_PROVIDER_NOT_CONFIGURED`
+`DASHBOARD_WIRED_LIVE_RECEIPT_PROVIDER_OPT_IN`
 
 The Control Room V5 kernel provides a fail-visible metadata snapshot for FuryPipe V5 and is wired into the loopback dashboard through:
 
@@ -68,3 +68,22 @@ The Control Room model is metadata-only. It must never become a channel for:
 - raw protected ExactGuard spans.
 
 Counts, statuses, digests, commit IDs and bounded evidence metadata are permitted.
+
+
+## Node runtime evidence provider
+
+The Node host now wires `src/control-room/runtime.ts` when `FURYPIPE_SOURCE_COMMIT` contains the exact lowercase 40-character source SHA for the running build.
+
+When enabled:
+
+- `transformRequest` emits plaintext-free compression receipts for the proxy path;
+- each raw `ProxyEvent` is observed before tracker reduction;
+- Control Room reports real receipt totals, verified receipt totals, protected-span counts and Recovery-handle counts;
+- Recovery handles are deduplicated for the observed-object count;
+- request plaintext, image source text and model output are not retained by the collector.
+
+Subsystems not observed by the Node proxy remain `NOT_AVAILABLE` / `NOT_EXECUTED`. The runtime collector supports explicit host evidence overrides, but it never converts implementation presence into runtime verification by itself.
+
+If `FURYPIPE_SOURCE_COMMIT` is absent or malformed, the dashboard keeps the previous `503 NOT_AVAILABLE` behavior. This is intentional: evidence without exact build identity is not trustworthy enough for release decisions.
+
+Recovery encryption is represented as `unknown` when the collector sees Recovery handles but does not own the backing Recovery configuration.
