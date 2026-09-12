@@ -507,12 +507,12 @@ function policySkip(
   candidate: ContinuousMemoryCandidate,
   configured: ContinuousMemoryPolicy,
 ): ContinuousMemoryMutationReceipt['reason'] | undefined {
+  if (candidate.action === 'FORGET') {
+    return candidate.evidence === 'inferred' ? 'inferred-forget-rejected' : undefined;
+  }
   if ((candidate.sensitivity ?? 'normal') === 'secret') return 'secret-never-stored';
   if ((candidate.sensitivity ?? 'normal') === 'sensitive' && !configured.allowSensitive) {
     return 'sensitive-disabled';
-  }
-  if (candidate.action === 'FORGET' && candidate.evidence === 'inferred') {
-    return 'inferred-forget-rejected';
   }
   if (candidate.evidence === 'inferred' && !configured.allowInferred) return 'inferred-disabled';
   if (candidate.action === 'REMEMBER') {
