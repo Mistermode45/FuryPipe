@@ -205,3 +205,20 @@ Dans `scripts/build.mjs`, la base `file://${tsPkgPath}` construisait une URL inv
 - Le projet upstream conserve `packageManager: pnpm@10.21.0`; pnpm global 12.3.4 est installé mais n’est pas imposé au lockfile.
 - `npm pack` émet trois warnings de configuration pnpm inconnue (`minimum-release-age`, `minimum-release-age-exclude`, `ignore-pnpmfile`) ; ils proviennent du `.npmrc` du projet et ne bloquent pas le dry-run.
 - La validation macOS/Linux, Docker multi-architecture, OpenClaw, MCP HTTP, publication npm, provenance attestée et tests provider réels restent non exécutés.
+
+## Track B — Registre écosystème MCP — 2026-09-12
+
+Baseline code : `v5-production-hardening` / `423bef619c4306557838142008a858db65b4eea1`. Aucun connecteur externe n’a été installé, authentifié, démarré ou appelé.
+
+| Vérification | Résultat | Preuve / limite |
+|---|---|---|
+| Schéma de `MCP_REGISTRY.md` | PASS | 19 fiches, IDs uniques; source/version/licence, transport/auth, outils/scope, filesystem/réseau, coût, health/dernier test, décision et approbation présents |
+| `pnpm install --frozen-lockfile` | PASS | lockfile inchangé; pnpm projet 10.21.0 |
+| `pnpm run typecheck` | PASS | sortie 0 |
+| `pnpm test` | PASS | 122 fichiers; 1 516 tests |
+| `pnpm run audit` | PASS | aucune vulnérabilité connue dans les dépendances de production |
+| `pnpm run build` | PASS | `dist` + binaires Node/MCP; version smoke 0.13.2 |
+| `pnpm run package:smoke` | PASS | installation/export depuis le tarball local `furypipe-0.13.2.tgz`; rien publié |
+| Intégrations SaaS/externes | NOT_EXECUTED | pas de compte/token, tool call, probe health ou coût facturable |
+
+Le statut MCP du produit demeure `PARTIAL` : OAuth réel, audience/issuer du verifier hébergé, interopérabilité multi-client et permissions sur des instances réelles restent à valider hors de cet environnement. L’audit conformance existant est épinglé à `48aaec7373ba87195922d6757b099804da9de6bc` et ne vaut pas certification des commits MCP ultérieurs.

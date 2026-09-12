@@ -502,3 +502,20 @@
 - Les collisions de plus haute révision restent fail-closed au lieu d'élire silencieusement un gagnant.
 - `promoteValidatedLessonToLongTermMemory()` relie Learning à la mémoire durable ; Working memory est refusée sans reclassification.
 - Aucun embedding, vector DB, provider ou extraction LLM implicite n'est ajouté au baseline.
+
+
+## 2026-09-12 — Track B registre écosystème MCP
+
+- Baseline repris depuis `v5-production-hardening` au SHA `423bef619c4306557838142008a858db65b4eea1`; branche de travail `v5-codex-mcp-registry`.
+- `MCP_REGISTRY.md` étendu à 19 fiches uniques : protocole, Registry, runtime FuryPipe et candidats externes, dont Figma, 21st, Perplexity et WordPress requis par le master.
+- Chaque fiche documente source/version/licence, transport/auth, outils/scope, filesystem/réseau, coût, health/dernier test, risque/décision et politique d’approbation. Les serveurs externes restent `NOT_CONNECTED`; aucun compte, secret ou appel facturable n’a été utilisé.
+- Références officielles MCP, fournisseurs et dépôts épinglés; le rapport MCP précédent reste explicitement associé à son SHA `48aaec7`, et ne certifie pas les changements MCP postérieurs.
+- Vérification structurelle : 19/19 IDs uniques et champs obligatoires présents; `git diff --check` sans erreur.
+- Environnement local : Node `26.8.2`, npm `11.14.1`, pnpm projet `10.21.0`.
+- `pnpm install --frozen-lockfile` : PASS, lockfile inchangé.
+- `pnpm run typecheck` : PASS.
+- `pnpm test` : PASS, 122 fichiers et 1 516 tests.
+- `pnpm run audit` : PASS, aucune vulnérabilité connue détectée dans les dépendances de production.
+- `pnpm run build` : PASS; modules/declarations, `dist/node.js`, `dist/mcp.js` et version `0.13.2` vérifiés.
+- `pnpm run package:smoke` : PASS sur le tarball local `furypipe-0.13.2.tgz`; aucune publication effectuée.
+- M8 demeure `PARTIAL` : OAuth/Authorization Server hébergé, vérification d’audience réelle, conformance multi-client, health checks et permissions de vrais tenants non exécutés.
