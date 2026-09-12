@@ -34,6 +34,12 @@ export interface ProxyConfig {
   gatewayBaseUrl?: string;
   /** Extra headers injected on every upstream request (e.g. gateway auth). */
   gatewayHeaders?: Record<string, string>;
+  /**
+   * Remove caller/provider credentials before applying gatewayHeaders.
+   * Intended for a trusted gateway with its own dedicated credential, such as
+   * OmniRoute. Direct provider keys must never cross this boundary.
+   */
+  gatewayCredentialIsolation?: boolean;
   /** Anthropic API base, no trailing slash. Defaults to api.anthropic.com. */
   upstream?: string;
   /** Override or supply an API key. If unset, we forward whatever the client sent. */
@@ -1949,6 +1955,18 @@ let responseContentType: string | undefined;
       if (bearer) outHeaders.set('authorization', `Bearer ${bearer}`);
     }
 
+    if (config.gatewayCredentialIsolation) {
+      for (const name of [
+        'authorization',
+        'proxy-authorization',
+        'x-api-key',
+        'api-key',
+        'x-goog-api-key',
+        'cookie',
+      ]) {
+        outHeaders.delete(name);
+      }
+    }
     applyGatewayHeaders(outHeaders);
 
     // Claude Code smuggles its volatile per-turn billing line inside system
@@ -1981,6 +1999,13 @@ let responseContentType: string | undefined;
         : isOpenAIPath && routes.stripOpenAIV1 ? path.replace(/^\/v1(?=\/)/, '') : path;
       const requestUpstreamBase = bridgedGptMessages ? openAIUpstream : upstreamBase;
       upstreamUrl = requestUpstreamBase + outPath;
+    }
+    if (config.gatewayCredentialIsolation) {
+      const isolated = new URL(upstreamUrl);
+      for (const name of ['key', 'api_key', 'apiKey', 'token', 'access_token']) {
+        isolated.searchParams.delete(name);
+      }
+      upstreamUrl = isolated.toString();
     }
     let releaseInFlight = (): void => {};
     if (reqBodySha256 && duplicateHoldMs > 0) {
