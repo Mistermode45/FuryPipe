@@ -97,4 +97,135 @@ describe('Control Room live runtime collector', () => {
 
     expect(JSON.stringify(runtime.snapshot())).not.toContain('TOP-SECRET-REQUEST-BODY');
   });
+  it('tracks the latest state of each Agent run without double-counting handoff resumes', () => {
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 4 });
+    runtime.observeAgentRun({
+      format: 'furypipe-agent-run/v1',
+      status: 'handoff_required',
+      runId: 'run-1',
+      objectiveDigest: 'afrun_digest',
+      completedStages: ['research'],
+      contextUsedTokens: 10,
+      skillHealth: {},
+    });
+    runtime.observeAgentRun({
+      format: 'furypipe-agent-run/v1',
+      status: 'completed',
+      runId: 'run-1',
+      objectiveDigest: 'afrun_digest',
+      completedStages: ['research', 'plan', 'implement', 'review', 'verify'],
+      contextUsedTokens: 50,
+      skillHealth: {},
+    });
+    runtime.observeAgentRun({
+      format: 'furypipe-agent-run/v1',
+      status: 'failed',
+      runId: 'run-2',
+      objectiveDigest: 'afrun_other',
+      completedStages: ['research'],
+      contextUsedTokens: 7,
+      skillHealth: {},
+      failure: { code: 'STAGE_FAILED', stage: 'plan', reason: 'opaque failure' },
+    });
+
+    const agent = runtime.snapshot().sections.agent;
+    expect(agent.evidence).toEqual({
+      runs: 2,
+      completedRuns: 1,
+      handoffRuns: 0,
+      failedRuns: 1,
+      contextUsedTokens: 57,
+      persistedMemory: 'NOT_AVAILABLE',
+      distributedHandoff: 'NOT_AVAILABLE',
+    });
+    expect(agent.status).toBe('PARTIAL');
+  });
+
+  it('tracks completed Learning cycles and unique lesson reuse without retaining lesson metadata', () => {
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 5 });
+    const reused = (id: string) => ({
+      format: 'furypipe-agent-lesson/v1' as const,
+      lessonId: id,
+      memoryClass: 'Semantic' as const,
+      taskDigest: 'task_digest',
+      lessonDigest: `digest_${id}`,
+      contentHandle: `opaque://PRIVATE-${id}`,
+      evidenceDigests: ['evidence_digest'],
+      validation: 'validated' as const,
+      reuseCount: 1,
+    });
+    runtime.observeLearningCycle({
+      format: 'furypipe-agent-learning-cycle/v1',
+      status: 'completed',
+      cycleId: 'cycle-1',
+      taskDigest: 'task_digest',
+      memoryClass: 'Semantic',
+      phaseOrder: ['plan', 'execute', 'verify', 'reflect', 'extract_lesson', 'validate', 'store', 'reuse'],
+      phases: [],
+      contextUsedTokens: 12,
+      lessonId: 'new-lesson',
+      reusedLessons: [reused('old-a'), reused('old-b'), reused('old-a')],
+    });
+    runtime.observeLearningCycle({
+      format: 'furypipe-agent-learning-cycle/v1',
+      status: 'completed',
+      cycleId: 'cycle-1',
+      taskDigest: 'task_digest',
+      memoryClass: 'Semantic',
+      phaseOrder: ['plan', 'execute', 'verify', 'reflect', 'extract_lesson', 'validate', 'store', 'reuse'],
+      phases: [],
+      contextUsedTokens: 13,
+      lessonId: 'new-lesson',
+      reusedLessons: [reused('old-a')],
+    });
+
+    const snapshot = runtime.snapshot();
+    expect(snapshot.sections.learning.evidence).toEqual({
+      humanTopics: 0,
+      agentLessons: 1,
+      reusedLessons: 1,
+      durableStore: 'NOT_AVAILABLE',
+      semanticRetrieval: 'NOT_AVAILABLE',
+    });
+    expect(snapshot.sections.learning.status).toBe('PARTIAL');
+    expect(JSON.stringify(snapshot)).not.toContain('PRIVATE-');
+    expect(JSON.stringify(snapshot)).not.toContain('new-lesson');
+    expect(JSON.stringify(snapshot)).not.toContain('old-a');
+  });
+
+  it('rejects malformed Agent/Learning observations before they can poison Control Room counters', () => {
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 6 });
+    expect(() => runtime.observeAgentRun({
+      format: 'furypipe-agent-run/v1',
+      status: 'completed',
+      runId: '',
+      objectiveDigest: 'digest',
+      completedStages: [],
+      contextUsedTokens: 0,
+      skillHealth: {},
+    })).toThrow(/runId/);
+
+    expect(() => runtime.observeLearningCycle({
+      format: 'furypipe-agent-learning-cycle/v1',
+      status: 'completed',
+      cycleId: 'cycle',
+      taskDigest: 'task',
+      memoryClass: 'Semantic',
+      phaseOrder: [],
+      phases: [],
+      contextUsedTokens: 0,
+      reusedLessons: Array.from({ length: 10_001 }, (_, index) => ({
+        format: 'furypipe-agent-lesson/v1' as const,
+        lessonId: `lesson-${index}`,
+        memoryClass: 'Semantic' as const,
+        taskDigest: 'task',
+        lessonDigest: 'digest',
+        contentHandle: 'opaque://x',
+        evidenceDigests: [],
+        validation: 'validated' as const,
+        reuseCount: 0,
+      })),
+    })).toThrow(/reusedLessons/);
+  });
+
 });
