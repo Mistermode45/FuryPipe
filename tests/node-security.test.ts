@@ -26,16 +26,27 @@ let child: ChildProcess | undefined;
 let upstream: Server | undefined;
 let dir: string | undefined;
 
-function removeTempTree(target: string): void {
-  // Windows can keep a just-closed child-process handle alive for a short
-  // interval. Let Node retry the directory removal instead of making the
-  // security test depend on scheduler timing.
-  fs.rmSync(target, {
-    recursive: true,
-    force: true,
-    maxRetries: 30,
-    retryDelay: 100,
-  });
+async function removeTempTree(target: string): Promise<void> {
+  // Windows can keep a just-closed child-process handle alive after the child
+  // emitted `close`. Node 22 has occasionally surfaced EBUSY even when
+  // rmSync(maxRetries) is used, so retry the whole removal operation only for
+  // the transient Windows filesystem errors we expect here.
+  const transientWindowsCodes = new Set(['EBUSY', 'EPERM', 'ENOTEMPTY']);
+  const attempts = process.platform === 'win32' ? 50 : 1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      fs.rmSync(target, { recursive: true, force: true });
+      return;
+    } catch (caught) {
+      const code = (caught as NodeJS.ErrnoException).code;
+      const retryable = process.platform === 'win32'
+        && code !== undefined
+        && transientWindowsCodes.has(code)
+        && attempt + 1 < attempts;
+      if (!retryable) throw caught;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
 }
 
 afterEach(async () => {
@@ -48,7 +59,7 @@ afterEach(async () => {
   child = undefined;
   if (upstream) await new Promise<void>((resolve) => upstream!.close(() => resolve()));
   upstream = undefined;
-  if (dir) removeTempTree(dir);
+  if (dir) await removeTempTree(dir);
   dir = undefined;
 });
 
@@ -211,6 +222,6 @@ describe('Node dashboard security', () => {
     expectMode(dumpDir, 0o700);
     expect(files.length).toBeGreaterThan(0);
     expectMode(path.join(dumpDir, files[0]!), 0o600);
-    fs.rmSync(dumpDir, { recursive: true, force: true });
+    await removeTempTree(dumpDir);
   });
 });
