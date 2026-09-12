@@ -832,6 +832,80 @@ Priority: **low for core, high for future media mode**.
 
 ---
 
+# 6.5 Canonical Agent Skills open standard
+
+Specification:
+https://agentskills.io/
+https://github.com/agentskills/agentskills
+
+Decision: **ADOPT the format contract**
+
+The Agent Skills standard is now vendor-neutral and supported across a broad
+agent ecosystem. FuryPipe should align its portable on-disk skill packaging
+with the standard directory shape:
+
+- `SKILL.md` required;
+- optional `scripts/`;
+- optional `references/`;
+- optional `assets/`.
+
+FuryPipe-specific provenance, permission, health and priority data should be an
+extension layer around that portable package, not an incompatible replacement.
+
+This gives FuryPipe a clear split:
+
+- **portable skill package** = Agent Skills-compatible folder;
+- **execution trust** = FuryPipe `AgentSkillRegistry` metadata/policy.
+
+Priority: **foundational**.
+
+# 6.6 2026 harness/instruction practices
+
+Anthropic's current engineering guidance reinforces several patterns FuryPipe
+should encode as defaults:
+
+- use subagents for genuinely parallel/independent tracks or isolated context;
+- do not spawn subagents for trivial single-file/sequential work;
+- persistent state and milestone validators matter more than repeatedly making
+  prompts larger;
+- long-running app development needs bounded sessions, verification and
+  recovery;
+- project instructions, hooks, skills and MCP should be layered rather than
+  collapsed into one giant system prompt.
+
+FuryPipe should therefore add a native subagent damping policy:
+
+`direct work -> subagent only when parallelism/isolation pays for itself`.
+
+This matches the existing bounded multi-subagent runtime and prevents a
+marketplace skill from exploding one task into dozens of agents.
+
+# 6.7 Plugin bundle architecture
+
+Current 2026 ecosystems increasingly package workflow capabilities as a bundle
+of reusable instructions plus connected tools. Supabase does this directly
+with MCP + skills, and modern Codex/ChatGPT plugin architecture similarly
+separates reusable skills from connected external apps.
+
+Recommended FuryPipe abstraction:
+
+```text
+FuryPluginBundle
+  manifest
+  skills[]
+  mcpProfiles[]
+  providerProfiles[]
+  appConnectors[]
+  requiredPermissions[]
+  secretsContract
+  healthChecks[]
+  uninstallPlan
+```
+
+A plugin bundle is configuration/provenance; it is never permission escalation.
+Every included connector must pass the same runtime policy it would pass if
+installed independently.
+
 # 7. Recommended FuryPipe-native instruction standard
 
 The best 2026 skill systems converge on the same pattern. FuryPipe should make
