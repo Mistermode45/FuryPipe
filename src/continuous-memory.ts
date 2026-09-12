@@ -795,11 +795,13 @@ export function createContinuousMemoryEngine(options: CreateContinuousMemoryEngi
 
       if (input.hard !== true) {
         if (existing.state === 'active') {
+          const requestedNow = boundedTimestamp(input.now, 'continuous memory forget now', Date.now())!;
+          const effectiveNow = Math.max(requestedNow, existing.createdAt, existing.updatedAt);
           await memory.apply({
             operation: 'DELETE',
             memoryId,
             scope: scoped,
-            now: input.now,
+            now: effectiveNow,
             reason: 'continuous-memory-explicit-forget-api',
             source: 'continuous-memory-user-control',
           });
