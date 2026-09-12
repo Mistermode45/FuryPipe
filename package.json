@@ -118,6 +118,18 @@
       "types": "./dist/knowledge-recovery.d.ts",
       "import": "./dist/knowledge-recovery.js"
     },
+    "./control-room": {
+      "types": "./dist/control-room/index.d.ts",
+      "import": "./dist/control-room/index.js"
+    },
+    "./control-room-runtime": {
+      "types": "./dist/control-room/runtime.d.ts",
+      "import": "./dist/control-room/runtime.js"
+    },
+    "./control-room-evidence": {
+      "types": "./dist/control-room/evidence-file.d.ts",
+      "import": "./dist/control-room/evidence-file.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"
