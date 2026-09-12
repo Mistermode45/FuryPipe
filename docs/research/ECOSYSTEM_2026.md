@@ -1549,3 +1549,127 @@ For shadcn/component registries:
 - capture diff;
 - run typecheck/tests/browser QA;
 - reject unrelated package churn.
+
+
+---
+
+# 2026 second-pass: standards, memory and spec-driven engineering
+
+## Agent Skills open standard
+
+Source:
+
+- `agentskills/agentskills@69ef37e9424c0a7ea9dd2293b559e43ec8176379`;
+- Apache-2.0 root licence verified.
+
+Decision: `ADOPT_FORMAT`
+
+FuryPipe should accept the portable Agent Skills structure as an interchange format, but format validity is not execution trust. Imported skills still pass FuryPipe's provenance, pinned-source, licence, permission, health and network gates.
+
+This is intentionally different from bulk-installing `anthropics/skills` or a marketplace.
+
+## GitHub Spec Kit
+
+Source:
+
+- `github/spec-kit@d848fb4e18f44640ad6b42e60a280551ee90cdce`;
+- MIT root licence verified.
+
+Decision: `ADAPT_NATIVE`
+
+FuryPipe now exposes a native `spec-driven-development` instruction profile instead of importing Spec Kit as a runtime dependency.
+
+The profile enforces:
+
+- specification/intent before implementation;
+- architecture/technical plan before executable task breakdown;
+- explicit assumptions, risks, dependencies and non-functional requirements;
+- tasks mapped to observable acceptance criteria;
+- verification against the specification;
+- unmet criteria reported as blockers rather than hidden completion claims.
+
+## Memory ecosystem
+
+FuryPipe now has a native Recovery-backed Long-Term Memory track. External memory systems are therefore optional backends/research references, not baseline dependencies.
+
+### Mem0
+
+Source: `mem0ai/mem0@c7ee362aff94a369af70f13f2b4f853f6793ff4c`, Apache-2.0.
+
+Decision: `ADAPTER_CANDIDATE`
+
+Useful patterns:
+
+- explicit memory consolidation;
+- add/update/delete/no-op style lifecycle;
+- optional managed/external semantic retrieval.
+
+Boundary: do not silently upload FuryPipe memory to an external service.
+
+### Letta
+
+Source: `letta-ai/letta@5bcdd177d70fa2b31a754cfcd801e77b2e1ab16a`, Apache-2.0.
+
+Decision: `ADAPTER_CANDIDATE / REFERENCE`
+
+Useful patterns:
+
+- stateful agents;
+- separation between active and durable/archival memory;
+- agent memory management.
+
+Boundary: FuryPipe Agent Fabric and Recovery remain authoritative unless an operator explicitly selects a Letta-backed profile.
+
+### Zep Graphiti
+
+Source: `getzep/graphiti@c035afb7990b6077331a81e98b04efcfd9bf8184`, Apache-2.0.
+
+Decision: `ADAPTER_CANDIDATE`
+
+Use:
+
+- future temporal knowledge graph;
+- time-aware entity/relationship retrieval;
+- optional semantic backend for Knowledge/Long-Term Memory.
+
+Boundary: Graphiti is not required for basic FuryPipe long-term memory and does not become an implicit network/database dependency.
+
+## Vercel MCP
+
+Official endpoint:
+
+- `https://mcp.vercel.com`;
+- OAuth;
+- hosted official Vercel MCP.
+
+Decision: `ADOPT / WRAP`
+
+A builtin FuryPipe bundle now exposes it as:
+
+- external opt-in only;
+- `cloud-read` + `network`;
+- OAuth;
+- read-only preferred;
+- no embedded token;
+- no default `cloud-write`.
+
+Future Vercel write/deployment actions require a separate scoped-write bundle rather than silently expanding this profile.
+
+## Resulting integration policy
+
+The preferred FuryPipe 2026 stack is now:
+
+1. **portable skill format:** Agent Skills standard;
+2. **native trust/execution:** FuryPipe Skill Registry;
+3. **spec-first workflow:** native Spec Kit-inspired instruction profile;
+4. **fresh docs:** Context7;
+5. **repo evidence:** GitHub MCP read-only;
+6. **browser QA:** Playwright CLI, Chrome DevTools specialist;
+7. **app backends/cloud:** Supabase, Cloudflare, Vercel opt-in read-only profiles;
+8. **design:** Figma MCP and optional 21st.dev reference;
+9. **research:** one primary provider (Exa/Tavily/Firecrawl) plus specialist ScrapeGraphAI only when required;
+10. **memory:** native Long-Term Memory by default, external Mem0/Letta/Graphiti only through explicit adapters;
+11. **provider routing:** native Provider Fabric/fallback plus optional OmniRoute gateway;
+12. **release:** exact-SHA Control Room evidence + provenance attestation + RC gates.
+
+The goal is not the largest plugin count. The goal is a small default surface with high-value opt-in integrations and explicit trust boundaries.

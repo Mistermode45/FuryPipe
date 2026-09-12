@@ -8,6 +8,7 @@ import {
   GITHUB_MCP_PLUGIN_BUNDLE,
   PLAYWRIGHT_CLI_PLUGIN_BUNDLE,
   SUPABASE_PLUGIN_BUNDLE,
+  VERCEL_PLUGIN_BUNDLE,
   createFuryPluginBundleRegistry,
   inspectFuryPluginBundle,
   validateFuryPluginBundle,
@@ -23,6 +24,7 @@ describe('Fury plugin bundles', () => {
       'github-mcp',
       'playwright-cli',
       'supabase',
+      'vercel',
     ]);
     for (const bundle of BUILTIN_FURY_PLUGIN_BUNDLES) {
       expect(bundle.mode).toBe('EXTERNAL_OPT_IN');
@@ -114,6 +116,19 @@ describe('Fury plugin bundles', () => {
       permissions: ['network', 'database-read'],
     });
     expect(SUPABASE_PLUGIN_BUNDLE.permissions).not.toContain('database-write');
+  });
+
+  it('models Vercel MCP as official OAuth cloud-read integration', () => {
+    expect(VERCEL_PLUGIN_BUNDLE.mcpProfiles[0]).toMatchObject({
+      transport: 'remote-http',
+      url: 'https://mcp.vercel.com/',
+      authentication: 'oauth',
+      readOnlyPreferred: true,
+      permissions: ['network', 'cloud-read'],
+    });
+    expect(VERCEL_PLUGIN_BUNDLE.permissions).not.toContain('cloud-write');
+    expect(VERCEL_PLUGIN_BUNDLE.source.licenseStatus).toBe('NOT_APPLICABLE');
+    expect(VERCEL_PLUGIN_BUNDLE.secrets).toEqual([]);
   });
 
   it('rejects credential-bearing and plaintext remote MCP URLs', () => {

@@ -7,6 +7,7 @@ import type {
 
 export const FURY_INSTRUCTION_PROFILE_IDS = Object.freeze([
   'karpathy-coding-discipline',
+  'spec-driven-development',
 ] as const);
 
 export type FuryInstructionProfileId = typeof FURY_INSTRUCTION_PROFILE_IDS[number];
@@ -79,9 +80,46 @@ const KARPATHY_CODING_DISCIPLINE: FuryInstructionProfile = Object.freeze({
   }),
 });
 
+
+const SPEC_DRIVEN_DEVELOPMENT: FuryInstructionProfile = Object.freeze({
+  id: 'spec-driven-development',
+  name: 'Spec-driven development',
+  version: '1.0.0',
+  source: Object.freeze({
+    repository: 'https://github.com/github/spec-kit',
+    commitSha: 'd848fb4e18f44640ad6b42e60a280551ee90cdce',
+    sourcePath: 'README.md',
+    licenseStatus: 'VERIFIED',
+    decision: 'ADAPT',
+  }),
+  additions: Object.freeze({
+    intent: Object.freeze([
+      'Treat the requested behavior and acceptance criteria as the stable source of truth; implementation details may change but must remain traceable to that intent.',
+    ]),
+    plan: Object.freeze([
+      'Before implementation, separate specification, architecture/technical plan, and executable task breakdown; do not collapse these into one unreviewed coding step.',
+      'Record material assumptions, dependencies, risks, and non-functional requirements before changing production code.',
+    ]),
+    constraints: Object.freeze([
+      'Do not treat generated code as the source of truth when it conflicts with an explicit specification or acceptance criterion.',
+      'When existing code and requested behavior conflict, identify the conflict explicitly and update the specification/evidence trail rather than silently choosing one.',
+    ]),
+    outputContract: Object.freeze([
+      'Keep specification decisions, implementation tasks, and verification evidence distinguishable so another agent or maintainer can resume the work without reconstructing hidden context.',
+    ]),
+    acceptanceCriteria: Object.freeze([
+      'Every implementation task must map to at least one observable acceptance criterion or required non-functional property.',
+    ]),
+    verification: Object.freeze([
+      'Verify the built behavior against the specification and acceptance criteria, then report any unmet criterion as a blocker instead of declaring completion.',
+    ]),
+  }),
+});
+
 export const FURY_INSTRUCTION_PROFILES: Readonly<Record<FuryInstructionProfileId, FuryInstructionProfile>> =
   Object.freeze({
     'karpathy-coding-discipline': KARPATHY_CODING_DISCIPLINE,
+    'spec-driven-development': SPEC_DRIVEN_DEVELOPMENT,
   });
 
 function normalizeValues(value: FuryPromptSectionValue | undefined): string[] {
