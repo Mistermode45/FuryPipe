@@ -1,20 +1,25 @@
-/** Applicability helpers for pxpipe's production-safe model scope. */
+/** Applicability helpers for FuryPipe's production-safe model scope. */
 
 import { isMisresolvedModelId } from './gpt-model-profiles.js';
 
-export type PxpipeApplicabilityReason =
+export type FuryPipeApplicabilityReason =
   | 'eligible'
   | 'unsupported_model'
   | 'unsupported_method'
   | 'unsupported_path'
   | 'empty_body';
 
-export interface PxpipeApplicabilityInput {
+export interface FuryPipeApplicabilityInput {
   readonly model?: string | null;
   readonly method?: string | null;
   readonly path?: string | null;
   readonly bodyBytes?: number | null;
 }
+
+/** @deprecated Use FuryPipeApplicabilityReason. */
+export type PxpipeApplicabilityReason = FuryPipeApplicabilityReason;
+/** @deprecated Use FuryPipeApplicabilityInput. */
+export type PxpipeApplicabilityInput = FuryPipeApplicabilityInput;
 
 /** Bracketed variant tags (e.g. `[1m]`) stripped before model matching so base and variant gate identically. */
 const VARIANT_TAG = /\[[^\]]*\]/g;
@@ -23,11 +28,11 @@ function baseModelId(model: string): string {
   return model.replace(VARIANT_TAG, '');
 }
 
-/** Dashboard runtime override; null = fall back to PXPIPE_MODELS env / built-in default. In-memory only. */
+/** Dashboard runtime override; null = fall back to FURYPIPE_MODELS env / built-in default. In-memory only. */
 let runtimeModelBases: readonly string[] | null = null;
 
-/** Built-in default scope when PXPIPE_MODELS is unset: Fable 5, Gemini 3.6 Flash, and Gemini 3.7 Flash.
- *  Everything else is opt-in via dashboard chips or PXPIPE_MODELS:
+/** Built-in default scope when FURYPIPE_MODELS is unset: Fable 5, Gemini 3.6 Flash, and Gemini 3.7 Flash.
+ *  Everything else is opt-in via dashboard chips or FURYPIPE_MODELS:
  *  - Opus 4.7/4.8 — worse at reading imaged content (FINDINGS.md 2026-06-16:
  *    Opus 4.8 ~2pp arithmetic, 6/15 dense-hex vs Fable 100/100).
  *  - GPT 5.5 — degrades on imaged history/context.
@@ -46,7 +51,7 @@ let runtimeModelBases: readonly string[] | null = null;
  *  reader following the docs believed a model was being imaged that was not. */
 /*  `gemini` is a family base: the prefix match below covers `gemini-3.6-flash`,
  *  `gemini-4`, `gemini-pro`, ... so every Gemini id is on by default. Opting out
- *  is the ordinary path — drop `gemini` from PXPIPE_MODELS or click the chip off —
+ *  is the ordinary path — drop `gemini` from FURYPIPE_MODELS or click the chip off —
  *  which only works because the Google gate in proxy.ts/dashboard.ts consults
  *  this list and nothing else. */
 export const DEFAULT_MODEL_BASES = ['claude-fable-5', 'gemini'];
@@ -55,14 +60,16 @@ function falsey(v: string): boolean {
   return /^(0|false|no|off|none)$/i.test(v.trim());
 }
 
-/** PXPIPE_MODELS env / built-in default, ignoring the runtime override. One CSV
+/** FURYPIPE_MODELS env / built-in default, ignoring the runtime override. One CSV
  *  controls every family (Claude + GPT). Resolution (read per-call so scope flips LIVE):
  *  - unset or empty        → built-in default (Fable 5 + every Gemini)
  *  - `off`/`0`/`false`/... → compress nothing
  *  - CSV of model bases    → exactly those families (e.g. `claude-fable-5,gpt-5.6-sol`) */
 function envOrDefaultBases(): string[] {
   // Edge-safe: `process` is undefined off-Node; `typeof` avoids a ReferenceError.
-  const raw = typeof process !== 'undefined' ? process.env?.PXPIPE_MODELS : undefined;
+  const raw = typeof process !== 'undefined'
+    ? process.env?.FURYPIPE_MODELS ?? process.env?.PXPIPE_MODELS
+    : undefined;
   if (raw === undefined) return [...DEFAULT_MODEL_BASES];
   const trimmed = raw.trim();
   if (!trimmed) return [...DEFAULT_MODEL_BASES];
@@ -80,7 +87,7 @@ export function getAllowedModelBases(): string[] {
   return allowedModelBases();
 }
 
-/** PXPIPE_MODELS env / default scope, independent of runtime override.
+/** FURYPIPE_MODELS env / default scope, independent of runtime override.
  *  Dashboard unions this into its chip set so env-enabled models are always shown as toggles. */
 export function getConfiguredModelBases(): string[] {
   return envOrDefaultBases();
@@ -97,7 +104,7 @@ export function setAllowedModelBases(list: readonly string[] | null): void {
  *    workers-ai/@cf/moonshotai/kimi-k3
  *
  *  The vendor picks the upstream, not the reader, so scope matching also
- *  compares the segment after the last slash. Otherwise PXPIPE_MODELS entries
+ *  compares the segment after the last slash. Otherwise FURYPIPE_MODELS entries
  *  never match behind a gateway. */
 function unqualifiedModelId(base: string): string | null {
   const slash = base.lastIndexOf('/');
@@ -121,14 +128,24 @@ function isAllowed(model: string | null | undefined): boolean {
   });
 }
 
-/** True when pxpipe may transform this Anthropic model. */
-export function isPxpipeSupportedModel(model: string | null | undefined): boolean {
+/** True when FuryPipe may transform this Anthropic model. */
+export function isFuryPipeSupportedModel(model: string | null | undefined): boolean {
   return isAllowed(model);
 }
 
-/** True when pxpipe may transform this GPT model. Shares the single PXPIPE_MODELS scope. */
-export function isPxpipeSupportedGptModel(model: string | null | undefined): boolean {
+/** True when FuryPipe may transform this GPT model. Shares the single FURYPIPE_MODELS scope. */
+export function isFuryPipeSupportedGptModel(model: string | null | undefined): boolean {
   return isAllowed(model);
+}
+
+/** @deprecated Use isFuryPipeSupportedModel. */
+export function isPxpipeSupportedModel(model: string | null | undefined): boolean {
+  return isFuryPipeSupportedModel(model);
+}
+
+/** @deprecated Use isFuryPipeSupportedGptModel. */
+export function isPxpipeSupportedGptModel(model: string | null | undefined): boolean {
+  return isFuryPipeSupportedGptModel(model);
 }
 
 /** Canonical set of Anthropic Messages routes pxpipe transforms. Shared with
@@ -144,8 +161,8 @@ export function isAnthropicMessagesPath(pathname: string): boolean {
 }
 
 export function shouldTransformAnthropicMessages(
-  input: PxpipeApplicabilityInput,
-): { eligible: boolean; reason: PxpipeApplicabilityReason } {
+  input: FuryPipeApplicabilityInput,
+): { eligible: boolean; reason: FuryPipeApplicabilityReason } {
   if (input.method !== undefined && input.method !== null && input.method.toUpperCase() !== 'POST') {
     return { eligible: false, reason: 'unsupported_method' };
   }
