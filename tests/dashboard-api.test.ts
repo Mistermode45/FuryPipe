@@ -480,7 +480,7 @@ describe('dashboard locale surface', () => {
   it('auto-negotiates the initial page from Accept-Language when no explicit locale exists', async () => {
     const html = await (await dash.serveHtml(47821, undefined, 'en-US;q=0.3, fr-CA;q=0.9')).text();
     expect(html).toContain('<html lang="fr" dir="ltr">');
-    expect(html).toContain('<title>FuryPipe — tableau de bord en direct</title>');
+    expect(html).toContain('Tableau de bord FuryPipe</title>');
     expect(html).toContain('window.ppLocale = "fr"');
   });
 
