@@ -77,3 +77,24 @@ Supporting operator documents:
 - `docs/release/ROLLBACK.md`
 - `docs/release/MIGRATION_V5.md`
 - `docs/release/RELEASE_NOTES_TEMPLATE.md`
+
+
+## Build provenance before release
+
+`.github/workflows/provenance.yml` establishes a pre-release provenance path for the exact npm tarball produced from the hardening commit.
+
+On pull requests, the workflow validates that the package can be built and packed with the frozen dependency graph. It does not request attestation/OIDC write permissions.
+
+On a push to `v5-production-hardening` or an explicit workflow dispatch, a separate least-privilege job:
+
+1. checks out the exact commit;
+2. installs the frozen graph without dependency lifecycle scripts;
+3. runs typecheck and build;
+4. creates the exact `npm pack --ignore-scripts` tarball;
+5. records its SHA-256;
+6. generates a GitHub artifact attestation with the official pinned `actions/attest` action;
+7. uploads the tarball plus checksum as a 30-day workflow artifact.
+
+This workflow does **not** create a tag, npm publication, GitHub Release or deployment. A successful attestation is evidence for the required `release.provenance` gate, but Release Readiness still requires all other gates and separate authorization.
+
+The release workflow keeps npm's own `npm publish --provenance` path for an eventually authorized tagged release. The pre-release attestation exists so provenance can be verified before publication rather than only after a tag is pushed.
