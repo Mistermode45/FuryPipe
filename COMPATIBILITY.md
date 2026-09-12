@@ -7,10 +7,10 @@
 | pnpm | 10.21.0 imposé par `packageManager` |
 | OS local | Windows 11 x64 |
 | MCP | SDK officiel `@modelcontextprotocol/server@2.0.0`, stdio moderne `2026-07-28` + fallback legacy `2025-11-25` |
-| Recovery | filesystem local, namespace explicite, SHA-256, quotas objet/namespace/global, GC orphan/TTL, backup/restore atomiques |
-| Provider live | NON TESTÉ |
-| MCP HTTP/OAuth | adaptateur fetch-native présent et testé localement ; listener/auth/OAuth de production NON IMPLÉMENTÉS |
-| OpenClaw | NON IMPLÉMENTÉ |
+| Recovery | filesystem local, namespace explicite, SHA-256, quotas objet/namespace/global, GC orphan/TTL, backup/restore, AES-256-GCM optionnel, rekey, verrou inter-processus et reprise de résidus temporaires après crash |
+| Provider live | aucun endpoint hébergé validé ; runtime d’évidence explicite présent avec disponibilité TTL/fail-closed, sans probe réseau implicite |
+| MCP HTTP/OAuth | handler fetch-native sécurisé + listener Node opt-in loopback testés ; Host/Origin/Bearer/OAuth metadata présents ; Authorization Server/verifier hébergé et conformance réseau externe non validés |
+| OpenClaw | adapter de découverte/config/doctor local présent ; runtime gateway réel NON TESTÉ |
 | Linux/macOS CI | matrice GitHub Actions active ; derniers runs de référence verts sur Ubuntu/Windows/macOS et Node 22/24/26 |
 
 La matrice V5 considère Node 24 comme runtime de production. Node 22 reste
@@ -29,3 +29,10 @@ ces stratégies n’est activée silencieusement.
 
 Une version de protocole ou un runtime absent de cette table n’est pas
 implicitement compatible.
+
+
+## Provider runtime V5
+
+Le hardening V5 expose un runtime provider optionnel pour des observations de santé et un catalogue de prix fournis explicitement par l’hôte. Une observation périmée redevient `unknown`; aucun provider n’est déclaré sain par défaut. Les prix ne sont connus que pour une paire provider/modèle enregistrée exactement ; sinon le résultat reste `COST_UNKNOWN`.
+
+Cette surface ne constitue pas une validation hébergée des providers et n’autorise aucun claim de disponibilité externe.
