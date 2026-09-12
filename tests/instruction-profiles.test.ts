@@ -44,16 +44,47 @@ describe('FuryPipe instruction profiles', () => {
     expect(compiled.prompt).toContain('observable success criteria');
   });
 
-  it('records immutable source provenance without claiming a root LICENSE file exists', () => {
-    const profile = FURY_INSTRUCTION_PROFILES['karpathy-coding-discipline'];
-    expect(profile.source).toEqual({
+  it('records immutable source provenance for native instruction adaptations', () => {
+    const karpathy = FURY_INSTRUCTION_PROFILES['karpathy-coding-discipline'];
+    const specDriven = FURY_INSTRUCTION_PROFILES['spec-driven-development'];
+    expect(karpathy.source).toEqual({
       repository: 'https://github.com/multica-ai/andrej-karpathy-skills',
       commitSha: '2c606141936f1eeef17fa3043a72095b4765b9c2',
       sourcePath: 'CLAUDE.md',
       licenseStatus: 'DECLARED_MIT_NO_ROOT_LICENSE_FILE',
       decision: 'ADAPT',
     });
-    expect(inspectInstructionProfiles()).toEqual([profile]);
+    expect(specDriven.source).toEqual({
+      repository: 'https://github.com/github/spec-kit',
+      commitSha: 'd848fb4e18f44640ad6b42e60a280551ee90cdce',
+      sourcePath: 'README.md',
+      licenseStatus: 'VERIFIED',
+      decision: 'ADAPT',
+    });
+    expect(inspectInstructionProfiles()).toEqual([karpathy, specDriven]);
+  });
+
+  it('applies the Spec Kit inspired profile as a spec-plan-task-verification contract', () => {
+    const applied = applyInstructionProfiles({
+      sections: {
+        objective: 'Add a durable memory subsystem.',
+        acceptanceCriteria: 'Memory survives process restart.',
+      },
+      level: 'ENGINEERING',
+    }, ['spec-driven-development']);
+
+    expect(applied.input.sections.acceptanceCriteria).toEqual(expect.arrayContaining([
+      'Memory survives process restart.',
+      expect.stringContaining('Every implementation task'),
+    ]));
+    expect(applied.input.sections.plan).toEqual(expect.arrayContaining([
+      expect.stringContaining('specification, architecture/technical plan'),
+      expect.stringContaining('assumptions, dependencies, risks'),
+    ]));
+    expect(applied.input.sections.verification).toEqual(expect.arrayContaining([
+      expect.stringContaining('against the specification'),
+    ]));
+    expect(applied.appliedProfiles).toEqual(['spec-driven-development']);
   });
 
   it('rejects duplicate or unknown profile identities', () => {
