@@ -44,3 +44,5 @@ Ce ledger sera enrichi avec les sources réellement consultées. Une URL listée
 | SRC-041 | https://www.anthropic.com/engineering/harness-design-long-running-apps | harness long-running agents | article 2026-03-24 | 2026-09-12 | documentation publique | ADAPT bounded sessions, validators, durable state, anti-cycle | vérifiée officielle |
 | SRC-042 | https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/prompt-templates-and-variables | subagent prompting/runtime guidance | docs consultées 2026-09-12 | 2026-09-12 | documentation publique | ADAPT subagent damping et isolation contextuelle | vérifiée officielle |
 | SRC-043 | https://openai.com/index/codex-for-every-role-tool-workflow/ | architecture plugins Codex 2026 | publication 2026-06-02 | 2026-09-12 | documentation publique | REFERENCE architecture bundles skills/apps/workflows | vérifiée officielle |
+
+| SRC-034 | https://www.omniroute.online/fr/ | OmniRoute official service surface | live service/docs | 2026-09-12 | external service; code licence not inferred from site | Explicit opt-in gateway/service reference; source provenance remains SRC-033 | verified documentary |
