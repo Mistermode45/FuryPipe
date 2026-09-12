@@ -118,6 +118,10 @@
       "types": "./dist/fury-prompt.d.ts",
       "import": "./dist/fury-prompt.js"
     },
+    "./instruction-profiles": {
+      "types": "./dist/instruction-profiles.d.ts",
+      "import": "./dist/instruction-profiles.js"
+    },
     "./learning": {
       "types": "./dist/learning.d.ts",
       "import": "./dist/learning.js"
