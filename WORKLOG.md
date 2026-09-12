@@ -477,3 +477,14 @@
 - Le graphe accepte uniquement des relations explicites `depends_on/supports/contradicts/related_to`; la preuve de relation est hashée et les dangling/self edges sont refusés.
 - Décision backend : metadata index adopté ; SQLite FTS différé tant que le contenu reste opaque ; embeddings/vector DB rejetés pour le baseline faute de provider/modèle validé.
 - M13 reste `PARTIAL` : pas de semantic RAG, pas de persistance durable du graphe, pas de validation hébergée et pas de transaction multi-instance.
+
+
+## 2026-09-12 — M9 OpenClaw HTTP gateway probe
+
+- Vérification de la documentation OpenClaw courante avant implémentation : `/healthz` = liveness, `/startupz` = startup/admission, `/readyz` = deep readiness ; ces probes HTTP sont non authentifiés.
+- Ajout de `probeOpenClawGateway()` dans `src/openclaw.ts`.
+- Le probe valide le JSON documenté afin de ne pas accepter un HTTP 200 du catch-all Control UI comme preuve de santé.
+- Loopback est la politique par défaut ; une origine distante nécessite `allowRemote: true`, les credentials URL/path/query/fragment sont refusés et le timeout est borné.
+- Aucun `/v1/chat/completions`, session, tool invoke ou appel modèle n'est exécuté.
+- Tests dédiés : healthy, startup/readiness 503, invalid contract/catch-all, unreachable sans fuite d'erreur, remote deny/opt-in, IPv6 loopback et timeout.
+- Le vrai Gateway OpenClaw de l'environnement cible n'est pas accessible depuis cette CI : M9 reste `PARTIAL` et la validation externe reste `OPENCLAW_NOT_TESTED/BLOCKED_EXTERNAL_ENV`.
