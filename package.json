@@ -134,6 +134,10 @@
       "types": "./dist/knowledge-recovery.d.ts",
       "import": "./dist/knowledge-recovery.js"
     },
+    "./long-term-memory": {
+      "types": "./dist/long-term-memory.d.ts",
+      "import": "./dist/long-term-memory.js"
+    },
     "./web-studio": {
       "types": "./dist/web-studio/index.d.ts",
       "import": "./dist/web-studio/index.js"
