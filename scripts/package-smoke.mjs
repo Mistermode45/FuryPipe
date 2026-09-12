@@ -141,6 +141,12 @@ try {
     "const m = await import('furypipe/knowledge-recovery'); if (typeof m.createRecoveryKnowledgeStore !== 'function') process.exit(1);",
   ], installDir);
   assert(knowledgeRecoveryExport.stderr === '', `Knowledge Recovery package export wrote stderr: ${knowledgeRecoveryExport.stderr}`);
+  const controlRoomEvidenceExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/control-room-evidence'); if (typeof m.parseControlRoomHostEvidence !== 'function' || typeof m.loadControlRoomHostEvidence !== 'function') process.exit(1);",
+  ], installDir);
+  assert(controlRoomEvidenceExport.stderr === '', `Control Room evidence package export wrote stderr: ${controlRoomEvidenceExport.stderr}`);
   const providerRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
