@@ -226,6 +226,43 @@ describe('production MCP HTTP boundary', () => {
     expect((await mcp.fetch(validRequest)).status).toBe(200);
   });
 
+  it('makes resource-audience enforcement an explicit host verifier contract', async () => {
+    const expectedResource = 'https://localhost/mcp';
+    const tokenAudiences = new Map<string, string>([
+      ['token-for-furypipe', expectedResource],
+      ['token-for-other-resource', 'https://other.example.test/mcp'],
+    ]);
+    const verifier: OAuthTokenVerifier = {
+      async verifyAccessToken(token): Promise<AuthInfo> {
+        if (tokenAudiences.get(token) !== expectedResource) {
+          throw new OAuthError(OAuthErrorCode.InvalidToken, 'token audience does not match FuryPipe MCP');
+        }
+        return {
+          token,
+          clientId: 'audience-test-client',
+          scopes: ['mcp'],
+          expiresAt: Math.floor(Date.now() / 1000) + 60,
+        };
+      },
+    };
+    const mcp = await handler({
+      allowedHostnames: ['localhost'],
+      bearerAuth: {
+        verifier,
+        requiredScopes: ['mcp'],
+        resourceMetadataUrl: 'https://localhost/.well-known/oauth-protected-resource/mcp',
+      },
+    });
+
+    const wrongAudience = modernRequest('tools/list', {});
+    wrongAudience.headers.set('authorization', 'Bearer token-for-other-resource');
+    expect((await mcp.fetch(wrongAudience)).status).toBe(401);
+
+    const correctAudience = modernRequest('tools/list', {});
+    correctAudience.headers.set('authorization', 'Bearer token-for-furypipe');
+    expect((await mcp.fetch(correctAudience)).status).toBe(200);
+  });
+
   it('serves OAuth discovery only when configured and keeps the endpoint stateless', async () => {
     const mcp = await handler({
       allowedHostnames: ['localhost'],
