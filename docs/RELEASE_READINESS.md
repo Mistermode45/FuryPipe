@@ -61,3 +61,19 @@ Until Codex closes the remaining production runtime work, the honest expected re
 Typical blockers include M4 Recovery, external/production MCP evidence, Agent/FuryPrompt wiring and other release-scope features that remain `PARTIAL`.
 
 This evaluator is intended to feed Control Room and future RC automation once those gates become real evidence.
+
+
+## RC evidence snapshot
+
+`src/release-readiness/evidence.ts` adds a second fail-closed layer for the release-candidate preparation phase.
+
+`createRcEvidenceSnapshot()` requires the RC source SHA and package version to match the Release Readiness report. It also requires explicit successful evidence for the core GitHub workflows and explicit `VERIFIED` preparation artifacts, including package/install/upgrade/rollback smoke evidence, SBOM, provenance path, compatibility matrix, migration notes, release notes and the SHA-256 of the exact package artifact.
+
+The RC snapshot can return `READY_FOR_RELEASE_DECISION`, but it copies authorization separately and always returns `releaseActionsExecuted: false`.
+
+Supporting operator documents:
+
+- `docs/release/RC_CHECKLIST.md`
+- `docs/release/ROLLBACK.md`
+- `docs/release/MIGRATION_V5.md`
+- `docs/release/RELEASE_NOTES_TEMPLATE.md`
