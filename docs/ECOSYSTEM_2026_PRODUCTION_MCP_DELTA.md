@@ -605,3 +605,64 @@ Its role is implementation discipline:
 
 It must never weaken FuryPipe's provenance, permission, CI, ExactGuard or release rules.
 
+
+
+## OpenAI and Gemini first-party skill/plugin refresh
+
+### OpenAI Plugins
+
+- Current source: `openai/plugins`
+- Inspected commit: `1dc195897af4161d039b80d8471ec0a10c9bbc89` (2026-09-11)
+- Repository state: active
+- Root licence: **not resolved in this audit**
+- Decision: **ADOPT PLUGIN MODEL / PER_PLUGIN_REVIEW**
+- Runtime: **NOT_INSTALLED**
+
+The older `openai/skills` catalogue now declares itself deprecated and points users to the OpenAI Plugins repository for current Codex skill/plugin examples.
+
+FuryPipe should therefore:
+
+- treat `openai/plugins` as the current first-party architecture reference;
+- keep plugin package, Skills, MCP configuration and workflows as one provenance-bound bundle;
+- review licence and permissions per plugin before reuse;
+- never infer trust from the `openai` owner alone;
+- never copy binary/runtime payloads merely because a plugin is first-party;
+- preserve exact plugin version/source metadata where available.
+
+The current repository also demonstrates why FuryPipe must support long-running tool contracts, but a third-party/default timeout must never be copied globally from one plugin.
+
+### Gemini Skills
+
+- Current source: `google-gemini/gemini-skills`
+- Inspected commit: `80dd31dda25bbe1410207df0adb3e0d591c2c634` (2026-09-11)
+- Root licence: Apache-2.0 verified
+- Decision: **ADAPT / PER_SKILL_REVIEW**
+- Runtime: **NOT_INSTALLED**
+
+Useful FuryPipe scope:
+- current Gemini API/SDK development guidance;
+- streaming/function-calling/structured-output workflows;
+- separate API-development and Live API knowledge;
+- portable Agent Skills distribution.
+
+Keep it separate from the broader `google/skills` catalogue: the former is Gemini-focused, while the latter spans Google products and product plugins.
+
+## Deprecation policy for external sources
+
+A source can remain in FuryPipe history after upstream deprecation, but it must not stay the preferred integration target.
+
+Required state fields for future source records:
+
+- `ACTIVE`
+- `DEPRECATED`
+- `ARCHIVED`
+- `SUPERSEDED`
+- `UNRESOLVED`
+
+When a source becomes `DEPRECATED` or `SUPERSEDED`:
+1. retain historical provenance;
+2. record the replacement;
+3. disable new execution eligibility by default;
+4. do not silently move trust to the replacement;
+5. perform a fresh licence/permission/security review.
+
