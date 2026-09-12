@@ -467,3 +467,13 @@
 - Les sous-systèmes non observés par ce processus restent `NOT_AVAILABLE`; des overrides hôte explicites existent pour les runtimes séparés.
 - L'état de chiffrement Recovery gagne la valeur honnête `unknown` lorsque le collecteur ne possède pas la configuration du store.
 - M15 reste `PARTIAL` : Agent/Learning/MCP/security doivent encore alimenter leurs preuves depuis leurs propres runtimes et la validation hébergée n'est pas exécutée.
+
+
+## 2026-09-12 — M13 Knowledge metadata graph / retrieval
+
+- Ajout de `src/knowledge.ts` et de l'export package `furypipe/knowledge`.
+- Les leçons validées peuvent être enregistrées avec des termes explicites fournis par l'hôte ; les termes sont normalisés puis stockés uniquement en SHA-256 domain-separated.
+- La recherche renvoie lesson/task digests, memory class, reuse count et `contentHandle` opaque ; ni les termes d'index ni le contenu de leçon ne sont retournés.
+- Le graphe accepte uniquement des relations explicites `depends_on/supports/contradicts/related_to`; la preuve de relation est hashée et les dangling/self edges sont refusés.
+- Décision backend : metadata index adopté ; SQLite FTS différé tant que le contenu reste opaque ; embeddings/vector DB rejetés pour le baseline faute de provider/modèle validé.
+- M13 reste `PARTIAL` : pas de semantic RAG, pas de persistance durable du graphe, pas de validation hébergée et pas de transaction multi-instance.
