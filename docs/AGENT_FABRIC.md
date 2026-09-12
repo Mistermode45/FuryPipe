@@ -68,3 +68,19 @@ Cette tranche reste `PARTIAL` : le harness local, l’adaptateur Recovery et la
 reprise testée dans un processus enfant sont exécutables. Aucun adaptateur de
 modèle réel, orchestrateur distribué, kill/reprise à chaque phase ou
 environnement externe n’est déclaré livré.
+
+
+## Bounded multi-subagent execution
+
+Stage executors now expose `invokeSubagents(ids)` in addition to the single-subagent call.
+
+- batches are limited to 16 unique subagent IDs;
+- `maxSubagentConcurrency` defaults to 4 and is hard-bounded to 8;
+- callbacks execute concurrently up to that limit;
+- returned results preserve the caller's input order even when completion order differs;
+- each subagent keeps the same stage, network and scoped-write policy as single execution;
+- every successful subagent token count contributes to the parent stage budget;
+- a batch whose aggregate consumption exceeds the parent budget blocks the stage;
+- subagent policy failures are reported as `SUBAGENT_BLOCKED`, not collapsed into generic `STAGE_FAILED`.
+
+This is real local multi-agent callback orchestration. It is not a distributed worker system and does not provide an implicit model/provider.
