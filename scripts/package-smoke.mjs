@@ -135,6 +135,12 @@ try {
     "const m = await import('furypipe/plugin-bundles'); if (typeof m.createFuryPluginBundleRegistry !== 'function' || !Array.isArray(m.BUILTIN_FURY_PLUGIN_BUNDLES)) process.exit(1);",
   ], installDir);
   assert(pluginBundlesExport.stderr === '', `Plugin bundles package export wrote stderr: ${pluginBundlesExport.stderr}`);
+  const continuousMemoryExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/continuous-memory'); if (typeof m.createContinuousMemoryEngine !== 'function' || typeof m.DEFAULT_CONTINUOUS_MEMORY_POLICY !== 'object') process.exit(1);",
+  ], installDir);
+  assert(continuousMemoryExport.stderr === '', `Continuous memory package export wrote stderr: ${continuousMemoryExport.stderr}`);
   const externalReferencesExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
