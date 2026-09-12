@@ -117,6 +117,12 @@ try {
     "const m = await import('furypipe/agent-runtime'); if (typeof m.runAgent !== 'function') process.exit(1);",
   ], installDir);
   assert(agentRuntimeExport.stderr === '', `Agent runtime package export wrote stderr: ${agentRuntimeExport.stderr}`);
+  const skillRegistryExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/skill-registry'); if (typeof m.createAgentSkillRegistry !== 'function' || !Array.isArray(m.SKILL_CATEGORIES)) process.exit(1);",
+  ], installDir);
+  assert(skillRegistryExport.stderr === '', `Skill registry package export wrote stderr: ${skillRegistryExport.stderr}`);
   const learningExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
