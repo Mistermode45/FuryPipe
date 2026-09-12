@@ -59,6 +59,16 @@ export interface AgentMcpServerDefinition {
   readonly execute: (method: string, params: unknown, context: AgentMcpExecutionContext) => Promise<unknown>;
 }
 
+export interface AgentMcpPlannedCall {
+  readonly serverId: string;
+  readonly method: string;
+  readonly params?: unknown;
+}
+
+export interface AgentMcpBatchItem extends AgentMcpPlannedCall {
+  readonly result: unknown;
+}
+
 export interface AgentSubagentExecutionContext {
   readonly runId: string;
   readonly parentStage: AgentFabricStageId;
@@ -116,6 +126,8 @@ export interface AgentStageExecutionContext {
   readonly completedStages: readonly AgentFabricStageId[];
   /** Skills selected by FuryPipe's capability router and executed before this stage. */
   readonly autoSkillExecutions: readonly AgentSkillBatchItem[];
+  /** MCP calls selected by FuryPipe and executed before this stage. */
+  readonly autoMcpExecutions: readonly AgentMcpBatchItem[];
   readonly invokeSkill: (skillId: string) => Promise<AgentSkillExecution>;
   readonly invokeMcp: (serverId: string, method: string, params?: unknown) => Promise<unknown>;
   readonly invokeSubagent: (subagentId: string) => Promise<AgentSubagentExecution>;
@@ -146,6 +158,8 @@ export interface AgentRuntimeRequest {
    * Scheduled skills execute once before the owning stage executor.
    */
   readonly autoInvokeSkillsByStage?: Readonly<Partial<Record<AgentFabricStageId, readonly string[]>>>;
+  /** Planned MCP calls. Each call still passes the runtime server/method allowlist. */
+  readonly autoInvokeMcpByStage?: Readonly<Partial<Record<AgentFabricStageId, readonly AgentMcpPlannedCall[]>>>;
   readonly mcpServers?: readonly AgentMcpServerDefinition[];
   readonly subagents?: readonly AgentSubagentDefinition[];
   /** Maximum simultaneous subagent callbacks within one stage. Default 4, hard max 8. */
@@ -214,6 +228,34 @@ function validateEvidence(evidence: unknown): evidence is readonly string[] {
     typeof item === 'string' && item.length > 0 && item.length <= MAX_EVIDENCE_LENGTH && !item.includes('\0'));
 }
 
+
+function jsonBounded(value: unknown, maxBytes = 65_536): boolean {
+  try {
+    const encoded = JSON.stringify(value ?? null);
+    return typeof encoded === 'string' && Buffer.byteLength(encoded, 'utf8') <= maxBytes;
+  } catch {
+    return false;
+  }
+}
+
+function validatePlannedMcpCall(value: unknown): value is AgentMcpPlannedCall {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const call = value as Partial<AgentMcpPlannedCall>;
+  return typeof call.serverId === 'string'
+    && call.serverId.length > 0
+    && call.serverId.length <= 256
+    && !call.serverId.includes('\0')
+    && typeof call.method === 'string'
+    && call.method.length > 0
+    && call.method.length <= 256
+    && !call.method.includes('\0')
+    && jsonBounded(call.params);
+}
+
+function mcpCallKey(call: AgentMcpPlannedCall): string {
+  return call.serverId + '\0' + call.method + '\0' + JSON.stringify(call.params ?? null);
+}
+
 function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefined {
   if (!request || typeof request !== 'object' || typeof request.objective !== 'string' || !request.objective.trim()) {
     return { code: 'INVALID_REQUEST', reason: 'agent objective must not be empty' };
@@ -244,6 +286,23 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
         || rawIds.some((id) => typeof id !== 'string' || id.length < 1 || id.length > 256 || id.includes('\0'))
         || new Set(rawIds).size !== rawIds.length) {
         return { code: 'INVALID_REQUEST', reason: 'autoInvokeSkillsByStage contains an invalid stage or skill list' };
+      }
+    }
+  }
+  if (request.autoInvokeMcpByStage !== undefined) {
+    if (!request.autoInvokeMcpByStage || typeof request.autoInvokeMcpByStage !== 'object' || Array.isArray(request.autoInvokeMcpByStage)) {
+      return { code: 'INVALID_REQUEST', reason: 'autoInvokeMcpByStage must be a stage map' };
+    }
+    for (const [rawStage, rawCalls] of Object.entries(request.autoInvokeMcpByStage)) {
+      if (!AGENT_FABRIC_STAGE_ORDER.includes(rawStage as AgentFabricStageId)
+        || !Array.isArray(rawCalls)
+        || rawCalls.length > 32
+        || rawCalls.some((call) => !validatePlannedMcpCall(call))) {
+        return { code: 'INVALID_REQUEST', reason: 'autoInvokeMcpByStage contains an invalid stage or MCP call list' };
+      }
+      const keys = rawCalls.map((call) => mcpCallKey(call));
+      if (new Set(keys).size !== keys.length) {
+        return { code: 'INVALID_REQUEST', reason: 'autoInvokeMcpByStage contains duplicate calls' };
       }
     }
   }
@@ -557,6 +616,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     let result: AgentStageResult;
     try {
       const stageSkillCache = new Map<string, AgentSkillExecution>();
+      const stageMcpCache = new Map<string, unknown>();
       const invokeSkillForStage = async (skillId: string): Promise<AgentSkillExecution> => {
         const cached = stageSkillCache.get(skillId);
         if (cached) return cached;
@@ -564,6 +624,15 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
         nestedConsumedTokens += skillResult.consumedTokens;
         stageSkillCache.set(skillId, skillResult);
         return skillResult;
+      };
+      const invokeMcpForStage = async (serverId: string, method: string, params?: unknown): Promise<unknown> => {
+        const call: AgentMcpPlannedCall = { serverId, method, ...(params === undefined ? {} : { params }) };
+        if (!validatePlannedMcpCall(call)) throw new Error('MCP planned call is invalid');
+        const key = mcpCallKey(call);
+        if (stageMcpCache.has(key)) return stageMcpCache.get(key);
+        const mcpResult = await invokeMcp(stage, serverId, method, params);
+        stageMcpCache.set(key, mcpResult);
+        return mcpResult;
       };
       const invokeSubagentForStage = async (subagentId: string): Promise<AgentSubagentExecution> => {
         const subagentResult = await invokeSubagent(stage, subagentId);
@@ -587,14 +656,20 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
         const execution = await invokeSkillForStage(skillId);
         autoSkillExecutions.push(Object.freeze({ id: skillId, ...execution }));
       }
+      const autoMcpExecutions: AgentMcpBatchItem[] = [];
+      for (const call of request.autoInvokeMcpByStage?.[stage] ?? []) {
+        const mcpResult = await invokeMcpForStage(call.serverId, call.method, call.params);
+        autoMcpExecutions.push(Object.freeze({ ...call, result: mcpResult }));
+      }
       result = await executor({
         runId, stage, objective: request.objective, prompt, objectiveDigest, permission,
         allowedWritePaths: request.allowWrites === true ? [...(request.allowedWritePaths ?? [])] : [],
         contextBudgetTokens: budget, contextUsedTokens, remainingContextTokens: budget - contextUsedTokens,
         network: 'disabled', secrets: 'never_requested', completedStages: [...completedStages],
         autoSkillExecutions: Object.freeze(autoSkillExecutions),
+        autoMcpExecutions: Object.freeze(autoMcpExecutions),
         invokeSkill: invokeSkillForStage,
-        invokeMcp: (serverId, method, params) => invokeMcp(stage, serverId, method, params),
+        invokeMcp: invokeMcpForStage,
         invokeSubagent: invokeSubagentForStage,
         invokeSubagents: invokeSubagentsForStage,
       });
