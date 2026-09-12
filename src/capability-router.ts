@@ -523,6 +523,11 @@ function chosenPacks(objective: string, explicit: readonly FuryCapabilityPackId[
   if ((selectedIds.has('marketing-website') || selectedIds.has('web-application'))
     && !selectedIds.has('software-engineering')) {
     selected.push({ id: 'software-engineering', score: 1 });
+    selectedIds.add('software-engineering');
+  }
+  if (selectedIds.has('business-operations') && !selectedIds.has('automation')) {
+    selected.push({ id: 'automation', score: 1 });
+    selectedIds.add('automation');
   }
 
   return Object.freeze({
