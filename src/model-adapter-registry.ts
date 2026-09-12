@@ -329,7 +329,7 @@ export function createModelAdapterRegistry(
           .map(({ digest: _digest, ...definition }) => Object.freeze(definition)),
       );
     },
-    resolve(input) {
+    resolve(input: FuryModelAdapterResolveInput) {
       const normalizedInput = validateResolveInput(input);
       const candidates = [...definitions.values()]
         .filter((definition) =>
