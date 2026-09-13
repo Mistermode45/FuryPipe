@@ -386,7 +386,7 @@ export function createInMemoryAgentMemoryStore(): AgentMemoryStore {
       if (existing.length >= MAX_AGENT_MEMORY_RECORDS || recordCount >= MAX_IN_MEMORY_AGENT_RECORDS) {
         throw new Error('agent memory record limit exceeded');
       }
-      existing.push({ ...record });
+      existing.push(Object.freeze({ ...record }));
       records.set(record.runId, existing);
       recordCount += 1;
     },
@@ -698,6 +698,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   try {
     const claimId = resumeFrom === undefined ? 'start' : `resume:${snapshotClaimDigest(resumeFrom)}`;
     claimed = await memory.claimExecution(runId, claimId);
+    if (typeof claimed !== 'boolean') throw new Error('agent execution claim result is invalid');
   } catch {
     return {
       format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
