@@ -238,5 +238,5 @@ Baseline de code : `v5-production-hardening` / `d6b1944404e23c5a76a36b4b8ef6def6
 | `pnpm run package:smoke` | PASS | package smoke, benchmark-claim smoke, provider-attempt smoke sur tarball local |
 | Transport provider réel | NOT_EXECUTED | fake transports locaux uniquement; aucun réseau/provider réel/credential |
 | Package public export | NOT_CHANGED | intégration packaging réservée à une autre piste |
-| GitHub CI / PR | PENDING | Draft PR non encore ouverte lors de cette mesure |
+| GitHub CI / PR | PASS / OPEN DRAFT | PR #106 vers `v5-production-hardening`, head `dcf22da274abb67eb5a8c9c147d8fff3d87b23d1`; 20 contrôles passés dont matrice 9/9 OS × Node; dependency review et attestation du tarball `SKIPPED` conditionnellement; PR non fusionnée |
 | Publication / release / merge / deploy | NOT_EXECUTED | hors scope sans approbation explicite |

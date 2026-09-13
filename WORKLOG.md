@@ -540,4 +540,6 @@
 - `pnpm run build` : PASS; modules/declarations, `dist/node.js`, `dist/mcp.js`, version `0.13.2`.
 - `pnpm run package:smoke` : PASS pour package smoke, benchmark-claim smoke et provider-attempt smoke sur le tarball local.
 - `git diff --check` : PASS. Aucune publication, release, tag, merge ou déploiement effectué.
-- La Draft PR et les gates GitHub seront consignées après leur création et lecture effective.
+- Draft PR #106 ouverte vers `v5-production-hardening` : https://github.com/Mistermode45/FuryPipe/pull/106. Head vérifié `dcf22da274abb67eb5a8c9c147d8fff3d87b23d1`; PR `OPEN`, `DRAFT`, non fusionnée.
+- CI GitHub lue après achèvement : 20 contrôles `PASS`, dont la matrice complète 9/9 (Ubuntu/macOS/Windows × Node 22.23.2/24.21.0/26.8.2), CodeQL/analyse, audit figé, SBOM, provenance, pinning actions, contrat, Gitleaks et rapports OS. `GitHub dependency review` et `Attest packed npm artifact` sont `SKIPPED` par leurs conditions; ils ne sont pas présentés comme réussis.
+- Aucun merge, release, tag, déploiement ou publish; aucun provider réel, transport réseau ou credential appelé.
