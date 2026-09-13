@@ -68,6 +68,7 @@ import {
   renderRecentFragment,
   renderLatestFragment,
   renderSessionsFragment,
+  renderSessionsUnavailableFragment,
   renderStatsTableFragment,
   renderControlRoomFragment,
   type ContextMapData,
@@ -1617,7 +1618,7 @@ export class DashboardState {
       }
       case 'sessions': {
         const res = await this.serveSessionsJson();
-        if (!res.ok) return htmlResponse(`<div class="status">${escapeHtml(dashboardT(locale, 'dashboard.sessions.unavailable'))}</div>`);
+        if (!res.ok) return htmlResponse(renderSessionsUnavailableFragment(locale));
         const p = (await res.json()) as SessionsPayload;
         return htmlResponse(renderSessionsFragment(p, locale));
       }
