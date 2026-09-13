@@ -13,7 +13,7 @@ const at = 1_000;
 function sse(frames: readonly { event: string; data: unknown }[]): Response {
   const body = frames.map((frame) =>
     'event: ' + frame.event + '\n' +
-    'data: ' + JSON.stringify(frame.data) + '\n\n'
+    'data: ' + (frame.data === '[DONE]' ? '[DONE]' : JSON.stringify(frame.data)) + '\n\n'
   ).join('');
   return new Response(body, {
     status: 200,
