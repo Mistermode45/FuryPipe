@@ -138,7 +138,7 @@ async function* sseEvents(input: {
 }): AsyncGenerator<unknown> {
   const reader = input.body.getReader();
   input.setReader(reader);
-  const decoder = new TextDecoder('utf-8', { fatal: false });
+  const decoder = new TextDecoder('utf-8', { fatal: true });
   let buffer = '';
   let totalWireBytes = 0;
   let completed = false;
