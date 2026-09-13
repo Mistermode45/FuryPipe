@@ -112,6 +112,7 @@ describe('Provider Execution Audit Chain', () => {
       exactScope: 'verified',
       contextProfile: 'verified',
       planningToContextPrompt: 'verified-identical',
+      planningToContextCompileInput: 'not-comparable-across-receipt-v1-formats',
       contextToExecutionPrompt: 'verified',
     });
     expect(first.verification).toEqual({
