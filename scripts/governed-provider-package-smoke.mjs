@@ -60,6 +60,10 @@ try {
     packedFiles.has('docs/PROVIDER_EXECUTION_AUDIT_LEDGER.md'),
     'docs/PROVIDER_EXECUTION_AUDIT_LEDGER.md is missing from the public package',
   );
+  assert(
+    packedFiles.has('docs/PRODUCTION_PROVIDER_TRANSPORTS.md'),
+    'docs/PRODUCTION_PROVIDER_TRANSPORTS.md is missing from the public package',
+  );
 
   tarball = path.resolve(root, metadata.filename);
   assert(existsSync(tarball), 'npm pack did not create the tarball');
@@ -100,6 +104,10 @@ try {
     [
       'furypipe/provider-execution-audit-ledger',
       "typeof m.createProviderExecutionAuditLedger === 'function' && typeof m.appendProviderExecutionAuditLedger === 'function' && typeof m.verifyProviderExecutionAuditLedger === 'function'",
+    ],
+    [
+      'furypipe/provider-transports',
+      "typeof m.createOpenAIProviderTransport === 'function' && typeof m.createAnthropicProviderTransport === 'function' && typeof m.createGoogleProviderTransport === 'function' && typeof m.ANTHROPIC_API_VERSION === 'string'",
     ],
   ];
 

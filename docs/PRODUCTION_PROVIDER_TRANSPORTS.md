@@ -26,21 +26,29 @@ with stable `v1` at `POST /v1/interactions`. The legacy Gemini
 
 ## Factories and host-owned settings
 
-Source imports are available from `src/provider-transports/index.ts`:
+The production transports are available through one intentionally narrow public
+package surface:
 
 ```ts
 import {
   createOpenAIProviderTransport,
   createAnthropicProviderTransport,
   createGoogleProviderTransport,
-} from './provider-transports/index.js';
+  ANTHROPIC_API_VERSION,
+  type ProviderCredentialSource,
+  type ProviderHttpTransportOptions,
+  type AnthropicProviderTransportOptions,
+} from 'furypipe/provider-transports';
 ```
 
 The returned transport can be passed to `createProviderTransportRegistry()`;
 the governed executor remains responsible for exact request authorization and
-single-use permit consumption. The package export map is intentionally
-unchanged in this track, so these factories are not yet public package
-subpaths.
+single-use permit consumption.
+
+Only the aggregate `furypipe/provider-transports` entry point is public.
+The shared HTTP runtime, parsing helpers, resolved option representation, and
+provider-specific source-file paths remain implementation details and are not
+separate package exports.
 
 All transports require a host-owned `getCredential()` callback. It is resolved
 once per attempt (allowing host rotation), must return a non-empty string of at
@@ -182,8 +190,10 @@ JSON; credential isolation; timeout and host cancellation; timer cleanup;
 early `Content-Length`; actual streamed-size enforcement; and the exact 1 MiB
 boundary. Tests make no real provider calls and incur no provider charges.
 
-This is source-level production transport code wired to the governed executor,
-not a live-provider certification. Public package export wiring is deliberately
-deferred to its separately reserved track. Real provider credentials, network
-requests, cross-platform CI, deployed hosts, and production telemetry are not
-validated here.
+This is production transport code wired to the governed executor and exposed
+through the aggregate public package subpath. Installed-tarball smoke coverage
+verifies that public import without exposing the internal HTTP runtime.
+
+This is not a live-provider certification. Real provider credentials, live
+network requests, deployed hosts, and production telemetry are not validated
+by the offline transport test suite.
