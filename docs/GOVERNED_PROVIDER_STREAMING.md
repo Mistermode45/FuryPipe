@@ -72,10 +72,11 @@ The transport implementations were checked against provider documentation on
 | --- | --- | --- |
 | OpenAI Responses | `POST https://api.openai.com/v1/responses` | `stream: true` |
 | Anthropic Messages | `POST https://api.anthropic.com/v1/messages` | `stream: true` |
-| Google Gemini Interactions | `POST https://generativelanguage.googleapis.com/v1/interactions` | `stream: true` |
+| Google Gemini Interactions | `POST https://generativelanguage.googleapis.com/v1/interactions?alt=sse` | `stream: true` |
 
 The Google source tree continues to use stable `v1`, matching the existing
-buffered production transport. No legacy `generateContent` stream is added.
+buffered production transport. The documented REST SSE selector `?alt=sse` is
+required in addition to `stream: true`. No legacy `generateContent` stream is added.
 
 Official source families consulted:
 
