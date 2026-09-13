@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 
 const [inputPath, outputPath = 'sbom.spdx.json'] = process.argv.slice(2);
@@ -15,8 +16,10 @@ const packages = new Map();
 const relationships = new Set();
 
 function spdxId(name, version) {
+  const identity = `${name}\0${version}`;
   const safe = `${name}-${version}`.replace(/[^A-Za-z0-9.-]+/g, '-').replace(/^-+|-+$/g, '');
-  return `SPDXRef-Package-${safe || 'unknown'}`;
+  const suffix = createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 12);
+  return `SPDXRef-Package-${safe || 'unknown'}-${suffix}`;
 }
 
 function addNode(node, parentId, fallbackName) {
@@ -65,7 +68,8 @@ function addNode(node, parentId, fallbackName) {
 
 for (const root of roots) addNode(root, undefined, undefined);
 
-const sha = (process.env.GITHUB_SHA || 'local').replace(/[^A-Fa-f0-9]/g, '').slice(0, 40) || 'local';
+const sourceCommit = process.env.FURYPIPE_SOURCE_COMMIT || process.env.GITHUB_SHA || '';
+const sha = /^[0-9a-f]{40}$/u.test(sourceCommit) ? sourceCommit : 'local';
 const namespace = `https://github.com/Mistermode45/FuryPipe/sbom/${sha}`;
 
 const document = {
