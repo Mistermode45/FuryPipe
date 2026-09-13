@@ -8,7 +8,7 @@ export const COST_UNKNOWN = 'COST_UNKNOWN' as const;
 export type ProviderFabricProtocol = 'anthropic' | 'openai' | 'google';
 export type ProviderRegistrationStatus = 'registered' | 'unregistered';
 export type ProviderAvailability = 'available' | 'unavailable' | 'unknown';
-export type ProviderEvidenceKind = 'local-contract' | 'operator-config' | 'live-probe' | 'unknown';
+export type ProviderEvidenceKind = 'local-contract' | 'operator-config' | 'live-probe' | 'transport-result' | 'unknown';
 export type ModelCapabilityStatus = 'supported' | 'known-unmeasured' | 'unknown';
 
 export interface ProviderEvidence {
