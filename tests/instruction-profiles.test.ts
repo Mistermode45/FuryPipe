@@ -3,6 +3,7 @@ import {
   applyInstructionProfiles,
   FURY_INSTRUCTION_PROFILES,
   inspectInstructionProfiles,
+  recommendInstructionProfiles,
 } from '../src/instruction-profiles.js';
 import { compileFuryPrompt } from '../src/fury-prompt.js';
 
@@ -49,6 +50,8 @@ describe('FuryPipe instruction profiles', () => {
     const specDriven = FURY_INSTRUCTION_PROFILES['spec-driven-development'];
     const debugging = FURY_INSTRUCTION_PROFILES['systematic-debugging'];
     const audit = FURY_INSTRUCTION_PROFILES['codebase-audit-discipline'];
+    const ui = FURY_INSTRUCTION_PROFILES['ui-design-discipline'];
+    const marketing = FURY_INSTRUCTION_PROFILES['product-marketing-context-discipline'];
     expect(karpathy.source).toEqual({
       repository: 'https://github.com/multica-ai/andrej-karpathy-skills',
       commitSha: '2c606141936f1eeef17fa3043a72095b4765b9c2',
@@ -77,7 +80,21 @@ describe('FuryPipe instruction profiles', () => {
       licenseStatus: 'DECLARED_MIT_NO_ROOT_LICENSE_FILE',
       decision: 'ADAPT',
     });
-    expect(inspectInstructionProfiles()).toEqual([karpathy, specDriven, debugging, audit]);
+    expect(ui.source).toEqual({
+      repository: 'https://github.com/Nutlope/hallmark',
+      commitSha: '13ac0ec7e148655948100b6396439e481361d690',
+      sourcePath: 'skills/hallmark/SKILL.md',
+      licenseStatus: 'VERIFIED',
+      decision: 'ADAPT',
+    });
+    expect(marketing.source).toEqual({
+      repository: 'https://github.com/coreyhaines31/marketingskills',
+      commitSha: '5b2c0007766c6a1cf1d53fd8fc73e979e0821022',
+      sourcePath: 'skills/product-marketing/SKILL.md',
+      licenseStatus: 'VERIFIED',
+      decision: 'ADAPT',
+    });
+    expect(inspectInstructionProfiles()).toEqual([karpathy, specDriven, debugging, audit, ui, marketing]);
   });
 
   it('applies the Spec Kit inspired profile as a spec-plan-task-verification contract', () => {
@@ -156,6 +173,62 @@ describe('FuryPipe instruction profiles', () => {
     expect(compileFuryPrompt(first.input).prompt).toContain('falsifiable root-cause hypothesis');
   });
 
+  it('adds UI design discipline without granting execution authority or inventing proof', () => {
+    const applied = applyInstructionProfiles({
+      sections: { task: 'Design a production-ready pricing page.' },
+      level: 'ENGINEERING',
+    }, ['ui-design-discipline']);
+    expect(applied.input.sections.context).toEqual(expect.arrayContaining([
+      expect.stringContaining('typography'),
+      expect.stringContaining('component ownership'),
+    ]));
+    expect(applied.input.sections.constraints).toEqual(expect.arrayContaining([
+      expect.stringContaining('Do not fabricate metrics'),
+      expect.stringContaining('pixel-faithful copy'),
+    ]));
+    expect(applied.input.sections.verification).toEqual(expect.arrayContaining([
+      expect.stringContaining('keyboard focus'),
+      expect.stringContaining('invented content'),
+    ]));
+    expect(applied.input.sections.tools).toBeUndefined();
+    expect(applied.input.sections.mcp).toBeUndefined();
+  });
+
+  it('adds reusable marketing context while keeping facts separate from assumptions', () => {
+    const applied = applyInstructionProfiles({
+      sections: { objective: 'Create a launch message for a new product.' },
+      level: 'ENGINEERING',
+    }, ['product-marketing-context-discipline']);
+    expect(applied.input.sections.context).toEqual(expect.arrayContaining([
+      expect.stringContaining('jobs-to-be-done'),
+      expect.stringContaining('proof points'),
+    ]));
+    expect(applied.input.sections.constraints).toEqual(expect.arrayContaining([
+      expect.stringContaining('Do not invent customer quotes'),
+      expect.stringContaining('hypotheses separate from facts'),
+    ]));
+    expect(applied.input.sections.outputContract).toEqual(expect.arrayContaining([
+      expect.stringContaining('unresolved questions'),
+    ]));
+  });
+
+  it('recommends bounded explicit profile sets by workload without prompt-text guessing', () => {
+    expect(recommendInstructionProfiles('bugfix')).toEqual([
+      'karpathy-coding-discipline',
+      'systematic-debugging',
+    ]);
+    expect(recommendInstructionProfiles('ui-development')).toEqual([
+      'karpathy-coding-discipline',
+      'spec-driven-development',
+      'ui-design-discipline',
+    ]);
+    expect(recommendInstructionProfiles('marketing')).toEqual([
+      'product-marketing-context-discipline',
+    ]);
+    expect(recommendInstructionProfiles('research')).toEqual([]);
+    expect(() => recommendInstructionProfiles('unknown' as 'bugfix')).toThrow(/unknown FuryPipe instruction workload/);
+  });
+
   it('rejects duplicate or unknown profile identities', () => {
     expect(() => applyInstructionProfiles(
       { sections: { task: 'x' } },
@@ -175,5 +248,7 @@ describe('FuryPipe instruction profiles', () => {
     expect(encoded).not.toContain('If you write 200 lines and it could be 50');
     expect(encoded).not.toContain('NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST');
     expect(encoded).not.toContain('Things that look bad but are actually fine');
+    expect(encoded).not.toContain('Do not ship slop.');
+    expect(encoded).not.toContain('Other marketing skills will now use this context automatically.');
   });
 });
