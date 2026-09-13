@@ -45,6 +45,33 @@ export interface LearningEvidence {
   readonly semanticRetrieval: ControlRoomEvidenceStatus;
 }
 
+export interface ProviderEvidence {
+  readonly bufferedExecutions: number;
+  readonly streamSessions: number;
+  readonly acceptedRequests: number;
+  readonly rejectedRequests: number;
+  readonly unknownRequests: number;
+  readonly streamCompleted: number;
+  readonly streamIncomplete: number;
+  readonly streamFailed: number;
+  readonly streamCancelled: number;
+  readonly streamRequiresAction: number;
+  readonly streamTerminalUnknown: number;
+  readonly streamProviderErrors: number;
+  readonly streamOpenAccepted: number;
+  readonly usageReports: number;
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheWriteTokens: number;
+  readonly cacheReadTokens: number;
+  readonly knownCostObservations: number;
+  readonly unknownCostObservations: number;
+  /** Verifies only that observations came from process-local FuryPipe runtime objects. */
+  readonly runtimeObservability: ControlRoomEvidenceStatus;
+  /** Independent provider/network verification. Transport-reported evidence is not enough. */
+  readonly providerVerification: ControlRoomEvidenceStatus;
+}
+
 export interface McpEvidence {
   readonly stdio: ControlRoomEvidenceStatus;
   readonly http: ControlRoomEvidenceStatus;
@@ -105,6 +132,7 @@ export interface ControlRoomInput {
   readonly recovery: RecoveryEvidence;
   readonly agent: AgentEvidence;
   readonly learning: LearningEvidence;
+  readonly provider?: ProviderEvidence;
   readonly mcp: McpEvidence;
   readonly i18n: I18nEvidence;
   readonly webStudio: WebStudioEvidence;
@@ -130,6 +158,7 @@ export interface ControlRoomSnapshot {
     readonly recovery: ControlRoomSection<RecoveryEvidence>;
     readonly agent: ControlRoomSection<AgentEvidence>;
     readonly learning: ControlRoomSection<LearningEvidence>;
+    readonly provider: ControlRoomSection<ProviderEvidence>;
     readonly mcp: ControlRoomSection<McpEvidence>;
     readonly i18n: ControlRoomSection<I18nEvidence>;
     readonly webStudio: ControlRoomSection<WebStudioEvidence>;
@@ -142,6 +171,31 @@ export interface ControlRoomSnapshot {
 const SHA40 = /^[0-9a-f]{40}$/u;
 const MAX_COUNT = 1_000_000_000;
 const MAX_TOKENS = 10_000_000_000;
+
+const DEFAULT_PROVIDER_EVIDENCE: ProviderEvidence = Object.freeze({
+  bufferedExecutions: 0,
+  streamSessions: 0,
+  acceptedRequests: 0,
+  rejectedRequests: 0,
+  unknownRequests: 0,
+  streamCompleted: 0,
+  streamIncomplete: 0,
+  streamFailed: 0,
+  streamCancelled: 0,
+  streamRequiresAction: 0,
+  streamTerminalUnknown: 0,
+  streamProviderErrors: 0,
+  streamOpenAccepted: 0,
+  usageReports: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheWriteTokens: 0,
+  cacheReadTokens: 0,
+  knownCostObservations: 0,
+  unknownCostObservations: 0,
+  runtimeObservability: 'NOT_EXECUTED',
+  providerVerification: 'NOT_AVAILABLE',
+});
 
 function safeCount(value: number, label: string, max = MAX_COUNT): number {
   if (!Number.isSafeInteger(value) || value < 0 || value > max) {
@@ -175,6 +229,7 @@ function section<T>(status: ControlRoomEvidenceStatus, evidence: T, warnings: re
 function validateInput(input: ControlRoomInput): void {
   safeTimestamp(input.generatedAt);
   if (!SHA40.test(input.sourceCommit)) throw new Error('sourceCommit must be a lowercase 40-character commit SHA');
+  const provider = input.provider ?? DEFAULT_PROVIDER_EVIDENCE;
 
   for (const [label, value] of Object.entries({
     'receipts.receipts': input.receipts.receipts,
@@ -190,11 +245,50 @@ function validateInput(input: ControlRoomInput): void {
     'learning.humanTopics': input.learning.humanTopics,
     'learning.agentLessons': input.learning.agentLessons,
     'learning.reusedLessons': input.learning.reusedLessons,
+    'provider.bufferedExecutions': provider.bufferedExecutions,
+    'provider.streamSessions': provider.streamSessions,
+    'provider.acceptedRequests': provider.acceptedRequests,
+    'provider.rejectedRequests': provider.rejectedRequests,
+    'provider.unknownRequests': provider.unknownRequests,
+    'provider.streamCompleted': provider.streamCompleted,
+    'provider.streamIncomplete': provider.streamIncomplete,
+    'provider.streamFailed': provider.streamFailed,
+    'provider.streamCancelled': provider.streamCancelled,
+    'provider.streamRequiresAction': provider.streamRequiresAction,
+    'provider.streamTerminalUnknown': provider.streamTerminalUnknown,
+    'provider.streamProviderErrors': provider.streamProviderErrors,
+    'provider.streamOpenAccepted': provider.streamOpenAccepted,
+    'provider.usageReports': provider.usageReports,
+    'provider.knownCostObservations': provider.knownCostObservations,
+    'provider.unknownCostObservations': provider.unknownCostObservations,
     'benchmarks.comparableRuns': input.benchmarks.comparableRuns,
   })) {
     safeCount(value, label);
   }
   safeCount(input.agent.contextUsedTokens, 'agent.contextUsedTokens', MAX_TOKENS);
+  safeCount(provider.inputTokens, 'provider.inputTokens', MAX_TOKENS);
+  safeCount(provider.outputTokens, 'provider.outputTokens', MAX_TOKENS);
+  safeCount(provider.cacheWriteTokens, 'provider.cacheWriteTokens', MAX_TOKENS);
+  safeCount(provider.cacheReadTokens, 'provider.cacheReadTokens', MAX_TOKENS);
+  if (
+    provider.acceptedRequests + provider.rejectedRequests + provider.unknownRequests
+    !== provider.bufferedExecutions + provider.streamSessions
+  ) {
+    throw new Error('provider request status counts must equal total observed provider attempts');
+  }
+  if (
+    provider.streamCompleted
+      + provider.streamIncomplete
+      + provider.streamFailed
+      + provider.streamCancelled
+      + provider.streamRequiresAction
+      + provider.streamTerminalUnknown
+      + provider.streamProviderErrors
+      + provider.streamOpenAccepted
+    > provider.streamSessions
+  ) {
+    throw new Error('provider stream terminal/open counts cannot exceed observed stream sessions');
+  }
 
   if (input.receipts.verifiedReceipts > input.receipts.receipts) {
     throw new Error('verified receipt count cannot exceed total receipt count');
@@ -244,6 +338,7 @@ function overallFromSections(sections: ControlRoomSnapshot['sections']): Control
 
 export function createControlRoomSnapshot(input: ControlRoomInput): ControlRoomSnapshot {
   validateInput(input);
+  const provider = input.provider ?? DEFAULT_PROVIDER_EVIDENCE;
 
   const receiptStatus = input.receipts.receipts === 0
     ? 'NOT_EXECUTED'
@@ -267,6 +362,11 @@ export function createControlRoomSnapshot(input: ControlRoomInput): ControlRoomS
     input.learning.humanTopics > 0 || input.learning.agentLessons > 0 ? 'VERIFIED' : 'NOT_EXECUTED',
     input.learning.durableStore,
     input.learning.semanticRetrieval,
+  ]);
+
+  const providerStatus = sectionStatus([
+    provider.runtimeObservability,
+    provider.providerVerification,
   ]);
 
   const mcpStatus = sectionStatus([
@@ -345,6 +445,14 @@ export function createControlRoomSnapshot(input: ControlRoomInput): ControlRoomS
     ]),
     agent: section(agentStatus, input.agent),
     learning: section(learningStatus, input.learning),
+    provider: section(providerStatus, provider, [
+      ...(provider.runtimeObservability === 'VERIFIED' && provider.providerVerification !== 'VERIFIED'
+        ? ['Provider/runtime observations are process-local; provider/network truth remains independently unverified.']
+        : []),
+      ...(provider.streamOpenAccepted > 0
+        ? [`${provider.streamOpenAccepted} accepted provider stream(s) have no observed terminal event yet.`]
+        : []),
+    ]),
     mcp: section(mcpStatus, input.mcp),
     i18n: section(i18nStatus, input.i18n),
     webStudio: section(webStudioStatus, input.webStudio),
