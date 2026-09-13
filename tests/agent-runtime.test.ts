@@ -521,6 +521,43 @@ describe('FuryPipe Agent runtime', () => {
     }
   });
 
+  it('assigns unique Recovery history sequences across concurrent adapters', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-agent-history-race-'));
+    try {
+      const firstMemory = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent' }));
+      const secondMemory = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent' }));
+      const base = {
+        format: 'furypipe-agent-memory-record/v1' as const,
+        runId: 'cross-adapter-history',
+        stage: 'research' as const,
+        status: 'completed' as const,
+        consumedTokens: 1,
+      };
+
+      await Promise.all([
+        firstMemory.append({ ...base, resultDigest: 'opaque-a' }),
+        secondMemory.append({ ...base, resultDigest: 'opaque-b' }),
+      ]);
+
+      const reopened = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent' }));
+      const records = await reopened.list('cross-adapter-history');
+      expect(records).toHaveLength(2);
+      expect(new Set(records.map((record) => record.resultDigest))).toEqual(new Set(['opaque-a', 'opaque-b']));
+
+      const raw = createRecoveryStore(root, { namespace: 'agent' });
+      const handles = await raw.list?.({
+        metadata: {
+          source: 'agent-runtime',
+          contentType: 'application/vnd.furypipe.agent-memory-record+json',
+          runId: 'cross-adapter-history',
+        },
+      });
+      expect(handles?.map((handle) => handle.metadata?.sequence).sort()).toEqual([0, 1]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('atomically allows only one start across independent Recovery memory adapters', async () => {
     const root = await mkdtemp(join(tmpdir(), 'furypipe-agent-claim-'));
     try {
