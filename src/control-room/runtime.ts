@@ -298,44 +298,37 @@ function mcpEvidenceFromObservations(
   httpHandlers: readonly ProductionMcpHttpHandler[],
   stdioHandlesObserved: number,
 ): McpEvidence {
-  let requests = 0;
-  let dispatchedRequests = 0;
+  let sawRequest = false;
+  let sawDispatch = false;
   let bearerConfigured = false;
-  let bearerSuccesses = 0;
+  let sawBearerSuccess = false;
   let oauthConfigured = false;
-  let oauthResponses = 0;
+  let sawOauthResponse = false;
 
   for (const handler of httpHandlers) {
     const evidence = getProductionMcpRuntimeEvidence(handler);
     if (evidence === undefined) {
       throw new Error('Control Room MCP HTTP handler lost process-local FuryPipe provenance');
     }
-    requests += evidence.requests;
-    dispatchedRequests += evidence.dispatchedRequests;
+    sawRequest ||= evidence.requests > 0;
+    sawDispatch ||= evidence.dispatchedRequests > 0;
     bearerConfigured ||= evidence.bearerAuthConfigured;
-    bearerSuccesses += evidence.bearerAuthSuccesses;
+    sawBearerSuccess ||= evidence.bearerAuthSuccesses > 0;
     oauthConfigured ||= evidence.oauthMetadataConfigured;
-    oauthResponses += evidence.oauthMetadataResponses;
+    sawOauthResponse ||= evidence.oauthMetadataResponses > 0;
   }
-
-  for (const [label, value] of Object.entries({
-    requests,
-    dispatchedRequests,
-    bearerSuccesses,
-    oauthResponses,
-  })) safeRuntimeCount(value, `Control Room MCP ${label}`);
 
   const http: McpEvidence['http'] = httpHandlers.length === 0
     ? 'NOT_AVAILABLE'
-    : dispatchedRequests > 0
+    : sawDispatch
       ? 'VERIFIED'
-      : requests > 0
+      : sawRequest
         ? 'PARTIAL'
         : 'NOT_EXECUTED';
 
   const bearerAuth: McpEvidence['bearerAuth'] = httpHandlers.length === 0
     ? 'NOT_AVAILABLE'
-    : bearerSuccesses > 0
+    : sawBearerSuccess
       ? 'VERIFIED'
       : bearerConfigured
         ? 'PARTIAL'
@@ -343,7 +336,7 @@ function mcpEvidenceFromObservations(
 
   const oauth: McpEvidence['oauth'] = httpHandlers.length === 0
     ? 'NOT_AVAILABLE'
-    : oauthConfigured || bearerConfigured || oauthResponses > 0 || bearerSuccesses > 0
+    : oauthConfigured || bearerConfigured || sawOauthResponse || sawBearerSuccess
       ? 'PARTIAL'
       : 'NOT_EXECUTED';
 
