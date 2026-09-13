@@ -2,7 +2,7 @@
 
 ## Status
 
-`PARTIAL / CLI_AND_DASHBOARD_HUMAN_COPY_WIRED_RTL_VISUAL_PENDING`
+`PARTIAL / CLI_AND_DASHBOARD_HUMAN_COPY_WIRED_REAL_CHROMIUM_QA`
 
 FuryPipe now has a runtime locale controller in addition to the BCP-47 translation core.
 
@@ -97,4 +97,8 @@ The English locale remains the default, preserving existing CLI/dashboard behavi
 
 Machine values remain untranslated: model IDs, HTTP statuses, paths, environment variable names, token counts, pricing figures, request IDs, hashes, protocol values and raw technical error strings.
 
-The remaining PARTIAL status is not a claim that those dashboard surfaces are still unwired. It reflects the missing real-browser visual validation for RTL/responsive layouts and the deliberate decision not to translate protocol/machine payloads. English remains the default and pseudo-locales remain QA-only.
+The remaining PARTIAL status is not a claim that dashboard human-copy or Chromium
+RTL/responsive validation is unwired. It reflects the deliberately narrower browser
+claim: Firefox/WebKit equivalence is still unexecuted, while protocol/machine payloads
+remain intentionally untranslated. English remains the default and pseudo-locales remain
+QA-only.
