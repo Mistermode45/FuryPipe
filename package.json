@@ -213,6 +213,10 @@
     "./capability-catalog": {
       "types": "./dist/capability-catalog.d.ts",
       "import": "./dist/capability-catalog.js"
+    },
+    "./benchmark-claim-gate": {
+      "types": "./dist/benchmark-claim-gate.d.ts",
+      "import": "./dist/benchmark-claim-gate.js"
     }
   },
   "files": [
@@ -250,7 +254,8 @@
     "docs/ECOSYSTEM_INGESTION.md",
     "docs/FURYTRUST.md",
     "docs/CAPABILITY_CATALOG_RESOLVER.md",
-    "docs/CAPABILITY_ACTIVATION.md"
+    "docs/CAPABILITY_ACTIVATION.md",
+    "docs/BENCHMARK_CLAIM_GATE.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
@@ -263,7 +268,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package:smoke": "node scripts/package-smoke.mjs",
+    "package:smoke": "node scripts/package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
     "vendor:ui": "node scripts/vendor-ui.mjs"
   },
