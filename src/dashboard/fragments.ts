@@ -609,15 +609,17 @@ export function renderContextMapFragment(
   //   - we rendered more pages than we shipped (the collapse ate some),
   //   - we gave up on imaging something because the cap was full.
   const capBits: string[] = [];
-  if ((c.nativeImages ?? 0) > 0) {
-    capBits.push(t('dashboard.context.capNative', { count: c.nativeImages }));
+  const nativeImages = c.nativeImages ?? 0;
+  const imageBudgetSkips = c.imageBudgetSkips ?? 0;
+  if (nativeImages > 0) {
+    capBits.push(t('dashboard.context.capNative', { count: nativeImages }));
   }
-  if (c.wireImages !== undefined && c.wireImages < c.imageCount + (c.nativeImages ?? 0)) {
-    const absorbed = c.imageCount + (c.nativeImages ?? 0) - c.wireImages;
+  if (c.wireImages !== undefined && c.wireImages < c.imageCount + nativeImages) {
+    const absorbed = c.imageCount + nativeImages - c.wireImages;
     capBits.push(t('dashboard.context.capAbsorbed', { count: absorbed, wire: c.wireImages }));
   }
-  if ((c.imageBudgetSkips ?? 0) > 0) {
-    capBits.push(t('dashboard.context.capSkipped', { count: c.imageBudgetSkips }));
+  if (imageBudgetSkips > 0) {
+    capBits.push(t('dashboard.context.capSkipped', { count: imageBudgetSkips }));
   }
   const capNote = capBits.length
     ? `<div class="split-note cap-note">${capBits.map(escapeHtml).join(' · ')}</div>`
@@ -658,7 +660,10 @@ function statusCls(status: number): string {
 }
 
 export function renderRecentFragment(p: RecentPayload, locale = 'en'): string {
-  const t = (key: string): string => dashboardT(locale, key);
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(locale, key, params);
   const rows = (p.recent ?? []).slice().reverse();
   const body =
     rows.length === 0
