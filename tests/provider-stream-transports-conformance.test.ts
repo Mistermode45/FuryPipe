@@ -288,6 +288,10 @@ describe('production provider SSE stream conformance', () => {
             },
           },
         },
+        {
+          event: 'done',
+          data: '[DONE]',
+        },
       ]);
     });
 
