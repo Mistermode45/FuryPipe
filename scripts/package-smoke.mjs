@@ -83,6 +83,7 @@ try {
   assert(packedFiles.has('docs/MODEL_ADAPTERS.md'), 'Model Adapter documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_CATALOG.md'), 'Capability Catalog documentation is missing from the public package');
   assert(packedFiles.has('docs/ECOSYSTEM_INGESTION.md'), 'Ecosystem Ingestion documentation is missing from the public package');
+  assert(packedFiles.has('docs/SKILL_ECOSYSTEM_2026.md'), '2026 Skill Ecosystem documentation is missing from the public package');
   assert(packedFiles.has('docs/FURYTRUST.md'), 'FuryTrust documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_CATALOG_RESOLVER.md'), 'Capability Catalog Resolver documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_ACTIVATION.md'), 'Capability Activation documentation is missing from the public package');
@@ -126,7 +127,7 @@ try {
   const instructionProfilesExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
-    "const m = await import('furypipe/instruction-profiles'); if (typeof m.applyInstructionProfiles !== 'function' || !m.FURY_INSTRUCTION_PROFILES) process.exit(1);",
+    "const m = await import('furypipe/instruction-profiles'); if (typeof m.applyInstructionProfiles !== 'function' || typeof m.recommendInstructionProfiles !== 'function' || !m.FURY_INSTRUCTION_PROFILES) process.exit(1);",
   ], installDir);
   assert(instructionProfilesExport.stderr === '', `Instruction profiles package export wrote stderr: ${instructionProfilesExport.stderr}`);
   const agentRuntimeExport = await run(process.execPath, [
