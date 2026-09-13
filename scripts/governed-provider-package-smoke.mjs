@@ -64,6 +64,10 @@ try {
     packedFiles.has('docs/PRODUCTION_PROVIDER_TRANSPORTS.md'),
     'docs/PRODUCTION_PROVIDER_TRANSPORTS.md is missing from the public package',
   );
+  assert(
+    packedFiles.has('docs/PROVIDER_TRANSPORT_HEALTH.md'),
+    'docs/PROVIDER_TRANSPORT_HEALTH.md is missing from the public package',
+  );
 
   tarball = path.resolve(root, metadata.filename);
   assert(existsSync(tarball), 'npm pack did not create the tarball');
@@ -108,6 +112,10 @@ try {
     [
       'furypipe/provider-transports',
       "typeof m.createOpenAIProviderTransport === 'function' && typeof m.createAnthropicProviderTransport === 'function' && typeof m.createGoogleProviderTransport === 'function' && typeof m.ANTHROPIC_API_VERSION === 'string'",
+    ],
+    [
+      'furypipe/provider-transport-health',
+      "typeof m.assessProviderTransportHealth === 'function' && typeof m.applyProviderTransportHealthAssessment === 'function' && typeof m.MAX_PROVIDER_TRANSPORT_HEALTH_TTL_MS === 'number'",
     ],
   ];
 
