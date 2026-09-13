@@ -1,0 +1,61 @@
+name: Control Room Security Evidence
+
+on:
+  pull_request:
+    branches: [v5-production-hardening]
+  push:
+    branches: [v5-production-hardening]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: control-room-security-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  export:
+    name: Export source-bound Security CI evidence
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install frozen dependency graph
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build exporter and canonical contract
+        run: pnpm run build
+
+      - name: Export exact-source Security CI evidence
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FURYPIPE_SECURITY_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          FURYPIPE_SECURITY_CI_OUTPUT_DIR: artifacts/control-room-security-ci
+        run: node scripts/security/export-control-room-security-evidence.mjs
+
+      - name: Upload canonical evidence and checksum
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: furypipe-control-room-security-ci-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            artifacts/control-room-security-ci/control-room-security-ci-evidence.json
+            artifacts/control-room-security-ci/control-room-security-ci-evidence.json.sha256
+          if-no-files-found: error
+          retention-days: 30
