@@ -468,7 +468,7 @@ export function createControlRoomSnapshot(input: ControlRoomInput): ControlRoomS
     webStudio: section(webStudioStatus, input.webStudio),
     security: section(securityStatus, input.security, [
       ...(input.security.dependencyReview === 'BLOCKED'
-        ? ['GitHub Dependency Review is blocked by repository Dependency Graph settings.'] : []),
+        ? ['GitHub Dependency Review is blocked or failed; inspect the source-bound CI evidence and repository settings.'] : []),
     ]),
     benchmarks: section(benchmarkStatus, input.benchmarks, [
       ...(input.benchmarks.providerRuns !== 'VERIFIED'
