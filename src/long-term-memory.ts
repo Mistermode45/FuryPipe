@@ -388,15 +388,18 @@ export function createLongTermMemoryStore(store: RecoveryStore): LongTermMemoryS
   }
   const list = store.list.bind(store);
 
-  const handlesForKey = async (key: string, limit = MAX_HISTORY): Promise<readonly RecoveryHandle[]> => {
+  const handlesForKey = async (key: string): Promise<readonly RecoveryHandle[]> => {
     const handles = await list({
-      limit,
+      limit: MAX_RECORDS,
       metadata: {
         source: MEMORY_SOURCE,
         contentType: MEMORY_CONTENT_TYPE,
         memoryKey: key,
       },
     });
+    if (handles.length >= MAX_RECORDS) {
+      throw new Error('long-term memory revision listing reached its safety limit; refusing a possibly incomplete result');
+    }
     return Object.freeze(
       handles
         .filter((handle) => handle.format === 'furypipe-recovery/v1' && handle.algorithm === 'sha256')
@@ -405,15 +408,15 @@ export function createLongTermMemoryStore(store: RecoveryStore): LongTermMemoryS
     );
   };
 
-  const recordsForKey = async (key: string, limit = MAX_HISTORY): Promise<readonly LongTermMemoryRecord[]> => {
-    const handles = await handlesForKey(key, limit);
+  const recordsForKey = async (key: string, limit = MAX_RECORDS): Promise<readonly LongTermMemoryRecord[]> => {
+    const handles = await handlesForKey(key);
     const records: LongTermMemoryRecord[] = [];
     for (const handle of handles) records.push(await parseHandle(store, handle));
     records.sort((a, b) => b.version - a.version || b.updatedAt - a.updatedAt);
     if (records.length >= 2 && records[0]!.version === records[1]!.version) {
       throw new Error('long-term memory revision conflict detected');
     }
-    return Object.freeze(records);
+    return Object.freeze(records.slice(0, limit));
   };
 
   const latestFor = async (id: string, scoped: LongTermMemoryScope): Promise<LongTermMemoryRecord | undefined> => {
@@ -562,6 +565,9 @@ export function createLongTermMemoryStore(store: RecoveryStore): LongTermMemoryS
           contentType: MEMORY_CONTENT_TYPE,
         },
       });
+      if (handles.length >= MAX_RECORDS) {
+        throw new Error('long-term memory recall reached its safety limit; refusing a possibly incomplete result');
+      }
 
       const byKey = new Map<string, RecoveryHandle[]>();
       for (const handle of handles) {
@@ -642,7 +648,7 @@ export function createLongTermMemoryStore(store: RecoveryStore): LongTermMemoryS
       const id = memoryId(rawMemoryId);
       const scoped = scope(rawScope);
       const key = memoryKey(id, scoped);
-      const handles = await handlesForKey(key, MAX_HISTORY);
+      const handles = await handlesForKey(key);
       let deleted = 0;
       for (const handle of handles) {
         if (await store.delete(handle)) deleted += 1;

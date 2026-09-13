@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createRecoveryStore } from '../src/core/recovery-store.js';
+import type { RecoveryHandle, RecoveryListOptions, RecoveryStore } from '../src/core/recovery-store.js';
 import {
   createLongTermMemoryStore,
   promoteValidatedLessonToLongTermMemory,
@@ -128,6 +130,74 @@ describe('long-term memory', () => {
     const newTerm = await memory.recall({ scopes: [scope], terms: ['gamma'], now: 40 });
     expect(oldTerm).toEqual([]);
     expect(newTerm.map((hit) => hit.version)).toEqual([2]);
+  });
+
+  it('finds and purges revisions beyond the public history page without silent truncation', async () => {
+    const objects = new Map<string, { readonly handle: RecoveryHandle; readonly bytes: Uint8Array }>();
+    const getDigest = (value: RecoveryHandle | string): string => typeof value === 'string'
+      ? value.split('/').at(-1)!
+      : value.digest;
+    const recoveryStub = {
+      async put(value: Uint8Array | ArrayBuffer, metadata?: Record<string, string | number | boolean | null | undefined>) {
+        const bytes = value instanceof Uint8Array ? new Uint8Array(value) : new Uint8Array(value);
+        const digest = createHash('sha256').update(bytes).digest('hex');
+        const handle: RecoveryHandle = { format: 'furypipe-recovery/v1', algorithm: 'sha256', digest, bytes: bytes.byteLength,
+          ...(metadata ? { metadata } : {}) };
+        objects.set(digest, { handle, bytes });
+        return handle;
+      },
+      async get(value: RecoveryHandle | string) {
+        const stored = objects.get(getDigest(value));
+        if (!stored) throw new Error('missing recovery object');
+        return new Uint8Array(stored.bytes);
+      },
+      async verify(value: RecoveryHandle | string) {
+        const digest = getDigest(value);
+        const stored = objects.get(digest);
+        return { ok: stored !== undefined, handle: `furypipe-recovery/v1/sha256/${digest}`, exists: stored !== undefined,
+          digestMatches: stored !== undefined && createHash('sha256').update(stored.bytes).digest('hex') === digest,
+          bytes: stored?.bytes.byteLength ?? 0 };
+      },
+      async list(options: RecoveryListOptions = {}) {
+        const matches = [...objects.values()].filter(({ handle }) => Object.entries(options.metadata ?? {})
+          .every(([key, value]) => handle.metadata?.[key] === value));
+        return matches.slice(0, options.limit ?? 10_000).map(({ handle }) => handle);
+      },
+      async delete(value: RecoveryHandle | string) { return objects.delete(getDigest(value)); },
+    };
+    const memory = createLongTermMemoryStore(recoveryStub as unknown as RecoveryStore);
+    const initial = await memory.apply({
+      operation: 'ADD', memoryId: 'many-revisions', scope, now: 1,
+      reason: 'initial', memoryClass: 'Project', contentHandle: 'opaque://many/1',
+      contentDigest: 'digest-1', source: 'test', terms: ['revision'],
+    });
+    const template = initial.record!;
+    const metadata = initial.handle!.metadata!;
+    const encoder = new TextEncoder();
+
+    for (let version = 2; version <= 513; version += 1) {
+      const record = {
+        ...template,
+        version,
+        contentHandle: `opaque://many/${version}`,
+        contentDigest: `digest-${version}`,
+        updatedAt: version,
+        supersedesVersion: version - 1,
+      };
+      await recoveryStub.put(encoder.encode(JSON.stringify(record)), {
+        ...metadata,
+        version,
+        updatedAt: version,
+        state: 'active',
+      });
+    }
+
+    expect(await memory.latest('many-revisions', scope)).toMatchObject({ version: 513 });
+    const history = await memory.history({ memoryId: 'many-revisions', scope });
+    expect(history).toHaveLength(512);
+    expect(history[0]?.version).toBe(513);
+    expect(history.at(-1)?.version).toBe(2);
+    expect((await memory.purge('many-revisions', scope)).deletedRevisions).toBe(513);
   });
 
   it('supports logical DELETE and explicit physical purge', async () => {

@@ -164,6 +164,12 @@ A semantic/vector backend can be added later behind a host adapter, but it is no
 
 ## Current limitations
 
+La lecture des révisions Recovery est bornée à 10 000 objets par clé ; une liste
+qui atteint cette limite échoue explicitement au lieu de présenter un `latest`,
+un historique ou une purge potentiellement incomplets. Le rappel global est
+également borné à 10 000 objets et échoue fermé à saturation. L’API d’historique
+continue de retourner au maximum 512 révisions par appel.
+
 The following are not claimed yet:
 
 - semantic embedding retrieval;
