@@ -551,7 +551,11 @@ class ObservableMcpStdioTransport implements Transport {
       if (requestId !== undefined) {
         this.evidence.inboundRequests = incrementRuntimeCounter(this.evidence.inboundRequests);
         const key = stdioRequestIdKey(requestId);
-        if (key === undefined || this.pendingRequestIds.size >= MAX_MCP_STDIO_PENDING_REQUESTS) {
+        if (
+          key === undefined
+          || this.pendingRequestIds.has(key)
+          || this.pendingRequestIds.size >= MAX_MCP_STDIO_PENDING_REQUESTS
+        ) {
           this.evidence.trackingOverflows = incrementRuntimeCounter(this.evidence.trackingOverflows);
         } else {
           this.pendingRequestIds.add(key);
@@ -574,15 +578,13 @@ class ObservableMcpStdioTransport implements Transport {
   }
 
   async send(message: JSONRPCMessage, options?: TransportSendOptions): Promise<void> {
-    this.evidence.outboundMessages = incrementRuntimeCounter(this.evidence.outboundMessages);
     const responseId = outboundResponseId(message);
-    if (responseId !== undefined) {
-      const key = stdioRequestIdKey(responseId);
-      if (key !== undefined && this.pendingRequestIds.delete(key)) {
-        this.evidence.completedExchanges = incrementRuntimeCounter(this.evidence.completedExchanges);
-      }
-    }
+    const responseKey = responseId === undefined ? undefined : stdioRequestIdKey(responseId);
     await this.inner.send(message, options);
+    this.evidence.outboundMessages = incrementRuntimeCounter(this.evidence.outboundMessages);
+    if (responseKey !== undefined && this.pendingRequestIds.delete(responseKey)) {
+      this.evidence.completedExchanges = incrementRuntimeCounter(this.evidence.completedExchanges);
+    }
   }
 
   async close(): Promise<void> {
