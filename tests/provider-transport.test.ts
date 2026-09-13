@@ -93,6 +93,21 @@ describe('provider transport registry and bounded result contract', () => {
     expect(JSON.stringify(result)).not.toContain('verified');
   });
 
+  it('preserves bounded HTTP and retry metadata without implying an automatic retry', () => {
+    const request = makeRequest();
+    expect(validateProviderTransportResult({
+      providerId: 'openai', model: request.model, httpStatus: 429, retryAfterMs: 2_500,
+    }, request)).toMatchObject({ httpStatus: 429, retryAfterMs: 2_500 });
+    for (const value of [
+      { httpStatus: 99 }, { httpStatus: 600 }, { httpStatus: 200.5 },
+      { retryAfterMs: -1 }, { retryAfterMs: 604_800_001 }, { retryAfterMs: Number.MAX_SAFE_INTEGER + 1 },
+    ]) {
+      expect(() => validateProviderTransportResult({
+        providerId: 'openai', model: request.model, ...value,
+      }, request)).toThrowError(expect.objectContaining({ code: 'transport-result-invalid' }));
+    }
+  });
+
   it('rejects unknown transport result fields and identity mismatches', () => {
     const request = makeRequest();
     for (const value of [

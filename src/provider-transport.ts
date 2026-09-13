@@ -18,6 +18,8 @@ export interface ProviderTransportExecutionContext {
   readonly workloadId: string;
   /** Hard result-body limit the host transport should also enforce while reading. */
   readonly maxResponseBytes: typeof MAX_PROVIDER_RESPONSE_BYTES;
+  /** Optional host cancellation signal; absent for existing callers. */
+  readonly signal?: AbortSignal;
 }
 
 /** Untrusted, bounded data reported by a host-owned provider transport. */
@@ -27,6 +29,10 @@ export interface ProviderTransportResult {
   readonly providerRequestId?: string;
   readonly networkStatus?: 'executed' | 'not-executed' | 'unknown';
   readonly providerRequestStatus?: 'accepted' | 'rejected' | 'unknown';
+  /** HTTP response status, when the transport received an HTTP response. */
+  readonly httpStatus?: number;
+  /** Provider-reported retry delay only; FuryPipe never retries automatically. */
+  readonly retryAfterMs?: number;
   readonly usage?: {
     readonly inputTokens?: number;
     readonly outputTokens?: number;
@@ -62,6 +68,8 @@ export interface ValidatedProviderTransportResult {
   readonly providerRequestId?: string;
   readonly network: EvidenceStatus<'executed' | 'not-executed' | 'unknown'>;
   readonly providerRequest: EvidenceStatus<'accepted' | 'rejected' | 'unknown'>;
+  readonly httpStatus?: number;
+  readonly retryAfterMs?: number;
   readonly usage?: ProviderTransportResult['usage'];
   /** Independent snapshot; later mutation of the transport's buffer cannot change it. */
   readonly responseBytes?: Uint8Array;
@@ -71,7 +79,7 @@ export interface ValidatedProviderTransportResult {
 const TRANSPORT_KEYS = ['providerId', 'protocol', 'execute'] as const;
 const RESULT_KEYS = [
   'providerId', 'model', 'providerRequestId', 'networkStatus', 'providerRequestStatus',
-  'usage', 'responseBytes', 'finishReason',
+  'httpStatus', 'retryAfterMs', 'usage', 'responseBytes', 'finishReason',
 ] as const;
 const USAGE_KEYS = ['inputTokens', 'outputTokens', 'cacheWriteTokens', 'cacheReadTokens'] as const;
 
@@ -146,11 +154,25 @@ export function validateProviderTransportResult(
 
   const network = reportedStatus(result, 'networkStatus', ['executed', 'not-executed', 'unknown']);
   const providerRequest = reportedStatus(result, 'providerRequestStatus', ['accepted', 'rejected', 'unknown']);
+  let httpStatus: number | undefined;
+  if (result.httpStatus !== undefined) {
+    if (typeof result.httpStatus !== 'number' || !Number.isSafeInteger(result.httpStatus)
+      || result.httpStatus < 100 || result.httpStatus > 599) fail('transport-result-invalid', true);
+    httpStatus = result.httpStatus;
+  }
+  let retryAfterMs: number | undefined;
+  if (result.retryAfterMs !== undefined) {
+    if (typeof result.retryAfterMs !== 'number' || !Number.isSafeInteger(result.retryAfterMs)
+      || result.retryAfterMs < 0 || result.retryAfterMs > 604_800_000) fail('transport-result-invalid', true);
+    retryAfterMs = result.retryAfterMs;
+  }
   const usage = snapshotUsage(result.usage);
   return Object.freeze({
     ...(providerRequestId === undefined ? {} : { providerRequestId }),
     network,
     providerRequest,
+    ...(httpStatus === undefined ? {} : { httpStatus }),
+    ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
     ...(usage === undefined ? {} : { usage }),
     ...(responseBytes === undefined ? {} : { responseBytes }),
     ...(finishReason === undefined ? {} : { finishReason }),

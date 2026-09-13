@@ -7,6 +7,9 @@ import {
 import { createGovernedProviderExecutor } from '../src/governed-provider-executor.js';
 import { createProviderExecutionGate } from '../src/provider-execution-gate.js';
 import { createProviderTransportRegistry } from '../src/provider-transport.js';
+import { createOpenAIProviderTransport } from '../src/provider-transports/openai.js';
+import { createAnthropicProviderTransport } from '../src/provider-transports/anthropic.js';
+import { createGoogleProviderTransport } from '../src/provider-transports/google.js';
 import { FuryGovernedProviderExecutorError } from '../src/provider-execution-errors.js';
 import { makePolicy, makeRequest, makeRuntime } from './helpers/provider-executor.js';
 
@@ -80,6 +83,120 @@ describe('governed provider executor', () => {
       providerRequest: { status: 'accepted', evidence: 'transport-reported' },
       cost: { status: COST_UNKNOWN },
     });
+  });
+
+  it('passes optional host cancellation through and preserves HTTP retry metadata', async () => {
+    const request = makeRequest();
+    const controller = new AbortController();
+    const execute = vi.fn(async (_received: typeof request, context: { signal?: AbortSignal }) => openAiResult({
+      httpStatus: 429,
+      retryAfterMs: 3_000,
+    }));
+    const transports = createProviderTransportRegistry([
+      { providerId: 'openai', protocol: 'openai', execute },
+    ]);
+    const { permit, executor } = authorizedExecutor(request, transports);
+    const result = await executor.execute(request, permit, { signal: controller.signal });
+
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute.mock.calls[0]![1].signal).toBe(controller.signal);
+    expect(result).toMatchObject({ httpStatus: 429, retryAfterMs: 3_000 });
+  });
+
+  it('executes the real OpenAI adapter through the governed permit and keeps response identity exact', async () => {
+    const request = makeRequest({ task: 'GOVERNED_REAL_ADAPTER_PROMPT' });
+    let sentBody: Record<string, unknown> | undefined;
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      sentBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({
+        usage: {
+          input_tokens: 10,
+          input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
+          output_tokens: 2,
+        },
+      }), { status: 200, headers: { 'x-request-id': 'req-governed-adapter' } });
+    });
+    const transport = createOpenAIProviderTransport({
+      getCredential: () => 'fake-provider-key',
+      fetchImpl,
+      maxOutputTokens: 100,
+    });
+    const { permit, executor } = authorizedExecutor(request, createProviderTransportRegistry([transport]));
+    const result = await executor.execute(request, permit);
+
+    expect(sentBody).toEqual({
+      model: request.model,
+      input: request.prompt,
+      store: false,
+      max_output_tokens: 100,
+    });
+    expect(result).toMatchObject({
+      providerId: request.providerId,
+      model: request.model,
+      requestDigest: request.requestDigest,
+      httpStatus: 200,
+      providerRequestId: 'req-governed-adapter',
+      usage: { inputTokens: 10, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    });
+    expect(result.network).toEqual({ status: 'executed', evidence: 'transport-reported' });
+    expect(result.providerRequest).toEqual({ status: 'accepted', evidence: 'transport-reported' });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it('preserves the real adapter streaming byte-limit error through the governed boundary', async () => {
+    const request = makeRequest();
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(new Uint8Array(1_048_577)); },
+      }),
+      { status: 200, headers: { 'content-length': '1' } },
+    ));
+    const transport = createOpenAIProviderTransport({ getCredential: () => 'fake-provider-key', fetchImpl });
+    const { permit, executor } = authorizedExecutor(request, createProviderTransportRegistry([transport]));
+
+    await expect(executor.execute(request, permit)).rejects.toMatchObject({
+      code: 'response-too-large',
+      transportInvoked: true,
+    });
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    {
+      providerId: 'anthropic' as const,
+      model: 'claude-opus-5',
+      create: (fetchImpl: typeof fetch) => createAnthropicProviderTransport({
+        getCredential: () => 'fake-anthropic-key', fetchImpl, maxOutputTokens: 128,
+      }),
+      response: { usage: { input_tokens: 3, output_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
+    },
+    {
+      providerId: 'google' as const,
+      model: 'gemini-3.8-flash',
+      create: (fetchImpl: typeof fetch) => createGoogleProviderTransport({
+        getCredential: () => 'fake-google-key', fetchImpl,
+      }),
+      response: { usage: { total_input_tokens: 3, total_cached_tokens: 0, total_output_tokens: 2 } },
+    },
+  ])('runs the $providerId production transport under its exact governed permit', async ({ providerId, model, create, response }) => {
+    const request = makeRequest({ providerId, model, task: `EXACT_${providerId.toUpperCase()}_PROMPT` });
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(response), {
+      status: 200,
+      headers: providerId === 'anthropic' ? { 'request-id': 'req-integration-anthropic' } : {},
+    }));
+    const transport = create(fetchImpl);
+    const { permit, executor } = authorizedExecutor(request, createProviderTransportRegistry([transport]));
+    const result = await executor.execute(request, permit);
+
+    expect(result).toMatchObject({
+      providerId,
+      model,
+      requestDigest: request.requestDigest,
+      httpStatus: 200,
+      network: { status: 'executed', evidence: 'transport-reported' },
+      providerRequest: { status: 'accepted', evidence: 'transport-reported' },
+    });
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
   it('does not invent network execution, provider acceptance, or cost when unreported', async () => {

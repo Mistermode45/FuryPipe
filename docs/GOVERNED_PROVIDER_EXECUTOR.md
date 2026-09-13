@@ -4,8 +4,11 @@
 
 This track adds a local, host-governed boundary between an exact
 `Provider Attempt Context Runtime Result` and one injected provider transport.
-It does not add an HTTP client, provider SDK, credential store, retry loop, or
-automatic failover. Tests use only local fake transports.
+The executor itself does not own provider-specific HTTP configuration,
+credentials, retry loops, or automatic failover. Production native-fetch
+provider adapters are a separate source-level integration documented in
+[`PRODUCTION_PROVIDER_TRANSPORTS.md`](./PRODUCTION_PROVIDER_TRANSPORTS.md).
+Tests use only local fake transports.
 
 The path is:
 
@@ -186,9 +189,15 @@ verifies that the internal helper cannot be imported as a package subpath.
 
 ## Production boundary
 
-No built-in OpenAI, Anthropic or Google transport is included. These exports
-provide the governed execution framework only; credentials, HTTP clients, SDKs,
-base URLs and network transports remain host-owned concerns.
+The governed executor is now wired to source-level native-fetch transports for
+OpenAI Responses, Anthropic Messages and Google Gemini Interactions. Their
+fixed endpoints, bounded streaming, cancellation, status/usage normalization
+and limitations are documented in
+[`PRODUCTION_PROVIDER_TRANSPORTS.md`](./PRODUCTION_PROVIDER_TRANSPORTS.md).
+Credentials remain host-owned callbacks; no SDK, credential store, arbitrary
+base URL, automatic retry or fallback is added. These factories are not yet
+package subpaths: public package export wiring is deliberately deferred to its
+separately reserved track.
 
 No real provider request, paid API, npm publication, release, tag or deployment
 is part of this packaging integration.
