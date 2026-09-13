@@ -27,6 +27,8 @@ function chunkLimit(value: number | undefined): number {
   return value;
 }
 
+const MAX_DOCUMENT_TEXT_BYTES = 16 * 1024 * 1024;
+
 function trustFor(role: IRSourceRole): ContextIRBlockInput['trustLevel'] {
   switch (role) {
     case 'system': return 'SYSTEM_TRUSTED';
@@ -60,6 +62,10 @@ function safeChunkEnd(text: string, start: number, limit: number): number {
 /** Compile text into metadata-only Context IR blocks; source text is discarded after hashing. */
 export function compileDocument(input: DocumentCompilerInput): DocumentCompilation {
   const limit = chunkLimit(input.chunkChars);
+  if (input.text.length > MAX_DOCUMENT_TEXT_BYTES
+    || new TextEncoder().encode(input.text).byteLength > MAX_DOCUMENT_TEXT_BYTES) {
+    throw new RangeError('document text exceeds the 16 MiB limit');
+  }
   const createdAt = input.createdAt ?? new Date().toISOString();
   const chunks: ContextIRBlockInput[] = [];
   let charOffset = 0;

@@ -194,6 +194,26 @@ describe('Recovery Store', () => {
     expect(new TextDecoder().decode(await strictRotated.get(handle))).toBe('secret at rest');
   });
 
+  it('keeps namespace and global quotas when rekey would grow stored bytes beyond the limit', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-rekey-quota-'));
+    roots.push(root);
+    const key = new Uint8Array(32).fill(7);
+    const plaintext = new TextEncoder().encode('1234');
+    const unencrypted = createRecoveryStore(root, {
+      namespace: 'rekey-quota', maxTotalBytes: 39, maxGlobalBytes: 39,
+    });
+    const handle = await unencrypted.put(plaintext);
+    const encrypted = createRecoveryStore(root, {
+      namespace: 'rekey-quota', maxTotalBytes: 39, maxGlobalBytes: 39,
+      encryption: { activeKeyId: 'key-v2', keys: { 'key-v2': key }, allowLegacyPlaintext: true },
+    });
+
+    await expect(encrypted.rekey()).rejects.toThrow(/quota during rekey/);
+    expect(await unencrypted.get(handle)).toEqual(plaintext);
+    expect(await readdir(join(root, 'namespaces', 'rekey-quota', 'objects', handle.digest.slice(0, 2))))
+      .toEqual([handle.digest]);
+  });
+
   it('fails closed on missing keys, tampered ciphertext and legacy plaintext until rekey', async () => {
     const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-encryption-fail-'));
     roots.push(root);

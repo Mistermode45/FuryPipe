@@ -969,7 +969,14 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
           if (await exists(target)) {
             await readStored(digest, updated);
           } else {
-            await writeExclusiveAtomic(target, encryptBytes(bytes, digest, activeKey));
+            const encrypted = encryptBytes(bytes, digest, activeKey);
+            if ((await totalObjectBytes(join(scopedRoot, 'objects'))) + encrypted.byteLength > maxTotalBytes) {
+              throw new Error('recovery namespace exceeds the configured total quota during rekey');
+            }
+            if ((await globalObjectBytes(storeRoot)) + encrypted.byteLength > maxGlobalBytes) {
+              throw new Error('recovery store exceeds the configured global quota during rekey');
+            }
+            await writeExclusiveAtomic(target, encrypted);
           }
           await replaceManifestAtomic(metadataPath(scopedRoot, digest), JSON.stringify(updated) + '\n');
           migrated += 1;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appendInstructionEntry,
   createContextIR,
+  createInstructionEntry,
   createInstructionLedger,
   planCache,
   validateInstructionLedger,
@@ -110,5 +111,30 @@ describe('Instruction Ledger', () => {
     expect(ledger.entries[1]).toMatchObject({ active: true, historical: false, supersedes: ledger.entries[0]?.id });
     expect(ledger.latestUserTurnIds?.task).toBe(ledger.entries[1]?.id);
     expect(validateInstructionLedger(ledger)).toEqual({ ok: true, errors: [] });
+  });
+
+  it('preserves prototype-named scopes in the latest request index', () => {
+    const ledger = appendInstructionEntry(createInstructionLedger(), {
+      category: 'latest_user_request', sourceRole: 'user', scope: '__proto__', text: 'keep this scoped request',
+      provenance: 'fixture:prototype-scope', logicalTurn: 1, active: true, historical: false,
+    });
+
+    expect(ledger.latestUserTurnIds).toBeDefined();
+    expect(Object.hasOwn(ledger.latestUserTurnIds!, '__proto__')).toBe(true);
+    expect(ledger.latestUserTurnIds?.['__proto__']).toBe(ledger.entries[0]?.id);
+    expect(validateInstructionLedger(ledger)).toEqual({ ok: true, errors: [] });
+  });
+
+  it('bounds individual instruction text and total ledger entry count', () => {
+    expect(() => createInstructionEntry({
+      category: 'constraint', sourceRole: 'user', text: 'x'.repeat(256 * 1024 + 1),
+      provenance: 'fixture:large', logicalTurn: 1, active: true, historical: false,
+    })).toThrow(/per-entry limit/);
+
+    const entries = Array.from({ length: 4_097 }, (_, index) => createInstructionEntry({
+      category: 'constraint', sourceRole: 'system', text: 'bounded',
+      provenance: `fixture:${index}`, logicalTurn: index, active: true, historical: false,
+    }));
+    expect(() => createInstructionLedger(entries)).toThrow(/limited to 4096 entries/);
   });
 });

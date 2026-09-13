@@ -107,7 +107,7 @@ describe('Context IR deterministic property coverage', () => {
 });
 
 describe('Document compiler deterministic Unicode properties', () => {
-  it('reconstructs randomized Unicode documents byte-exactly across grapheme-safe chunks', () => {
+  it('reconstructs randomized Unicode documents byte-exactly across grapheme-safe chunks (seed=0xF17ECAFE)', () => {
     const random = mulberry32(0xF17ECAFE);
     const decoder = new TextDecoder('utf-8', { fatal: true });
     const encoder = new TextEncoder();
