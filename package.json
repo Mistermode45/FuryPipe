@@ -289,6 +289,14 @@
     "./provider-retry-fallback-orchestrator": {
       "types": "./dist/provider-retry-fallback-orchestrator.d.ts",
       "import": "./dist/provider-retry-fallback-orchestrator.js"
+    },
+    "./provider-streaming": {
+      "types": "./dist/provider-streaming.d.ts",
+      "import": "./dist/provider-streaming.js"
+    },
+    "./provider-stream-transports": {
+      "types": "./dist/provider-stream-transports/index.d.ts",
+      "import": "./dist/provider-stream-transports/index.js"
     }
   },
   "files": [
@@ -333,6 +341,7 @@
     "docs/CONTEXT_OPTIMIZER_PROFILES.md",
     "docs/PROVIDER_ATTEMPT_PLANNER.md",
     "docs/PROVIDER_RETRY_FALLBACK_ORCHESTRATOR.md",
+    "docs/GOVERNED_PROVIDER_STREAMING.md",
     "docs/PROVIDER_ATTEMPT_CONTEXT_RUNTIME.md",
     "docs/PROVIDER_ATTEMPT_RECEIPTS.md",
     "docs/PROVIDER_ATTEMPT_CONTEXT_RECEIPTS.md",
