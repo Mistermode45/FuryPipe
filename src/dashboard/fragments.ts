@@ -1417,13 +1417,13 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
   <pre>pxpipe warp -- claude
 pxpipe warp -- codex
 pxpipe warp -- cursor-agent</pre>
-  <p>Aliases work too (<code>pxpipe warp -- pp</code>), and <code>--route PATTERN=http://host:port</code> adds routes beyond <code>api.anthropic.com</code> (a PATTERN that names a port matches only that port, e.g. <code>--route '127.0.0.1:9090/v1/*=http://127.0.0.1:${port}'</code> warps an agent pointed at another local proxy). Without warp, point the agent at <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code> yourself.</p>
+  <p>${escapeHtml(t('dashboard.page.aliasHelp'))}<br><code>pxpipe warp -- pp</code> · <code>--route PATTERN=http://host:port</code> · <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code></p>
   <p>${escapeHtml(t('dashboard.page.pinIntro'))}</p>
   <pre>@pxpipe pin be concise, no walls of text
 @pxpipe unpin 2
 @pxpipe unpin all</pre>
-  <p><code>@pxpipe pin</code> with no text lists what is pinned.</p>
-  <p>A <code>@pxpipe pin …</code> line in your global or project <code>CLAUDE.md</code> (<code>AGENTS.md</code> under Codex / OpenCode) is relocated the same way, on every session, with no typing. Those are file-backed, so <code>unpin</code> and <code>unpin all</code> never touch them — edit the file to remove one.</p>
+  <p>${escapeHtml(t('dashboard.page.pinList'))}</p>
+  <p>${escapeHtml(t('dashboard.page.pinFileHelp'))} <code>CLAUDE.md</code> / <code>AGENTS.md</code></p>
 </details>
 
 <details class="models-collapse">
@@ -1437,8 +1437,8 @@ pxpipe warp -- cursor-agent</pre>
   <h3>${escapeHtml(t('dashboard.page.routingTitle'))}</h3>
   <p>${escapeHtml(t('dashboard.page.routingIntro'))}</p>
   <ul>
-    <li><code>OPENAI_MODELS</code> — exact model IDs routed to OpenAI Responses (<code>OPENAI_UPSTREAM</code> + <code>OPENAI_API_KEY</code>)</li>
-    <li><code>CLOUDFLARE_MODELS</code> — exact model IDs routed to Cloudflare's OpenAI-compatible endpoint (<code>CLOUDFLARE_ACCOUNT_ID</code> + <code>CLOUDFLARE_API_TOKEN</code>)</li>
+    <li><code>OPENAI_MODELS</code> — ${escapeHtml(t('dashboard.page.routingOpenAI'))} (<code>OPENAI_UPSTREAM</code> + <code>OPENAI_API_KEY</code>)</li>
+    <li><code>CLOUDFLARE_MODELS</code> — ${escapeHtml(t('dashboard.page.routingCloudflare'))} (<code>CLOUDFLARE_ACCOUNT_ID</code> + <code>CLOUDFLARE_API_TOKEN</code>)</li>
   </ul>
   <p>${escapeHtml(t('dashboard.page.routingPrecedence'))} <code>CLOUDFLARE_MODELS &gt; OPENAI_MODELS &gt; default routing</code>.</p>
   <pre>OPENAI_UPSTREAM=https://api.openai.com \\
@@ -1448,8 +1448,8 @@ CLOUDFLARE_ACCOUNT_ID=your-account-id \\
 CLOUDFLARE_API_TOKEN=your-cloudflare-token \\
 CLOUDFLARE_MODELS=moonshotai/kimi-k3 \\
 npx pxpipe-proxy</pre>
-  <p>Non-Anthropic IDs are advertised with a <code>claude-</code> prefix because Claude Code needs a Claude-shaped ID; pxpipe strips it before forwarding. Switch to one inside Claude Code with <code>/model claude-&lt;model&gt;</code> — e.g. <code>/model claude-moonshotai/kimi-k3</code> — or launch with <code>claude --model claude-moonshotai/kimi-k3</code>. Verify discovery with <code>curl …/v1/models</code>.</p>
-  <p><code>PXPIPE_MODELS</code> above is separate: it controls image compression, not routing. Kimi K3 on Cloudflare is the only non-Anthropic model tested end to end — see <code>docs/CLAUDE_CODE_PROVIDER_ROUTING.md</code>.</p>
+  <p>${escapeHtml(t('dashboard.page.routingPrefix'))} ${escapeHtml(t('dashboard.page.routingSwitch'))}</p>
+  <p><code>PXPIPE_MODELS</code> — ${escapeHtml(t('dashboard.page.scopeSeparate'))} ${escapeHtml(t('dashboard.page.routingEvidence'))}</p>
   <button class="mini-btn" type="button" onclick="this.closest('dialog').close()">${escapeHtml(t('dashboard.page.close'))}</button>
 </dialog>
 
