@@ -519,3 +519,25 @@
 - `pnpm run build` : PASS; modules/declarations, `dist/node.js`, `dist/mcp.js` et version `0.13.2` vérifiés.
 - `pnpm run package:smoke` : PASS sur le tarball local `furypipe-0.13.2.tgz`; aucune publication effectuée.
 - M8 demeure `PARTIAL` : OAuth/Authorization Server hébergé, vérification d’audience réelle, conformance multi-client, health checks et permissions de vrais tenants non exécutés.
+
+
+## 2026-09-13 — Governed Provider Request Executor
+
+- GitHub cible `Mistermode45/FuryPipe` et les droits d’accès ont été vérifiés. La branche `v5-production-hardening` a été synchronisée au SHA `d6b1944404e23c5a76a36b4b8ef6def6d8386d53`, qui contient les pistes fusionnées #103/#104/#105. Nouvelle branche dédiée : `v5-codex-governed-provider-executor`.
+- Provenance process-local `WeakSet` ajoutée au résultat Context Runtime ; shallow copy, JSON round-trip et faux objet sont refusés par la préparation d’enveloppe.
+- Enveloppe immuable issue du prompt final de ce Context Runtime, compilé par `compileFuryPrompt()`. SHA-256 domain-separated lie provider, modèle, workload, protocole et texte exact.
+- Gate réutilise `ProviderRuntimeState.selectFallback()` avec le seul candidat exact, exige health fraîche/available, modèle exact supporté et famille compatible, puis une policy host explicite default-deny. Permit `WeakMap`, process-local, lié à la requête, à usage unique, durée explicite max 60 s et plafonnée par l’expiration health.
+- Registry borné à 32 transports, identifiants canoniques exacts; pas d’alias/fuzzy match. L’exécuteur consomme synchroniquement le permit avant le callback, invoque au plus un transport, sans retry/fallback. Les credentials restent dans le transport hôte.
+- Résultats de transport strictement validés; statuts réseau/acceptation restent unknown si absents, sinon `transport-reported`; réponses `Uint8Array` copiées et limitées à 1 MiB; usage partiel préservé; coût `COST_UNKNOWN` si tokens incomplets/prix exact absent/calcul non fini.
+- Aucun SDK ou appel réseau réel; tests uniquement locaux/fakes. Aucun changement package/public export, workflow CI ou fichier receipt réservé.
+- Échecs transitoires initiaux du typecheck/tests ciblés durant le placement de la provenance corrigés; nouveau typecheck et ciblés passent.
+- Environnement mesuré : Node `26.8.2`, pnpm projet `10.21.0`.
+- `pnpm install --frozen-lockfile` : PASS, lockfile inchangé.
+- `pnpm run audit` : PASS, aucune vulnérabilité de production connue.
+- `pnpm run typecheck` : PASS.
+- Tests ciblés : PASS, 5 fichiers / 90 tests.
+- `pnpm test` : PASS, 151 fichiers / 1 813 tests.
+- `pnpm run build` : PASS; modules/declarations, `dist/node.js`, `dist/mcp.js`, version `0.13.2`.
+- `pnpm run package:smoke` : PASS pour package smoke, benchmark-claim smoke et provider-attempt smoke sur le tarball local.
+- `git diff --check` : PASS. Aucune publication, release, tag, merge ou déploiement effectué.
+- La Draft PR et les gates GitHub seront consignées après leur création et lecture effective.

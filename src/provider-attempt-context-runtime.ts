@@ -87,6 +87,7 @@ export class FuryProviderAttemptContextRuntimeError extends Error {
 }
 
 const HEX64 = /^[0-9a-f]{64}$/u;
+const GENERATED_PROVIDER_ATTEMPT_CONTEXT_RESULTS = new WeakSet<object>();
 const MAX_SCOPE_CHARS = 256;
 const PROFILE_BLOCK_REASONS = new Set<FuryContextOptimizerProfileBlockReason>([
   'missing-qualification',
@@ -99,6 +100,15 @@ const PROFILE_BLOCK_REASONS = new Set<FuryContextOptimizerProfileBlockReason>([
   'benchmark-errors',
   'no-token-improvement',
 ]);
+
+/** True only for immutable context results emitted by this runtime in this process. */
+export function isGeneratedProviderAttemptContextResult(
+  value: unknown,
+): value is FuryProviderAttemptContextRuntimeResult {
+  return value !== null
+    && typeof value === 'object'
+    && GENERATED_PROVIDER_ATTEMPT_CONTEXT_RESULTS.has(value);
+}
 
 function fail(
   code: FuryProviderAttemptContextRuntimeErrorCode,
@@ -415,7 +425,7 @@ export function prepareProviderAttemptContext(
         ? 'BLOCKED_PROFILE_FALLBACK'
         : 'BASELINE_IDENTITY';
 
-  return Object.freeze({
+  const result: FuryProviderAttemptContextRuntimeResult = Object.freeze({
     format: 'furypipe-provider-attempt-context-runtime/v1',
     providerId: plan.providerId,
     model: plan.model,
@@ -443,4 +453,6 @@ export function prepareProviderAttemptContext(
     providerRequestExecuted: false,
     executionAuthorized: false,
   });
+  GENERATED_PROVIDER_ATTEMPT_CONTEXT_RESULTS.add(result);
+  return result;
 }
