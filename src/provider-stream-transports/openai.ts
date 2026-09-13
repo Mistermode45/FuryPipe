@@ -68,6 +68,9 @@ function usage(response: Record<string, unknown> | undefined): ProviderStreamTra
 
 function eventType(frame: ProviderSseFrame, value: Record<string, unknown> | undefined): string {
   const jsonType = safeString(value?.type, 160);
+  if (frame.event.length > 0 && jsonType !== undefined && frame.event !== jsonType) {
+    throw new TypeError('provider SSE event type mismatch');
+  }
   return jsonType ?? (frame.event.length > 0 ? frame.event : 'unknown');
 }
 
