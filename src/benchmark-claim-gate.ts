@@ -284,6 +284,20 @@ export function validateBenchmarkSuiteEvidence(value: unknown): FuryBenchmarkSui
   }
 
   const quality = parseVariantSummaries(value.quality, 'benchmark suite quality', repetitions);
+  for (const variant of FURY_BENCHMARK_VARIANTS) {
+    const summary = quality[variant];
+    for (const [statistic, score] of Object.entries({
+      min: summary.min,
+      max: summary.max,
+      mean: summary.mean,
+      median: summary.median,
+      p95: summary.p95,
+    })) {
+      if (score !== null && score > 1) {
+        throw new Error(`benchmark suite quality.${variant}.${statistic} must be between 0 and 1`);
+      }
+    }
+  }
 
   if (!isPlainRecord(value.exactness)) throw new Error('benchmark suite exactness must be an object');
   const exactness = Object.freeze({
