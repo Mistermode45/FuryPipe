@@ -76,13 +76,21 @@ Therefore FuryPipe cannot publish claims such as “500× faster” merely becau
 
 ## Current expected V5 result
 
-Until Codex closes the remaining production runtime work, the honest expected result is:
+The honest default result remains:
 
 `BLOCKED`
 
-Typical blockers include M4 Recovery, external/production MCP evidence, Agent/FuryPrompt wiring and other release-scope features that remain `PARTIAL`.
+The local integration candidate can make CI, security, package, Recovery/Agent/FuryPrompt,
+browser-QA and other implementation evidence substantially stronger, but the evaluator
+still refuses to infer hosted truth from local success. Typical remaining blockers are
+exact-source hosted MCP/OAuth conformance, provider-account/network evidence, the hosted
+Web/Figma release scope where required, repository-policy evidence, and any release
+artifact/authorization step that has not actually executed.
 
-This evaluator is intended to feed Control Room and future RC automation once those gates become real evidence.
+A green pull-request matrix or Chromium QA report therefore does not by itself produce
+`READY_FOR_RELEASE_DECISION`. Control Room/RC automation must supply the canonical
+source-bound evidence for every required gate, and maintainer authorization remains
+separate from technical readiness.
 
 
 ## RC evidence snapshot
