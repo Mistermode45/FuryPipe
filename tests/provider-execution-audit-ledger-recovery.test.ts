@@ -238,6 +238,35 @@ describe('Provider Execution Audit Ledger Recovery snapshots', () => {
     }
   });
 
+  it('rejects accessor-bearing snapshot references without invoking caller getters', async () => {
+    const { root, store } = await temporaryRecoveryStore();
+    try {
+      const snapshot = await persistProviderExecutionAuditLedgerSnapshot(
+        store,
+        createProviderExecutionAuditLedger([await auditChain('accessor root')]),
+      );
+      let invoked = false;
+      const hostile = Object.create(null) as Record<string, unknown>;
+      for (const [key, value] of Object.entries(snapshot)) hostile[key] = value;
+      Object.defineProperty(hostile, 'recoveryHandle', {
+        enumerable: true,
+        get() {
+          invoked = true;
+          return snapshot.recoveryHandle;
+        },
+      });
+
+      await expect(appendProviderExecutionAuditLedgerSnapshot(
+        store,
+        hostile as unknown as FuryProviderExecutionAuditLedgerSnapshot,
+        await auditChain('accessor append'),
+      )).rejects.toThrow(/accessor property/);
+      expect(invoked).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('discovers only an exact ledger digest and revalidates the durable payload', async () => {
     const { root, store } = await temporaryRecoveryStore();
     try {
