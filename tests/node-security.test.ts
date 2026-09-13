@@ -367,8 +367,8 @@ describe('Node dashboard security', () => {
 
   it('creates rendered PNG dumps with private permissions', async () => {
     const dumpDir = path.join(os.tmpdir(), `pxpipe-dumps-${process.pid}-${Date.now()}`);
-    const { base } = await startNode({ PXPIPE_DUMP_DIR: dumpDir });
-    await fetch(`${base}/v1/messages`, {
+    const { base, output } = await startNode({ PXPIPE_DUMP_DIR: dumpDir });
+    const response = await fetch(`${base}/v1/messages`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': 'test' },
       body: JSON.stringify({
@@ -378,13 +378,20 @@ describe('Node dashboard security', () => {
         messages: [{ role: 'user', content: 'hi' }],
       }),
     });
+    expect(response.status).toBe(200);
+    // createProxy deliberately detaches finalize(); onRequest (which writes the
+    // debug PNG) can therefore finish shortly after the HTTP response body.
+    // Consume the body, then wait for that explicit asynchronous side effect
+    // instead of assuming await fetch() means telemetry finalization is done.
+    await response.arrayBuffer();
     let files: string[] = [];
-    for (let i = 0; i < 100 && files.length === 0; i++) {
+    const deadline = Date.now() + (process.platform === 'win32' ? 10_000 : 5_000);
+    while (files.length === 0 && Date.now() < deadline) {
       files = fs.readdirSync(dumpDir);
-      if (files.length === 0) await new Promise((resolve) => setTimeout(resolve, 10));
+      if (files.length === 0) await new Promise((resolve) => setTimeout(resolve, 25));
     }
     expectMode(dumpDir, 0o700);
-    expect(files.length).toBeGreaterThan(0);
+    expect(files.length, output()).toBeGreaterThan(0);
     expectMode(path.join(dumpDir, files[0]!), 0o600);
     await removeTempTree(dumpDir);
   });
