@@ -41,16 +41,22 @@ describe('SPDX SBOM generator', () => {
       output,
     ], {
       cwd: process.cwd(),
-      env: { ...process.env, GITHUB_SHA: 'a'.repeat(40) },
+      env: {
+        ...process.env,
+        GITHUB_SHA: 'b'.repeat(40),
+        FURYPIPE_SOURCE_COMMIT: 'a'.repeat(40),
+      },
     });
 
     const document = JSON.parse(await readFile(output, 'utf8')) as {
       spdxVersion: string;
+      documentNamespace: string;
       packages: Array<{ name: string; versionInfo: string; SPDXID: string }>;
       relationships: Array<{ spdxElementId: string; relatedSpdxElement: string; relationshipType: string }>;
     };
 
     expect(document.spdxVersion).toBe('SPDX-2.3');
+    expect(document.documentNamespace).toBe('https://github.com/Mistermode45/FuryPipe/sbom/' + 'a'.repeat(40));
     expect(document.packages.map((pkg) => [pkg.name, pkg.versionInfo])).toEqual(expect.arrayContaining([
       ['furypipe', '0.13.2'],
       ['json5', '2.2.3'],
@@ -58,6 +64,7 @@ describe('SPDX SBOM generator', () => {
       ['vitest', '4.0.18'],
     ]));
     expect(document.packages).toHaveLength(4);
+    expect(new Set(document.packages.map((pkg) => pkg.SPDXID)).size).toBe(document.packages.length);
 
     const byName = new Map(document.packages.map((pkg) => [pkg.name, pkg.SPDXID]));
     expect(document.relationships).toEqual(expect.arrayContaining([
