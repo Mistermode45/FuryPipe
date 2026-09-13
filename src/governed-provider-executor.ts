@@ -4,6 +4,7 @@ import type { FuryProviderExecutionPermit } from './provider-execution-gate.js';
 import { consumeProviderExecutionPermit } from './provider-execution-gate.js';
 import type { FuryProviderRequestEnvelope } from './provider-request-envelope.js';
 import { isGeneratedProviderRequestEnvelope } from './provider-request-envelope.js';
+import { FuryGovernedProviderExecutorError } from './provider-execution-errors.js';
 import {
   assertKnownKeys,
   exactIdentifier,
@@ -36,6 +37,8 @@ export interface GovernedProviderExecutionResult {
     readonly status: 'accepted' | 'rejected' | 'unknown';
     readonly evidence: 'transport-reported' | 'not-reported';
   };
+  readonly httpStatus?: number;
+  readonly retryAfterMs?: number;
   readonly usage?: ProviderTransportResult['usage'];
   readonly responseBytes?: Uint8Array;
   readonly finishReason?: string;
@@ -46,7 +49,13 @@ export interface GovernedProviderExecutor {
   execute(
     request: FuryProviderRequestEnvelope,
     permit: FuryProviderExecutionPermit,
+    options?: GovernedProviderExecutionOptions,
   ): Promise<GovernedProviderExecutionResult>;
+}
+
+export interface GovernedProviderExecutionOptions {
+  /** Optional caller cancellation; existing two-argument calls remain valid. */
+  readonly signal?: AbortSignal;
 }
 
 export interface GovernedProviderExecutorOptions {
@@ -148,8 +157,30 @@ export function createGovernedProviderExecutor(
   if (typeof nowSource !== 'function') throw new TypeError('governed provider executor clock must be a function');
 
   return Object.freeze({
-    async execute(request: FuryProviderRequestEnvelope, permit: FuryProviderExecutionPermit): Promise<GovernedProviderExecutionResult> {
+    async execute(
+      request: FuryProviderRequestEnvelope,
+      permit: FuryProviderExecutionPermit,
+      executionOptions?: GovernedProviderExecutionOptions,
+    ): Promise<GovernedProviderExecutionResult> {
       if (!isGeneratedProviderRequestEnvelope(request)) fail('invalid-prepared-attempt');
+
+      let signal: AbortSignal | undefined;
+      if (executionOptions !== undefined) {
+        let input: Readonly<Record<string, unknown>>;
+        try {
+          input = ownDataRecord(executionOptions);
+          assertKnownKeys(input, ['signal']);
+        } catch {
+          fail('invalid-input');
+        }
+        if (input.signal !== undefined) {
+          if (typeof input.signal !== 'object' || input.signal === null
+            || typeof (input.signal as AbortSignal).aborted !== 'boolean'
+            || typeof (input.signal as AbortSignal).addEventListener !== 'function'
+            || typeof (input.signal as AbortSignal).removeEventListener !== 'function') fail('invalid-input');
+          signal = input.signal as AbortSignal;
+        }
+      }
 
       let registered: unknown;
       try {
@@ -175,12 +206,14 @@ export function createGovernedProviderExecutor(
         model: request.model,
         workloadId: request.workloadId,
         maxResponseBytes: MAX_PROVIDER_RESPONSE_BYTES,
+        ...(signal === undefined ? {} : { signal }),
       });
       let rawResult: unknown;
       try {
         // The permit was marked consumed synchronously above, before this callback can yield.
         rawResult = await transport.execute(request, context);
-      } catch {
+      } catch (error) {
+        if (error instanceof FuryGovernedProviderExecutorError && error.code === 'response-too-large') throw error;
         fail('transport-error', true);
       }
 
@@ -197,6 +230,8 @@ export function createGovernedProviderExecutor(
         ...(result.providerRequestId === undefined ? {} : { providerRequestId: result.providerRequestId }),
         network: result.network,
         providerRequest: result.providerRequest,
+        ...(result.httpStatus === undefined ? {} : { httpStatus: result.httpStatus }),
+        ...(result.retryAfterMs === undefined ? {} : { retryAfterMs: result.retryAfterMs }),
         ...(result.usage === undefined ? {} : { usage: result.usage }),
         ...(result.responseBytes === undefined ? {} : { responseBytes: result.responseBytes }),
         ...(result.finishReason === undefined ? {} : { finishReason: result.finishReason }),
