@@ -266,7 +266,7 @@ describe('governed provider stream executor', () => {
       kind: 'provider-error',
       errorCode: 'overloaded',
       evidence: 'transport-reported',
-      cost: { status: 'unknown' },
+      cost: { status: COST_UNKNOWN },
     });
   });
 
