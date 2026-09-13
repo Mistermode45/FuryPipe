@@ -307,7 +307,7 @@ export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en
     ? statTile(
         t('dashboard.header.costPerRequest'),
         `$${cAvg.toFixed(4)}`,
-        t('dashboard.header.vsWithout', { value: `${withoutAvg.toFixed(4)}` }),
+        t('dashboard.header.vsWithout', { value: `$${withoutAvg.toFixed(4)}` }),
         cAvg <= withoutAvg ? 'pos' : 'neg',
         t('dashboard.header.costTip'),
       )
@@ -340,7 +340,7 @@ export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en
         `$${(s.saved_usd ?? 0).toFixed(2)}`,
         unpricedImaged > 0
           ? t(unpricedImaged === 1 ? 'dashboard.header.excludedPricingOne' : 'dashboard.header.excludedPricing', { count: numFmt(unpricedImaged) })
-          : t('dashboard.header.baseInputPrice', { value: `${pa.input_per_mtok}` }),
+          : t('dashboard.header.baseInputPrice', { value: `$${pa.input_per_mtok}` }),
         '',
         t('dashboard.header.estimateTip'),
       );
@@ -373,7 +373,7 @@ export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en
     ? `<div><span class="v">${escapeHtml(t('dashboard.math.unavailableProvider'))}</span></div>` +
       `<span class="src">${escapeHtml(t('dashboard.math.tokenSavingsStill'))}</span>`
     :
-    `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">$ saved = saved_tokens × ${pa.input_per_mtok}/Mtok</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">$ saved = saved_tokens × $${pa.input_per_mtok}/Mtok</span></div>` +
     `<div class="sp"></div>` +
     mathRow('saved_tokens', s.saved_input_tokens, `(${escapeHtml(t('dashboard.math.inputSide'))})`) +
     mathRow('saved_usd', `$${(s.saved_usd || 0).toFixed(4)} `, `<span class="op">=</span> saved_tokens × input_rate / 1e6`) +
@@ -383,9 +383,9 @@ export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en
     `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">without_pxpipe = actual_imaged + measured_savings</span></div>` +
     `<div><span class="k">${escapeHtml(t('dashboard.math.why'))}:</span> <span class="v">${escapeHtml(t('dashboard.math.samePopulation'))}</span></div>` +
     `<div class="sp"></div>` +
-    mathRow(`actual imaged (n=${paidImaged})`, `$${(s.compressed_actual_usd || 0).toFixed(4)}`, t('dashboard.math.totalAvg', { value: `${cAvg.toFixed(4)}` })) +
-    mathRow(t('dashboard.math.measuredSavings'), `${(s.saved_usd || 0).toFixed(4)}`, escapeHtml(t('dashboard.math.cacheAwareTotal'))) +
-    mathRow(t('dashboard.math.withoutPxpipe'), `${withoutAvg.toFixed(4)}/req`, '<span class="op">=</span> (actual imaged + measured savings) / n') +
+    mathRow(`actual imaged (n=${paidImaged})`, `$${(s.compressed_actual_usd || 0).toFixed(4)}`, t('dashboard.math.totalAvg', { value: `$${cAvg.toFixed(4)}` })) +
+    mathRow(t('dashboard.math.measuredSavings'), `$${(s.saved_usd || 0).toFixed(4)}`, escapeHtml(t('dashboard.math.cacheAwareTotal'))) +
+    mathRow(t('dashboard.math.withoutPxpipe'), `$${withoutAvg.toFixed(4)}/req`, '<span class="op">=</span> (actual imaged + measured savings) / n') +
     `<span class="src">${escapeHtml(t('dashboard.math.unmeasuredZero'))}</span>`;
 
   const pctMath =
@@ -401,7 +401,7 @@ export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en
 
   const tokeqMath =
     `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">token_equivalent = input + output × ${pa.output_multiplier}</span></div>` +
-    `<div><span class="k">${escapeHtml(t('dashboard.math.why'))}:</span> <span class="v">${escapeHtml(t('dashboard.math.weeklyWhy'))} (${pa.input_per_mtok} input / ${pa.input_per_mtok * pa.output_multiplier} output)</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.why'))}:</span> <span class="v">${escapeHtml(t('dashboard.math.weeklyWhy'))} ($${pa.input_per_mtok} input vs $${pa.input_per_mtok * pa.output_multiplier} output)</span></div>` +
     `<div class="sp"></div>` +
     mathRow('actual_token_equivalent', s.actual_token_equivalent) +
     mathRow('baseline_token_equivalent', s.baseline_token_equivalent, `(${escapeHtml(t('dashboard.math.unproxiedCounterfactual'))} ×${pa.output_multiplier})`) +
