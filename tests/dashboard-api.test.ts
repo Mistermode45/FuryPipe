@@ -523,6 +523,50 @@ describe('dashboard localized fragments', () => {
     expect(html).toContain('Ouvrez Détails sur une requête');
     expect(html).not.toContain('Pick <strong>Details</strong>');
   });
+
+  it('localizes header math and legacy stats while preserving exact formula identifiers', async () => {
+    const header = await (await dash.serveFragment(
+      'header',
+      new URL('http://localhost/fragments/header?locale=fr'),
+      4711,
+    )).text();
+    expect(header).toContain('Coût par requête');
+    expect(header).toContain('Afficher les calculs et preuves d’honnêteté');
+    expect(header).toContain('saved = baseline − actual');
+    expect(header).toContain('saved_tokens');
+    expect(header).toContain('port 4711');
+
+    writeEvents(tmp, [
+      ev({ status: 200, compressed: true, input_tokens: 120, cache_read_tokens: 40 }),
+    ]);
+    const stats = await (await dash.serveFragment(
+      'stats',
+      new URL('http://localhost/fragments/stats?locale=fr'),
+      4711,
+    )).text();
+    expect(stats).toContain('requêtes');
+    expect(stats).toContain('tokens d’entrée');
+    expect(stats).toContain('lecture cache');
+    expect(stats).toContain('2xx / 4xx / 5xx');
+  });
+
+  it('localizes the image/source inspector without altering captured source text', async () => {
+    const [id] = dash.captureImage({
+      imagePngs: [new Uint8Array([137, 80, 78, 71])],
+      imageDims: [{ width: 100, height: 80 }],
+      imageSourceText: 'EXACT_SOURCE_VALUE_123',
+    } as never);
+    const html = await (await dash.serveFragment(
+      'latest',
+      new URL(`http://localhost/fragments/latest?locale=fr&source=1&pin=${id}`),
+      1,
+    )).text();
+    expect(html).toContain('revenir au plus récent');
+    expect(html).toContain('Ce que voit le modèle · image');
+    expect(html).toContain('Texte d’origine · byte-exact');
+    expect(html).toContain('EXACT_SOURCE_VALUE_123');
+    expect(html).not.toContain('What the model sees');
+  });
 });
 
 describe('dashboard locale surface', () => {
@@ -558,6 +602,13 @@ describe('dashboard locale surface', () => {
     expect(html).toContain('furypipe-locale');
     expect(html).toContain('window.ppLocale = "fr"');
     expect(html).toContain("event.detail.parameters.locale = window.ppLocale");
+    expect(html).toContain('Connecter un agent');
+    expect(html).toContain('Périmètre des modèles imagés');
+    expect(html).toContain('Router Claude Code vers des modèles OpenAI / Cloudflare');
+    expect(html).toContain('Chargement des preuves Control Room');
+    expect(html).toContain('OPENAI_MODELS');
+    expect(html).toContain('ANTHROPIC_BASE_URL');
+    expect(html).not.toContain('Connect an agent');
   });
 
   it('marks the bidi pseudo-locale RTL and falls back safely for invalid tags', () => {
