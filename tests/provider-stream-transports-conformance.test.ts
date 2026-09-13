@@ -370,12 +370,12 @@ describe('production provider SSE stream conformance', () => {
         signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
       }));
       const pending = executeOpenAI(fetchImpl, { timeoutMs: 25 });
-      await vi.advanceTimersByTimeAsync(25);
-
-      await expect(pending).rejects.toMatchObject({
+      const rejection = expect(pending).rejects.toMatchObject({
         code: 'stream-transport-error',
         transportInvoked: true,
       });
+      await vi.advanceTimersByTimeAsync(25);
+      await rejection;
       expect(fetchImpl).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
