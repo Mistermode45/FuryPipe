@@ -2,13 +2,19 @@
 
 ## Status
 
-`IMPLEMENTED_UNWIRED_INTERNAL_FOUNDATION`
+`IMPLEMENTED_STATIC_FOUNDATION_WITH_PUBLIC_CATALOG_PRIMITIVES`
 
 This track adds a typed candidate contract, bounded static JSON importer,
 canonical identity, deterministic in-memory registry, explainable duplicate
-matches and an ingestion coordinator. It is not connected to Capability Router,
-Agent Runtime, MCP execution, package exports or a persistent catalog. The
-presence of these modules does not enable or run an ecosystem capability.
+matches and an ingestion coordinator. Candidate types, normalization and the
+in-memory registry are now exposed through the non-executing
+`furypipe/capability-catalog` public facade together with FuryTrust, FuryScore,
+Catalog Resolver and the Capability Activation Contract.
+
+The lower-level ingestion coordinator/importer remains internal. None of these
+surfaces are connected to automatic installation, Agent Runtime execution, MCP
+execution or a persistent catalog. Public exposure does not enable or run an
+ecosystem capability.
 
 ## Lifecycle
 
