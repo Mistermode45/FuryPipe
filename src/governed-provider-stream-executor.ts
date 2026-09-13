@@ -13,6 +13,7 @@ import {
 import {
   MAX_PROVIDER_STREAM_EVENT_BYTES,
   MAX_PROVIDER_STREAM_TEXT_BYTES,
+  MAX_PROVIDER_STREAM_WIRE_BYTES,
   type ProviderStreamTransport,
   type ProviderStreamTransportEvent,
   type ProviderStreamTransportRegistry,
@@ -246,6 +247,7 @@ function governedEvents(
   request: FuryProviderRequestEnvelope,
   source: AsyncIterable<unknown>,
   runtime: ProviderRuntimeState,
+  requireTerminal: boolean,
 ): AsyncIterable<GovernedProviderStreamEvent> {
   return Object.freeze({
     async *[Symbol.asyncIterator](): AsyncGenerator<GovernedProviderStreamEvent> {
@@ -293,7 +295,7 @@ function governedEvents(
         if (error instanceof FuryGovernedProviderStreamError) throw error;
         fail('stream-transport-error', true);
       }
-      if (!terminalSeen) fail('stream-interrupted', true);
+      if (requireTerminal && !terminalSeen) fail('stream-interrupted', true);
     },
   });
 }
@@ -356,6 +358,7 @@ export function createGovernedProviderStreamExecutor(
         workloadId: request.workloadId,
         maxEventBytes: MAX_PROVIDER_STREAM_EVENT_BYTES,
         maxTextBytes: MAX_PROVIDER_STREAM_TEXT_BYTES,
+        maxWireBytes: MAX_PROVIDER_STREAM_WIRE_BYTES,
         ...(signal === undefined ? {} : { signal }),
       });
 
@@ -384,7 +387,12 @@ export function createGovernedProviderStreamExecutor(
         providerRequest: streamSession.providerRequest,
         ...(streamSession.httpStatus === undefined ? {} : { httpStatus: streamSession.httpStatus }),
         ...(streamSession.retryAfterMs === undefined ? {} : { retryAfterMs: streamSession.retryAfterMs }),
-        events: governedEvents(request, streamSession.events, options.providerRuntime),
+        events: governedEvents(
+          request,
+          streamSession.events,
+          options.providerRuntime,
+          streamSession.providerRequest.status === 'accepted',
+        ),
       });
       GENERATED_STREAM_SESSIONS.add(session);
       return session;
