@@ -62,7 +62,11 @@ function usage(value: Record<string, unknown> | undefined): ProviderStreamTransp
 }
 
 function eventType(frame: ProviderSseFrame, value: Record<string, unknown> | undefined): string {
-  return safeString(value?.type, 160) ?? (frame.event.length > 0 ? frame.event : 'unknown');
+  const jsonType = safeString(value?.type, 160);
+  if (frame.event.length > 0 && jsonType !== undefined && frame.event !== jsonType) {
+    throw new TypeError('provider SSE event type mismatch');
+  }
+  return jsonType ?? (frame.event.length > 0 ? frame.event : 'unknown');
 }
 
 function createAnthropicMapper(): ProviderSseEventMapper {
