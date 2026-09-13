@@ -8,6 +8,7 @@ import {
 } from '../governed-provider-executor.js';
 import {
   isGeneratedGovernedProviderStreamEvent,
+  isGeneratedGovernedProviderStreamEventForSession,
   isGeneratedGovernedProviderStreamSession,
   type GovernedProviderStreamEvent,
   type GovernedProviderStreamSession,
@@ -302,9 +303,16 @@ function safeRuntimeCount(value: unknown, label: string): asserts value is numbe
   }
 }
 
-function observeStreamEvent(state: StreamProviderObservationState, event: GovernedProviderStreamEvent): void {
+function observeStreamEvent(
+  session: GovernedProviderStreamSession,
+  state: StreamProviderObservationState,
+  event: GovernedProviderStreamEvent,
+): void {
   if (!isGeneratedGovernedProviderStreamEvent(event)) {
     throw new Error('Control Room provider stream event requires a process-local FuryPipe event');
+  }
+  if (!isGeneratedGovernedProviderStreamEventForSession(session, event)) {
+    throw new Error('Control Room provider stream event does not belong to the exact bound session');
   }
   if (
     event.providerId !== state.providerId
@@ -441,7 +449,7 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
       }
       const existing = streamProviderObservations.get(session);
       if (existing) return Object.freeze({
-        observeEvent: (event: GovernedProviderStreamEvent) => observeStreamEvent(existing, event),
+        observeEvent: (event: GovernedProviderStreamEvent) => observeStreamEvent(session, existing, event),
       });
       if (streamProviderObservationList.length >= MAX_PROVIDER_OBSERVATIONS) {
         throw new Error('Control Room provider stream observation limit reached');
@@ -462,7 +470,7 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
       streamProviderObservations.set(session, state);
       streamProviderObservationList.push(state);
       return Object.freeze({
-        observeEvent: (event: GovernedProviderStreamEvent) => observeStreamEvent(state, event),
+        observeEvent: (event: GovernedProviderStreamEvent) => observeStreamEvent(session, state, event),
       });
     },
 
