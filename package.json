@@ -285,6 +285,10 @@
     "./provider-execution-audit-ledger-recovery": {
       "types": "./dist/provider-execution-audit-ledger-recovery.d.ts",
       "import": "./dist/provider-execution-audit-ledger-recovery.js"
+    },
+    "./provider-retry-fallback-orchestrator": {
+      "types": "./dist/provider-retry-fallback-orchestrator.d.ts",
+      "import": "./dist/provider-retry-fallback-orchestrator.js"
     }
   },
   "files": [
@@ -328,6 +332,7 @@
     "docs/PROVIDER_ATTEMPT_ADAPTER.md",
     "docs/CONTEXT_OPTIMIZER_PROFILES.md",
     "docs/PROVIDER_ATTEMPT_PLANNER.md",
+    "docs/PROVIDER_RETRY_FALLBACK_ORCHESTRATOR.md",
     "docs/PROVIDER_ATTEMPT_CONTEXT_RUNTIME.md",
     "docs/PROVIDER_ATTEMPT_RECEIPTS.md",
     "docs/PROVIDER_ATTEMPT_CONTEXT_RECEIPTS.md",
