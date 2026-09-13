@@ -205,20 +205,21 @@ function mergeUsage(
   next: ProviderTransportResult['usage'],
 ): ProviderTransportResult['usage'] {
   if (next === undefined) return current;
-  return Object.freeze({
-    ...(current?.inputTokens === undefined && next.inputTokens === undefined
-      ? {}
-      : { inputTokens: next.inputTokens ?? current?.inputTokens }),
-    ...(current?.outputTokens === undefined && next.outputTokens === undefined
-      ? {}
-      : { outputTokens: next.outputTokens ?? current?.outputTokens }),
-    ...(current?.cacheWriteTokens === undefined && next.cacheWriteTokens === undefined
-      ? {}
-      : { cacheWriteTokens: next.cacheWriteTokens ?? current?.cacheWriteTokens }),
-    ...(current?.cacheReadTokens === undefined && next.cacheReadTokens === undefined
-      ? {}
-      : { cacheReadTokens: next.cacheReadTokens ?? current?.cacheReadTokens }),
-  });
+  const merged: {
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheWriteTokens?: number;
+    cacheReadTokens?: number;
+  } = {};
+  const inputTokens = next.inputTokens ?? current?.inputTokens;
+  const outputTokens = next.outputTokens ?? current?.outputTokens;
+  const cacheWriteTokens = next.cacheWriteTokens ?? current?.cacheWriteTokens;
+  const cacheReadTokens = next.cacheReadTokens ?? current?.cacheReadTokens;
+  if (inputTokens !== undefined) merged.inputTokens = inputTokens;
+  if (outputTokens !== undefined) merged.outputTokens = outputTokens;
+  if (cacheWriteTokens !== undefined) merged.cacheWriteTokens = cacheWriteTokens;
+  if (cacheReadTokens !== undefined) merged.cacheReadTokens = cacheReadTokens;
+  return Object.freeze(merged);
 }
 
 function assertSessionConsistency(session: ReturnType<typeof validateProviderStreamTransportSession>): void {
