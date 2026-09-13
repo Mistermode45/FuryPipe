@@ -262,8 +262,38 @@ function promptCompileInputDigest(input: FuryPromptCompileInput): string {
   return createHash('sha256').update(canonical, 'utf8').digest('hex');
 }
 
-function receiptDigest(value: Omit<FuryProviderAttemptPlanReceipt, 'receiptDigest'>): string {
-  return createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex');
+function canonicalJson(value: unknown): string {
+  if (value === null) return 'null';
+  if (typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('receipt canonical JSON does not support non-finite numbers');
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => canonicalJson(entry)).join(',')}]`;
+  }
+  if (typeof value !== 'object') {
+    throw new Error('receipt canonical JSON contains an unsupported value');
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error('receipt canonical JSON requires plain objects');
+  }
+
+  const parts: string[] = [];
+  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !('value' in descriptor) || descriptor.value === undefined) {
+      throw new Error('receipt canonical JSON requires defined data properties');
+    }
+    parts.push(`${JSON.stringify(key)}:${canonicalJson(descriptor.value)}`);
+  }
+  return `{${parts.join(',')}}`;
+}
+
+function receiptDigest(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
 }
 
 function receiptCore(plan: FuryProviderAttemptPlan): Omit<FuryProviderAttemptPlanReceipt, 'receiptDigest'> {
@@ -355,10 +385,23 @@ export function verifyProviderAttemptPlanReceipt(
 ): boolean {
   try {
     if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) return false;
+    const prototype = Object.getPrototypeOf(receipt);
+    if (prototype !== Object.prototype && prototype !== null) return false;
+    if (!HEX64.test(receipt.receiptDigest)) return false;
+
+    const suppliedCore: Record<string, unknown> = {};
+    for (const key of Object.keys(receipt)) {
+      if (key === 'receiptDigest') continue;
+      const descriptor = Object.getOwnPropertyDescriptor(receipt, key);
+      if (!descriptor || !('value' in descriptor)) return false;
+      suppliedCore[key] = descriptor.value;
+    }
+
     const expected = createProviderAttemptPlanReceipt(plan);
+    const suppliedDigest = receiptDigest(suppliedCore);
     return receipt.format === expected.format
-      && receipt.receiptDigest === expected.receiptDigest
-      && JSON.stringify(receipt) === JSON.stringify(expected);
+      && suppliedDigest === receipt.receiptDigest
+      && receipt.receiptDigest === expected.receiptDigest;
   } catch {
     return false;
   }
