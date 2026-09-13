@@ -206,20 +206,33 @@ The Benchmark Claim Gate does not activate model adapters.
 A public performance claim and runtime model-adapter eligibility are separate
 decisions with separate scopes.
 
-## Current boundary
+## Public package surface
 
-This module is an internal TypeScript primitive in this track.
+The gate is available through:
+
+```ts
+import {
+  validateBenchmarkSuiteEvidence,
+  assessBenchmarkAntiRegression,
+  evaluateBenchmarkClaim,
+} from 'furypipe/benchmark-claim-gate';
+```
+
+The package smoke test validates this subpath from an installed packed tarball,
+not from the source tree.
+
+Public export does not expand authority. The module remains offline and
+non-executing.
 
 It does not:
 
 - execute benchmarks;
 - contact providers;
 - publish marketing copy;
-- publish npm packages;
+- publish npm packages by itself;
 - create releases;
 - modify runtime routing;
 - authorize model adapters;
 - authorize tools or capabilities.
 
-Public package export, release reporting, and UI surfaces should be separate
-tracks after this contract is proven by CI.
+Release reporting and UI surfaces remain separate tracks.
