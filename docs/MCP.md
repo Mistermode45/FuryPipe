@@ -88,6 +88,23 @@ un `Host` réel. Pour un déploiement non loopback, l’allowlist et
 `bearerAuth.verifier` sont obligatoires ; un token statique dans un test ne
 constitue pas un fournisseur OAuth de production.
 
+Le module public `furypipe/mcp-modern` expose également
+`getProductionMcpRuntimeEvidence(handler)`. Cette fonction ne fonctionne que
+sur l'identité exacte d'un handler produit dans le processus courant et renvoie
+uniquement des compteurs/configurations bornés. Une copie par spread,
+sérialisation ou reconstruction manuelle retourne `undefined`.
+
+Les preuves runtime MCP restent volontairement étroites :
+
+- une requête ayant franchi les contrôles jusqu'au SDK prouve le dispatch local,
+  pas la connectivité réseau externe ;
+- un Bearer accepté prouve le vérificateur local configuré, pas un
+  Authorization Server réel ;
+- les réponses de découverte OAuth prouvent seulement la surface locale ;
+- aucun token, `AuthInfo`, body JSON-RPC, argument d'outil, Host/Origin ou
+  plaintext Recovery n'est conservé dans ces compteurs ;
+- `externalConformance` ne peut pas être promu par ces observations locales.
+
 Cette tranche prouve localement le registre commun, le transport stdio
 dual-era, la frontière HTTP fetch-native, le listener Node réel et ses rejets négatifs. Elle ne vaut
 pas une certification client hébergée, un test réseau multi-processus, ni une
