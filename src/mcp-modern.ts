@@ -45,6 +45,59 @@ export interface ProductionMcpHttpOptions {
 
 export interface ProductionMcpHttpHandler extends McpHttpHandler {}
 
+export interface ProductionMcpRuntimeEvidence {
+  readonly format: 'furypipe-mcp-http-runtime-evidence/v1';
+  readonly requests: number;
+  readonly dispatchedRequests: number;
+  readonly bearerAuthConfigured: boolean;
+  readonly bearerAuthSuccesses: number;
+  readonly oauthMetadataConfigured: boolean;
+  readonly oauthMetadataResponses: number;
+}
+
+interface MutableProductionMcpRuntimeEvidence {
+  requests: number;
+  dispatchedRequests: number;
+  bearerAuthConfigured: boolean;
+  bearerAuthSuccesses: number;
+  oauthMetadataConfigured: boolean;
+  oauthMetadataResponses: number;
+}
+
+const MAX_MCP_RUNTIME_COUNT = 1_000_000_000;
+const PRODUCTION_MCP_RUNTIME_EVIDENCE = new WeakMap<object, MutableProductionMcpRuntimeEvidence>();
+const GENERATED_MCP_STDIO_HANDLES = new WeakSet<object>();
+
+function incrementRuntimeCounter(value: number): number {
+  return value >= MAX_MCP_RUNTIME_COUNT ? MAX_MCP_RUNTIME_COUNT : value + 1;
+}
+
+/**
+ * Read bounded metadata-only evidence from an exact process-local production
+ * MCP HTTP handler. Copies and hand-crafted lookalikes return undefined.
+ */
+export function getProductionMcpRuntimeEvidence(value: unknown): ProductionMcpRuntimeEvidence | undefined {
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return undefined;
+  const state = PRODUCTION_MCP_RUNTIME_EVIDENCE.get(value as object);
+  if (state === undefined) return undefined;
+  return Object.freeze({
+    format: 'furypipe-mcp-http-runtime-evidence/v1' as const,
+    requests: state.requests,
+    dispatchedRequests: state.dispatchedRequests,
+    bearerAuthConfigured: state.bearerAuthConfigured,
+    bearerAuthSuccesses: state.bearerAuthSuccesses,
+    oauthMetadataConfigured: state.oauthMetadataConfigured,
+    oauthMetadataResponses: state.oauthMetadataResponses,
+  });
+}
+
+/** Exact process-local identity check for handles returned by runModernMcpStdio(). */
+export function isGeneratedModernMcpStdioHandle(value: unknown): boolean {
+  return value !== null
+    && (typeof value === 'object' || typeof value === 'function')
+    && GENERATED_MCP_STDIO_HANDLES.has(value as object);
+}
+
 function toolArgs(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('tool arguments must be an object');
@@ -286,6 +339,14 @@ export function createProductionMcpHandler(
   store: RecoveryStore,
   options: ProductionMcpHttpOptions,
 ): ProductionMcpHttpHandler {
+  const runtimeEvidence: MutableProductionMcpRuntimeEvidence = {
+    requests: 0,
+    dispatchedRequests: 0,
+    bearerAuthConfigured: options.bearerAuth !== undefined,
+    bearerAuthSuccesses: 0,
+    oauthMetadataConfigured: options.oauthMetadata !== undefined,
+    oauthMetadataResponses: 0,
+  };
   const allowedHostnames = [...options.allowedHostnames].map((value) => value.trim()).filter(Boolean);
   if (allowedHostnames.length === 0) throw new Error('allowedHostnames must not be empty');
   const allowedOriginHostnames = [...(options.allowedOriginHostnames ?? allowedHostnames)].map((value) => value.trim()).filter(Boolean);
@@ -304,8 +365,9 @@ export function createProductionMcpHandler(
   const handler = createModernMcpHandler(store);
   const authenticate = options.bearerAuth === undefined ? undefined : requireBearerAuth(options.bearerAuth);
 
-  return {
+  const productionHandler: ProductionMcpHttpHandler = {
     fetch: async (request, requestOptions) => {
+      runtimeEvidence.requests = incrementRuntimeCounter(runtimeEvidence.requests);
       if (request.signal.aborted) return jsonRpcHttpError(499, -32603, 'request cancelled');
       const hostRejection = hostHeaderValidationResponse(request, allowedHostnames);
       if (hostRejection) return hostRejection;
@@ -314,7 +376,10 @@ export function createProductionMcpHandler(
 
       if (options.oauthMetadata) {
         const metadata = oauthMetadataResponse(request, options.oauthMetadata);
-        if (metadata) return withHttpResponseHeaders(metadata, request);
+        if (metadata) {
+          runtimeEvidence.oauthMetadataResponses = incrementRuntimeCounter(runtimeEvidence.oauthMetadataResponses);
+          return withHttpResponseHeaders(metadata, request);
+        }
       }
       if (request.method === 'OPTIONS') {
         return withHttpResponseHeaders(new Response(null, {
@@ -343,17 +408,26 @@ export function createProductionMcpHandler(
       if (authenticate) {
         const auth = await authenticate(request);
         if (auth instanceof Response) return withHttpResponseHeaders(auth, request);
+        runtimeEvidence.bearerAuthSuccesses = incrementRuntimeCounter(runtimeEvidence.bearerAuthSuccesses);
+        runtimeEvidence.dispatchedRequests = incrementRuntimeCounter(runtimeEvidence.dispatchedRequests);
         return withHttpResponseHeaders(await runWithDeadline(handler, request, checked.bytes, timeoutMs, auth), request);
       }
+      runtimeEvidence.dispatchedRequests = incrementRuntimeCounter(runtimeEvidence.dispatchedRequests);
       return withHttpResponseHeaders(await runWithDeadline(handler, request, checked.bytes, timeoutMs, requestOptions?.authInfo), request);
     },
     close: handler.close,
     notify: handler.notify,
     bus: handler.bus,
   };
+  PRODUCTION_MCP_RUNTIME_EVIDENCE.set(productionHandler as object, runtimeEvidence);
+  return productionHandler;
 }
 
 /** Official SDK stdio transport; the SDK selects modern or legacy per connection. */
 export function runModernMcpStdio(store: RecoveryStore): StdioServerHandle {
-  return serveStdio(() => createModernMcpServer(store), { legacy: 'serve' });
+  const handle = serveStdio(() => createModernMcpServer(store), { legacy: 'serve' });
+  if (handle !== null && (typeof handle === 'object' || typeof handle === 'function')) {
+    GENERATED_MCP_STDIO_HANDLES.add(handle as object);
+  }
+  return handle;
 }
