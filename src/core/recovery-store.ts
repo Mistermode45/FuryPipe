@@ -745,6 +745,9 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
         || bound.maxMatches < 1 || bound.maxMatches > 10_000) {
         throw new RangeError('recovery bounded put maxMatches must be an integer from 1 to 10000');
       }
+      if (Object.entries(bound.metadata).some(([key, value]) => metadata?.[key] !== value)) {
+        throw new Error('recovery bounded put metadata must satisfy its capacity filter');
+      }
       const matches = await countMatchingManifests(bound.metadata, bound.maxMatches);
       if (matches >= bound.maxMatches) throw new Error('recovery bounded put matching-object limit exceeded');
     }
