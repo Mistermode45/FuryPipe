@@ -253,6 +253,7 @@ function validateIncluded(
     if (!FURY_CONTEXT_KINDS.includes(item.kind)) {
       throw new Error(`context included item ${index} kind is invalid`);
     }
+    const kind = item.kind as FuryContextKind;
     if (!FURY_CONTEXT_LEVELS.includes(item.level)) {
       throw new Error(`context included item ${index} level is invalid`);
     }
@@ -276,7 +277,7 @@ function validateIncluded(
 
     includedBytes += bytes;
     if (!Number.isSafeInteger(includedBytes)) throw new Error('context included bytes overflow safe integer range');
-    byKind[item.kind] = (byKind[item.kind] ?? 0) + 1;
+    byKind[kind] = (byKind[kind] ?? 0) + 1;
 
     if (stablePrefixOpen) {
       if (item.cacheClass === 'dynamic' || item.cacheClass === 'not-cacheable') {
@@ -288,7 +289,7 @@ function validateIncluded(
 
     digestEntries.push(Object.freeze({
       idDigest: sha256(id),
-      kind: item.kind,
+      kind,
       level: item.level,
       contentDigest: sha256(item.content),
       bytes,
@@ -337,14 +338,16 @@ function validateDeferred(
     if (!FURY_CONTEXT_KINDS.includes(item.kind)) {
       throw new Error(`context deferred item ${index} kind is invalid`);
     }
+    const kind = item.kind as FuryContextKind;
     if (!DEFERRED_REASON_SET.has(item.reason)) {
       throw new Error(`context deferred item ${index} reason is invalid`);
     }
-    counts[item.reason] += 1;
+    const reason = item.reason as FuryContextDeferredItem['reason'];
+    counts[reason] += 1;
     digestEntries.push(Object.freeze({
       idDigest: sha256(id),
-      kind: item.kind,
-      reason: item.reason,
+      kind,
+      reason,
     }));
   }
 
