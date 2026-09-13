@@ -35,7 +35,10 @@ function body(init: RequestInit | undefined): Record<string, unknown> {
   return JSON.parse(String(init?.body)) as Record<string, unknown>;
 }
 
-async function executeOpenAI(fetchImpl: typeof fetch) {
+async function executeOpenAI(
+  fetchImpl: typeof fetch,
+  options: { readonly signal?: AbortSignal; readonly timeoutMs?: number } = {},
+) {
   const request = makeRequest({ providerId: 'openai', model: 'gpt-5.6-sol', task: 'STREAM_OPENAI' });
   const runtime = makeRuntime({ providerId: 'openai' });
   const permit = createProviderExecutionGate({ providerRuntime: runtime, now: () => at })
@@ -46,12 +49,20 @@ async function executeOpenAI(fetchImpl: typeof fetch) {
         getCredential: () => 'offline-openai-stream-key',
         fetchImpl,
         maxOutputTokens: 321,
+        ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
       }),
     ]),
     providerRuntime: runtime,
     now: () => at,
   });
-  return { request, session: await executor.open(request, permit) };
+  return {
+    request,
+    session: await executor.open(
+      request,
+      permit,
+      options.signal === undefined ? undefined : { signal: options.signal },
+    ),
+  };
 }
 
 async function executeAnthropic(fetchImpl: typeof fetch) {
@@ -329,6 +340,46 @@ describe('production provider SSE stream conformance', () => {
     });
     expect(await collect(session.events)).toEqual([]);
     expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it('propagates an already-aborted host signal before fetch and never invents an HTTP result', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetchImpl = vi.fn<typeof fetch>();
+
+    await expect(executeOpenAI(fetchImpl, { signal: controller.signal })).rejects.toMatchObject({
+      code: 'stream-transport-error',
+      transportInvoked: true,
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('aborts an inactive provider fetch at the configured timeout without retrying', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) {
+          reject(new Error('missing signal'));
+          return;
+        }
+        if (signal.aborted) {
+          reject(new Error('aborted'));
+          return;
+        }
+        signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      }));
+      const pending = executeOpenAI(fetchImpl, { timeoutMs: 25 });
+      await vi.advanceTimersByTimeAsync(25);
+
+      await expect(pending).rejects.toMatchObject({
+        code: 'stream-transport-error',
+        transportInvoked: true,
+      });
+      expect(fetchImpl).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('fails closed when a 2xx response is not SSE', async () => {
