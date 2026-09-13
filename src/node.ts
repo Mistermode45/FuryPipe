@@ -341,6 +341,12 @@ Environment:
   FURYPIPE_CONFIG         JSON config path (default ~/.config/furypipe/config.json)
                           supports {"models": [...]} or {"models": "off"}
   FURYPIPE_LOG            JSONL events path (default ~/.furypipe/events.jsonl)
+  FURYPIPE_SOURCE_COMMIT  exact lowercase 40-char build SHA enabling Control Room runtime evidence
+  FURYPIPE_CONTROL_ROOM_EVIDENCE
+                          optional bounded source-bound host evidence JSON
+  FURYPIPE_CONTROL_ROOM_SECURITY_CI_EVIDENCE
+                          optional bounded Security CI evidence JSON; exact-source CI security
+                          takes precedence over conflicting static host security with a warning
   FURYPIPE_DUMP_DIR       debug: write every rendered PNG here (what the model
                           sees); off unless set. Compress arm only.
   FURYPIPE_RENDER_CACHE_BYTES max bytes of rendered pages to keep in memory
