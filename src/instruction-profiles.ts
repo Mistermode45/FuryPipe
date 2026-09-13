@@ -346,26 +346,32 @@ export type FuryInstructionWorkload =
   | 'marketing'
   | 'research';
 
+function profileSet(
+  ...ids: FuryInstructionProfileId[]
+): readonly FuryInstructionProfileId[] {
+  return Object.freeze(ids);
+}
+
 const RECOMMENDED_PROFILES_BY_WORKLOAD: Readonly<
   Record<FuryInstructionWorkload, readonly FuryInstructionProfileId[]>
 > = Object.freeze({
-  'general-engineering': Object.freeze(['karpathy-coding-discipline']),
-  'feature-development': Object.freeze(['karpathy-coding-discipline', 'spec-driven-development']),
-  bugfix: Object.freeze(['karpathy-coding-discipline', 'systematic-debugging']),
-  'codebase-audit': Object.freeze(['codebase-audit-discipline']),
-  'production-hardening': Object.freeze([
+  'general-engineering': profileSet('karpathy-coding-discipline'),
+  'feature-development': profileSet('karpathy-coding-discipline', 'spec-driven-development'),
+  bugfix: profileSet('karpathy-coding-discipline', 'systematic-debugging'),
+  'codebase-audit': profileSet('codebase-audit-discipline'),
+  'production-hardening': profileSet(
     'karpathy-coding-discipline',
     'spec-driven-development',
     'systematic-debugging',
     'codebase-audit-discipline',
-  ]),
-  'ui-development': Object.freeze([
+  ),
+  'ui-development': profileSet(
     'karpathy-coding-discipline',
     'spec-driven-development',
     'ui-design-discipline',
-  ]),
-  marketing: Object.freeze(['product-marketing-context-discipline']),
-  research: Object.freeze([]),
+  ),
+  marketing: profileSet('product-marketing-context-discipline'),
+  research: profileSet(),
 });
 
 export function recommendInstructionProfiles(
