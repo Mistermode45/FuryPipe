@@ -89,10 +89,29 @@ un `Host` réel. Pour un déploiement non loopback, l’allowlist et
 constitue pas un fournisseur OAuth de production.
 
 Le module public `furypipe/mcp-modern` expose également
-`getProductionMcpRuntimeEvidence(handler)`. Cette fonction ne fonctionne que
-sur l'identité exacte d'un handler produit dans le processus courant et renvoie
-uniquement des compteurs/configurations bornés. Une copie par spread,
-sérialisation ou reconstruction manuelle retourne `undefined`.
+`getProductionMcpRuntimeEvidence(handler)` pour HTTP et
+`getProductionMcpStdioRuntimeEvidence(handle)` pour stdio. Ces fonctions ne
+fonctionnent que sur l'identité exacte d'un objet produit dans le processus
+courant ; une copie par spread, sérialisation ou reconstruction manuelle
+retourne `undefined`.
+
+L'évidence stdio est collectée sous le transport officiel plutôt qu'en lisant
+ou recopiant les messages applicatifs. Elle contient seulement des compteurs
+bornés : messages entrants, requêtes entrantes, messages sortants, échanges
+requête/réponse corrélés et pertes de corrélation. Les IDs de requête, méthodes,
+arguments, résultats et plaintext ne sont pas exposés. Une écriture qui échoue
+sur le transport ne compte pas comme échange terminé. Un ID dupliqué, non
+borné ou une table de corrélation saturée incrémente `trackingOverflows` et
+empêche le Control Room de promouvoir stdio à `VERIFIED`.
+
+Le statut runtime suit donc une séparation stricte :
+
+- handle stdio authentique construit, aucun échange corrélé : `PARTIAL` ;
+- au moins un échange requête/réponse écrit avec succès et aucune ambiguïté de
+  corrélation : `VERIFIED` pour le chemin stdio **local** ;
+- preuve perdue/forgée : rejet fail-closed ;
+- `externalConformance` reste indépendant et n'est jamais promu par cette
+  observation locale.
 
 Les preuves runtime MCP restent volontairement étroites :
 
