@@ -7,6 +7,7 @@ export type FuryGovernedProviderStreamErrorCode =
   | 'stream-session-invalid'
   | 'stream-event-invalid'
   | 'stream-event-too-large'
+  | 'stream-wire-too-large'
   | 'stream-interrupted';
 
 const SAFE_MESSAGES: Readonly<Record<FuryGovernedProviderStreamErrorCode, string>> = Object.freeze({
@@ -17,7 +18,8 @@ const SAFE_MESSAGES: Readonly<Record<FuryGovernedProviderStreamErrorCode, string
   'stream-transport-error': 'Provider stream transport failed.',
   'stream-session-invalid': 'Provider stream transport returned an invalid session.',
   'stream-event-invalid': 'Provider stream transport returned an invalid event.',
-  'stream-event-too-large': 'Provider stream output exceeded the governed size limit.',
+  'stream-event-too-large': 'Provider stream event exceeded the governed size limit.',
+  'stream-wire-too-large': 'Provider stream exceeded the governed wire-size limit.',
   'stream-interrupted': 'Provider stream ended without a trustworthy terminal event.',
 });
 
