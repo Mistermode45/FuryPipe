@@ -3,7 +3,7 @@
 | Surface | État |
 |---|---|
 | Node.js | production `24.21.0` ; CI `22.23.2`, `24.21.0`, `26.8.2` ; package `>=22.14` |
-| npm | 11.14.1 localement |
+| npm | publication pinne explicitement `npm@12.0.2` dans le workflow Release ; la préparation RC n’exécute aucune publication |
 | pnpm | 10.21.0 imposé par `packageManager` |
 | OS local | Windows 11 x64 |
 | MCP | SDK officiel `@modelcontextprotocol/server@2.0.0`, stdio moderne `2026-07-28` + fallback legacy `2025-11-25` |
@@ -11,7 +11,10 @@
 | Provider live | aucun endpoint hébergé validé ; runtime d’évidence explicite présent avec disponibilité TTL/fail-closed, sans probe réseau implicite |
 | MCP HTTP/OAuth | handler fetch-native sécurisé + listener Node opt-in loopback testés ; Host/Origin/Bearer/OAuth metadata présents ; Authorization Server/verifier hébergé et conformance réseau externe non validés |
 | OpenClaw | adapter de découverte/config/doctor local présent ; runtime gateway réel NON TESTÉ |
-| Linux/macOS CI | matrice GitHub Actions active ; derniers runs de référence verts sur Ubuntu/Windows/macOS et Node 22/24/26 |
+| Dashboard navigateur | Chromium réel via CDP : FR LTR + `ar-XB` RTL, desktop/mobile et seuils CSS déclarés ; Firefox/WebKit non inférés |
+| Web Studio navigateur | 48 cas Chromium réels (desktop/mobile × 6 viewports × 4 locales) ; 72 cas Firefox/WebKit restent NON_EXECUTED |
+| Policy GitHub | `v5-production-hardening` est actuellement non protégée et aucun ruleset n’est exposé ; la gate de policy reste bloquée tant que le réglage repo n’est pas activé |
+| CI multi-OS | matrice GitHub Actions Ubuntu 24.04 / macOS 14 / Windows 2025 × Node 22.23.2 / 24.21.0 / 26.8.2 ; chaque candidat doit être revalidé sur son SHA exact |
 
 La matrice V5 considère Node 24 comme runtime de production. Node 22 reste
 une compatibilité LTS supplémentaire et Node 26 la branche Current
