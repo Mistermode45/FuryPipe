@@ -551,11 +551,11 @@ describe('dashboard localized fragments', () => {
   });
 
   it('localizes the image/source inspector without altering captured source text', async () => {
-    const [id] = dash.captureImage({
+    const id = dash.captureImage({
       imagePngs: [new Uint8Array([137, 80, 78, 71])],
       imageDims: [{ width: 100, height: 80 }],
       imageSourceText: 'EXACT_SOURCE_VALUE_123',
-    } as never);
+    } as never)[0]!;
     const html = await (await dash.serveFragment(
       'latest',
       new URL(`http://localhost/fragments/latest?locale=fr&source=1&pin=${id}`),
