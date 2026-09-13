@@ -20,6 +20,7 @@ export interface FuryProviderExecutionAuditChain {
     readonly planningToContextPrompt:
       | 'verified-identical'
       | 'context-transformed-not-verifiable-from-receipts';
+    readonly planningToContextCompileInput: 'not-comparable-across-receipt-v1-formats';
     readonly contextToExecutionPrompt: 'verified';
   };
   readonly execution: {
@@ -474,7 +475,6 @@ function auditCore(input: FuryProviderExecutionAuditChainInput): Omit<FuryProvid
     if (
       planning.prompt.promptDigest !== context.prompt.promptDigest
       || planning.prompt.sourceDigest !== context.prompt.sourceDigest
-      || planning.prompt.compileInputDigest !== context.prompt.compileInputDigest
       || planning.prompt.bytes !== context.prompt.bytes
       || planning.prompt.level !== context.prompt.level
     ) {
@@ -505,6 +505,7 @@ function auditCore(input: FuryProviderExecutionAuditChainInput): Omit<FuryProvid
       exactScope: 'verified',
       contextProfile: 'verified',
       planningToContextPrompt,
+      planningToContextCompileInput: 'not-comparable-across-receipt-v1-formats',
       contextToExecutionPrompt: 'verified',
     }),
     execution: Object.freeze({
