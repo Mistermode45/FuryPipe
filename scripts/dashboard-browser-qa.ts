@@ -369,6 +369,28 @@ async function runCase(browser, dashboard, testCase) {
     })()`);
     assert(theme.before !== theme.after, `${testCase.name}: theme toggle did not change theme`);
 
+    const tooltipOverflow = await cdp.evaluate(`(async () => {
+      const tips = [...document.querySelectorAll('.q')];
+      const indexes = tips.length > 1 ? [0, tips.length - 1] : (tips.length === 1 ? [0] : []);
+      const results = [];
+      for (const index of indexes) {
+        const tip = tips[index];
+        tip.focus();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        results.push({
+          index,
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        });
+        tip.blur();
+      }
+      return results;
+    })()`);
+    for (const result of tooltipOverflow) {
+      assert(result.scrollWidth <= result.clientWidth + 1,
+        `${testCase.name}: focused tooltip ${result.index} caused horizontal overflow ${result.scrollWidth} > ${result.clientWidth}`);
+    }
+
     await cdp.evaluate(`(() => {
       for (const detail of document.querySelectorAll('details.models-collapse')) detail.open = true;
       const dialog = document.getElementById('routing-help');
