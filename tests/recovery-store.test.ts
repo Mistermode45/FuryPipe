@@ -85,6 +85,14 @@ describe('Recovery Store', () => {
       bound,
     )).rejects.toThrow(/must satisfy its capacity filter/);
 
+    const crossDomainBytes = new TextEncoder().encode('cross-domain-existing');
+    await store.put(crossDomainBytes, { source: 'other-domain' });
+    await expect(store.putBounded!(
+      crossDomainBytes,
+      { source: 'bounded-claims' },
+      bound,
+    )).rejects.toThrow(/existing object is outside its capacity filter/);
+
     await expect(store.putBounded!(
       new TextEncoder().encode('claim-two'),
       { source: 'bounded-claims', token: 'third' },
