@@ -2,9 +2,9 @@
 
 ## Status
 
-`LOCAL_GENERATOR_AND_QA_HARNESS_IMPLEMENTED`
+`LOCAL_GENERATOR_AND_QA_HARNESS_IMPLEMENTED_REAL_CHROMIUM_WIRED`
 
-The Web/Figma Studio now has an executable domain kernel plus a deterministic static-page generator and a browser-QA harness under `src/web-studio/**`. The harness executes a host-supplied pinned browser adapter; FuryPipe itself still does not bundle Playwright or claim a live Figma/deployment integration.
+The Web/Figma Studio now has an executable domain kernel plus a deterministic static-page generator and a browser-QA harness under `src/web-studio/**`. The harness executes a host-supplied pinned browser adapter. FuryPipe now also ships a CI host adapter in `scripts/web-studio-browser-qa.ts` that drives the Chromium/Chrome binary already present on the GitHub Ubuntu runner over the native Chrome DevTools Protocol. No Playwright package is added to the dependency graph, and no live Figma/deployment integration is claimed.
 
 Implemented and tested:
 
@@ -16,6 +16,8 @@ Implemented and tested:
 - verification/deployment promotion rules;
 - `BACKUP_EXISTS` versus `RESTORE_VERIFIED` distinction;
 - 2026 QA browser/device/locale contract;
+- real Chromium execution for the 48 `desktop-chromium` + `mobile-chromium` cases (6 declared viewports × 4 QA locales × 2 Chromium projects);
+- source-bound browser QA JSON evidence emitted by `.github/workflows/web-studio-browser-qa.yml`;
 - current Core Web Vitals thresholds;
 - fail-visible missing field data;
 - Figma adapter version pin contract.
@@ -25,7 +27,8 @@ Still deliberately not claimed:
 - live Figma connectivity;
 - asset download;
 - framework/project code generation beyond the deterministic static-page artifact;
-- bundled Playwright/browser runtime execution; a pinned host adapter is required;
+- Firefox/WebKit runtime execution for the remaining 72 matrix cases; Chromium evidence is not relabelled as Firefox/WebKit evidence;
+- bundled Playwright itself; the current CI adapter deliberately uses Chromium CDP instead;
 - WCAG manual audit completion;
 - OWASP ASVS verification;
 - SEO verification;
@@ -65,5 +68,7 @@ The generator rejects unapproved projects, malformed page paths, invalid locale 
 - locale/direction agreement;
 - title/description/canonical presence;
 - external script origins.
+
+The CI adapter is pinned as `chromium-cdp@1.0.0` and executes only cases whose declared browser project is Chromium. The full contract still contains Firefox/WebKit cases, which remain explicit and unexecuted rather than being simulated with Chromium.
 
 This report is deliberately marked `promotionEvidenceCompatible: false`. Passing structural/browser checks does not prove a complete WCAG manual audit, OWASP ASVS review, field Core Web Vitals or production deployment.
