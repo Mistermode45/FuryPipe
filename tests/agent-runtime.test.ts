@@ -36,6 +36,26 @@ function stageExecutors(seen: string[], consumedTokens = 10): AgentRuntimeReques
 }
 
 describe('FuryPipe Agent runtime', () => {
+  it('fails closed when bounded in-memory records or execution claims reach capacity', async () => {
+    const recordMemory = createInMemoryAgentMemoryStore();
+    const record = (runId: string) => ({
+      format: 'furypipe-agent-memory-record/v1' as const,
+      runId,
+      stage: 'research' as const,
+      resultDigest: 'opaque-digest',
+      status: 'completed' as const,
+      consumedTokens: 1,
+    });
+    for (let index = 0; index < 10_000; index += 1) await recordMemory.append(record(`bounded-${index}`));
+    await expect(recordMemory.append(record('bounded-overflow'))).rejects.toThrow(/record limit/);
+
+    const claimMemory = createInMemoryAgentMemoryStore();
+    for (let index = 0; index < 10_000; index += 1) {
+      expect(await claimMemory.claimExecution!(`bounded-${index}`, 'start')).toBe(true);
+    }
+    await expect(claimMemory.claimExecution!('bounded-overflow', 'start')).rejects.toThrow(/claim limit/);
+  });
+
   it('executes the real stage callbacks in order with read-only defaults', async () => {
     const seen: string[] = [];
     let skillCalled = false;
@@ -171,6 +191,36 @@ describe('FuryPipe Agent runtime', () => {
     expect(calls).toBe(1);
   });
 
+  it('shares an in-flight identical MCP call instead of executing concurrent effects twice', async () => {
+    let calls = 0;
+    const result = await runAgent({
+      objective: 'Coalesce concurrent MCP calls.',
+      executors: {
+        ...stageExecutors([]),
+        research: async (context) => {
+          const values = await Promise.all([
+            context.invokeMcp('local-research', 'write', { id: 'same' }),
+            context.invokeMcp('local-research', 'write', { id: 'same' }),
+          ]);
+          expect(values).toEqual([{ ok: true }, { ok: true }]);
+          return { evidence: ['coalesced'], consumedTokens: 1 };
+        },
+      },
+      mcpServers: [{
+        id: 'local-research',
+        allowedMethods: ['write'],
+        execute: async () => {
+          calls += 1;
+          await Promise.resolve();
+          return { ok: true };
+        },
+      }],
+    });
+
+    expect(result.status).toBe('completed');
+    expect(calls).toBe(1);
+  });
+
   it('rejects invalid or duplicate automatic MCP schedules before execution', async () => {
     const duplicate = { serverId: 'local', method: 'read', params: { id: 1 } };
     const result = await runAgent({
@@ -295,11 +345,56 @@ describe('FuryPipe Agent runtime', () => {
     expect(paused.snapshot).toMatchObject({ nextStageIndex: 0, completedStages: [] });
     expect(JSON.stringify(paused.snapshot)).not.toContain('Resume a verified workflow.');
 
+    const forged = {
+      ...paused.snapshot!,
+      nextStageIndex: 4,
+      completedStages: ['research', 'plan', 'implement', 'review'] as const,
+      contextUsedTokens: 0,
+    };
+    expect(await runAgent(request, forged)).toMatchObject({
+      status: 'failed',
+      failure: { code: 'INVALID_SNAPSHOT' },
+    });
+    expect(seen).toEqual(['research']);
+
     handoff = false;
     const resumed = await runAgent(request, paused.snapshot);
     expect(resumed.status).toBe('completed');
     expect(resumed.completedStages).toEqual(['research', 'plan', 'implement', 'review', 'verify']);
     expect((await memory.list('agent-handoff'))).toHaveLength(6);
+  });
+
+  it('allows only one concurrent resume of the same handoff snapshot', async () => {
+    const seen: string[] = [];
+    let handoff = true;
+    const memory = createInMemoryAgentMemoryStore();
+    const request: AgentRuntimeRequest = {
+      objective: 'Do not duplicate resumed effects.',
+      runId: 'agent-duplicate-resume',
+      memory,
+      executors: {
+        ...stageExecutors(seen),
+        research: async (context) => {
+          seen.push(context.stage);
+          if (handoff) {
+            handoff = false;
+            return { status: 'handoff_required', evidence: ['handoff'], consumedTokens: 1 };
+          }
+          return { evidence: ['research'], consumedTokens: 1 };
+        },
+      },
+    };
+
+    const paused = await runAgent(request);
+    const results = await Promise.all([
+      runAgent(request, paused.snapshot),
+      runAgent(request, paused.snapshot),
+    ]);
+
+    expect(results.filter((result) => result.status === 'completed')).toHaveLength(1);
+    expect(results.filter((result) => result.failure?.code === 'INVALID_SNAPSHOT')).toHaveLength(1);
+    expect(seen.filter((stage) => stage === 'research')).toHaveLength(2);
+    expect(seen.filter((stage) => stage === 'verify')).toHaveLength(1);
   });
 
   it('denies unapproved MCP methods, network skills and unhealthy skills', async () => {
@@ -360,7 +455,7 @@ describe('FuryPipe Agent runtime', () => {
     const paused = await runAgent(request);
 
     expect(paused.status).toBe('handoff_required');
-    expect(seenPrompts).toEqual(['## Task\nPreserve exact IDs and verify the result.']);
+    expect(seenPrompts).toEqual(['## Task\n"Preserve exact IDs and verify the result."']);
     expect(paused.snapshot?.furyPromptDigest).toMatch(/^fp_[a-f0-9]{64}$/);
     expect(JSON.stringify(paused.snapshot)).not.toContain('Preserve exact IDs');
     expect((await runAgent({ ...request, furyPrompt: { sections: { task: 'Changed prompt.' }, level: 'ENGINEERING' } }, paused.snapshot)).failure?.code).toBe('INVALID_SNAPSHOT');
@@ -373,7 +468,7 @@ describe('FuryPipe Agent runtime', () => {
       const record = {
         format: 'furypipe-agent-memory-record/v1' as const,
         runId: 'persistent-run', stage: 'research' as const,
-        resultDigest: 'afrun_opaque-result', status: 'completed' as const,
+        resultDigest: 'afrun_opaque-result', status: 'completed' as const, consumedTokens: 4,
       };
       await firstStore.append(record);
       const reopened = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent' }));
@@ -381,7 +476,33 @@ describe('FuryPipe Agent runtime', () => {
       const store = createRecoveryStore(root, { namespace: 'agent' });
       const handles = await store.list?.({ metadata: { source: 'agent-runtime' } });
       expect(handles).toHaveLength(1);
+      expect(handles?.[0]?.metadata?.sequence).toBe(0);
       expect(new TextDecoder().decode(await store.get(handles![0]!))).not.toContain('objective');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('atomically allows only one start across independent Recovery memory adapters', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-agent-claim-'));
+    try {
+      const firstMemory = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent' }));
+      const secondMemory = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent' }));
+      const seen: string[] = [];
+      const request: AgentRuntimeRequest = {
+        objective: 'Do not duplicate a cross-adapter start.',
+        runId: 'cross-adapter-start',
+        executors: stageExecutors(seen, 1),
+      };
+
+      const results = await Promise.all([
+        runAgent({ ...request, memory: firstMemory }),
+        runAgent({ ...request, memory: secondMemory }),
+      ]);
+
+      expect(results.filter((result) => result.status === 'completed')).toHaveLength(1);
+      expect(results.filter((result) => result.failure?.code === 'INVALID_REQUEST')).toHaveLength(1);
+      expect(seen).toHaveLength(5);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

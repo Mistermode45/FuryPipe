@@ -46,13 +46,25 @@ budget avant de reprendre. Lorsqu’un `furyPrompt` est explicitement fourni,
 il est compilé une seule fois ; les callbacks reçoivent le texte compilé et le
 snapshot lie la reprise à son digest sans conserver ce texte.
 
+Chaque mémoire de stage lie désormais le statut et le digest du résultat au
+compteur cumulatif de tokens. La reprise exige que le snapshot corresponde à
+l’historique Recovery exact, refuse les anciens enregistrements sans compteurs
+et consomme une revendication atomique à usage unique pour un démarrage ou une
+reprise. Les adapters mémoire personnalisés doivent donc fournir
+`claimExecution()` ; les stores en mémoire et Recovery fournis l’implémentent.
+Les appels MCP identiques d’une étape partagent aussi leur promesse en cours
+afin d’éviter un effet doublé en concurrence.
+
 `createRecoveryAgentMemoryStore()` fournit l’adaptateur durable pour les
 reprises entre processus. Chaque résultat est enveloppé dans un objet
 Recovery immuable et indexé par des métadonnées exactes (`source`, `runId`,
 `stage`, `contentType`). Le payload ne contient que le format, l’étape, le
 statut et le digest opaque du résultat ; l’objectif, le prompt et les preuves
-textuelles n’y sont pas écrits. La liste des manifests est bornée à 10 000
-éléments et la lecture revalide chaque enveloppe avant de la rendre au runtime.
+textuelles n’y sont pas écrits. Le compteur cumulatif `consumedTokens` reste
+enregistré pour vérifier les budgets à la reprise. L’ordre est explicite par
+séquence et les revendications atomiques sont des objets séparés. La liste des
+manifests est bornée à 10 000 éléments et la lecture revalide chaque enveloppe
+avant de la rendre au runtime.
 Le snapshot reste transporté explicitement par l’hôte : cet adaptateur ne
 fabrique ni worker, ni modèle, ni orchestration distante.
 
