@@ -478,12 +478,12 @@ export interface ContextMapData {
 }
 
 const CTXMAP_BUCKETS: ReadonlyArray<readonly [string, string]> = [
-  ['static_slab', 'System prompt + tool docs'],
-  ['reminder', 'System-reminder blocks'],
-  ['tool_result_prose', 'Tool results — prose'],
-  ['tool_result_log', 'Tool results — logs'],
-  ['tool_result_json', 'Tool results — JSON'],
-  ['history', 'Older conversation turns'],
+  ['static_slab', 'dashboard.context.bucket.static'],
+  ['reminder', 'dashboard.context.bucket.reminder'],
+  ['tool_result_prose', 'dashboard.context.bucket.toolProse'],
+  ['tool_result_log', 'dashboard.context.bucket.toolLogs'],
+  ['tool_result_json', 'dashboard.context.bucket.toolJson'],
+  ['history', 'dashboard.context.bucket.history'],
 ];
 
 /** Image-vs-text breakdown for one request. */
@@ -493,7 +493,10 @@ export function renderContextMapFragment(
   notFound = false,
   locale = 'en',
 ): string {
-  const t = (key: string): string => dashboardT(locale, key);
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(locale, key, params);
   const isLatest = c !== undefined && c.id === (history.at(-1)?.id ?? -1);
   if (notFound) {
     return `<div class="ctxmap"><div class="empty-note">${escapeHtml(t('dashboard.context.notFound'))}</div></div>`;
@@ -515,57 +518,57 @@ export function renderContextMapFragment(
   const rawShrink = c.baselineTokens > 0 ? Math.round((1 - c.realInput / c.baselineTokens) * 100) : 0;
   const totalImagedChars = CTXMAP_BUCKETS.reduce((a, [key]) => a + (c.buckets[key] ?? 0), 0);
 
-  const imgRows = CTXMAP_BUCKETS.map(([key, label]) => [label, c.buckets[key] ?? 0] as const)
+  const imgRows = CTXMAP_BUCKETS.map(([key, labelKey]) => [labelKey, c.buckets[key] ?? 0] as const)
     .filter(([, ch]) => ch > 0)
     .map(
-      ([label, ch]) =>
-        `<div class="ctx-row"><span class="ctx-lbl">${label}</span><span class="ctx-val">${kFmt(ch)} chars</span></div>`,
+      ([labelKey, ch]) =>
+        `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t(labelKey))}</span><span class="ctx-val">${kFmt(ch)} chars</span></div>`,
     )
     .join('');
 
   const rc = c.responsesComposition;
   const responseRows: ReadonlyArray<readonly [string, number]> = rc
     ? [
-        ['Instructions', rc.instructions],
-        ['System / developer items', rc.systemDeveloper],
-        ['User / assistant text kept native', rc.userAssistant],
-        ['Native tool JSON', rc.toolsJson],
-        ['Function calls', rc.functionCalls],
-        ['Function outputs', rc.functionOutputs],
-        ['Function outputs eligible in old closed pairs', rc.imageableFunctionOutputs ?? 0],
-        ['Function outputs actually imaged this request', rc.collapsedFunctionOutputs ?? 0],
-        ['Reasoning / encrypted items', rc.reasoningEncrypted],
-        ['Compaction / opaque items', rc.compactionOpaque],
-        ['Other Responses items', rc.other],
+        ['dashboard.context.responses.instructions', rc.instructions],
+        ['dashboard.context.responses.systemDeveloper', rc.systemDeveloper],
+        ['dashboard.context.responses.userAssistant', rc.userAssistant],
+        ['dashboard.context.responses.toolsJson', rc.toolsJson],
+        ['dashboard.context.responses.functionCalls', rc.functionCalls],
+        ['dashboard.context.responses.functionOutputs', rc.functionOutputs],
+        ['dashboard.context.responses.eligibleOutputs', rc.imageableFunctionOutputs ?? 0],
+        ['dashboard.context.responses.imagedOutputs', rc.collapsedFunctionOutputs ?? 0],
+        ['dashboard.context.responses.reasoning', rc.reasoningEncrypted],
+        ['dashboard.context.responses.compaction', rc.compactionOpaque],
+        ['dashboard.context.responses.other', rc.other],
       ]
     : [];
   const responseBreakdown = rc
-    ? `<div class="split-note" style="margin-top:12px"><strong>Original Responses composition (local o200k estimate)</strong></div>` +
-      responseRows.filter(([, n]) => n > 0).map(([label, n]) =>
-        `<div class="ctx-row"><span class="ctx-lbl">${label}</span><span class="ctx-val">${kFmt(n)} tok</span></div>`,
+    ? `<div class="split-note" style="margin-top:12px"><strong>${escapeHtml(t('dashboard.context.responses.heading'))}</strong></div>` +
+      responseRows.filter(([, n]) => n > 0).map(([labelKey, n]) =>
+        `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t(labelKey))}</span><span class="ctx-val">${kFmt(n)} tok</span></div>`,
       ).join('') +
-      `<div class="ctx-row"><span class="ctx-lbl">Imageable text baseline</span><span class="ctx-val">${kFmt(c.baselineImagedTokens ?? 0)} tok</span></div>` +
-      `<div class="ctx-row"><span class="ctx-lbl">Completed tool pairs (old / recent native / imaged)</span><span class="ctx-val">${rc.completedFunctionPairs ?? 0} (${rc.oldFunctionPairs ?? 0} / ${rc.recentNativeFunctionPairs ?? 0} / ${rc.collapsedFunctionPairs ?? 0})</span></div>` +
-      `<div class="ctx-row"><span class="ctx-lbl">Open calls kept native</span><span class="ctx-val">${rc.openFunctionCalls ?? 0}</span></div>` +
-      `<div class="ctx-row"><span class="ctx-lbl">Native image parts</span><span class="ctx-val">${rc.imageParts}</span></div>` +
-      `<div class="ctx-row"><span class="ctx-lbl">Provider tokens not explained locally</span><span class="ctx-val">${kFmt(c.responsesUnexplainedTokens ?? 0)} tok</span></div>` +
-      `<div class="split-note">This diagnostic uses local o200k counts only; it never calls Anthropic /count_tokens.</div>`
+      `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.responses.imageableBaseline'))}</span><span class="ctx-val">${kFmt(c.baselineImagedTokens ?? 0)} tok</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.responses.completedPairs'))}</span><span class="ctx-val">${rc.completedFunctionPairs ?? 0} (${rc.oldFunctionPairs ?? 0} / ${rc.recentNativeFunctionPairs ?? 0} / ${rc.collapsedFunctionPairs ?? 0})</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.responses.openCalls'))}</span><span class="ctx-val">${rc.openFunctionCalls ?? 0}</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.responses.nativeImages'))}</span><span class="ctx-val">${rc.imageParts}</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.responses.unexplained'))}</span><span class="ctx-val">${kFmt(c.responsesUnexplainedTokens ?? 0)} tok</span></div>` +
+      `<div class="split-note">${escapeHtml(t('dashboard.context.responses.diagnostic'))}</div>`
     : '';
 
   const ids = c.imageIds ?? [];
-  const modelLabel = c.model ? escapeHtml(c.model) : 'the model';
+  const modelLabel = c.model ? escapeHtml(c.model) : escapeHtml(t('dashboard.context.modelFallback'));
   const gallery = ids.length
-    ? `<div class="pages-title">${ids.length} image page${ids.length === 1 ? '' : 's'} sent to ${modelLabel} — click one to read the exact text behind it:</div>` +
+    ? `<div class="pages-title">${escapeHtml(t('dashboard.context.gallery', { model: modelLabel, count: ids.length }))}</div>` +
       `<div class="pages">` +
       ids
         .map(
           (id) =>
-            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="Click to read the source text behind page ${id}" onclick="ppPin(${id});ppSource(true)" onerror="this.classList.add('page-gone'); this.alt='page ${id} expired from buffer';" />`,
+            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="ppPin(${id});ppSource(true)" onerror="this.classList.add('page-gone'); this.alt=${JSON.stringify(t('dashboard.context.galleryExpired', { id }))};" />`,
         )
         .join('') +
       `</div>`
     : c.restored && c.imageCount > 0
-      ? `<div class="pages-title">${c.imageCount} image page${c.imageCount === 1 ? '' : 's'} were sent — thumbnails expired when the proxy restarted. The breakdown above is reconstructed from the saved log.</div>`
+      ? `<div class="pages-title">${escapeHtml(t('dashboard.context.galleryRestored', { count: c.imageCount }))}</div>`
       : '';
 
   // Did the TEXT baseline's prefix read warm this turn? This follows the actual
