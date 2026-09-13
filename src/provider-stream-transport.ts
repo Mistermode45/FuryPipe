@@ -177,7 +177,7 @@ export function validateProviderStreamTransportSession(
   const providerRequestId = record.providerRequestId === undefined
     ? undefined
     : safeOptionalIdentifier(record.providerRequestId, 256);
-  const network = status(record, 'networkStatus', ['executed', 'not-executed', 'unknown']);
+  const network = status(record, 'networkStatus', ['executed', 'not-executed', 'unknown'] as const);
   const providerRequest = status(record, 'providerRequestStatus', ['accepted', 'rejected', 'unknown'] as const);
 
   let httpStatus: number | undefined;
