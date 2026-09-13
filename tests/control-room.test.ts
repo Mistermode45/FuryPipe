@@ -36,15 +36,30 @@ function verifiedReleaseStates(): V5ReleaseGateStates {
 function releaseReport(
   sourceCommit = 'a'.repeat(40),
   overrides: Partial<V5ReleaseGateStates> = {},
+  performanceClaims = false,
 ) {
   const states: V5ReleaseGateStates = { ...verifiedReleaseStates(), ...overrides };
+  const provenanceByGate = Object.fromEntries(createV5ReleaseGates(states).flatMap((gate) => {
+    if (gate.state !== 'VERIFIED') return [];
+    const origin = gate.id.startsWith('ci.') || gate.id.startsWith('security.') || gate.id === 'release.provenance'
+      ? 'github-actions'
+      : gate.id === 'repo.branch-policy' ? 'github'
+        : gate.id === 'runtime.mcp' || gate.id === 'runtime.web-studio' ? 'hosted'
+          : gate.id === 'benchmarks.provider' ? 'provider' : 'local';
+    return [[gate.id, {
+      sourceCommit,
+      observedAt: 1_725_000_000_000,
+      origin,
+      reference: `evidence:${gate.id}`,
+    }]];
+  }));
   return evaluateReleaseReadiness({
     generatedAt: 1_725_000_000_000,
     sourceCommit,
     packageVersion: '0.13.2',
     channel: 'rc',
-    performanceClaims: false,
-    gates: createV5ReleaseGates(states),
+    performanceClaims,
+    gates: createV5ReleaseGates(states, provenanceByGate),
     authorization: {
       mergeDefaultBranch: false,
       createReleaseTag: false,
@@ -201,12 +216,75 @@ describe('Control Room V5 kernel', () => {
     });
   });
 
+  it('accepts the conditional eighteenth provider-benchmark gate when claims require it', () => {
+    const base = input();
+    const report = releaseReport(base.sourceCommit, {}, true);
+    expect(report.requiredGates).toBe(18);
+    const snapshot = createControlRoomSnapshot({ ...base, releaseReadiness: report });
+    expect(snapshot.sections.release.status).toBe('VERIFIED');
+    expect(snapshot.sections.release.evidence.technicalStatus).toBe('READY_FOR_RELEASE_DECISION');
+  });
+
+  it('rejects required release gates reported as both verified and blocked', () => {
+    const base = input();
+    const report = releaseReport(base.sourceCommit);
+    const forged = {
+      ...report,
+      status: 'BLOCKED' as const,
+      blockers: [{ gateId: 'runtime.mcp', title: 'MCP', state: 'BLOCKED' as const, reason: 'contradictory fixture' }],
+    };
+    expect(() => createControlRoomSnapshot({ ...base, releaseReadiness: forged })).toThrow(/omitted or contradictory/);
+  });
+
   it('rejects stale release evidence from another source commit', () => {
     const base = input();
     expect(() => createControlRoomSnapshot({
       ...base,
       releaseReadiness: releaseReport('b'.repeat(40)),
     })).toThrow(/source commit must match/);
+  });
+
+  it('rejects future Control Room reports and oversized release evidence references', () => {
+    const base = input();
+    const report = releaseReport(base.sourceCommit);
+    expect(() => createControlRoomSnapshot({
+      ...base,
+      generatedAt: report.generatedAt - 1,
+      releaseReadiness: report,
+    })).toThrow(/timestamp must not be later/);
+
+    const oversizedReference = {
+      ...report,
+      verifiedGateEvidence: report.verifiedGateEvidence.map((evidence, index) => index === 0
+        ? { ...evidence, reference: 'x'.repeat(513) }
+        : evidence),
+    };
+    expect(() => createControlRoomSnapshot({
+      ...base,
+      releaseReadiness: oversizedReference,
+    })).toThrow(/provenance is invalid/);
+  });
+
+  it('rejects release evidence that replaces canonical gates with invented IDs', () => {
+    const base = input();
+    const report = releaseReport(base.sourceCommit);
+    const forged = {
+      ...report,
+      verifiedGateEvidence: report.verifiedGateEvidence.map((evidence, index) => ({ ...evidence, gateId: `fabricated-${index}` })),
+    };
+    expect(() => createControlRoomSnapshot({ ...base, releaseReadiness: forged })).toThrow(/provenance is invalid/);
+  });
+
+  it('rejects release gate provenance whose origin violates the canonical gate policy', () => {
+    const base = input();
+    const report = releaseReport(base.sourceCommit);
+    const forged = {
+      ...report,
+      verifiedGateEvidence: report.verifiedGateEvidence.map((evidence) => evidence.gateId === 'runtime.mcp'
+        ? { ...evidence, origin: 'local' }
+        : evidence),
+    };
+    expect(() => createControlRoomSnapshot({ ...base, releaseReadiness: forged })).toThrow(/provenance is invalid/);
   });
 
   it('warns that BACKUP_EXISTS is not restore verification', () => {

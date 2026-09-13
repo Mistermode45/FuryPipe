@@ -6,6 +6,20 @@
 
 This module evaluates release evidence. It does **not** merge branches, create tags, publish npm packages, create GitHub releases, rotate credentials or deploy production.
 
+The fail-closed provenance contract is `furypipe-release-readiness/v2`. A
+`VERIFIED` gate without a reference, allowed evidence origin, exact matching
+source SHA, and an observation no later than the report is a blocker (or an
+advisory warning for optional gates). References are caller-supplied locators;
+the evaluator validates their shape and binding but does not authenticate the
+external record itself. MCP and Web/Figma Studio require hosted evidence;
+provider benchmarks require provider-origin evidence; GitHub CI/security and
+branch policy require their corresponding GitHub origins.
+
+The evaluator also requires the complete canonical V5 gate identity set and
+fixed required/optional classification from `createV5ReleaseGates()`. Omitting
+an external gate or relabeling a required gate as optional cannot produce a
+green technical report.
+
 ## Files
 
 - `src/release-readiness/index.ts`
@@ -67,7 +81,19 @@ This evaluator is intended to feed Control Room and future RC automation once th
 
 `src/release-readiness/evidence.ts` adds a second fail-closed layer for the release-candidate preparation phase.
 
-`createRcEvidenceSnapshot()` requires the RC source SHA and package version to match the Release Readiness report. It also requires explicit successful evidence for the core GitHub workflows and explicit `VERIFIED` preparation artifacts, including package/install/upgrade/rollback smoke evidence, SBOM, provenance path, compatibility matrix, migration notes, release notes and the SHA-256 of the exact package artifact.
+`createRcEvidenceSnapshot()` emits `furypipe-rc-evidence/v2` and requires the
+RC source SHA and package version to match the Release Readiness report. Each
+workflow observation carries its head SHA and update timestamp; the latest run
+ID for each required workflow must be successful on the exact RC SHA, so an
+older green run cannot mask a newer skipped/failing/mixed-SHA run. Every
+workflow record also requires an explicit `github-actions` origin and a
+bounded Actions run reference; these fields locate caller-supplied evidence but
+do not independently authenticate it. Every
+`VERIFIED` preparation artifact, including package/install/upgrade/rollback
+smokes, SBOM, provenance, compatibility, migration notes, release notes and
+the exact package SHA-256, requires a source-bound evidence reference and an
+origin appropriate to that artifact. These references are validated metadata,
+not cryptographic authentication of the referenced system.
 
 The RC snapshot can return `READY_FOR_RELEASE_DECISION`, but it copies authorization separately and always returns `releaseActionsExecuted: false`.
 

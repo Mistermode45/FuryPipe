@@ -7,6 +7,19 @@ export type ReleaseGateState =
   | 'NOT_APPLICABLE';
 
 export type ReleaseReadinessStatus = 'BLOCKED' | 'READY_FOR_RELEASE_DECISION';
+export type ReleaseEvidenceOrigin = 'local' | 'github-actions' | 'github' | 'hosted' | 'provider';
+
+export interface ReleaseGateProvenance {
+  readonly sourceCommit: string;
+  readonly observedAt: number;
+  readonly origin: ReleaseEvidenceOrigin;
+  /** Bounded immutable locator such as an Actions run/artifact ID or report path. */
+  readonly reference: string;
+}
+
+export interface VerifiedReleaseGateEvidence extends ReleaseGateProvenance {
+  readonly gateId: string;
+}
 
 export interface ReleaseGateEvidence {
   readonly id: string;
@@ -14,6 +27,7 @@ export interface ReleaseGateEvidence {
   readonly state: ReleaseGateState;
   readonly required: boolean;
   readonly evidence?: readonly string[];
+  readonly provenance?: ReleaseGateProvenance;
   readonly note?: string;
 }
 
@@ -42,7 +56,7 @@ export interface ReleaseBlocker {
 }
 
 export interface ReleaseReadinessReport {
-  readonly format: 'furypipe-release-readiness/v1';
+  readonly format: 'furypipe-release-readiness/v2';
   readonly generatedAt: number;
   readonly sourceCommit: string;
   readonly packageVersion: string;
@@ -52,6 +66,7 @@ export interface ReleaseReadinessReport {
   readonly warnings: readonly string[];
   readonly verifiedRequiredGates: number;
   readonly requiredGates: number;
+  readonly verifiedGateEvidence: readonly VerifiedReleaseGateEvidence[];
   readonly authorization: ReleaseAuthorization;
   readonly releaseActionsExecuted: false;
 }
@@ -59,6 +74,62 @@ export interface ReleaseReadinessReport {
 const SHA40 = /^[0-9a-f]{40}$/u;
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const GATE_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
+const RELEASE_EVIDENCE_ORIGINS: readonly ReleaseEvidenceOrigin[] = ['local', 'github-actions', 'github', 'hosted', 'provider'];
+export const V5_RELEASE_GATE_REQUIREDNESS: Readonly<Record<string, boolean>> = Object.freeze({
+  'ci.push': true,
+  'ci.pr': true,
+  'security.codeql': true,
+  'security.secret-scan': true,
+  'security.supply-chain': true,
+  'security.license-compliance': true,
+  'runtime.recovery': true,
+  'runtime.mcp': true,
+  'runtime.agent': true,
+  'runtime.furyprompt': true,
+  'runtime.learning': true,
+  'runtime.web-studio': true,
+  'runtime.control-room': true,
+  'runtime.i18n': true,
+  'docs.release': true,
+  'repo.branch-policy': true,
+  'release.provenance': true,
+  'security.dependency-review': false,
+  'benchmarks.provider': false,
+});
+
+export const V5_REQUIRED_RELEASE_GATE_IDS: readonly string[] = Object.freeze(
+  Object.entries(V5_RELEASE_GATE_REQUIREDNESS).filter(([, required]) => required).map(([id]) => id),
+);
+
+export function getV5RequiredReleaseGateIds(requiredGateCount: number): readonly string[] | undefined {
+  if (requiredGateCount === V5_REQUIRED_RELEASE_GATE_IDS.length) return V5_REQUIRED_RELEASE_GATE_IDS;
+  if (requiredGateCount === V5_REQUIRED_RELEASE_GATE_IDS.length + 1) {
+    return Object.freeze([...V5_REQUIRED_RELEASE_GATE_IDS, 'benchmarks.provider']);
+  }
+  return undefined;
+}
+
+const origins = (...values: ReleaseEvidenceOrigin[]): readonly ReleaseEvidenceOrigin[] => Object.freeze(values);
+export const V5_RELEASE_GATE_ALLOWED_ORIGINS: Readonly<Record<string, readonly ReleaseEvidenceOrigin[]>> = Object.freeze({
+  'ci.push': origins('github-actions'),
+  'ci.pr': origins('github-actions'),
+  'security.codeql': origins('github-actions'),
+  'security.secret-scan': origins('github-actions'),
+  'security.supply-chain': origins('github-actions'),
+  'security.license-compliance': origins('github-actions'),
+  'security.dependency-review': origins('github-actions'),
+  'repo.branch-policy': origins('github'),
+  'release.provenance': origins('github-actions'),
+  'runtime.mcp': origins('hosted'),
+  'runtime.web-studio': origins('hosted'),
+  'benchmarks.provider': origins('provider'),
+});
+
+export function isAllowedV5ReleaseGateOrigin(gateId: string, origin: ReleaseEvidenceOrigin): boolean {
+  if (!Object.hasOwn(V5_RELEASE_GATE_REQUIREDNESS, gateId)) return false;
+  const allowed = V5_RELEASE_GATE_ALLOWED_ORIGINS[gateId];
+  return allowed === undefined || allowed.includes(origin);
+}
 
 function validateInput(input: ReleaseReadinessInput): void {
   if (!Number.isSafeInteger(input.generatedAt) || input.generatedAt < 0) {
@@ -89,9 +160,25 @@ function validateInput(input: ReleaseReadinessInput): void {
         throw new Error(`release gate evidence is invalid: ${gate.id}`);
       }
     }
+    if (gate.provenance !== undefined) {
+      const provenance = gate.provenance;
+      if (!provenance || typeof provenance !== 'object'
+        || !SHA40.test(provenance.sourceCommit)
+        || !Number.isSafeInteger(provenance.observedAt) || provenance.observedAt < 0
+        || !RELEASE_EVIDENCE_ORIGINS.includes(provenance.origin)
+        || typeof provenance.reference !== 'string' || provenance.reference.length === 0
+        || provenance.reference.length > 512 || provenance.reference.includes('\0')) {
+        throw new Error(`release gate provenance is invalid: ${gate.id}`);
+      }
+    }
     if (gate.note !== undefined && (gate.note.length === 0 || gate.note.length > 1024 || gate.note.includes('\0'))) {
       throw new Error(`release gate note is invalid: ${gate.id}`);
     }
+  }
+  for (const [id, required] of Object.entries(V5_RELEASE_GATE_REQUIREDNESS)) {
+    const gate = input.gates.find((candidate) => candidate.id === id);
+    if (!gate) throw new Error(`missing V5 release gate: ${id}`);
+    if (gate.required !== required) throw new Error(`V5 release gate requiredness is fixed by contract: ${id}`);
   }
 }
 
@@ -112,6 +199,19 @@ function blockerReason(gate: ReleaseGateEvidence): string {
   }
 }
 
+function provenanceFailure(gate: ReleaseGateEvidence, sourceCommit: string, generatedAt: number): string | undefined {
+  if (gate.state !== 'VERIFIED') return undefined;
+  const provenance = gate.provenance;
+  if (!provenance) return 'VERIFIED state has no source-bound evidence provenance';
+  if (provenance.sourceCommit !== sourceCommit) return 'evidence source commit does not match the release source commit';
+  if (provenance.observedAt > generatedAt) return 'evidence observation is later than the readiness report';
+  const allowedOrigins = V5_RELEASE_GATE_ALLOWED_ORIGINS[gate.id];
+  if (!isAllowedV5ReleaseGateOrigin(gate.id, provenance.origin)) {
+    return `evidence origin must be one of: ${allowedOrigins?.join(', ') ?? 'the canonical V5 gate policy'}`;
+  }
+  return undefined;
+}
+
 export function evaluateReleaseReadiness(input: ReleaseReadinessInput): ReleaseReadinessReport {
   validateInput(input);
 
@@ -123,32 +223,38 @@ export function evaluateReleaseReadiness(input: ReleaseReadinessInput): ReleaseR
   });
 
   const blockers: ReleaseBlocker[] = effectiveGates
-    .filter((gate) => gate.required && gate.state !== 'VERIFIED')
+    .filter((gate) => gate.required && (gate.state !== 'VERIFIED' || provenanceFailure(gate, input.sourceCommit, input.generatedAt) !== undefined))
     .map((gate) => ({
       gateId: gate.id,
       title: gate.title,
       state: gate.state,
-      reason: blockerReason(gate),
+      reason: gate.state === 'VERIFIED'
+        ? provenanceFailure(gate, input.sourceCommit, input.generatedAt)!
+        : blockerReason(gate),
     }));
 
   const warnings: string[] = [];
   for (const gate of effectiveGates) {
-    if (!gate.required && gate.state !== 'VERIFIED' && gate.state !== 'NOT_APPLICABLE') {
-      warnings.push(`${gate.id}: ${gate.state}${gate.note ? ` — ${gate.note}` : ''}`);
+    const proofFailure = provenanceFailure(gate, input.sourceCommit, input.generatedAt);
+    if (!gate.required && (gate.state !== 'VERIFIED' || proofFailure !== undefined) && gate.state !== 'NOT_APPLICABLE') {
+      warnings.push(`${gate.id}: ${gate.state}${proofFailure ? ` — ${proofFailure}` : ''}${gate.note ? ` — ${gate.note}` : ''}`);
     }
   }
   if (!input.performanceClaims) {
     const providerBench = effectiveGates.find((gate) => gate.id === 'benchmarks.provider');
-    if (providerBench && providerBench.state !== 'VERIFIED') {
+    if (providerBench && (providerBench.state !== 'VERIFIED'
+      || provenanceFailure(providerBench, input.sourceCommit, input.generatedAt) !== undefined)) {
       warnings.push('Provider benchmark evidence is not verified; release notes must not make performance claims.');
     }
   }
 
   const required = effectiveGates.filter((gate) => gate.required);
-  const verifiedRequired = required.filter((gate) => gate.state === 'VERIFIED');
+  const verifiedGates = effectiveGates.filter((gate) => gate.state === 'VERIFIED'
+    && provenanceFailure(gate, input.sourceCommit, input.generatedAt) === undefined);
+  const verifiedRequired = verifiedGates.filter((gate) => gate.required);
 
   return Object.freeze({
-    format: 'furypipe-release-readiness/v1',
+    format: 'furypipe-release-readiness/v2',
     generatedAt: input.generatedAt,
     sourceCommit: input.sourceCommit,
     packageVersion: input.packageVersion,
@@ -158,6 +264,10 @@ export function evaluateReleaseReadiness(input: ReleaseReadinessInput): ReleaseR
     warnings: Object.freeze([...new Set(warnings)]),
     verifiedRequiredGates: verifiedRequired.length,
     requiredGates: required.length,
+    verifiedGateEvidence: Object.freeze(verifiedGates.map((gate) => Object.freeze({
+      gateId: gate.id,
+      ...gate.provenance!,
+    }))),
     authorization: Object.freeze({ ...input.authorization }),
     releaseActionsExecuted: false,
   });
@@ -185,19 +295,24 @@ export interface V5ReleaseGateStates {
   readonly providerBenchmarks: ReleaseGateState;
 }
 
-export function createV5ReleaseGates(states: V5ReleaseGateStates): readonly ReleaseGateEvidence[] {
+export function createV5ReleaseGates(
+  states: V5ReleaseGateStates,
+  provenanceByGate: Readonly<Partial<Record<string, ReleaseGateProvenance>>> = {},
+): readonly ReleaseGateEvidence[] {
+  const provenance = (id: string): ReleaseGateProvenance | undefined => provenanceByGate[id];
   const required = (
     id: string,
     title: string,
     state: ReleaseGateState,
-  ): ReleaseGateEvidence => ({ id, title, state, required: true });
+  ): ReleaseGateEvidence => ({ id, title, state, required: true, ...(provenance(id) ? { provenance: provenance(id) } : {}) });
 
   const optional = (
     id: string,
     title: string,
     state: ReleaseGateState,
     note?: string,
-  ): ReleaseGateEvidence => ({ id, title, state, required: false, ...(note ? { note } : {}) });
+  ): ReleaseGateEvidence => ({ id, title, state, required: false,
+    ...(provenance(id) ? { provenance: provenance(id) } : {}), ...(note ? { note } : {}) });
 
   return Object.freeze([
     required('ci.push', 'Cross-platform CI push matrix', states.ciPush),

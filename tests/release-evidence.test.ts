@@ -37,14 +37,26 @@ function verifiedStates(): V5ReleaseGateStates {
   };
 }
 
-function readiness(overrides: Partial<V5ReleaseGateStates> = {}) {
+function readiness(overrides: Partial<V5ReleaseGateStates> = {}, performanceClaims = false) {
   return evaluateReleaseReadiness({
     generatedAt: 1_725_000_000_000,
     sourceCommit: SHA,
     packageVersion: VERSION,
     channel: 'rc',
-    performanceClaims: false,
-    gates: createV5ReleaseGates({ ...verifiedStates(), ...overrides }),
+    performanceClaims,
+    gates: (() => {
+      const states = { ...verifiedStates(), ...overrides };
+      const provenanceByGate = Object.fromEntries(createV5ReleaseGates(states).flatMap((gate) => {
+        if (gate.state !== 'VERIFIED') return [];
+        const origin = gate.id.startsWith('ci.') || gate.id.startsWith('security.') || gate.id === 'release.provenance'
+          ? 'github-actions'
+          : gate.id === 'repo.branch-policy' ? 'github'
+            : gate.id === 'runtime.mcp' || gate.id === 'runtime.web-studio' ? 'hosted'
+              : gate.id === 'benchmarks.provider' ? 'provider' : 'local';
+        return [[gate.id, { sourceCommit: SHA, observedAt: 1_725_000_000_000, origin, reference: `evidence:${gate.id}` }]];
+      }));
+      return createV5ReleaseGates(states, provenanceByGate);
+    })(),
     authorization: {
       mergeDefaultBranch: false,
       createReleaseTag: false,
@@ -56,16 +68,19 @@ function readiness(overrides: Partial<V5ReleaseGateStates> = {}) {
 
 function workflows(): RcWorkflowEvidence[] {
   return [
-    { name: 'CI', runId: 1, conclusion: 'success' },
-    { name: 'CodeQL', runId: 2, conclusion: 'success' },
-    { name: 'Secret Scan', runId: 3, conclusion: 'success' },
-    { name: 'Supply Chain', runId: 4, conclusion: 'success' },
-    { name: 'License Compliance', runId: 5, conclusion: 'success' },
-    { name: 'Benchmark Contract', runId: 6, conclusion: 'success' },
+    { name: 'CI', runId: 1, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:1', conclusion: 'success' },
+    { name: 'CodeQL', runId: 2, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:2', conclusion: 'success' },
+    { name: 'Secret Scan', runId: 3, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:3', conclusion: 'success' },
+    { name: 'Supply Chain', runId: 4, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:4', conclusion: 'success' },
+    { name: 'License Compliance', runId: 5, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:5', conclusion: 'success' },
+    { name: 'Benchmark Contract', runId: 6, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:6', conclusion: 'success' },
   ];
 }
 
 function artifacts(overrides: Partial<RcArtifactEvidence> = {}): RcArtifactEvidence {
+  const proof = (reference: string, origin: 'local' | 'github-actions'): NonNullable<RcArtifactEvidence['proofs']>[keyof NonNullable<RcArtifactEvidence['proofs']>] => ({
+    sourceCommit: SHA, observedAt: 1, origin, reference,
+  });
   return {
     packageSmoke: 'VERIFIED',
     installationSmoke: 'VERIFIED',
@@ -77,6 +92,18 @@ function artifacts(overrides: Partial<RcArtifactEvidence> = {}): RcArtifactEvide
     migrationNotes: 'VERIFIED',
     releaseNotes: 'VERIFIED',
     packageSha256: 'b'.repeat(64),
+    proofs: {
+      packageSmoke: proof('package-smoke', 'local'),
+      installationSmoke: proof('installation-smoke', 'local'),
+      upgradeSmoke: proof('upgrade-smoke', 'local'),
+      rollbackEvidence: proof('rollback', 'local'),
+      sbom: proof('sbom', 'github-actions'),
+      provenance: proof('provenance', 'github-actions'),
+      compatibilityMatrix: proof('compatibility', 'local'),
+      migrationNotes: proof('migration-notes', 'local'),
+      releaseNotes: proof('release-notes', 'local'),
+      packageSha256: { ...proof('package', 'github-actions'), artifactSha256: 'b'.repeat(64) },
+    },
     ...overrides,
   };
 }
@@ -159,6 +186,161 @@ describe('RC evidence snapshot', () => {
     ]));
   });
 
+  it('does not let an older successful workflow mask a newer skipped or mixed-SHA run', () => {
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: 100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: readiness(),
+      workflowRuns: [
+        ...workflows(),
+        { name: 'CI', runId: 50, headSha: SHA, updatedAt: 90, origin: 'github-actions', reference: 'run:50', conclusion: 'skipped' },
+        { name: 'CodeQL', runId: 51, headSha: 'b'.repeat(40), updatedAt: 90, origin: 'github-actions', reference: 'run:51', conclusion: 'success' },
+      ],
+      artifacts: artifacts(),
+    });
+
+    expect(snapshot.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'workflow.ci', state: 'BLOCKED' }),
+      expect.objectContaining({ id: 'workflow.codeql', state: 'MISMATCH' }),
+    ]));
+  });
+
+  it('requires exact-source references for every artifact marked VERIFIED', () => {
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: 100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: readiness(),
+      workflowRuns: workflows(),
+      artifacts: artifacts({ proofs: undefined }),
+    });
+
+    expect(snapshot.preparationStatus).toBe('BLOCKED');
+    expect(snapshot.blockers.filter((blocker) => blocker.id.startsWith('artifact.'))).toHaveLength(10);
+  });
+
+  it('fails closed on a future readiness report or duplicate gate provenance', () => {
+    const base = readiness();
+    const futureReport = createRcEvidenceSnapshot({
+      generatedAt: 1_725_000_000_100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: { ...base, generatedAt: 1_725_000_000_101 },
+      workflowRuns: workflows(),
+      artifacts: artifacts(),
+    });
+    expect(futureReport.preparationStatus).toBe('BLOCKED');
+    expect(futureReport.blockers).toContainEqual(expect.objectContaining({ id: 'readiness.integrity', state: 'MISMATCH' }));
+
+    const firstEvidence = base.verifiedGateEvidence[0]!;
+    const duplicateProvenance = createRcEvidenceSnapshot({
+      generatedAt: 1_725_000_000_100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: { ...base, verifiedGateEvidence: [firstEvidence, firstEvidence] },
+      workflowRuns: workflows(),
+      artifacts: artifacts(),
+    });
+    expect(duplicateProvenance.preparationStatus).toBe('BLOCKED');
+    expect(duplicateProvenance.blockers).toContainEqual(expect.objectContaining({ id: 'readiness.integrity', state: 'MISMATCH' }));
+  });
+
+  it('does not accept a ready report whose verified gate IDs are invented', () => {
+    const base = readiness();
+    const fabricatedEvidence = Array.from({ length: base.verifiedRequiredGates }, (_, index) => ({
+      gateId: `fabricated-${index}`,
+      sourceCommit: SHA,
+      observedAt: base.generatedAt,
+      origin: 'local' as const,
+      reference: `local-report:${index}`,
+    }));
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: base.generatedAt + 100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: { ...base, verifiedGateEvidence: fabricatedEvidence },
+      workflowRuns: workflows(),
+      artifacts: artifacts(),
+    });
+    expect(snapshot.preparationStatus).toBe('BLOCKED');
+    expect(snapshot.blockers).toContainEqual(expect.objectContaining({ id: 'readiness.integrity', state: 'MISMATCH' }));
+  });
+
+  it('fails closed when verified gate provenance uses the wrong canonical origin', () => {
+    const base = readiness();
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: base.generatedAt + 100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: {
+        ...base,
+        verifiedGateEvidence: base.verifiedGateEvidence.map((evidence) => evidence.gateId === 'runtime.mcp'
+          ? { ...evidence, origin: 'local' }
+          : evidence),
+      },
+      workflowRuns: workflows(),
+      artifacts: artifacts(),
+    });
+    expect(snapshot.preparationStatus).toBe('BLOCKED');
+    expect(snapshot.blockers).toContainEqual(expect.objectContaining({ id: 'readiness.integrity', state: 'MISMATCH' }));
+  });
+
+  it('accepts the conditional eighteenth verified gate when performance claims require it', () => {
+    const report = readiness({ providerBenchmarks: 'VERIFIED' }, true);
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: report.generatedAt + 100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: report,
+      workflowRuns: workflows(),
+      artifacts: artifacts(),
+    });
+    expect(report.requiredGates).toBe(18);
+    expect(report.verifiedRequiredGates).toBe(18);
+    expect(snapshot.blockers).not.toContainEqual(expect.objectContaining({ id: 'readiness.integrity' }));
+  });
+
+  it('rejects a required gate reported as both verified and blocked', () => {
+    const base = readiness();
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: base.generatedAt + 100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: {
+        ...base,
+        status: 'BLOCKED',
+        blockers: [{ gateId: 'runtime.mcp', title: 'MCP', state: 'BLOCKED', reason: 'contradictory fixture' }],
+      },
+      workflowRuns: workflows(),
+      artifacts: artifacts(),
+    });
+    expect(snapshot.blockers).toContainEqual(expect.objectContaining({ id: 'readiness.integrity', state: 'MISMATCH' }));
+  });
+
+  it('never copies malformed maintainer authorization into the RC snapshot', () => {
+    const base = readiness();
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: 1_725_000_000_100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: {
+        ...base,
+        authorization: { ...base.authorization, publishNpm: 'approved' } as unknown as typeof base.authorization,
+      },
+      workflowRuns: workflows(),
+      artifacts: artifacts(),
+    });
+    expect(snapshot.preparationStatus).toBe('BLOCKED');
+    expect(snapshot.blockers).toContainEqual(expect.objectContaining({ id: 'readiness.integrity', state: 'MISMATCH' }));
+    expect(snapshot.authorization).toEqual({
+      mergeDefaultBranch: false,
+      createReleaseTag: false,
+      publishNpm: false,
+      deployProduction: false,
+    });
+  });
+
   it('requires every RC preparation artifact and a package SHA-256 digest', () => {
     const snapshot = createRcEvidenceSnapshot({
       generatedAt: 1,
@@ -176,6 +358,25 @@ describe('RC evidence snapshot', () => {
   });
 
   it('validates workflow identity and package digests', () => {
+    const firstWorkflow = workflows()[0]!;
+    expect(() => createRcEvidenceSnapshot({
+      generatedAt: 1,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: readiness(),
+      workflowRuns: [{ ...firstWorkflow, origin: 'github' } as unknown as RcWorkflowEvidence],
+      artifacts: artifacts(),
+    })).toThrow(/GitHub Actions reference/);
+
+    expect(() => createRcEvidenceSnapshot({
+      generatedAt: 1,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: readiness(),
+      workflowRuns: [{ ...firstWorkflow, reference: '' }],
+      artifacts: artifacts(),
+    })).toThrow(/GitHub Actions reference/);
+
     expect(() => createRcEvidenceSnapshot({
       generatedAt: 1,
       sourceCommit: SHA,
@@ -183,7 +384,10 @@ describe('RC evidence snapshot', () => {
       readiness: readiness(),
       workflowRuns: [
         ...workflows(),
-        { name: 'CI', runId: 1, conclusion: 'success' },
+        {
+          name: 'CI', runId: 1, headSha: SHA, updatedAt: 1,
+          origin: 'github-actions', reference: 'run:duplicate', conclusion: 'success',
+        },
       ],
       artifacts: artifacts(),
     })).toThrow(/duplicate RC workflow runId/);
