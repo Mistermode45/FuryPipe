@@ -556,14 +556,14 @@ export function renderContextMapFragment(
     : '';
 
   const ids = c.imageIds ?? [];
-  const modelLabel = c.model ? escapeHtml(c.model) : escapeHtml(t('dashboard.context.modelFallback'));
+  const modelLabel = c.model ?? t('dashboard.context.modelFallback');
   const gallery = ids.length
     ? `<div class="pages-title">${escapeHtml(t('dashboard.context.gallery', { model: modelLabel, count: ids.length }))}</div>` +
       `<div class="pages">` +
       ids
         .map(
           (id) =>
-            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="ppPin(${id});ppSource(true)" onerror="this.classList.add('page-gone'); this.alt=${JSON.stringify(t('dashboard.context.galleryExpired', { id }))};" />`,
+            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="ppPin(${id});ppSource(true)" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
         )
         .join('') +
       `</div>`
@@ -576,33 +576,31 @@ export function renderContextMapFragment(
   // means cold. No wall-clock-only counterfactual is credited.
   const warm = showCompare && c.warm;
   const google = c.model?.startsWith('gemini-') === true;
-  const textNoun = warm ? 'cached text' : 'text';
-  // Raw count_tokens can grow (imaging bloated a short prompt), so say so rather
-  // than rendering a nonsensical "shrank -36%".
-  const rawPhrase =
-    rawShrink >= 0 ? `Raw content shrank ${rawShrink}%.` : `Raw content grew ${-rawShrink}%.`;
+  const textNoun = t(warm ? 'dashboard.context.cachedText' : 'dashboard.context.text');
+  // Raw count_tokens can grow (imaging bloated a short prompt), so report the
+  // direction explicitly instead of rendering a negative shrink percentage.
+  const rawPhrase = rawShrink >= 0
+    ? t('dashboard.context.rawShrank', { pct: rawShrink })
+    : t('dashboard.context.rawGrew', { pct: -rawShrink });
   const headline = !showCompare
-    ? `<strong>${kFmt(c.actualInputEff || c.realInput)}</strong> billing-equivalent input tokens sent`
+    ? `<strong>${kFmt(c.actualInputEff || c.realInput)}</strong> ${escapeHtml(t('dashboard.context.billingSent'))}`
     : pct >= 0
       ? google
-        ? `<span class="ctx-big">${pct}%</span> smaller — text would account as <strong>${kFmt(base)}</strong> input tokens; images account as <strong>${kFmt(real)}</strong>`
-        : `<span class="ctx-big">${pct}%</span> smaller — ${textNoun} would bill as <strong>${kFmt(base)}</strong> input tokens; images billed as <strong>${kFmt(real)}</strong>`
+        ? `<span class="ctx-big">${pct}%</span> ${escapeHtml(t('dashboard.context.smaller'))} — ${escapeHtml(t('dashboard.context.textWouldAccount'))} <strong>${kFmt(base)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))}; ${escapeHtml(t('dashboard.context.imagesAccount'))} <strong>${kFmt(real)}</strong>`
+        : `<span class="ctx-big">${pct}%</span> ${escapeHtml(t('dashboard.context.smaller'))} — ${escapeHtml(textNoun)} ${escapeHtml(t('dashboard.context.wouldBill'))} <strong>${kFmt(base)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))}; ${escapeHtml(t('dashboard.context.imagesBilled'))} <strong>${kFmt(real)}</strong>`
       : google
-        ? `<span class="ctx-big">${-pct}%</span> bigger — images account as <strong>${kFmt(real)}</strong> input tokens vs <strong>${kFmt(base)}</strong> for text`
-        : `<span class="ctx-big">${-pct}%</span> bigger — images billed as <strong>${kFmt(real)}</strong> input tokens vs <strong>${kFmt(base)}</strong> for ${textNoun}`;
-  // Clarifying sub-line. It must match the actual request's cache state: claiming
-  // a 0.1× read discount when cache_read===0 would count hypothetical cache as a
-  // pxpipe effect, so cold rows price both paths cold.
+        ? `<span class="ctx-big">${-pct}%</span> ${escapeHtml(t('dashboard.context.bigger'))} — ${escapeHtml(t('dashboard.context.imagesAccount'))} <strong>${kFmt(real)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))} ${escapeHtml(t('dashboard.context.vsText'))} <strong>${kFmt(base)}</strong>`
+        : `<span class="ctx-big">${-pct}%</span> ${escapeHtml(t('dashboard.context.bigger'))} — ${escapeHtml(t('dashboard.context.imagesBilled'))} <strong>${kFmt(real)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))} ${escapeHtml(t('dashboard.context.vsText'))} <strong>${kFmt(base)}</strong> (${escapeHtml(textNoun)})`;
   const subnote = !showCompare
-    ? 'Billed tokens count cache discounts (reads at 0.1×) — no trustworthy text baseline for this request yet.'
+    ? t('dashboard.context.noBaseline')
     : google
-      ? `Same provider-token basis as the Saved column. The gap is token count. ${rawPhrase}`
-    : !warm
-      ? `No warm text cache this turn — the text counterfactual's prefix is priced at the 1.25× create rate (the same event the imaged path pays), identical basis to the Saved column. The gap is purely token count. ${rawPhrase}`
-      : pct < 0 && rawShrink > 0
-          ? `Billed = after cache discounts (reads at 0.1×), same basis as the Saved column. The raw text is ${rawShrink}% smaller, but most of it would have been a cheap cache-read — so imaging it cost more.`
-          : `Billed = after cache discounts (reads at 0.1×), same basis as the Saved column. ${rawPhrase}`;
-  const title = isLatest ? 'Latest request' : 'Selected request';
+      ? `${t('dashboard.context.providerBasisGap')} ${rawPhrase}`
+      : !warm
+        ? `${t('dashboard.context.coldBasis')} ${rawPhrase}`
+        : pct < 0 && rawShrink > 0
+          ? t('dashboard.context.warmLoss', { pct: rawShrink })
+          : `${t('dashboard.context.warmBasis')} ${rawPhrase}`;
+  const title = t(isLatest ? 'dashboard.context.latestRequest' : 'dashboard.context.selectedRequest');
 
   // The provider caps a request at 100 image blocks and counts the CLIENT's
   // images against the same limit. Three facts are worth showing, and only when
@@ -612,14 +610,14 @@ export function renderContextMapFragment(
   //   - we gave up on imaging something because the cap was full.
   const capBits: string[] = [];
   if ((c.nativeImages ?? 0) > 0) {
-    capBits.push(`${c.nativeImages} image${c.nativeImages === 1 ? '' : 's'} came from your side and count against the same 100-image request cap`);
+    capBits.push(t('dashboard.context.capNative', { count: c.nativeImages }));
   }
   if (c.wireImages !== undefined && c.wireImages < c.imageCount + (c.nativeImages ?? 0)) {
     const absorbed = c.imageCount + (c.nativeImages ?? 0) - c.wireImages;
-    capBits.push(`${absorbed} rendered page${absorbed === 1 ? '' : 's'} never went out — the history collapse absorbed those messages (${c.wireImages} on the wire)`);
+    capBits.push(t('dashboard.context.capAbsorbed', { count: absorbed, wire: c.wireImages }));
   }
   if ((c.imageBudgetSkips ?? 0) > 0) {
-    capBits.push(`${c.imageBudgetSkips} block${c.imageBudgetSkips === 1 ? '' : 's'} stayed as text because the image cap was full`);
+    capBits.push(t('dashboard.context.capSkipped', { count: c.imageBudgetSkips }));
   }
   const capNote = capBits.length
     ? `<div class="split-note cap-note">${capBits.map(escapeHtml).join(' · ')}</div>`
@@ -630,19 +628,19 @@ export function renderContextMapFragment(
     `<div class="ctxmap">` +
     `<div class="ctx-headline"><span class="ctx-title">${title}</span> ${headline}</div>` +
     `<div class="split-note ctx-subnote">${subnote}</div>` +
-    `<div class="legend"><span class="tag tag-img">Became an image</span><span class="tag tag-txt">Stayed as text</span></div>` +
+    `<div class="legend"><span class="tag tag-img">${escapeHtml(t('dashboard.context.becameImage'))}</span><span class="tag tag-txt">${escapeHtml(t('dashboard.context.stayedText'))}</span></div>` +
     `<div class="split">` +
     `<div class="split-col split-img">` +
-    `<div class="split-head">Compressed into images <span class="split-sum">${kFmt(totalImagedChars)} chars · ${c.imageCount} page${c.imageCount === 1 ? '' : 's'}</span></div>` +
-    (imgRows || `<div class="ctx-row muted-row">nothing imaged this request</div>`) +
+    `<div class="split-head">${escapeHtml(t('dashboard.context.compressedImages'))} <span class="split-sum">${escapeHtml(t('dashboard.context.pagesSummary', { chars: kFmt(totalImagedChars), count: c.imageCount }))}</span></div>` +
+    (imgRows || `<div class="ctx-row muted-row">${escapeHtml(t('dashboard.context.nothingImaged'))}</div>`) +
     capNote +
-    `<div class="split-note">pxpipe can misread exact values inside images — treat these as gist, not byte-exact.</div>` +
+    `<div class="split-note">${escapeHtml(t('dashboard.context.imageApprox'))}</div>` +
     `</div>` +
     `<div class="split-col split-txt">` +
-    `<div class="split-head">Kept as plain text <span class="split-sum">byte-exact</span></div>` +
-    `<div class="ctx-row"><span class="ctx-lbl">Your latest messages</span><span class="ctx-val">verbatim</span></div>` +
-    `<div class="ctx-row"><span class="ctx-lbl">Model reply (output)</span><span class="ctx-val">${kFmt(c.output)} tok</span></div>` +
-    `<div class="split-note">never imaged — safe for IDs, hashes and exact numbers.</div>` +
+    `<div class="split-head">${escapeHtml(t('dashboard.context.keptPlain'))} <span class="split-sum">${escapeHtml(t('dashboard.context.byteExact'))}</span></div>` +
+    `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.latestMessages'))}</span><span class="ctx-val">${escapeHtml(t('dashboard.context.verbatim'))}</span></div>` +
+    `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.modelReply'))}</span><span class="ctx-val">${kFmt(c.output)} tok</span></div>` +
+    `<div class="split-note">${escapeHtml(t('dashboard.context.exactSafe'))}</div>` +
     `</div>` +
     `</div>` +
     responseBreakdown +
