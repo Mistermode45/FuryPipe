@@ -21,7 +21,7 @@ export interface FuryCapabilityPerformanceEvidenceInput {
   readonly candidateId: string;
   readonly benchmarkId: string;
   readonly benchmarkSha256: string;
-  readonly provider?: string;
+  readonly provider: string;
   readonly model: string;
   readonly workloadId: string;
   readonly sampleSize: number;
@@ -72,6 +72,7 @@ export interface FuryScoreInput {
   readonly candidate: CapabilityCandidate;
   readonly trustReport: FuryTrustReport;
   readonly relevance: number;
+  readonly provider?: string;
   readonly model?: string;
   readonly workloadId?: string;
   readonly performance?: QualifiedFuryCapabilityPerformanceEvidence;
@@ -123,7 +124,7 @@ function performanceFingerprint(input: FuryCapabilityPerformanceEvidenceInput): 
     candidateId: input.candidateId,
     benchmarkId: input.benchmarkId,
     benchmarkSha256: input.benchmarkSha256,
-    provider: input.provider ?? null,
+    provider: input.provider,
     model: input.model,
     workloadId: input.workloadId,
     sampleSize: input.sampleSize,
@@ -148,9 +149,7 @@ export function qualifyFuryCapabilityPerformance(
     candidateId: boundedText(input.candidateId, 'candidateId', 160),
     benchmarkId: boundedText(input.benchmarkId, 'benchmarkId', 160),
     benchmarkSha256: boundedText(input.benchmarkSha256, 'benchmarkSha256', 64),
-    ...(input.provider === undefined
-      ? {}
-      : { provider: boundedText(input.provider, 'provider', 160) }),
+    provider: boundedText(input.provider, 'provider', 160),
     model: boundedText(input.model, 'model', 256),
     workloadId: boundedText(input.workloadId, 'workloadId', 256),
     sampleSize: nonNegativeInteger(input.sampleSize, 'sampleSize'),
@@ -307,11 +306,15 @@ function validateScope(
   if (performance.candidateId !== input.candidate.id) {
     throw new Error('performance evidence candidateId does not match the candidate');
   }
-  if (input.model === undefined || input.workloadId === undefined) {
-    throw new Error('model and workloadId are required when performance evidence is supplied');
+  if (input.provider === undefined || input.model === undefined || input.workloadId === undefined) {
+    throw new Error('provider, model and workloadId are required when performance evidence is supplied');
   }
-  if (performance.model !== input.model || performance.workloadId !== input.workloadId) {
-    throw new Error('performance evidence scope does not match model/workload');
+  if (
+    performance.provider !== input.provider
+    || performance.model !== input.model
+    || performance.workloadId !== input.workloadId
+  ) {
+    throw new Error('performance evidence scope does not match provider/model/workload');
   }
   return performance;
 }
