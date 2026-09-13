@@ -722,6 +722,16 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
   ): Promise<RecoveryHandle> {
     const view = asUint8Array(bytes);
     if (view.byteLength > maxObjectBytes) throw new Error('recovery object exceeds the configured object quota');
+    if (bound !== undefined) {
+      if (!bound || typeof bound !== 'object' || !bound.metadata || typeof bound.metadata !== 'object'
+        || Array.isArray(bound.metadata) || !Number.isSafeInteger(bound.maxMatches)
+        || bound.maxMatches < 1 || bound.maxMatches > 10_000) {
+        throw new RangeError('recovery bounded put maxMatches must be an integer from 1 to 10000');
+      }
+      if (Object.entries(bound.metadata).some(([key, value]) => metadata?.[key] !== value)) {
+        throw new Error('recovery bounded put metadata must satisfy its capacity filter');
+      }
+    }
     const digest = digestBytes(view);
     const manifestFile = metadataPath(scopedRoot, digest);
     const existingManifest = await readManifest(digest);
@@ -736,18 +746,14 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
       if (encryption !== undefined && existingStorage === undefined && !encryption.allowLegacyPlaintext) {
         throw new Error('recovery object is plaintext; explicit rekey migration is required');
       }
+      if (bound !== undefined
+        && Object.entries(bound.metadata).some(([key, value]) => existingManifest.metadata?.[key] !== value)) {
+        throw new Error('recovery bounded put existing object is outside its capacity filter');
+      }
       return makeHandle(digest, existing.byteLength, existingManifest?.metadata, existingStorage);
     }
 
     if (bound !== undefined) {
-      if (!bound || typeof bound !== 'object' || !bound.metadata || typeof bound.metadata !== 'object'
-        || Array.isArray(bound.metadata) || !Number.isSafeInteger(bound.maxMatches)
-        || bound.maxMatches < 1 || bound.maxMatches > 10_000) {
-        throw new RangeError('recovery bounded put maxMatches must be an integer from 1 to 10000');
-      }
-      if (Object.entries(bound.metadata).some(([key, value]) => metadata?.[key] !== value)) {
-        throw new Error('recovery bounded put metadata must satisfy its capacity filter');
-      }
       const matches = await countMatchingManifests(bound.metadata, bound.maxMatches);
       if (matches >= bound.maxMatches) throw new Error('recovery bounded put matching-object limit exceeded');
     }
