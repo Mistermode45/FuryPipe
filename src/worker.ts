@@ -217,7 +217,7 @@ export default {
 
         if (e.info?.unknownStaticTags && e.info.unknownStaticTags.length > 0) {
           console.warn(
-            `[pxpipe warn] unknown tag(s) in static slab: ${e.info.unknownStaticTags.join(', ')}`,
+            `[furypipe warn] unknown tag(s) in static slab: ${e.info.unknownStaticTags.join(', ')}`,
           );
         }
 
