@@ -191,6 +191,34 @@ describe('governed provider stream executor', () => {
     });
   });
 
+  it('sanitizes hostile AsyncIterable inspection from an untrusted stream transport', async () => {
+    const hostileEvents = new Proxy({}, {
+      get(_target, property) {
+        if (property === Symbol.asyncIterator) throw new Error('credential=ITERATOR_SECRET');
+        return undefined;
+      },
+    });
+    const transport: ProviderStreamTransport = {
+      providerId: 'openai',
+      protocol: 'openai',
+      open: async (request) => ({
+        providerId: 'openai',
+        model: request.model,
+        networkStatus: 'executed',
+        providerRequestStatus: 'accepted',
+        httpStatus: 200,
+        events: hostileEvents,
+      }),
+    };
+    const { request, permit, executor } = setup(transport);
+
+    await expect(executor.open(request, permit)).rejects.toMatchObject({
+      code: 'stream-session-invalid',
+      message: 'Provider stream transport returned an invalid session.',
+      transportInvoked: true,
+    });
+  });
+
   it('rejects contradictory accepted/non-2xx session evidence', async () => {
     const transport: ProviderStreamTransport = {
       providerId: 'openai',
