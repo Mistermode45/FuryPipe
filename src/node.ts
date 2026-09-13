@@ -625,7 +625,7 @@ async function dispatchDashboard(
         return dashboard.serveFragment('toggle', url, port);
       }
       // /fragments/models POSTs one chip flip {model, on}, or a whole-scope
-      // rewrite {list: "csv"} from the PXPIPE_MODELS textbox. Server mutates
+      // rewrite {list: "csv"} from the FuryPipe model-scope textbox. Server mutates
       // the runtime compress scope and returns the re-rendered rows.
       if (route.name === 'models' && method === 'POST') {
         let model = '';
@@ -1087,7 +1087,7 @@ async function runExport(argv: string[]): Promise<void> {
   // Collect source text
   const [sourceText, sourceFiles] = await collectSource(opts);
 
-  // Unique output dir: <out>/pxpipe-export-XXXXXX/. mkdtemp guarantees a fresh, random
+  // Unique output dir: <out>/furypipe-export-XXXXXX/. mkdtemp guarantees a fresh, random
   // directory so concurrent runs never collide and stale page-NNN.png never bleed in.
   fs.mkdirSync(opts.out, { recursive: true });
   const outDir = fs.mkdtempSync(path.join(opts.out, 'furypipe-export-'));
@@ -1193,7 +1193,7 @@ async function main(): Promise<void> {
   const opts = parseCli(cliArgv);
 
   // warp only redirects traffic: it decrypts the agent's TLS and re-points the
-  // inference path at the pxpipe you already have running, so that instance
+  // inference path at the FuryPipe instance already running, so that instance
   // does the transforming, the tracking and the dashboard. Everything below —
   // tracker, proxy pipeline, listener — belongs to that instance, not to us.
   if (warpCommand) {
