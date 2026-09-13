@@ -519,7 +519,7 @@ export const CORE_CATALOGS = Object.freeze({
   'dashboard.latest.renderedAlt': 'page rendue',
   'dashboard.stats.requests': 'requêtes',
   'dashboard.stats.compressed': 'compressé',
-  'dashboard.stats.pashrough': 'passthrough',
+  'dashboard.stats.passthrough': 'passthrough',
   'dashboard.stats.inputTokens': 'tokens d’entrée',
   'dashboard.stats.cacheCreate': 'création cache',
   'dashboard.stats.cacheRead': 'lecture cache',
