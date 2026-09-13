@@ -19,6 +19,7 @@ function scoreCandidate(
       version: '1.0.0',
       commitSha: idChar.repeat(40),
     },
+    decision: 'ADOPT',
     ...overrides,
   }));
   const trustReport = evaluateFuryTrust(
