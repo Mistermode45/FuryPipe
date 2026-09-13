@@ -216,12 +216,29 @@ async function startChrome(chromeBin) {
           debugPort,
           stderr,
           async close() {
+            const waitForExit = () => new Promise((resolve) => {
+              if (child.exitCode !== null || child.signalCode !== null) resolve();
+              else child.once('exit', resolve);
+            });
             child.kill('SIGTERM');
+            let exited = false;
             await Promise.race([
-              new Promise((resolve) => child.once('exit', resolve)),
-              delay(2_000).then(() => child.kill('SIGKILL')),
+              waitForExit().then(() => { exited = true; }),
+              delay(2_000),
             ]);
-            await rm(profile, { recursive: true, force: true });
+            if (!exited) {
+              child.kill('SIGKILL');
+              await waitForExit();
+            }
+            for (let attempt = 0; attempt < 10; attempt += 1) {
+              try {
+                await rm(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+                break;
+              } catch (error) {
+                if (attempt === 9) throw error;
+                await delay(100 * (attempt + 1));
+              }
+            }
           },
         };
       }
