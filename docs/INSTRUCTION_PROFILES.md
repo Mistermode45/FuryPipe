@@ -87,3 +87,93 @@ It adds a durable engineering contract around FuryPrompt:
 - blockers remain visible when a criterion is unmet.
 
 Use it together with `karpathy-coding-discipline` when both minimal-change discipline and spec-first traceability are useful.
+
+
+## systematic-debugging
+
+Source reviewed:
+
+- repository: `obra/superpowers`
+- commit: `b36e0829c6d0140e93cfef2ca599b1b07d4a7797`
+- source file: `skills/systematic-debugging/SKILL.md`
+- root licence: MIT, verified
+
+Decision: `ADAPT`.
+
+The native profile keeps the high-value method without copying the upstream protocol:
+
+- reproduce before changing code;
+- gather evidence at component boundaries;
+- trace the originating value/failure instead of patching symptoms;
+- test one falsifiable hypothesis at a time;
+- prefer one scoped root-cause fix;
+- prove the original failure and surrounding regressions before completion;
+- reconsider architecture when repeated failed fixes indicate a structural problem.
+
+It grants no tool, network, filesystem or provider authority.
+
+## codebase-audit-discipline
+
+Source reviewed:
+
+- repository: `ksimback/tech-debt-skill`
+- commit: `5a15c1ca4a929b2759461c218478de391a8bda0f`
+- source file: `SKILL.md`
+- licence: README declares MIT; no root licence file resolved at the reviewed commit
+
+Decision: `ADAPT` with `DECLARED_MIT_NO_ROOT_LICENSE_FILE`.
+
+The native profile requires orientation before judgment, repository evidence for findings, explicit false-positive/intentional-pattern review, scoped remediation, and open questions when intent cannot be proven.
+
+## ui-design-discipline
+
+Source reviewed:
+
+- repository: `Nutlope/hallmark`
+- commit: `13ac0ec7e148655948100b6396439e481361d690`
+- source file: `skills/hallmark/SKILL.md`
+- root licence: MIT, verified
+
+Decision: `ADAPT`.
+
+The FuryPipe profile keeps only portable design discipline:
+
+- inspect the existing design system before changing it;
+- decide page/component scope first;
+- preserve routes/component ownership unless broader replacement is explicitly requested;
+- never invent proof, metrics, testimonials or customer logos;
+- learn principles from references instead of pixel-cloning them;
+- design responsive/accessibility/state behavior before cosmetic polish;
+- verify focus, contrast, overflow, state completeness and system consistency.
+
+It does not import Hallmark themes, runtime, remote fetching, generators or project files.
+
+## product-marketing-context-discipline
+
+Source reviewed:
+
+- repository: `coreyhaines31/marketingskills`
+- commit: `5b2c0007766c6a1cf1d53fd8fc73e979e0821022`
+- source file: `skills/product-marketing/SKILL.md`
+- root licence: MIT, verified
+
+Decision: `ADAPT`.
+
+The profile makes product/audience/positioning/proof context reusable while preserving evidence boundaries. Customer quotes, metrics, pricing, logos and competitor claims are never invented; hypotheses remain separate from facts.
+
+## Explicit workload recommendations
+
+`recommendInstructionProfiles(workload)` provides a deterministic policy owned by FuryPipe. It does not inspect prompt text and it does not activate external skills.
+
+| Workload | Native profile recommendation |
+|---|---|
+| `general-engineering` | `karpathy-coding-discipline` |
+| `feature-development` | Karpathy + spec-driven |
+| `bugfix` | Karpathy + systematic debugging |
+| `codebase-audit` | codebase audit |
+| `production-hardening` | Karpathy + spec-driven + systematic debugging + codebase audit |
+| `ui-development` | Karpathy + spec-driven + UI design |
+| `marketing` | product marketing context |
+| `research` | none by default |
+
+A recommendation is not authorization. Profiles add bounded FuryPrompt sections only and cannot make a skill, MCP, tool, provider or external service executable.
