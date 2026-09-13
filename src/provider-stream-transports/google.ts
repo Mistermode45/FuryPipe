@@ -87,6 +87,7 @@ function createGoogleMapper(): ProviderSseEventMapper {
 
   return Object.freeze({
     map(frame: ProviderSseFrame): readonly ProviderStreamTransportEvent[] {
+      if (frame.event === 'done' && frame.data.trim() === '[DONE]') return [];
       const value = parse(frame);
       const type = eventType(frame, value);
 
