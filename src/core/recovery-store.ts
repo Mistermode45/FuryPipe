@@ -731,15 +731,14 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
   ): Promise<RecoveryHandle> {
     const view = asUint8Array(bytes);
     if (view.byteLength > maxObjectBytes) throw new Error('recovery object exceeds the configured object quota');
-    const capacityBounds: readonly RecoveryCapacityBound[] = bound === undefined
-      ? []
-      : [bound, ...(bound.additionalBounds ?? [])];
+    let capacityBounds: readonly RecoveryCapacityBound[] = [];
     if (bound !== undefined) {
       if (!bound || typeof bound !== 'object'
         || (bound.additionalBounds !== undefined
           && (!Array.isArray(bound.additionalBounds) || bound.additionalBounds.length > 7))) {
         throw new RangeError('recovery bounded put additionalBounds must contain at most 7 constraints');
       }
+      capacityBounds = [bound, ...(bound.additionalBounds ?? [])];
       for (const capacityBound of capacityBounds) {
         if (!capacityBound || typeof capacityBound !== 'object'
           || !capacityBound.metadata || typeof capacityBound.metadata !== 'object'
