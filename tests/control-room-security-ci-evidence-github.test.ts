@@ -161,27 +161,32 @@ describe('GitHub Actions Security CI evidence adapter', () => {
     expect(JSON.stringify(jobs)).not.toContain('github.com/private');
   });
 
-  it('sanitizes arbitrary GitHub error bodies and never propagates Authorization data', async () => {
-    const client = createGitHubActionsEvidenceClient({
-      repository: 'Mistermode45/FuryPipe',
-      token: TOKEN,
-      fetchImpl: async () => jsonResponse({
-        message: `Authorization: Bearer ${TOKEN}`,
-        documentation_url: 'https://api.github.com/private',
-      }, 403),
-    });
+  it.each([401, 403, 404, 500, 503])(
+    'sanitizes GitHub HTTP %i bodies and never propagates Authorization data',
+    async (status) => {
+      const client = createGitHubActionsEvidenceClient({
+        repository: 'Mistermode45/FuryPipe',
+        token: TOKEN,
+        fetchImpl: async () => jsonResponse({
+          message: `Authorization: Bearer ${TOKEN}`,
+          documentation_url: 'https://api.github.com/private',
+          arbitrary: 'PRIVATE-GITHUB-MESSAGE',
+        }, status),
+      });
 
-    let message = '';
-    try {
-      await client.listWorkflowRunsForCommit(SHA);
-    } catch (caught) {
-      message = caught instanceof Error ? caught.message : String(caught);
-    }
-    expect(message).toBe('GitHub API request failed with status 403');
-    expect(message).not.toContain(TOKEN);
-    expect(message).not.toContain('Authorization');
-    expect(message).not.toContain('api.github.com/private');
-  });
+      let message = '';
+      try {
+        await client.listWorkflowRunsForCommit(SHA);
+      } catch (caught) {
+        message = caught instanceof Error ? caught.message : String(caught);
+      }
+      expect(message).toBe(`GitHub API request failed with status ${status}`);
+      expect(message).not.toContain(TOKEN);
+      expect(message).not.toContain('Authorization');
+      expect(message).not.toContain('api.github.com/private');
+      expect(message).not.toContain('PRIVATE-GITHUB-MESSAGE');
+    },
+  );
 
   it('enforces a bounded response body before JSON parsing', async () => {
     const oversized = 'x'.repeat(GITHUB_ACTIONS_EVIDENCE_MAX_RESPONSE_BYTES + 1);
