@@ -203,9 +203,8 @@ async function generateSbom() {
   const list = await run(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['list', '--json', '--depth', 'Infinity']);
   await writeFile(treePath, list.stdout, 'utf8');
   await run(process.execPath, ['scripts/security/generate-sbom.mjs', treePath, sbomPath]);
+  await run(process.execPath, ['scripts/security/verify-sbom.mjs', 'package.json', sbomPath]);
   const sbom = JSON.parse(await readFile(sbomPath, 'utf8'));
-  assert(sbom.spdxVersion === 'SPDX-2.3', 'RC SBOM is not SPDX-2.3');
-  assert(Array.isArray(sbom.packages) && sbom.packages.length > 0, 'RC SBOM contains no packages');
   return {
     path: 'artifacts/rc-preparation/sbom.spdx.json',
     sha256: sha256(await readFile(sbomPath)),
