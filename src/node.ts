@@ -16,6 +16,7 @@ import { isIP } from 'node:net';
 import { spawnSync } from 'node:child_process';
 import { createProxy, parseGatewayHeaders, type ProxyConfig } from './core/proxy.js';
 import { createOmniRouteProxyConfig } from './core/omniroute.js';
+import { furyEnvValue } from './core/env-compat.js';
 import {
   parseExportArgv,
   runExportCore,
@@ -61,7 +62,7 @@ interface RuntimeConfig {
   omniRouteApiKey?: string;
   eventsFile: string;
   /** Persist 4xx request and upstream error bodies for debugging. Off unless
-   *  PXPIPE_DEBUG_CAPTURE_4XX=1. */
+   *  FURYPIPE_DEBUG_CAPTURE_4XX=1. */
   captureErrorReqBody: boolean;
   /** Ceiling on a buffered inbound request body. Unset leaves the core default
    *  (16 MiB). Raise it only if a real client needs more; the default binding is
@@ -105,7 +106,7 @@ function normalizeModelsConfig(value: unknown): string | undefined {
 }
 
 function applyConfigFileDefaults(): void {
-  const file = process.env.PXPIPE_CONFIG ?? DEFAULT_CONFIG_FILE;
+  const file = furyEnvValue(process.env.FURYPIPE_CONFIG, process.env.PXPIPE_CONFIG) ?? DEFAULT_CONFIG_FILE;
   if (!fs.existsSync(file)) return;
   let parsed: unknown;
   try {
@@ -119,19 +120,19 @@ function applyConfigFileDefaults(): void {
 
   // Env wins over file config. The dashboard can still override the scope at
   // runtime (in-memory) for an emergency live flip.
-  if (process.env.PXPIPE_MODELS === undefined) {
+  if (furyEnvValue(process.env.FURYPIPE_MODELS, process.env.PXPIPE_MODELS) === undefined) {
     const models = normalizeModelsConfig(cfg.models);
-    if (models !== undefined) process.env.PXPIPE_MODELS = models;
+    if (models !== undefined) process.env.FURYPIPE_MODELS = models;
   }
 }
 
 /** Dashboard persistence hook: write the runtime model scope back to the
  *  config file's `models` key so chip toggles survive a restart. Other keys
  *  are preserved; an invalid existing file is left untouched.
- *  NOTE: on the next start an explicit PXPIPE_MODELS env still wins over the
+ *  NOTE: on the next start an explicit FURYPIPE_MODELS env still wins over the
  *  persisted value (same precedence as every other config-file default). */
 function persistModelBasesToConfig(bases: readonly string[]): void {
-  const file = process.env.PXPIPE_CONFIG ?? DEFAULT_CONFIG_FILE;
+  const file = furyEnvValue(process.env.FURYPIPE_CONFIG, process.env.PXPIPE_CONFIG) ?? DEFAULT_CONFIG_FILE;
   let cfg: Record<string, unknown> = {};
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
@@ -169,7 +170,7 @@ function persistModelBasesToConfig(bases: readonly string[]): void {
 
 function parseCli(argv: string[]): RuntimeConfig {
   // Only flags accepted are --help and --version. Anything else is an
-  // error — there is exactly ONE way to run pxpipe and the dashboard
+  // error — there is exactly ONE way to run FuryPipe and the dashboard
   // exposes every metric the operator might want to inspect.
   for (const a of argv) {
     if (a === '-h' || a === '--help') {
@@ -181,13 +182,13 @@ function parseCli(argv: string[]): RuntimeConfig {
       process.exit(0);
     }
     if (a.startsWith('-')) {
-      console.error(`[pxpipe] unknown option: ${a}`);
+      console.error(`[furypipe] unknown option: ${a}`);
       console.error(`[pxpipe] this build accepts no flags; run \`pxpipe --help\` for env vars`);
       process.exit(2);
     }
   }
   applyConfigFileDefaults();
-  const sharedUpstream = process.env.PXPIPE_UPSTREAM;
+  const sharedUpstream = furyEnvValue(process.env.FURYPIPE_UPSTREAM, process.env.PXPIPE_UPSTREAM);
   const cfAccount = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
   const cfToken = process.env.CLOUDFLARE_API_TOKEN?.trim();
   const parseModels = (value: string | undefined): string[] | undefined => {
@@ -197,10 +198,11 @@ function parseCli(argv: string[]): RuntimeConfig {
   const cloudflareUpstream = cfAccount && cfToken
     ? `https://api.cloudflare.com/client/v4/accounts/${cfAccount}/ai/v1`
     : undefined;
-  const provider = parseProvider(process.env.PXPIPE_PROVIDER);
+  const provider = parseProvider(furyEnvValue(process.env.FURYPIPE_PROVIDER, process.env.PXPIPE_PROVIDER));
+  const genericGatewayBaseUrl = furyEnvValue(process.env.FURYPIPE_GATEWAY_BASE_URL, process.env.PXPIPE_GATEWAY_BASE_URL);
   const gatewayBaseUrl = provider === 'omniroute'
-    ? process.env.OMNIROUTE_BASE_URL ?? process.env.PXPIPE_GATEWAY_BASE_URL
-    : process.env.PXPIPE_GATEWAY_BASE_URL;
+    ? process.env.OMNIROUTE_BASE_URL ?? genericGatewayBaseUrl
+    : genericGatewayBaseUrl;
   return {
     port: Number(process.env.PORT ?? 47821),
     // Loopback by default; opt into all-interfaces exposure explicitly via HOST.
@@ -214,13 +216,13 @@ function parseCli(argv: string[]): RuntimeConfig {
     cloudflareModels: parseModels(process.env.CLOUDFLARE_MODELS),
     provider,
     gatewayBaseUrl,
-    gatewayHeaders: parseGatewayHeaders(process.env.PXPIPE_GATEWAY_HEADERS),
+    gatewayHeaders: parseGatewayHeaders(furyEnvValue(process.env.FURYPIPE_GATEWAY_HEADERS, process.env.PXPIPE_GATEWAY_HEADERS)),
     omniRouteApiKey: process.env.OMNIROUTE_API_KEY,
-    eventsFile: process.env.PXPIPE_LOG ?? DEFAULT_EVENTS_FILE,
+    eventsFile: furyEnvValue(process.env.FURYPIPE_LOG, process.env.PXPIPE_LOG) ?? DEFAULT_EVENTS_FILE,
     // Off by default: either side of a 4xx may hold prompts or secrets.
     // Opt in for debugging only. (issue #69)
-    captureErrorReqBody: process.env.PXPIPE_DEBUG_CAPTURE_4XX === '1',
-    maxRequestBytes: parseMaxRequestBytes(process.env.PXPIPE_MAX_REQUEST_BYTES),
+    captureErrorReqBody: furyEnvValue(process.env.FURYPIPE_DEBUG_CAPTURE_4XX, process.env.PXPIPE_DEBUG_CAPTURE_4XX) === '1',
+    maxRequestBytes: parseMaxRequestBytes(furyEnvValue(process.env.FURYPIPE_MAX_REQUEST_BYTES, process.env.PXPIPE_MAX_REQUEST_BYTES)),
   };
 }
 
@@ -233,7 +235,7 @@ function parseMaxRequestBytes(value: string | undefined): number | undefined {
   const bytes = Number(raw);
   if (!Number.isSafeInteger(bytes) || bytes <= 0) {
     console.error(
-      '[furypipe] PXPIPE_MAX_REQUEST_BYTES must be a positive whole number of bytes',
+      '[furypipe] FURYPIPE_MAX_REQUEST_BYTES must be a positive whole number of bytes',
     );
     process.exit(2);
   }
@@ -243,7 +245,7 @@ function parseMaxRequestBytes(value: string | undefined): number | undefined {
 function parseProvider(v: string | undefined): 'cloudflare-ai-gateway' | 'omniroute' | undefined {
   if (v === undefined || v === '') return undefined;
   if (v === 'cloudflare-ai-gateway' || v === 'omniroute') return v;
-  console.error('[furypipe] unknown PXPIPE_PROVIDER value');
+  console.error('[furypipe] unknown FURYPIPE_PROVIDER value');
   process.exit(2);
 }
 
@@ -265,7 +267,7 @@ Usage:
                           --route '127.0.0.1:9090/v1/*=http://127.0.0.1:47821'
   furypipe stats [--json] [--file <p>]
                         summarize the events log offline (no server needed),
-                        incl. measured savings; defaults to $PXPIPE_LOG
+                        incl. measured savings; defaults to $FURYPIPE_LOG
 
 The proxy compresses eligible tools, schemas, reminders, tool_results,
 and history; tracks events to disk; and measures real saved_pct via
@@ -285,10 +287,10 @@ Environment:
   HOST                    interface to bind (default 127.0.0.1, loopback only).
                           Non-loopback bindings expose only the proxy API;
                           dashboard routes remain loopback-only.
-  PXPIPE_UPSTREAM         upstream API base for every API family
-  ANTHROPIC_UPSTREAM      Anthropic API base; overrides PXPIPE_UPSTREAM
+  FURYPIPE_UPSTREAM       upstream API base for every API family
+  ANTHROPIC_UPSTREAM      Anthropic API base; overrides FURYPIPE_UPSTREAM
                            (default https://api.anthropic.com)
-  OPENAI_UPSTREAM         OpenAI API base; overrides PXPIPE_UPSTREAM
+  OPENAI_UPSTREAM         OpenAI API base; overrides FURYPIPE_UPSTREAM
                            (default https://api.openai.com)
   OPENAI_API_KEY          optional OpenAI key override; otherwise forwarded
   OPENAI_MODELS           comma-separated exact model ids routed to OpenAI
@@ -296,26 +298,26 @@ Environment:
   CLOUDFLARE_MODELS       comma-separated exact model ids routed to Cloudflare
   CLOUDFLARE_ACCOUNT_ID   with CLOUDFLARE_API_TOKEN, zero-config Cloudflare
   CLOUDFLARE_API_TOKEN    Workers AI endpoint and bearer token
-  PXPIPE_PROVIDER         optional: 'cloudflare-ai-gateway' or 'omniroute'
-  PXPIPE_GATEWAY_BASE_URL generic gateway base URL
-  PXPIPE_GATEWAY_HEADERS  extra gateway headers; OmniRoute rejects auth/cookie names
+  FURYPIPE_PROVIDER       optional: 'cloudflare-ai-gateway' or 'omniroute'
+  FURYPIPE_GATEWAY_BASE_URL generic gateway base URL
+  FURYPIPE_GATEWAY_HEADERS extra gateway headers; OmniRoute rejects auth/cookie names
   OMNIROUTE_BASE_URL      OmniRoute root or /v1 URL; required for omniroute
   OMNIROUTE_API_KEY       optional OmniRoute Bearer API key; never logged
-  PXPIPE_MODELS           comma-separated model bases to image (Claude/Gemini/GPT/Grok);
+  FURYPIPE_MODELS         comma-separated model bases to image (Claude/Gemini/GPT/Grok);
                           default claude-fable-5,gemini (every Gemini; Sol/Opus/GPT-5.5/Grok opt-in);
                           off disables
-  PXPIPE_CONFIG           JSON config path (default ~/.config/pxpipe/config.json)
+  FURYPIPE_CONFIG         JSON config path (legacy default ~/.config/pxpipe/config.json)
                           supports {"models": [...]} or {"models": "off"}
-  PXPIPE_LOG              JSONL events path (default ~/.pxpipe/events.jsonl)
-  PXPIPE_DUMP_DIR         debug: write every rendered PNG here (what the model
+  FURYPIPE_LOG            JSONL events path (legacy default ~/.pxpipe/events.jsonl)
+  FURYPIPE_DUMP_DIR       debug: write every rendered PNG here (what the model
                           sees); off unless set. Compress arm only.
-  PXPIPE_RENDER_CACHE_BYTES  max bytes of rendered pages to keep in memory
+  FURYPIPE_RENDER_CACHE_BYTES max bytes of rendered pages to keep in memory
                           (default 64 MiB here; 8 MiB on Workers, where the
                           isolate has ~128 MiB for everything). Frozen history
                           chunks are byte-identical across turns, so
                           re-rendering them is wasted CPU; 0 disables the cache.
                           Live counters at /proxy-stats under render_cache.
-  PXPIPE_DEBUG_CAPTURE_4XX  debug: set to 1 to persist full 4xx request and
+  FURYPIPE_DEBUG_CAPTURE_4XX debug: set to 1 to persist full 4xx request and
                           upstream error bodies (prompts + any secrets in
                           context) to disk. Off by default.
 
@@ -1129,8 +1131,8 @@ async function main(): Promise<void> {
   }
   if (argv[0] === 'stats') {
     // Offline log analysis — reads the events JSONL without a running proxy.
-    // The live dashboard covers the same data while pxpipe is up.
-    const defaultFile = process.env.PXPIPE_LOG ?? DEFAULT_EVENTS_FILE;
+    // The live dashboard covers the same data while FuryPipe is up.
+    const defaultFile = furyEnvValue(process.env.FURYPIPE_LOG, process.env.PXPIPE_LOG) ?? DEFAULT_EVENTS_FILE;
     const { code, out, err } = await runStats(argv.slice(1), defaultFile);
     if (out) process.stdout.write(out + '\n');
     if (err) process.stderr.write(err + '\n');
@@ -1140,7 +1142,7 @@ async function main(): Promise<void> {
     argv.splice(0, 1);
   }
   // `warp` runs an agent behind a CONNECT proxy and redirects its inference
-  // traffic into the pxpipe already running. It starts no proxy of its own, so
+  // traffic into the FuryPipe instance already running. It starts no proxy of its own, so
   // it exits through its own branch below rather than falling through here.
   let warpCommand: string[] | undefined;
   const warpRoutes: string[] = [];
@@ -1185,9 +1187,9 @@ async function main(): Promise<void> {
     return;
   }
   // A/B harness passthrough switch (see the `transform` callback below).
-  const forcePassthrough = /^(1|true|yes|on)$/i.test(process.env.PXPIPE_DISABLE ?? '');
+  const forcePassthrough = /^(1|true|yes|on)$/i.test(furyEnvValue(process.env.FURYPIPE_DISABLE, process.env.PXPIPE_DISABLE) ?? '');
   if (forcePassthrough) {
-    console.log('[pxpipe] PXPIPE_DISABLE set — passthrough mode (compress=false), still logging usage + baselines');
+    console.log('[furypipe] FURYPIPE_DISABLE set — passthrough mode (compress=false), still logging usage + baselines');
   }
   // Subscription bearers expire. A client that froze its bearer at startup — a
   // container handed CLAUDE_CODE_OAUTH_TOKEN as an env var — cannot renew one,
@@ -1220,14 +1222,14 @@ async function main(): Promise<void> {
   // legibility audits, demo inspection). Best-effort — never affects requests.
   // Note: the PXPIPE_DISABLE arm renders nothing, so only the compress proxy
   // produces files here.
-  let imageDumpDir: string | undefined = process.env.PXPIPE_DUMP_DIR?.trim() || undefined;
+  let imageDumpDir: string | undefined = furyEnvValue(process.env.FURYPIPE_DUMP_DIR, process.env.PXPIPE_DUMP_DIR)?.trim() || undefined;
   let imageDumpSeq = 0;
   if (imageDumpDir) {
     try {
       ensurePrivateDirectory(imageDumpDir);
-      console.log('[furypipe] PXPIPE_DUMP_DIR set — rendered PNG dumping enabled');
+      console.log('[furypipe] FURYPIPE_DUMP_DIR set — rendered PNG dumping enabled');
     } catch (err) {
-      console.warn('[furypipe] PXPIPE_DUMP_DIR unusable — image dumping disabled');
+      console.warn('[furypipe] FURYPIPE_DUMP_DIR unusable — image dumping disabled');
       imageDumpDir = undefined;
     }
   }
@@ -1236,7 +1238,7 @@ async function main(): Promise<void> {
   // reminders, tool_results, and history compression all run
   // unconditionally; the per-block break-even gate decides per-call
   // whether to actually image each piece. The function-form `transform`
-  // below is ONLY a kill switch (PXPIPE_DISABLE / dashboard toggle →
+  // below is ONLY a kill switch (FURYPIPE_DISABLE / dashboard toggle →
   // compress:false); on the active path it returns {}, so the gate always
   // runs on static DEFAULTS — charsPerToken=4, priorWarm*=0 — which leaves
   // the warm-baseline and anti-flapping burn terms inert. That is
@@ -1320,7 +1322,7 @@ async function main(): Promise<void> {
     transform: () => {
       // A/B harness: PXPIPE_DISABLE=1 forces passthrough (compress=false) for the
       // whole process, so the "normal" arm can be scripted on its own port while
-      // still logging real usage + count_tokens baselines to its own PXPIPE_LOG.
+      // still logging real usage + count_tokens baselines to its own FURYPIPE_LOG.
       // (The dashboard kill switch does the same thing at runtime.)
       if (forcePassthrough || !dashboard.getCompressionEnabled()) {
         return controlRoomRuntime === undefined
@@ -1483,7 +1485,7 @@ async function main(): Promise<void> {
     console.log('[furypipe] event tracking enabled');
     if (opts.captureErrorReqBody) {
       console.warn(
-        '[furypipe] PXPIPE_DEBUG_CAPTURE_4XX=1 — persisting full 4xx request and upstream error bodies; debugging only.',
+        '[furypipe] FURYPIPE_DEBUG_CAPTURE_4XX=1 — persisting full 4xx request and upstream error bodies; debugging only.',
       );
     }
   };
