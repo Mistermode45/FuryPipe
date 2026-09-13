@@ -3,6 +3,7 @@ import type {
   ProviderRuntimeState,
 } from './core/provider-runtime.js';
 import type { ProviderAvailability } from './core/provider-fabric.js';
+import { isGeneratedGovernedProviderExecutionResult } from './governed-provider-executor.js';
 import {
   canonicalProviderId,
   exactIdentifier,
@@ -56,7 +57,7 @@ export interface ProviderTransportHealthAssessment {
    * result input is not a signed/persistent provenance claim.
    */
   readonly assessmentProvenance: 'process-local';
-  readonly sourceProvenance: 'not-verified';
+  readonly sourceProvenance: 'process-local';
 }
 
 const generatedAssessments = new WeakSet<object>();
@@ -131,6 +132,9 @@ export function assessProviderTransportHealth(
   policy: ProviderTransportHealthPolicy,
   timing: ProviderTransportHealthTiming,
 ): ProviderTransportHealthAssessment {
+  if (!isGeneratedGovernedProviderExecutionResult(execution)) {
+    throw new TypeError('governed provider execution result lacks process-local provenance');
+  }
   const result = ownDataRecord(execution);
   if (result.format !== 'furypipe-governed-provider-execution-result/v1'
     || result.state !== 'TRANSPORT_RESULT'
@@ -206,7 +210,7 @@ export function assessProviderTransportHealth(
     ...(expiresAt === undefined ? {} : { expiresAt }),
     evidenceKind: 'transport-result' as const,
     assessmentProvenance: 'process-local' as const,
-    sourceProvenance: 'not-verified' as const,
+    sourceProvenance: 'process-local' as const,
   });
   generatedAssessments.add(assessment);
   return assessment;
