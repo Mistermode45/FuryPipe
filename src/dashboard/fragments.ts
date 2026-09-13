@@ -797,6 +797,10 @@ export function renderLatestFragment(inp: LatestFragmentInput, locale = 'en'): s
 
 const TOP_N = 8;
 
+export function renderSessionsUnavailableFragment(locale = 'en'): string {
+  return `<div class="status">${escapeHtml(dashboardT(locale, 'dashboard.sessions.unavailable'))}</div>`;
+}
+
 export function renderSessionsFragment(p: SessionsPayload, locale = 'en'): string {
   const t = (key: string): string => dashboardT(locale, key);
   const all = p.sessions ?? [];
