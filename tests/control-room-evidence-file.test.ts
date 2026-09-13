@@ -144,6 +144,7 @@ describe('Control Room host evidence file', () => {
         sourceCommit: SHA,
         packageVersion: '0.13.2',
         channel: 'rc',
+        performanceClaims: false,
         status: 'BLOCKED',
         blockers: [{
           gateId: 'runtime.mcp',
@@ -180,6 +181,7 @@ describe('Control Room host evidence file', () => {
         sourceCommit: SHA,
         packageVersion: '0.13.2',
         channel: 'rc',
+        performanceClaims: false,
         status: 'READY_FOR_RELEASE_DECISION',
         blockers: [{ gateId: 'runtime.mcp', title: 'MCP', state: 'PARTIAL', reason: 'missing hosted proof' }],
         warnings: [],
@@ -198,7 +200,7 @@ describe('Control Room host evidence file', () => {
       ...validEvidence(),
       releaseReadiness: {
         format: 'furypipe-release-readiness/v2', generatedAt: 99, sourceCommit: SHA,
-        packageVersion: '0.13.2', channel: 'rc', status: 'BLOCKED',
+        packageVersion: '0.13.2', channel: 'rc', performanceClaims: false, status: 'BLOCKED',
         blockers: [{ gateId: 'runtime.mcp', title: 'MCP', state: 'PARTIAL', reason: 'missing hosted proof' }],
         warnings: [], verifiedRequiredGates: 16, requiredGates: 17,
         verifiedGateEvidence: coreGateEvidence('runtime.mcp', 'ci.push'),
@@ -209,12 +211,44 @@ describe('Control Room host evidence file', () => {
     expect(() => parseControlRoomHostEvidence(evidence, SHA)).toThrow(/sourceCommit does not match/);
   });
 
+  it('rejects release reports with claim-count or authorization-shape mismatches', () => {
+    const baseReport = {
+      format: 'furypipe-release-readiness/v2',
+      generatedAt: 99,
+      sourceCommit: SHA,
+      packageVersion: '0.13.2',
+      channel: 'rc',
+      performanceClaims: false,
+      status: 'BLOCKED',
+      blockers: [{ gateId: 'runtime.mcp', title: 'MCP', state: 'PARTIAL', reason: 'missing hosted proof' }],
+      warnings: [],
+      verifiedRequiredGates: 16,
+      requiredGates: 17,
+      verifiedGateEvidence: coreGateEvidence(),
+      authorization: { mergeDefaultBranch: false, createReleaseTag: false, publishNpm: false, deployProduction: false },
+      releaseActionsExecuted: false,
+    } as const;
+
+    expect(() => parseControlRoomHostEvidence({
+      ...validEvidence(),
+      releaseReadiness: { ...baseReport, performanceClaims: true },
+    }, SHA)).toThrow(/required gate count is not canonical for performanceClaims/);
+
+    expect(() => parseControlRoomHostEvidence({
+      ...validEvidence(),
+      releaseReadiness: {
+        ...baseReport,
+        authorization: { ...baseReport.authorization, unexpected: true },
+      },
+    }, SHA)).toThrow(/exactly the four boolean authorization fields/);
+  });
+
   it('rejects a ready report whose gate evidence uses invented gate IDs', () => {
     const evidence = {
       ...validEvidence(),
       releaseReadiness: {
         format: 'furypipe-release-readiness/v2', generatedAt: 99, sourceCommit: SHA,
-        packageVersion: '0.13.2', channel: 'rc', status: 'READY_FOR_RELEASE_DECISION',
+        packageVersion: '0.13.2', channel: 'rc', performanceClaims: false, status: 'READY_FOR_RELEASE_DECISION',
         blockers: [], warnings: [], verifiedRequiredGates: 17, requiredGates: 17,
         verifiedGateEvidence: Array.from({ length: 17 }, (_, index) => ({
           gateId: `fabricated-${index}`, sourceCommit: SHA, observedAt: 90,
