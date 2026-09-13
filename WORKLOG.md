@@ -543,3 +543,17 @@
 - Draft PR #106 ouverte vers `v5-production-hardening` : https://github.com/Mistermode45/FuryPipe/pull/106. Head vérifié `dcf22da274abb67eb5a8c9c147d8fff3d87b23d1`; PR `OPEN`, `DRAFT`, non fusionnée.
 - CI GitHub lue après achèvement : 20 contrôles `PASS`, dont la matrice complète 9/9 (Ubuntu/macOS/Windows × Node 22.23.2/24.21.0/26.8.2), CodeQL/analyse, audit figé, SBOM, provenance, pinning actions, contrat, Gitleaks et rapports OS. `GitHub dependency review` et `Attest packed npm artifact` sont `SKIPPED` par leurs conditions; ils ne sont pas présentés comme réussis.
 - Aucun merge, release, tag, déploiement ou publish; aucun provider réel, transport réseau ou credential appelé.
+
+
+## 2026-09-13 — Production Provider Transports
+
+- GitHub access confirmed for `Mistermode45/FuryPipe`. Created dedicated branch `v5-codex-production-provider-transports` from the production-hardening integration line. That line advanced to `bc92bef794df25b2a7c5418464a7fee0e4c695f8` while this work was in progress; merged its tip normally into the feature branch (no rebase/force-push).
+- Added native-fetch, fixed-endpoint OpenAI Responses, Anthropic Messages, and Google Gemini Interactions adapters. Request bodies preserve the exact approved prompt/model and avoid provider SDKs; host supplies credentials and fetch implementation.
+- Shared HTTP runtime bounds response bodies at 1 MiB while streaming, enforces per-call timeout/cancellation, rejects redirects, reports only documented request IDs, bounds retry-after metadata, redacts credential echoes, and never retries/falls back automatically. Non-2xx payloads remain discarded from governed output.
+- Extended the governed executor with optional abort-signal context and strictly validated HTTP status/retry delay metadata. Source barrel exists, but package export wiring remains deferred; no package manifest or lockfile edit is part of this feature diff.
+- Added provider-specific fake-fetch tests and executor integration tests covering exact endpoints/request payloads, auth and credential secrecy, usage/cache/finish-reason normalization, request IDs, retry metadata, HTTP errors, malformed/empty responses, cancellation/timeouts, limits and network failures. No live provider call, real credential, paid request, production deploy, publish, release or tag was used.
+- Verified official provider documentation for endpoint/version, authentication, request/response fields, usage metadata, request IDs and retry guidance; details and links are in `docs/PRODUCTION_PROVIDER_TRANSPORTS.md` (reviewed 2026-09-13).
+- `pnpm install --frozen-lockfile`: PASS, lockfile unchanged; `pnpm run audit`: PASS, no known production dependency vulnerabilities; `pnpm run typecheck`: PASS.
+- Focused tests: PASS, 6 files / 81 tests. Full `pnpm test`: PASS, 157 files / 1,873 tests. `pnpm run build`: PASS, library/declarations, `dist/node.js`, `dist/mcp.js`, version smoke 0.13.2. `pnpm run package:smoke`: PASS for package, benchmark-claim, provider-attempt and governed-provider tarball smoke. `git diff --check`: PASS.
+- Branch changes contain the 16 implementation/docs/test files listed in the baseline; reserved receipt source/test/docs, package manifest, lockfile and governed-provider smoke script are not changed by this feature diff. GitHub PR and required CI matrix/gates remain pending publication and verification.
+- Stop boundary: do not merge this PR, merge the default/release branch, publish npm, tag, release or deploy production without explicit approval.

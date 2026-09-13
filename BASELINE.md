@@ -240,3 +240,22 @@ Baseline de code : `v5-production-hardening` / `d6b1944404e23c5a76a36b4b8ef6def6
 | Package public export | NOT_CHANGED | intégration packaging réservée à une autre piste |
 | GitHub CI / PR | PASS / OPEN DRAFT | PR #106 vers `v5-production-hardening`, head `dcf22da274abb67eb5a8c9c147d8fff3d87b23d1`; 20 contrôles passés dont matrice 9/9 OS × Node; dependency review et attestation du tarball `SKIPPED` conditionnellement; PR non fusionnée |
 | Publication / release / merge / deploy | NOT_EXECUTED | hors scope sans approbation explicite |
+
+## Production Provider Transports — 2026-09-13
+
+Baseline d'intégration : `v5-production-hardening` / `bc92bef794df25b2a7c5418464a7fee0e4c695f8`. Branche dédiée : `v5-codex-production-provider-transports`. Le HEAD de cette branche comprend le commit de transports et une fusion normale du tip d'intégration; aucun historique n'a été réécrit.
+
+| Vérification | Résultat | Mesure / preuve |
+|---|---|---|
+| `pnpm install --frozen-lockfile` | PASS | pnpm projet 10.21.0; lockfile inchangé |
+| `pnpm run audit` | PASS | aucune vulnérabilité de production connue |
+| `pnpm run typecheck` | PASS | sortie 0 |
+| `pnpm test` | PASS | 157 fichiers; 1 873 tests |
+| `pnpm run build` | PASS | modules/déclarations, `dist/node.js`, `dist/mcp.js`; version smoke 0.13.2 |
+| `pnpm run package:smoke` | PASS | package, benchmark-claim, provider-attempt et governed-provider smoke sur tarball local |
+| `git diff --check` | PASS | aucun whitespace error |
+| Provider HTTP réel | NOT_EXECUTED | tests uniquement via fetch injecté; aucun credential, requête fournisseur ni trafic provider |
+| Export package public des transports | DEFERRED | aucun changement à `package.json` ni au lockfile; barrel source seulement |
+| Portée PR | REVIEWED | 16 fichiers de transport/executor/docs/tests; fichiers réservés et smoke script exclus du diff de branche |
+| CI GitHub / PR | PENDING | à vérifier après publication de la branche; aucune fusion demandée |
+| Publish / release / tag / production deploy | NOT_EXECUTED | explicitement hors de ce travail |
