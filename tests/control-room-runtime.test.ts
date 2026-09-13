@@ -281,6 +281,8 @@ describe('Control Room live runtime collector', () => {
       externalConformance: 'NOT_AVAILABLE',
     });
     expect(snapshot.sections.mcp.status).toBe('PARTIAL');
+    expect(snapshot.sections.mcp.warnings.join(' ')).toMatch(/Authorization Server conformance is proven/i);
+    expect(snapshot.sections.mcp.warnings.join(' ')).toMatch(/external client\/network conformance is not verified/i);
     expect(JSON.stringify(snapshot)).not.toContain('CONTROL_ROOM_PRIVATE_TOKEN');
     expect(JSON.stringify(snapshot)).not.toContain('control-room-test-client');
     await handler.close();
