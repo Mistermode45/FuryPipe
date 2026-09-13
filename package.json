@@ -281,6 +281,10 @@
     "./provider-transport-health": {
       "types": "./dist/provider-transport-health.d.ts",
       "import": "./dist/provider-transport-health.js"
+    },
+    "./provider-execution-audit-ledger-recovery": {
+      "types": "./dist/provider-execution-audit-ledger-recovery.d.ts",
+      "import": "./dist/provider-execution-audit-ledger-recovery.js"
     }
   },
   "files": [
@@ -330,6 +334,7 @@
     "docs/GOVERNED_PROVIDER_EXECUTION_RECEIPTS.md",
     "docs/PROVIDER_EXECUTION_AUDIT_CHAIN.md",
     "docs/PROVIDER_EXECUTION_AUDIT_LEDGER.md",
+    "docs/PROVIDER_EXECUTION_AUDIT_LEDGER_RECOVERY.md",
     "docs/PRODUCTION_PROVIDER_TRANSPORTS.md",
     "docs/PROVIDER_TRANSPORT_HEALTH.md"
   ],
