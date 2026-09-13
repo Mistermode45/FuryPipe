@@ -214,14 +214,12 @@ function validateEvidence(
 
 function validateUsage(
   value: GovernedProviderExecutionResult['usage'],
-): FuryGovernedProviderExecutionReceipt['outcome'] extends infer _T
-  ? Readonly<{
-      readonly inputTokens?: number;
-      readonly outputTokens?: number;
-      readonly cacheWriteTokens?: number;
-      readonly cacheReadTokens?: number;
-    }> | undefined
-  : never {
+): Readonly<{
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly cacheWriteTokens?: number;
+  readonly cacheReadTokens?: number;
+}> | undefined {
   if (value === undefined) return undefined;
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('execution receipt usage is invalid');
