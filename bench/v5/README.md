@@ -75,3 +75,19 @@ node bench/v5/suite.mjs runs/*.json > suite.json
 ```
 
 Hosted provider execution is still separate. GitHub CI runs only the offline contract self-test and must not be cited as a provider benchmark.
+
+## Release claim / anti-regression gate
+
+The repeated suite's `CLAIM_ELIGIBLE` state means the evidence contract is
+complete enough to inspect; it is not the final release-claim decision.
+
+`src/benchmark-claim-gate.ts` adds a stricter offline gate that requires
+FuryPipe median quality to be non-regressive against both RAW and pxpipe,
+revalidates exactness/errors, and requires the selected metric to be complete
+for every repetition before a metric-specific measured comparison can be
+claim-eligible.
+
+See `docs/BENCHMARK_CLAIM_GATE.md`.
+
+This second gate remains descriptive-only and explicitly does not establish
+statistical significance, causality, or cross-scope superiority.
