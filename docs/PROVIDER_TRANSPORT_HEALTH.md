@@ -11,8 +11,10 @@ The distinction is deliberate:
 - a transport result is `transport-result` evidence;
 - it is **not** renamed to `live-probe`;
 - the assessment itself has process-local provenance;
-- the source execution result remains `not-verified` unless another, stronger
-  provenance mechanism proves it.
+- the source execution result must be the exact process-local object returned by
+  FuryPipe's Governed Provider Executor; copied/serialized/fabricated results fail;
+- transport claims inside that result remain `transport-reported`, not independently
+  network/provider-verified evidence.
 
 ## Positive evidence
 
@@ -41,7 +43,9 @@ the configured health TTL and does not schedule a retry.
 
 ## Promotion into Provider Runtime
 
-`assessProviderTransportHealth()` creates a process-local assessment.
+`assessProviderTransportHealth()` first requires
+`isGeneratedGovernedProviderExecutionResult()` to succeed, then creates a
+process-local assessment.
 
 `applyProviderTransportHealthAssessment()` is a separate explicit mutation step.
 It refuses forged/reconstructed assessment objects, ignores `unknown` conclusions,
@@ -57,7 +61,7 @@ This feature is not:
 
 - live-provider certification;
 - proof of packet delivery;
-- signed or persistent provenance;
+- signed or persistent provenance; process-local identity does not survive serialization;
 - proof that a model generated a semantically correct response;
 - automatic retry/fallback;
 - a replacement for operator-config or dedicated live probes.
