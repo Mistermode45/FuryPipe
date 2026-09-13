@@ -529,6 +529,7 @@ export function createRecoveryAgentMemoryStore(store: RecoveryStore): AgentMemor
         metadata: {
           source: AGENT_MEMORY_CLAIM_SOURCE,
           contentType: AGENT_MEMORY_CLAIM_CONTENT_TYPE,
+          runId,
         },
         maxMatches: MAX_AGENT_MEMORY_CLAIMS,
       });
