@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 
-import { compileFuryPrompt } from './fury-prompt.js';
+import {
+  compileFuryPrompt,
+  FURY_PROMPT_SECTION_ORDER,
+  type FuryPromptCompileInput,
+} from './fury-prompt.js';
 import type { FuryModelAdapterBlock } from './model-adapter-registry.js';
 import type {
   FuryContextOptimizerProfileBlock,
@@ -15,6 +19,7 @@ export interface FuryProviderAttemptPlanReceipt {
   readonly prompt: {
     readonly promptDigest: string;
     readonly sourceDigest: string;
+    readonly compileInputDigest: string;
     readonly bytes: number;
     readonly level: string;
   };
@@ -239,6 +244,24 @@ function assertContextProfileState(plan: FuryProviderAttemptPlan): void {
   }
 }
 
+function promptCompileInputDigest(input: FuryPromptCompileInput): string {
+  const sections = FURY_PROMPT_SECTION_ORDER.flatMap((section) => {
+    const value = input.sections[section];
+    if (value === undefined) return [];
+    return [{
+      id: section,
+      values: typeof value === 'string' ? [value] : [...value],
+    }];
+  });
+  const canonical = JSON.stringify({
+    sections,
+    level: input.level ?? null,
+    securityCritical: input.securityCritical ?? null,
+    exactGuardMode: input.exactGuardMode ?? null,
+  });
+  return createHash('sha256').update(canonical, 'utf8').digest('hex');
+}
+
 function receiptDigest(value: Omit<FuryProviderAttemptPlanReceipt, 'receiptDigest'>): string {
   return createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex');
 }
@@ -261,9 +284,12 @@ function receiptCore(plan: FuryProviderAttemptPlan): Omit<FuryProviderAttemptPla
 
   const promptCompilation = compileFuryPrompt(plan.prompt);
   const adapterPromptCompilation = compileFuryPrompt(plan.adapter.prompt);
+  const compileInputDigest = promptCompileInputDigest(plan.prompt);
+  const adapterCompileInputDigest = promptCompileInputDigest(plan.adapter.prompt);
   if (
     promptCompilation.promptDigest !== adapterPromptCompilation.promptDigest
     || promptCompilation.source.contentDigest !== adapterPromptCompilation.source.contentDigest
+    || compileInputDigest !== adapterCompileInputDigest
   ) {
     throw new Error('provider attempt prompt must exactly match adapter plan prompt');
   }
@@ -292,6 +318,7 @@ function receiptCore(plan: FuryProviderAttemptPlan): Omit<FuryProviderAttemptPla
     prompt: Object.freeze({
       promptDigest: promptCompilation.promptDigest,
       sourceDigest: promptCompilation.source.contentDigest,
+      compileInputDigest,
       bytes: promptCompilation.promptBytes,
       level: promptCompilation.level,
     }),
