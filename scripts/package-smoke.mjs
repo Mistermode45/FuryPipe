@@ -85,6 +85,7 @@ try {
   assert(packedFiles.has('docs/ECOSYSTEM_INGESTION.md'), 'Ecosystem Ingestion documentation is missing from the public package');
   assert(packedFiles.has('docs/SKILL_ECOSYSTEM_2026.md'), '2026 Skill Ecosystem documentation is missing from the public package');
   assert(packedFiles.has('docs/PROVIDER_RETRY_FALLBACK_ORCHESTRATOR.md'), 'Provider Retry/Fallback Orchestrator documentation is missing from the public package');
+  assert(packedFiles.has('docs/GOVERNED_PROVIDER_STREAMING.md'), 'Governed Provider Streaming documentation is missing from the public package');
   assert(packedFiles.has('docs/FURYTRUST.md'), 'FuryTrust documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_CATALOG_RESOLVER.md'), 'Capability Catalog Resolver documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_ACTIVATION.md'), 'Capability Activation documentation is missing from the public package');
@@ -209,6 +210,18 @@ try {
     "const m = await import('furypipe/provider-retry-fallback-orchestrator'); if (typeof m.createProviderRetryFallbackOrchestrator !== 'function' || typeof m.isGeneratedProviderRetryFallbackResult !== 'function') process.exit(1);",
   ], installDir);
   assert(retryFallbackExport.stderr === '', `Provider Retry/Fallback Orchestrator package export wrote stderr: ${retryFallbackExport.stderr}`);
+  const providerStreamingExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/provider-streaming'); if (typeof m.createGovernedProviderStreamExecutor !== 'function' || typeof m.createProviderStreamTransportRegistry !== 'function' || typeof m.isGeneratedGovernedProviderStreamSession !== 'function') process.exit(1);",
+  ], installDir);
+  assert(providerStreamingExport.stderr === '', `Provider streaming package export wrote stderr: ${providerStreamingExport.stderr}`);
+  const providerStreamTransportsExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/provider-stream-transports'); if (typeof m.createOpenAIProviderStreamTransport !== 'function' || typeof m.createAnthropicProviderStreamTransport !== 'function' || typeof m.createGoogleProviderStreamTransport !== 'function') process.exit(1);",
+  ], installDir);
+  assert(providerStreamTransportsExport.stderr === '', `Provider stream transports package export wrote stderr: ${providerStreamTransportsExport.stderr}`);
   const omniRouteExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
