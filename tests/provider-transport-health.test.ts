@@ -1,39 +1,63 @@
 import { describe, expect, it } from 'vitest';
-import { COST_UNKNOWN, DEFAULT_PROVIDER_REGISTRY } from '../src/core/provider-fabric.js';
+import { DEFAULT_PROVIDER_REGISTRY } from '../src/core/provider-fabric.js';
 import { createProviderRuntimeState } from '../src/core/provider-runtime.js';
+import {
+  createGovernedProviderExecutor,
+  isGeneratedGovernedProviderExecutionResult,
+} from '../src/governed-provider-executor.js';
+import { createProviderExecutionGate } from '../src/provider-execution-gate.js';
+import { createProviderTransportRegistry } from '../src/provider-transport.js';
 import {
   applyProviderTransportHealthAssessment,
   assessProviderTransportHealth,
   MAX_PROVIDER_TRANSPORT_HEALTH_TTL_MS,
   type ProviderTransportHealthAssessment,
 } from '../src/provider-transport-health.js';
+import { makePolicy, makeRequest, makeRuntime } from './helpers/provider-executor.js';
 
-function execution(overrides: Record<string, unknown> = {}) {
-  return {
-    format: 'furypipe-governed-provider-execution-result/v1',
-    state: 'TRANSPORT_RESULT',
-    transportInvoked: true,
-    providerId: 'openai',
-    model: 'gpt-5.6-sol',
-    workloadId: 'health-test',
-    requestDigest: 'a'.repeat(64),
-    network: { status: 'executed', evidence: 'transport-reported' },
-    providerRequest: { status: 'accepted', evidence: 'transport-reported' },
-    httpStatus: 200,
-    cost: {
-      status: COST_UNKNOWN,
-      providerId: 'openai',
-      model: 'gpt-5.6-sol',
-      reason: 'test fixture',
-    },
-    ...overrides,
-  };
+const at = 1_000;
+
+async function execution(overrides: Record<string, unknown> = {}) {
+  const request = makeRequest();
+  const runtime = makeRuntime();
+  const gate = createProviderExecutionGate({ providerRuntime: runtime, now: () => at });
+  const permit = gate.authorize(request, makePolicy(request));
+  const transports = createProviderTransportRegistry([{
+    providerId: request.providerId,
+    protocol: request.protocol,
+    execute: async () => ({
+      providerId: request.providerId,
+      model: request.model,
+      networkStatus: 'executed',
+      providerRequestStatus: 'accepted',
+      httpStatus: 200,
+      ...overrides,
+    }),
+  }]);
+  return createGovernedProviderExecutor({
+    transports,
+    providerRuntime: runtime,
+    now: () => at,
+  }).execute(request, permit);
 }
 
 describe('provider transport health observation', () => {
-  it('derives short-lived available evidence from a transport-reported accepted 2xx', () => {
+  it('requires a process-local governed execution result', async () => {
+    const result = await execution();
+    expect(isGeneratedGovernedProviderExecutionResult(result)).toBe(true);
+    expect(isGeneratedGovernedProviderExecutionResult({ ...result })).toBe(false);
+
+    expect(() => assessProviderTransportHealth(
+      { ...result },
+      { availableTtlMs: 30_000 },
+      { startedAt: 1_000, finishedAt: 1_125 },
+    )).toThrow(/process-local provenance/);
+  });
+
+  it('derives short-lived available evidence from a transport-reported accepted 2xx', async () => {
+    const result = await execution();
     const assessment = assessProviderTransportHealth(
-      execution(),
+      result,
       { availableTtlMs: 30_000 },
       { startedAt: 1_000, finishedAt: 1_125 },
     );
@@ -46,15 +70,14 @@ describe('provider transport health observation', () => {
       latencyMs: 125,
       evidenceKind: 'transport-result',
       assessmentProvenance: 'process-local',
-      sourceProvenance: 'not-verified',
+      sourceProvenance: 'process-local',
     });
   });
 
-  it('does not infer availability when an accepted result has no HTTP status', () => {
-    const value = execution();
-    delete value.httpStatus;
+  it('does not infer availability when an accepted result has no HTTP status', async () => {
+    const result = await execution({ httpStatus: undefined });
     const assessment = assessProviderTransportHealth(
-      value,
+      result,
       { availableTtlMs: 30_000 },
       { startedAt: 10, finishedAt: 20 },
     );
@@ -62,15 +85,15 @@ describe('provider transport health observation', () => {
     expect(assessment.reason).toBe('http-status-missing');
   });
 
-  it('requires an explicit host allowlist before a rejected HTTP result becomes unavailable', () => {
-    const rejected = execution({
-      providerRequest: { status: 'rejected', evidence: 'transport-reported' },
+  it('requires an explicit host allowlist before a rejected HTTP result becomes unavailable', async () => {
+    const result = await execution({
+      providerRequestStatus: 'rejected',
       httpStatus: 503,
       retryAfterMs: 2_000,
     });
 
     const conservative = assessProviderTransportHealth(
-      rejected,
+      result,
       { availableTtlMs: 30_000 },
       { startedAt: 100, finishedAt: 150 },
     );
@@ -78,7 +101,7 @@ describe('provider transport health observation', () => {
     expect(conservative.reason).toBe('rejection-not-classified');
 
     const explicit = assessProviderTransportHealth(
-      rejected,
+      result,
       {
         availableTtlMs: 30_000,
         unavailableHttpStatuses: [503],
@@ -94,9 +117,10 @@ describe('provider transport health observation', () => {
     });
   });
 
-  it('does not turn not-reported transport state into health evidence', () => {
+  it('does not turn not-reported transport state into health evidence', async () => {
+    const result = await execution({ networkStatus: undefined });
     const assessment = assessProviderTransportHealth(
-      execution({ network: { status: 'executed', evidence: 'not-reported' } }),
+      result,
       { availableTtlMs: 30_000 },
       { startedAt: 100, finishedAt: 150 },
     );
@@ -104,10 +128,10 @@ describe('provider transport health observation', () => {
     expect(assessment.reason).toBe('transport-evidence-insufficient');
   });
 
-  it('applies only known process-local assessments and preserves the transport-result evidence kind', () => {
+  it('applies only known process-local assessments and preserves the transport-result evidence kind', async () => {
     const runtime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
     const assessment = assessProviderTransportHealth(
-      execution(),
+      await execution(),
       { availableTtlMs: 1_000 },
       { startedAt: 100, finishedAt: 200 },
     );
@@ -130,13 +154,10 @@ describe('provider transport health observation', () => {
     });
   });
 
-  it('leaves ProviderRuntime unchanged for unknown assessments', () => {
+  it('leaves ProviderRuntime unchanged for unknown assessments', async () => {
     const runtime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
     const assessment = assessProviderTransportHealth(
-      execution({
-        providerRequest: { status: 'rejected', evidence: 'transport-reported' },
-        httpStatus: 401,
-      }),
+      await execution({ providerRequestStatus: 'rejected', httpStatus: 401 }),
       { availableTtlMs: 1_000 },
       { startedAt: 100, finishedAt: 200 },
     );
@@ -159,38 +180,40 @@ describe('provider transport health observation', () => {
       expiresAt: 1_001,
       evidenceKind: 'transport-result',
       assessmentProvenance: 'process-local',
-      sourceProvenance: 'not-verified',
+      sourceProvenance: 'process-local',
     }) as ProviderTransportHealthAssessment;
     expect(() => applyProviderTransportHealthAssessment(runtime, forged)).toThrow(/process-local provenance/);
   });
 
-  it('bounds timing, TTLs, and negative-status policy', () => {
+  it('bounds timing, TTLs, and negative-status policy', async () => {
+    const result = await execution();
+
     expect(() => assessProviderTransportHealth(
-      execution(),
+      result,
       { availableTtlMs: 0 },
       { startedAt: 1, finishedAt: 2 },
     )).toThrow(/availableTtlMs/);
 
     expect(() => assessProviderTransportHealth(
-      execution(),
+      result,
       { availableTtlMs: MAX_PROVIDER_TRANSPORT_HEALTH_TTL_MS + 1 },
       { startedAt: 1, finishedAt: 2 },
     )).toThrow(/availableTtlMs/);
 
     expect(() => assessProviderTransportHealth(
-      execution(),
+      result,
       { availableTtlMs: 1_000, unavailableHttpStatuses: [503] },
       { startedAt: 1, finishedAt: 2 },
     )).toThrow(/unavailableTtlMs/);
 
     expect(() => assessProviderTransportHealth(
-      execution(),
+      result,
       { availableTtlMs: 1_000, unavailableHttpStatuses: [200], unavailableTtlMs: 1_000 },
       { startedAt: 1, finishedAt: 2 },
     )).toThrow(/rejection statuses/);
 
     expect(() => assessProviderTransportHealth(
-      execution(),
+      result,
       { availableTtlMs: 1_000 },
       { startedAt: 3, finishedAt: 2 },
     )).toThrow(/ordered safe timestamps/);
