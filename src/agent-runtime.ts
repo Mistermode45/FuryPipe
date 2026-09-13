@@ -401,7 +401,7 @@ export function createInMemoryAgentMemoryStore(): AgentMemoryStore {
       }
       const key = `${runId}\0${claimId}`;
       if (claims.has(key)) return false;
-      if (claims.size >= MAX_IN_MEMORY_AGENT_CLAIMS) throw new Error('agent memory execution claim limit exceeded');
+      if (claims.size >= MAX_AGENT_MEMORY_CLAIMS) throw new Error('agent memory execution claim limit exceeded');
       claims.add(key);
       return true;
     },
@@ -416,7 +416,7 @@ const MAX_AGENT_MEMORY_RUN_ID = 256;
 const MAX_AGENT_MEMORY_DIGEST = 256;
 const MAX_AGENT_MEMORY_RECORDS = 10_000;
 const MAX_IN_MEMORY_AGENT_RECORDS = 10_000;
-const MAX_IN_MEMORY_AGENT_CLAIMS = 10_000;
+const MAX_AGENT_MEMORY_CLAIMS = 10_000;
 
 interface AgentMemoryEnvelope {
   readonly format: 'furypipe-agent-memory-envelope/v1';
@@ -448,7 +448,9 @@ function validateMemoryRunId(runId: string): void {
  */
 export function createRecoveryAgentMemoryStore(store: RecoveryStore): AgentMemoryStore {
   if (typeof store.list !== 'function') throw new Error('Recovery store does not support bounded manifest listing');
+  if (typeof store.putBounded !== 'function') throw new Error('Recovery store does not support atomic bounded writes');
   const listManifests = store.list.bind(store);
+  const putBounded = store.putBounded.bind(store);
   return {
     async append(record) {
       validateMemoryRunId(record.runId);
@@ -517,12 +519,18 @@ export function createRecoveryAgentMemoryStore(store: RecoveryStore): AgentMemor
       const identity = createHash('sha256').update(`${runId}\0${claimId}`, 'utf8').digest('hex');
       const claimToken = randomUUID();
       const bytes = new TextEncoder().encode(`furypipe-agent-memory-claim/v1\0${identity}`);
-      const handle = await store.put(bytes, {
+      const handle = await putBounded(bytes, {
         source: AGENT_MEMORY_CLAIM_SOURCE,
         contentType: AGENT_MEMORY_CLAIM_CONTENT_TYPE,
         runId,
         claimDigest: identity,
         claimToken,
+      }, {
+        metadata: {
+          source: AGENT_MEMORY_CLAIM_SOURCE,
+          contentType: AGENT_MEMORY_CLAIM_CONTENT_TYPE,
+        },
+        maxMatches: MAX_AGENT_MEMORY_CLAIMS,
       });
       return handle.metadata?.claimToken === claimToken;
     },
