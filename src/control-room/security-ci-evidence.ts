@@ -146,16 +146,45 @@ export function parseControlRoomSecurityCiEvidence(
   if (sourceCommit !== expected) {
     throw new Error('Control Room security CI evidence sourceCommit does not match expected source commit');
   }
+  const codeql = optionalRun(v.codeql, 'codeql', sourceCommit);
+  const secretScan = optionalRun(v.secretScan, 'secretScan', sourceCommit);
+  const licenseCompliance = optionalRun(v.licenseCompliance, 'licenseCompliance', sourceCommit);
+  const supplyChain = parseSupplyChain(v.supplyChain, sourceCommit);
+
+  const runIds = [
+    codeql?.runId,
+    secretScan?.runId,
+    licenseCompliance?.runId,
+    supplyChain?.run.runId,
+  ].filter((value): value is number => value !== undefined);
+  if (new Set(runIds).size !== runIds.length) {
+    throw new Error('Security CI workflow run IDs must be unique across evidence sources');
+  }
+
+  if (supplyChain !== undefined) {
+    const jobConclusions = Object.values(supplyChain.jobs);
+    if (
+      supplyChain.run.conclusion === 'success'
+      && jobConclusions.some((value) => value === 'failure' || value === 'cancelled')
+    ) {
+      throw new Error('Successful Supply Chain workflow cannot contain failed or cancelled job evidence');
+    }
+    if (
+      supplyChain.run.conclusion === 'skipped'
+      && jobConclusions.some((value) => value !== 'skipped')
+    ) {
+      throw new Error('Skipped Supply Chain workflow cannot contain executed job evidence');
+    }
+  }
+
   return Object.freeze({
     format: 'furypipe-control-room-security-ci-evidence/v1',
     generatedAt: timestamp(v.generatedAt, 'generatedAt'),
     sourceCommit,
-    ...(v.codeql === undefined ? {} : { codeql: optionalRun(v.codeql, 'codeql', sourceCommit)! }),
-    ...(v.secretScan === undefined ? {} : { secretScan: optionalRun(v.secretScan, 'secretScan', sourceCommit)! }),
-    ...(v.licenseCompliance === undefined
-      ? {}
-      : { licenseCompliance: optionalRun(v.licenseCompliance, 'licenseCompliance', sourceCommit)! }),
-    ...(v.supplyChain === undefined ? {} : { supplyChain: parseSupplyChain(v.supplyChain, sourceCommit)! }),
+    ...(codeql === undefined ? {} : { codeql }),
+    ...(secretScan === undefined ? {} : { secretScan }),
+    ...(licenseCompliance === undefined ? {} : { licenseCompliance }),
+    ...(supplyChain === undefined ? {} : { supplyChain }),
   });
 }
 
