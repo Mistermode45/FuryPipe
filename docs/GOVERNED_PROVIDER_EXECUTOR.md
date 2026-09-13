@@ -149,10 +149,46 @@ invalid results remain distinct outcomes. An error before callback entry has
 `transportInvoked: false`; callback and result-processing errors after entry
 have `transportInvoked: true`.
 
-## Package and production boundary
+## Public package surface
 
-These source modules are not added to the npm public export map in this track;
-packaging/public API wiring is reserved for its separate integration work.
-No built-in OpenAI, Anthropic or Google transport is included. No real provider
-request, paid API, npm publication, release, tag, merge or deployment is part
-of this implementation.
+The governed execution contracts are available from explicit package subpaths:
+
+```ts
+import {
+  prepareProviderRequestEnvelope,
+  isGeneratedProviderRequestEnvelope,
+} from 'furypipe/provider-request-envelope';
+
+import {
+  createProviderExecutionGate,
+  isGeneratedProviderExecutionPermit,
+} from 'furypipe/provider-execution-gate';
+
+import {
+  createProviderTransportRegistry,
+  validateProviderTransportResult,
+} from 'furypipe/provider-transport';
+
+import {
+  createGovernedProviderExecutor,
+} from 'furypipe/governed-provider-executor';
+
+import {
+  FuryGovernedProviderExecutorError,
+} from 'furypipe/provider-execution-errors';
+```
+
+The implementation helper `provider-execution-internal` intentionally remains
+private and is not part of the package export map.
+
+Installed-tarball smoke coverage verifies all five public subpaths and also
+verifies that the internal helper cannot be imported as a package subpath.
+
+## Production boundary
+
+No built-in OpenAI, Anthropic or Google transport is included. These exports
+provide the governed execution framework only; credentials, HTTP clients, SDKs,
+base URLs and network transports remain host-owned concerns.
+
+No real provider request, paid API, npm publication, release, tag or deployment
+is part of this packaging integration.
