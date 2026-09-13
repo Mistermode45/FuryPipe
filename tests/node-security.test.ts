@@ -217,6 +217,59 @@ describe('Node Control Room Security CI ingestion', () => {
     expect(body.sections.security.status).toBe('PARTIAL');
   });
 
+  it('ignores stale Security CI evidence and preserves valid static host security', async () => {
+    const staleCommit = 'b'.repeat(40);
+    const ciFile = writeAuxiliaryJson('security-ci-stale.json', {
+      ...securityCiEvidence(),
+      sourceCommit: staleCommit,
+      codeql: { runId: 1, headSha: staleCommit, conclusion: 'success' },
+      secretScan: { runId: 2, headSha: staleCommit, conclusion: 'success' },
+      licenseCompliance: { runId: 3, headSha: staleCommit, conclusion: 'success' },
+      supplyChain: {
+        run: { runId: 4, headSha: staleCommit, conclusion: 'success' },
+        jobs: {
+          actionPinning: 'success',
+          dependencyAudit: 'success',
+          sbom: 'success',
+          dependencyReview: 'skipped',
+        },
+      },
+    });
+    const hostFile = writeAuxiliaryJson('host-evidence-fallback.json', {
+      format: 'furypipe-control-room-host-evidence/v1',
+      generatedAt: 1,
+      sourceCommit,
+      security: {
+        codeql: 'BLOCKED',
+        secretScan: 'VERIFIED',
+        dependencyAudit: 'PARTIAL',
+        sbom: 'PARTIAL',
+        actionPinning: 'VERIFIED',
+        licenseCompliance: 'VERIFIED',
+        dependencyReview: 'NOT_EXECUTED',
+      },
+    });
+    const { base, output } = await startNode({
+      FURYPIPE_SOURCE_COMMIT: sourceCommit,
+      FURYPIPE_CONTROL_ROOM_EVIDENCE: hostFile,
+      FURYPIPE_CONTROL_ROOM_SECURITY_CI_EVIDENCE: ciFile,
+    });
+
+    const response = await fetch(`${base}/api/control-room.json`);
+    const body = await response.json() as any;
+    expect(body.sections.security.evidence).toEqual({
+      codeql: 'BLOCKED',
+      secretScan: 'VERIFIED',
+      dependencyAudit: 'PARTIAL',
+      sbom: 'PARTIAL',
+      actionPinning: 'VERIFIED',
+      licenseCompliance: 'VERIFIED',
+      dependencyReview: 'NOT_EXECUTED',
+    });
+    expect(output()).toMatch(/ignored Control Room Security CI evidence: .*sourceCommit/i);
+    expect(output()).not.toContain('source-bound CI evidence overrides static host security evidence');
+  });
+
   it('uses exact-source CI Security evidence on conflict and emits an explicit warning', async () => {
     const ciFile = writeAuxiliaryJson('security-ci.json', securityCiEvidence());
     const hostFile = writeAuxiliaryJson('host-evidence.json', {
