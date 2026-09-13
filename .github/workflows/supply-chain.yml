@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FURYPIPE_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
 concurrency:
   group: supply-chain-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -99,7 +102,7 @@ jobs:
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: furypipe-sbom-spdx
+          name: furypipe-sbom-spdx-${{ github.event.pull_request.head.sha || github.sha }}
           path: sbom.spdx.json
           if-no-files-found: error
           retention-days: 30
