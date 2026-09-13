@@ -200,6 +200,7 @@ describe('Web/Figma Studio kernel', () => {
     expect(artifact.html).toContain('Body &lt;script&gt;alert(1)&lt;/script&gt; content');
     expect(artifact.html).not.toContain('<script>');
     expect(artifact.html).toContain('Content-Security-Policy');
+    expect(artifact.html).not.toContain('frame-ancestors');
   });
 
   it('refuses static generation before explicit design approval and unsafe canonical URLs', () => {
