@@ -292,14 +292,10 @@ export function createCapabilityRegistry(initial: readonly unknown[] = []): Capa
           throw new Error('trust report contains an invalid evidence reference');
         }
       }
-      const snapshot: FuryTrustReport = Object.freeze({
-        ...report,
-        findings: Object.freeze(report.findings.map((item) => Object.freeze({ ...item }))),
-        requiredApprovals: Object.freeze([...report.requiredApprovals]),
-        blockingReasons: Object.freeze([...report.blockingReasons]),
-        evidence: Object.freeze(report.evidence.map((item) => Object.freeze({ ...item }))),
-      });
-      trustReports.set(report.candidateId, snapshot);
+      // FuryTrust reports are already deeply immutable and carry in-process provenance
+      // through the WeakSet in fury-trust.ts. Cloning here would erase that identity
+      // and make downstream FuryScore fail closed on an otherwise valid report.
+      trustReports.set(report.candidateId, report);
     },
     getTrustReport(candidateId) {
       return trustReports.get(candidateId);
