@@ -166,11 +166,16 @@ export function validateProviderStreamTransportSession(
     streamFail('stream-session-invalid', true);
   }
   const events = record.events;
-  if (
-    !events
-    || (typeof events !== 'object' && typeof events !== 'function')
-    || typeof (events as AsyncIterable<unknown>)[Symbol.asyncIterator] !== 'function'
-  ) {
+  let asyncIterator: unknown;
+  try {
+    asyncIterator = events !== null
+      && (typeof events === 'object' || typeof events === 'function')
+      ? (events as AsyncIterable<unknown>)[Symbol.asyncIterator]
+      : undefined;
+  } catch {
+    streamFail('stream-session-invalid', true);
+  }
+  if (!events || typeof asyncIterator !== 'function') {
     streamFail('stream-session-invalid', true);
   }
 
