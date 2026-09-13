@@ -339,7 +339,7 @@ export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en
         t('dashboard.header.estimatedSaved'),
         `$${(s.saved_usd ?? 0).toFixed(2)}`,
         unpricedImaged > 0
-          ? t('dashboard.header.excludedPricing', { count: numFmt(unpricedImaged) })
+          ? t(unpricedImaged === 1 ? 'dashboard.header.excludedPricingOne' : 'dashboard.header.excludedPricing', { count: numFmt(unpricedImaged) })
           : t('dashboard.header.baseInputPrice', { value: `${pa.input_per_mtok}` }),
         '',
         t('dashboard.header.estimateTip'),
@@ -385,7 +385,7 @@ export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en
     `<div class="sp"></div>` +
     mathRow(`actual imaged (n=${paidImaged})`, `$${(s.compressed_actual_usd || 0).toFixed(4)}`, t('dashboard.math.totalAvg', { value: `${cAvg.toFixed(4)}` })) +
     mathRow(t('dashboard.math.measuredSavings'), `${(s.saved_usd || 0).toFixed(4)}`, escapeHtml(t('dashboard.math.cacheAwareTotal'))) +
-    mathRow(t('dashboard.math.withoutPxpipe'), `${withoutAvg.toFixed(4)}/req`, '<span class="op">=</span> (actual_imaged + measured_savings) / n') +
+    mathRow(t('dashboard.math.withoutPxpipe'), `${withoutAvg.toFixed(4)}/req`, '<span class="op">=</span> (actual imaged + measured savings) / n') +
     `<span class="src">${escapeHtml(t('dashboard.math.unmeasuredZero'))}</span>`;
 
   const pctMath =
@@ -590,7 +590,7 @@ export function renderContextMapFragment(
         : `<span class="ctx-big">${pct}%</span> ${escapeHtml(t('dashboard.context.smaller'))} — ${escapeHtml(textNoun)} ${escapeHtml(t('dashboard.context.wouldBill'))} <strong>${kFmt(base)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))}; ${escapeHtml(t('dashboard.context.imagesBilled'))} <strong>${kFmt(real)}</strong>`
       : google
         ? `<span class="ctx-big">${-pct}%</span> ${escapeHtml(t('dashboard.context.bigger'))} — ${escapeHtml(t('dashboard.context.imagesAccount'))} <strong>${kFmt(real)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))} ${escapeHtml(t('dashboard.context.vsText'))} <strong>${kFmt(base)}</strong>`
-        : `<span class="ctx-big">${-pct}%</span> ${escapeHtml(t('dashboard.context.bigger'))} — ${escapeHtml(t('dashboard.context.imagesBilled'))} <strong>${kFmt(real)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))} ${escapeHtml(t('dashboard.context.vsText'))} <strong>${kFmt(base)}</strong> (${escapeHtml(textNoun)})`;
+        : `<span class="ctx-big">${-pct}%</span> ${escapeHtml(t('dashboard.context.bigger'))} — ${escapeHtml(t('dashboard.context.imagesBilled'))} <strong>${kFmt(real)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))} ${escapeHtml(t('dashboard.context.vsText'))} <strong>${kFmt(base)}</strong> ${escapeHtml(t('dashboard.context.forNoun', { noun: textNoun }))}`;
   const subnote = !showCompare
     ? t('dashboard.context.noBaseline')
     : google
@@ -612,14 +612,14 @@ export function renderContextMapFragment(
   const nativeImages = c.nativeImages ?? 0;
   const imageBudgetSkips = c.imageBudgetSkips ?? 0;
   if (nativeImages > 0) {
-    capBits.push(t('dashboard.context.capNative', { count: nativeImages }));
+    capBits.push(t(nativeImages === 1 ? 'dashboard.context.capNativeOne' : 'dashboard.context.capNative', { count: nativeImages }));
   }
   if (c.wireImages !== undefined && c.wireImages < c.imageCount + nativeImages) {
     const absorbed = c.imageCount + nativeImages - c.wireImages;
-    capBits.push(t('dashboard.context.capAbsorbed', { count: absorbed, wire: c.wireImages }));
+    capBits.push(t(absorbed === 1 ? 'dashboard.context.capAbsorbedOne' : 'dashboard.context.capAbsorbed', { count: absorbed, wire: c.wireImages }));
   }
   if (imageBudgetSkips > 0) {
-    capBits.push(t('dashboard.context.capSkipped', { count: imageBudgetSkips }));
+    capBits.push(t(imageBudgetSkips === 1 ? 'dashboard.context.capSkippedOne' : 'dashboard.context.capSkipped', { count: imageBudgetSkips }));
   }
   const capNote = capBits.length
     ? `<div class="split-note cap-note">${capBits.map(escapeHtml).join(' · ')}</div>`
