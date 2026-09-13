@@ -61,6 +61,7 @@ export interface ReleaseReadinessReport {
   readonly sourceCommit: string;
   readonly packageVersion: string;
   readonly channel: 'rc' | 'stable';
+  readonly performanceClaims: boolean;
   readonly status: ReleaseReadinessStatus;
   readonly blockers: readonly ReleaseBlocker[];
   readonly warnings: readonly string[];
@@ -75,6 +76,21 @@ const SHA40 = /^[0-9a-f]{40}$/u;
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const GATE_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
 const RELEASE_EVIDENCE_ORIGINS: readonly ReleaseEvidenceOrigin[] = ['local', 'github-actions', 'github', 'hosted', 'provider'];
+const RELEASE_GATE_STATES: readonly ReleaseGateState[] = [
+  'VERIFIED', 'PARTIAL', 'NOT_EXECUTED', 'BLOCKED', 'BLOCKED_BY_REPO_SETTING', 'NOT_APPLICABLE',
+];
+const RELEASE_AUTHORIZATION_KEYS = [
+  'createReleaseTag', 'deployProduction', 'mergeDefaultBranch', 'publishNpm',
+] as const;
+
+export function isExactReleaseAuthorization(value: unknown): value is ReleaseAuthorization {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value).sort();
+  if (keys.length !== RELEASE_AUTHORIZATION_KEYS.length
+    || keys.some((key, index) => key !== RELEASE_AUTHORIZATION_KEYS[index])) return false;
+  const authorization = value as Record<string, unknown>;
+  return RELEASE_AUTHORIZATION_KEYS.every((key) => typeof authorization[key] === 'boolean');
+}
 export const V5_RELEASE_GATE_REQUIREDNESS: Readonly<Record<string, boolean>> = Object.freeze({
   'ci.push': true,
   'ci.pr': true,
@@ -144,6 +160,12 @@ function validateInput(input: ReleaseReadinessInput): void {
   if (input.channel !== 'rc' && input.channel !== 'stable') {
     throw new Error('release channel must be rc or stable');
   }
+  if (typeof input.performanceClaims !== 'boolean') {
+    throw new Error('performanceClaims must be boolean');
+  }
+  if (!isExactReleaseAuthorization(input.authorization)) {
+    throw new Error('release authorization must contain exactly the four boolean authorization fields');
+  }
   if (!Array.isArray(input.gates) || input.gates.length === 0 || input.gates.length > 128) {
     throw new Error('release gates must contain between 1 and 128 entries');
   }
@@ -152,6 +174,7 @@ function validateInput(input: ReleaseReadinessInput): void {
   for (const gate of input.gates) {
     if (!GATE_ID.test(gate.id)) throw new Error(`invalid release gate id: ${gate.id}`);
     if (!gate.title || gate.title.length > 160) throw new Error(`release gate title is invalid: ${gate.id}`);
+    if (!RELEASE_GATE_STATES.includes(gate.state)) throw new Error(`release gate state is invalid: ${gate.id}`);
     if (seen.has(gate.id)) throw new Error(`duplicate release gate id: ${gate.id}`);
     seen.add(gate.id);
     if (gate.evidence !== undefined) {
@@ -259,6 +282,7 @@ export function evaluateReleaseReadiness(input: ReleaseReadinessInput): ReleaseR
     sourceCommit: input.sourceCommit,
     packageVersion: input.packageVersion,
     channel: input.channel,
+    performanceClaims: input.performanceClaims,
     status: blockers.length === 0 ? 'READY_FOR_RELEASE_DECISION' : 'BLOCKED',
     blockers: Object.freeze(blockers),
     warnings: Object.freeze([...new Set(warnings)]),
