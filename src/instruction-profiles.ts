@@ -8,6 +8,8 @@ import type {
 export const FURY_INSTRUCTION_PROFILE_IDS = Object.freeze([
   'karpathy-coding-discipline',
   'spec-driven-development',
+  'systematic-debugging',
+  'codebase-audit-discipline',
 ] as const);
 
 export type FuryInstructionProfileId = typeof FURY_INSTRUCTION_PROFILE_IDS[number];
@@ -116,10 +118,79 @@ const SPEC_DRIVEN_DEVELOPMENT: FuryInstructionProfile = Object.freeze({
   }),
 });
 
+
+const SYSTEMATIC_DEBUGGING: FuryInstructionProfile = Object.freeze({
+  id: 'systematic-debugging',
+  name: 'Systematic root-cause debugging',
+  version: '1.0.0',
+  source: Object.freeze({
+    repository: 'https://github.com/obra/superpowers',
+    commitSha: 'b36e0829c6d0140e93cfef2ca599b1b07d4a7797',
+    sourcePath: 'skills/systematic-debugging/SKILL.md',
+    licenseStatus: 'VERIFIED',
+    decision: 'ADAPT',
+  }),
+  additions: Object.freeze({
+    intent: Object.freeze([
+      'Treat a bug, failing test, crash, performance regression, build failure, or unexpected behavior as an investigation problem before treating it as an implementation problem.',
+    ]),
+    plan: Object.freeze([
+      'Reproduce the failure and collect concrete evidence before proposing a fix; trace relevant data/configuration across component boundaries until the failing boundary or originating value is identified.',
+      'Compare the broken path with a known-working path, state one falsifiable root-cause hypothesis, and test the smallest possible change that can confirm or reject it.',
+    ]),
+    constraints: Object.freeze([
+      'Do not stack speculative fixes, change multiple variables at once, or patch a downstream symptom when the upstream cause is still unknown.',
+      'If repeated fix attempts reveal unrelated failures or growing cross-component coupling, stop adding patches and reassess whether the architecture or contract is the actual problem.',
+    ]),
+    acceptanceCriteria: Object.freeze([
+      'The final change addresses an evidenced root cause and remains scoped to the failure being fixed.',
+    ]),
+    verification: Object.freeze([
+      'Before claiming resolution, demonstrate the original failure with a regression test or reproducible check, show that the check now passes, and run the relevant surrounding regression suite.',
+    ]),
+  }),
+});
+
+const CODEBASE_AUDIT_DISCIPLINE: FuryInstructionProfile = Object.freeze({
+  id: 'codebase-audit-discipline',
+  name: 'Evidence-first codebase audit discipline',
+  version: '1.0.0',
+  source: Object.freeze({
+    repository: 'https://github.com/ksimback/tech-debt-skill',
+    commitSha: '5a15c1ca4a929b2759461c218478de391a8bda0f',
+    sourcePath: 'SKILL.md',
+    licenseStatus: 'DECLARED_MIT_NO_ROOT_LICENSE_FILE',
+    decision: 'ADAPT',
+  }),
+  additions: Object.freeze({
+    intent: Object.freeze([
+      'Build a concrete architectural mental model of the repository before judging code quality or proposing remediation.',
+    ]),
+    context: Object.freeze([
+      'Use manifests, architecture documentation, module boundaries, entry points, dependency relationships, recent churn and critical paths as audit evidence when those sources are available.',
+    ]),
+    plan: Object.freeze([
+      'Orient first, then inspect architecture/contracts/tests/dependencies/performance/error handling/security/documentation, and rank only findings supported by repository evidence.',
+    ]),
+    constraints: Object.freeze([
+      'Do not pad categories with generic best-practice findings; every concrete claim must identify the supporting file, line/range, command output, or other reproducible repository evidence.',
+      'Distinguish confirmed debt from suspicious patterns that are intentional or insufficiently understood, and prefer scoped remediation over rewrite recommendations.',
+    ]),
+    outputContract: Object.freeze([
+      'Separate confirmed findings, prioritized remediation, quick wins, plausible false positives or intentionally retained patterns, and open questions that require maintainer context.',
+    ]),
+    verification: Object.freeze([
+      'Before finalizing an audit, re-check high-severity findings against surrounding code and tests so a locally unusual pattern is not mislabeled as debt without context.',
+    ]),
+  }),
+});
+
 export const FURY_INSTRUCTION_PROFILES: Readonly<Record<FuryInstructionProfileId, FuryInstructionProfile>> =
   Object.freeze({
     'karpathy-coding-discipline': KARPATHY_CODING_DISCIPLINE,
     'spec-driven-development': SPEC_DRIVEN_DEVELOPMENT,
+    'systematic-debugging': SYSTEMATIC_DEBUGGING,
+    'codebase-audit-discipline': CODEBASE_AUDIT_DISCIPLINE,
   });
 
 function normalizeValues(value: FuryPromptSectionValue | undefined): string[] {
