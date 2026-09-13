@@ -256,6 +256,6 @@ Baseline d'intégration : `v5-production-hardening` / `bc92bef794df25b2a7c541846
 | `git diff --check` | PASS | aucun whitespace error |
 | Provider HTTP réel | NOT_EXECUTED | tests uniquement via fetch injecté; aucun credential, requête fournisseur ni trafic provider |
 | Export package public des transports | DEFERRED | aucun changement à `package.json` ni au lockfile; barrel source seulement |
-| Portée PR | REVIEWED | 16 fichiers de transport/executor/docs/tests; fichiers réservés et smoke script exclus du diff de branche |
-| CI GitHub / PR | PENDING | à vérifier après publication de la branche; aucune fusion demandée |
+| Portée PR | REVIEWED | 18 fichiers au total (16 fichiers de transports/executor/docs/tests + `BASELINE.md` et `WORKLOG.md`); fichiers réservés, manifest, lockfile et smoke script exclus |
+| CI GitHub / PR | PASS / OPEN DRAFT | PR #111 vers `v5-production-hardening`, head `5e09fd436b750530319ea242b6d0c1ffac0b6d55`; 20 contrôles PASS, matrice 9/9; Dependency Review et attestation du tarball `SKIPPED` conditionnellement; PR non fusionnée |
 | Publish / release / tag / production deploy | NOT_EXECUTED | explicitement hors de ce travail |
