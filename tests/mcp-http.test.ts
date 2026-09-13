@@ -9,7 +9,11 @@ import {
 } from '@modelcontextprotocol/server';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRecoveryStore } from '../src/core/recovery-store.js';
-import { createProductionMcpHandler, type ProductionMcpHttpHandler } from '../src/mcp-modern.js';
+import {
+  createProductionMcpHandler,
+  getProductionMcpRuntimeEvidence,
+  type ProductionMcpHttpHandler,
+} from '../src/mcp-modern.js';
 
 const roots: string[] = [];
 const handlers: ProductionMcpHttpHandler[] = [];
@@ -80,12 +84,29 @@ describe('production MCP HTTP boundary', () => {
 
   it('serves a modern request and adds restrictive transport headers', async () => {
     const mcp = await handler();
+    expect(getProductionMcpRuntimeEvidence(mcp)).toEqual({
+      format: 'furypipe-mcp-http-runtime-evidence/v1',
+      requests: 0,
+      dispatchedRequests: 0,
+      bearerAuthConfigured: false,
+      bearerAuthSuccesses: 0,
+      oauthMetadataConfigured: false,
+      oauthMetadataResponses: 0,
+    });
+    expect(getProductionMcpRuntimeEvidence({ ...mcp })).toBeUndefined();
+
     const response = await mcp.fetch(modernRequest('tools/list', {}, { origin: 'https://localhost' }));
     expect(response.status).toBe(200);
     expect(response.headers.get('access-control-allow-origin')).toBe('https://localhost');
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     expect((await json(response)).result.tools).toHaveLength(11);
+    expect(getProductionMcpRuntimeEvidence(mcp)).toMatchObject({
+      requests: 1,
+      dispatchedRequests: 1,
+      bearerAuthConfigured: false,
+      bearerAuthSuccesses: 0,
+    });
   });
 
   it('blocks DNS rebinding, foreign origins, unsupported methods, and invalid media', async () => {
@@ -244,6 +265,18 @@ describe('production MCP HTTP boundary', () => {
     const validRequest = modernRequest('tools/list', {});
     validRequest.headers.set('authorization', 'Bearer valid-test-token');
     expect((await mcp.fetch(validRequest)).status).toBe(200);
+
+    const runtimeEvidence = getProductionMcpRuntimeEvidence(mcp);
+    expect(runtimeEvidence).toMatchObject({
+      requests: 3,
+      dispatchedRequests: 1,
+      bearerAuthConfigured: true,
+      bearerAuthSuccesses: 1,
+      oauthMetadataConfigured: false,
+      oauthMetadataResponses: 0,
+    });
+    expect(JSON.stringify(runtimeEvidence)).not.toContain('valid-test-token');
+    expect(JSON.stringify(runtimeEvidence)).not.toContain('test-client');
   });
 
   it('makes resource-audience enforcement an explicit host verifier contract', async () => {
@@ -310,5 +343,13 @@ describe('production MCP HTTP boundary', () => {
     }));
     expect(response.status).toBe(200);
     expect((await json(response)).resource).toBe('https://localhost/mcp');
+    expect(getProductionMcpRuntimeEvidence(mcp)).toMatchObject({
+      requests: 1,
+      dispatchedRequests: 0,
+      bearerAuthConfigured: true,
+      bearerAuthSuccesses: 0,
+      oauthMetadataConfigured: true,
+      oauthMetadataResponses: 1,
+    });
   });
 });
