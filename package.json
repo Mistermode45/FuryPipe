@@ -158,6 +158,10 @@
       "types": "./dist/control-room/evidence-file.d.ts",
       "import": "./dist/control-room/evidence-file.js"
     },
+    "./control-room-security-evidence": {
+      "types": "./dist/control-room/security-ci-evidence.d.ts",
+      "import": "./dist/control-room/security-ci-evidence.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"
