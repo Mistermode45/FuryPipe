@@ -93,6 +93,24 @@ source-bound evidence for every required gate, and maintainer authorization rema
 separate from technical readiness.
 
 
+## RC preparation workflow
+
+`.github/workflows/rc-preparation.yml` is a non-destructive evidence producer. It never
+creates a tag, npm publication, GitHub Release or deployment. For one exact source SHA it
+builds the candidate tarball, records its SHA-256, performs a fresh install, generates SPDX
+2.3 evidence, hashes compatibility/migration/rollback documentation, and attempts a
+package-level upgrade/rollback only when a previous public FuryPipe version can be bound to
+this same repository.
+
+Its output contract is `furypipe-rc-preparation-evidence/v1`. It deliberately keeps
+provenance `PARTIAL` on pull requests and distinguishes package-level rollback from
+production deployment rollback.
+
+Repository policy remains a separate GitHub-origin required gate. At the current observed
+repository state, `v5-production-hardening` reports `protected: false` and no repository
+ruleset is exposed. That state must remain a release blocker until a maintainer enables and
+re-verifies the required policy; local CI cannot convert it to `VERIFIED`.
+
 ## RC evidence snapshot
 
 `src/release-readiness/evidence.ts` adds a second fail-closed layer for the release-candidate preparation phase.
