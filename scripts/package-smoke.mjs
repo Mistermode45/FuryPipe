@@ -82,7 +82,9 @@ try {
   assert(packedFiles.has('docs/CLI.md'), 'FuryPipe CLI documentation is missing from the public package');
   assert(packedFiles.has('docs/MODEL_ADAPTERS.md'), 'Model Adapter documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_CATALOG.md'), 'Capability Catalog documentation is missing from the public package');
+  assert(packedFiles.has('docs/ECOSYSTEM_INGESTION.md'), 'Ecosystem Ingestion documentation is missing from the public package');
   assert(packedFiles.has('docs/FURYTRUST.md'), 'FuryTrust documentation is missing from the public package');
+  assert(packedFiles.has('docs/CAPABILITY_CATALOG_RESOLVER.md'), 'Capability Catalog Resolver documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_ACTIVATION.md'), 'Capability Activation documentation is missing from the public package');
   tarball = path.resolve(root, metadata.filename);
   assert(existsSync(tarball), `npm pack did not create ${metadata.filename}`);
