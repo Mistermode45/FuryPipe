@@ -13,8 +13,16 @@ import {
   type BearerAuthOptions,
   type JsonSchemaType,
   type McpHttpHandler,
+  type JSONRPCMessage,
+  type Transport,
+  type TransportSendOptions,
 } from '@modelcontextprotocol/server';
-import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server/stdio';
+import {
+  serveStdio,
+  StdioServerTransport,
+  type ServeStdioOptions,
+  type StdioServerHandle,
+} from '@modelcontextprotocol/server/stdio';
 import {
   executeMcpTool,
   furypipeMcpVersion,
@@ -55,6 +63,15 @@ export interface ProductionMcpRuntimeEvidence {
   readonly oauthMetadataResponses: number;
 }
 
+export interface ProductionMcpStdioRuntimeEvidence {
+  readonly format: 'furypipe-mcp-stdio-runtime-evidence/v1';
+  readonly inboundMessages: number;
+  readonly inboundRequests: number;
+  readonly outboundMessages: number;
+  readonly completedExchanges: number;
+  readonly trackingOverflows: number;
+}
+
 interface MutableProductionMcpRuntimeEvidence {
   requests: number;
   dispatchedRequests: number;
@@ -64,8 +81,19 @@ interface MutableProductionMcpRuntimeEvidence {
   oauthMetadataResponses: number;
 }
 
+interface MutableProductionMcpStdioRuntimeEvidence {
+  inboundMessages: number;
+  inboundRequests: number;
+  outboundMessages: number;
+  completedExchanges: number;
+  trackingOverflows: number;
+}
+
 const MAX_MCP_RUNTIME_COUNT = 1_000_000_000;
+const MAX_MCP_STDIO_PENDING_REQUESTS = 4_096;
+const MAX_MCP_STDIO_REQUEST_ID_LENGTH = 256;
 const PRODUCTION_MCP_RUNTIME_EVIDENCE = new WeakMap<object, MutableProductionMcpRuntimeEvidence>();
+const PRODUCTION_MCP_STDIO_RUNTIME_EVIDENCE = new WeakMap<object, MutableProductionMcpStdioRuntimeEvidence>();
 const GENERATED_MCP_STDIO_HANDLES = new WeakSet<object>();
 
 function incrementRuntimeCounter(value: number): number {
@@ -88,6 +116,28 @@ export function getProductionMcpRuntimeEvidence(value: unknown): ProductionMcpRu
     bearerAuthSuccesses: state.bearerAuthSuccesses,
     oauthMetadataConfigured: state.oauthMetadataConfigured,
     oauthMetadataResponses: state.oauthMetadataResponses,
+  });
+}
+
+
+/**
+ * Read bounded metadata-only evidence from an exact process-local stdio handle.
+ * Request bodies, method names, tool arguments, response payloads and request
+ * IDs are never returned by this surface.
+ */
+export function getProductionMcpStdioRuntimeEvidence(
+  value: unknown,
+): ProductionMcpStdioRuntimeEvidence | undefined {
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return undefined;
+  const state = PRODUCTION_MCP_STDIO_RUNTIME_EVIDENCE.get(value as object);
+  if (state === undefined) return undefined;
+  return Object.freeze({
+    format: 'furypipe-mcp-stdio-runtime-evidence/v1' as const,
+    inboundMessages: state.inboundMessages,
+    inboundRequests: state.inboundRequests,
+    outboundMessages: state.outboundMessages,
+    completedExchanges: state.completedExchanges,
+    trackingOverflows: state.trackingOverflows,
   });
 }
 
@@ -423,11 +473,151 @@ export function createProductionMcpHandler(
   return productionHandler;
 }
 
-/** Official SDK stdio transport; the SDK selects modern or legacy per connection. */
-export function runModernMcpStdio(store: RecoveryStore): StdioServerHandle {
-  const handle = serveStdio(() => createModernMcpServer(store), { legacy: 'serve' });
+type StdioRequestId = string | number;
+
+function stdioRequestIdKey(value: unknown): string | undefined {
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) return undefined;
+    return `n:${value}`;
+  }
+  if (typeof value === 'string') {
+    if (value.length < 1 || value.length > MAX_MCP_STDIO_REQUEST_ID_LENGTH || value.includes('\0')) {
+      return undefined;
+    }
+    return `s:${value}`;
+  }
+  return undefined;
+}
+
+function inboundRequestId(message: JSONRPCMessage): StdioRequestId | undefined {
+  if (!('method' in message) || !('id' in message)) return undefined;
+  return typeof message.id === 'string' || typeof message.id === 'number'
+    ? message.id
+    : undefined;
+}
+
+function outboundResponseId(message: JSONRPCMessage): StdioRequestId | undefined {
+  if ('method' in message || !('id' in message)) return undefined;
+  if (!('result' in message) && !('error' in message)) return undefined;
+  return typeof message.id === 'string' || typeof message.id === 'number'
+    ? message.id
+    : undefined;
+}
+
+class ObservableMcpStdioTransport implements Transport {
+  onclose?: () => void;
+  onerror?: (error: Error) => void;
+  onmessage?: Transport['onmessage'];
+
+  private readonly pendingRequestIds = new Set<string>();
+  private started = false;
+
+  constructor(
+    private readonly inner: Transport,
+    private readonly evidence: MutableProductionMcpStdioRuntimeEvidence,
+  ) {}
+
+  get hasPerRequestStream(): boolean | undefined {
+    return this.inner.hasPerRequestStream;
+  }
+
+  get sessionId(): string | undefined {
+    return this.inner.sessionId;
+  }
+
+  set sessionId(value: string | undefined) {
+    this.inner.sessionId = value;
+  }
+
+  setProtocolVersion = (version: string): void => {
+    this.inner.setProtocolVersion?.(version);
+  };
+
+  setSupportedProtocolVersions = (versions: string[]): void => {
+    this.inner.setSupportedProtocolVersions?.(versions);
+  };
+
+  async start(): Promise<void> {
+    if (this.started) throw new Error('Observable MCP stdio transport already started');
+    this.started = true;
+
+    const priorMessage = this.inner.onmessage;
+    const priorError = this.inner.onerror;
+    const priorClose = this.inner.onclose;
+
+    this.inner.onmessage = (message, extra) => {
+      this.evidence.inboundMessages = incrementRuntimeCounter(this.evidence.inboundMessages);
+      const requestId = inboundRequestId(message);
+      if (requestId !== undefined) {
+        this.evidence.inboundRequests = incrementRuntimeCounter(this.evidence.inboundRequests);
+        const key = stdioRequestIdKey(requestId);
+        if (key === undefined || this.pendingRequestIds.size >= MAX_MCP_STDIO_PENDING_REQUESTS) {
+          this.evidence.trackingOverflows = incrementRuntimeCounter(this.evidence.trackingOverflows);
+        } else {
+          this.pendingRequestIds.add(key);
+        }
+      }
+      priorMessage?.(message, extra);
+      this.onmessage?.(message, extra);
+    };
+    this.inner.onerror = (error) => {
+      priorError?.(error);
+      this.onerror?.(error);
+    };
+    this.inner.onclose = () => {
+      this.pendingRequestIds.clear();
+      priorClose?.();
+      this.onclose?.();
+    };
+
+    await this.inner.start();
+  }
+
+  async send(message: JSONRPCMessage, options?: TransportSendOptions): Promise<void> {
+    this.evidence.outboundMessages = incrementRuntimeCounter(this.evidence.outboundMessages);
+    const responseId = outboundResponseId(message);
+    if (responseId !== undefined) {
+      const key = stdioRequestIdKey(responseId);
+      if (key !== undefined && this.pendingRequestIds.delete(key)) {
+        this.evidence.completedExchanges = incrementRuntimeCounter(this.evidence.completedExchanges);
+      }
+    }
+    await this.inner.send(message, options);
+  }
+
+  async close(): Promise<void> {
+    this.pendingRequestIds.clear();
+    await this.inner.close();
+  }
+}
+
+/**
+ * Official SDK stdio transport with process-local metadata-only exchange
+ * evidence. Construction alone is not a verified client exchange: Control
+ * Room promotes stdio only after a request/response pair is observed.
+ */
+export function runModernMcpStdio(
+  store: RecoveryStore,
+  options: ServeStdioOptions = {},
+): StdioServerHandle {
+  const runtimeEvidence: MutableProductionMcpStdioRuntimeEvidence = {
+    inboundMessages: 0,
+    inboundRequests: 0,
+    outboundMessages: 0,
+    completedExchanges: 0,
+    trackingOverflows: 0,
+  };
+  const transport = new ObservableMcpStdioTransport(
+    options.transport ?? new StdioServerTransport(),
+    runtimeEvidence,
+  );
+  const handle = serveStdio(
+    () => createModernMcpServer(store),
+    { ...options, legacy: options.legacy ?? 'serve', transport },
+  );
   if (handle !== null && (typeof handle === 'object' || typeof handle === 'function')) {
     GENERATED_MCP_STDIO_HANDLES.add(handle as object);
+    PRODUCTION_MCP_STDIO_RUNTIME_EVIDENCE.set(handle as object, runtimeEvidence);
   }
   return handle;
 }
