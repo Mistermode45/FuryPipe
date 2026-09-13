@@ -3,6 +3,16 @@ import type { AgentRunResult } from '../agent-runtime.js';
 import type { AgentLearningCycleResult } from '../learning.js';
 import type { ReleaseReadinessReport } from '../release-readiness/index.js';
 import {
+  isGeneratedGovernedProviderExecutionResult,
+  type GovernedProviderExecutionResult,
+} from '../governed-provider-executor.js';
+import {
+  isGeneratedGovernedProviderStreamEvent,
+  isGeneratedGovernedProviderStreamSession,
+  type GovernedProviderStreamEvent,
+  type GovernedProviderStreamSession,
+} from '../governed-provider-stream-executor.js';
+import {
   createControlRoomSnapshot,
   type AgentEvidence,
   type BenchmarkEvidence,
@@ -10,6 +20,7 @@ import {
   type I18nEvidence,
   type LearningEvidence,
   type McpEvidence,
+  type ProviderEvidence,
   type RecoveryEvidence,
   type SecurityEvidence,
   type WebStudioEvidence,
@@ -29,12 +40,27 @@ export interface ControlRoomRuntimeOptions {
   readonly now?: () => number;
 }
 
+export interface ControlRoomProviderStreamObservation {
+  /**
+   * Feed the exact governed events yielded by this session, in sequence.
+   * Plaintext text deltas are validated for provenance but never retained.
+   */
+  observeEvent(event: GovernedProviderStreamEvent): void;
+}
+
 export interface ControlRoomRuntime {
   observeProxyEvent(event: Pick<ProxyEvent, 'info'>): void;
   /** Observe the latest state for one opaque Agent run ID. Re-observation replaces that run's prior state. */
   observeAgentRun(result: AgentRunResult): void;
   /** Observe the latest state for one opaque Learning cycle ID. Re-observation replaces that cycle's prior state. */
   observeLearningCycle(result: AgentLearningCycleResult): void;
+  /** Observe one authentic buffered governed-provider execution exactly once. */
+  observeProviderExecution(result: GovernedProviderExecutionResult): void;
+  /**
+   * Bind Control Room observation to one exact process-local stream session.
+   * Re-observing the same session returns the same logical observation and does not double-count it.
+   */
+  observeProviderStreamSession(session: GovernedProviderStreamSession): ControlRoomProviderStreamObservation;
   snapshot(): ControlRoomSnapshot;
 }
 
@@ -109,6 +135,153 @@ const NOT_AVAILABLE_BENCHMARKS: BenchmarkEvidence = Object.freeze({
   comparableRuns: 0,
 });
 
+type ProviderRequestStatus = GovernedProviderExecutionResult['providerRequest']['status'];
+type ProviderUsage = NonNullable<GovernedProviderExecutionResult['usage']>;
+
+interface ProviderUsageSummary {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheWriteTokens?: number;
+  cacheReadTokens?: number;
+}
+
+interface BufferedProviderObservation {
+  readonly providerStatus: ProviderRequestStatus;
+  readonly usage?: Readonly<ProviderUsageSummary>;
+  readonly cost: 'known' | 'unknown';
+}
+
+interface StreamProviderObservationState {
+  readonly providerId: string;
+  readonly model: string;
+  readonly workloadId: string;
+  readonly requestDigest: string;
+  readonly providerStatus: GovernedProviderStreamSession['providerRequest']['status'];
+  nextSequence: number;
+  terminal:
+    | undefined
+    | { readonly kind: 'terminal'; readonly status: NonNullable<GovernedProviderStreamEvent['terminalStatus']> }
+    | { readonly kind: 'provider-error' };
+  usageReports: number;
+  readonly usage: ProviderUsageSummary;
+  cost?: 'known' | 'unknown';
+  readonly seenEvents: WeakSet<object>;
+}
+
+const MAX_PROVIDER_OBSERVATIONS = 100_000;
+
+function snapshotProviderUsage(value: ProviderUsage | undefined): Readonly<ProviderUsageSummary> | undefined {
+  if (value === undefined) return undefined;
+  const output: ProviderUsageSummary = {};
+  for (const key of ['inputTokens', 'outputTokens', 'cacheWriteTokens', 'cacheReadTokens'] as const) {
+    const count = value[key];
+    if (count === undefined) continue;
+    safeRuntimeCount(count, `Provider usage ${key}`);
+    output[key] = count;
+  }
+  return Object.keys(output).length === 0 ? undefined : Object.freeze(output);
+}
+
+function mergeProviderUsage(target: ProviderUsageSummary, value: ProviderUsage | undefined): void {
+  const snapshot = snapshotProviderUsage(value);
+  if (snapshot === undefined) return;
+  if (snapshot.inputTokens !== undefined) target.inputTokens = snapshot.inputTokens;
+  if (snapshot.outputTokens !== undefined) target.outputTokens = snapshot.outputTokens;
+  if (snapshot.cacheWriteTokens !== undefined) target.cacheWriteTokens = snapshot.cacheWriteTokens;
+  if (snapshot.cacheReadTokens !== undefined) target.cacheReadTokens = snapshot.cacheReadTokens;
+}
+
+function providerCostState(value: GovernedProviderExecutionResult['cost'] | GovernedProviderStreamEvent['cost']): 'known' | 'unknown' {
+  if (!value || typeof value !== 'object') throw new Error('Control Room provider cost observation is invalid');
+  if (value.status === 'known') return 'known';
+  if (value.status === 'COST_UNKNOWN') return 'unknown';
+  throw new Error('Control Room provider cost observation status is invalid');
+}
+
+function providerEvidenceFromObservations(
+  buffered: readonly BufferedProviderObservation[],
+  streams: readonly StreamProviderObservationState[],
+): ProviderEvidence {
+  const evidence: ProviderEvidence = {
+    bufferedExecutions: buffered.length,
+    streamSessions: streams.length,
+    acceptedRequests: 0,
+    rejectedRequests: 0,
+    unknownRequests: 0,
+    streamCompleted: 0,
+    streamIncomplete: 0,
+    streamFailed: 0,
+    streamCancelled: 0,
+    streamRequiresAction: 0,
+    streamTerminalUnknown: 0,
+    streamProviderErrors: 0,
+    streamOpenAccepted: 0,
+    usageReports: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    knownCostObservations: 0,
+    unknownCostObservations: 0,
+    runtimeObservability: buffered.length + streams.length > 0 ? 'VERIFIED' : 'NOT_EXECUTED',
+    providerVerification: 'NOT_AVAILABLE',
+  };
+
+  const observeStatus = (status: ProviderRequestStatus) => {
+    if (status === 'accepted') evidence.acceptedRequests += 1;
+    else if (status === 'rejected') evidence.rejectedRequests += 1;
+    else evidence.unknownRequests += 1;
+  };
+  const addUsage = (usage: Readonly<ProviderUsageSummary> | undefined) => {
+    if (usage === undefined) return;
+    if (usage.inputTokens !== undefined) evidence.inputTokens += usage.inputTokens;
+    if (usage.outputTokens !== undefined) evidence.outputTokens += usage.outputTokens;
+    if (usage.cacheWriteTokens !== undefined) evidence.cacheWriteTokens += usage.cacheWriteTokens;
+    if (usage.cacheReadTokens !== undefined) evidence.cacheReadTokens += usage.cacheReadTokens;
+  };
+  const addCost = (cost: 'known' | 'unknown' | undefined) => {
+    if (cost === 'known') evidence.knownCostObservations += 1;
+    if (cost === 'unknown') evidence.unknownCostObservations += 1;
+  };
+
+  for (const observation of buffered) {
+    observeStatus(observation.providerStatus);
+    if (observation.usage !== undefined) evidence.usageReports += 1;
+    addUsage(observation.usage);
+    addCost(observation.cost);
+  }
+
+  for (const stream of streams) {
+    observeStatus(stream.providerStatus);
+    evidence.usageReports += stream.usageReports;
+    addUsage(stream.usage);
+    addCost(stream.cost);
+    if (stream.terminal?.kind === 'provider-error') {
+      evidence.streamProviderErrors += 1;
+    } else if (stream.terminal?.kind === 'terminal') {
+      switch (stream.terminal.status) {
+        case 'completed': evidence.streamCompleted += 1; break;
+        case 'incomplete': evidence.streamIncomplete += 1; break;
+        case 'failed': evidence.streamFailed += 1; break;
+        case 'cancelled': evidence.streamCancelled += 1; break;
+        case 'requires-action': evidence.streamRequiresAction += 1; break;
+        case 'unknown': evidence.streamTerminalUnknown += 1; break;
+      }
+    } else if (stream.providerStatus === 'accepted') {
+      evidence.streamOpenAccepted += 1;
+    }
+  }
+
+  for (const [label, count] of Object.entries({
+    inputTokens: evidence.inputTokens,
+    outputTokens: evidence.outputTokens,
+    cacheWriteTokens: evidence.cacheWriteTokens,
+    cacheReadTokens: evidence.cacheReadTokens,
+  })) safeRuntimeCount(count, `Control Room provider ${label}`);
+
+  return Object.freeze(evidence);
+}
+
 function clone<T extends object>(value: T): T {
   return { ...value };
 }
@@ -122,6 +295,47 @@ function boundedOpaqueId(value: unknown, label: string): asserts value is string
 function safeRuntimeCount(value: unknown, label: string): asserts value is number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 10_000_000_000) {
     throw new Error(`${label} must be a bounded non-negative safe integer`);
+  }
+}
+
+function observeStreamEvent(state: StreamProviderObservationState, event: GovernedProviderStreamEvent): void {
+  if (!isGeneratedGovernedProviderStreamEvent(event)) {
+    throw new Error('Control Room provider stream event requires a process-local FuryPipe event');
+  }
+  if (
+    event.providerId !== state.providerId
+    || event.model !== state.model
+    || event.workloadId !== state.workloadId
+    || event.requestDigest !== state.requestDigest
+  ) {
+    throw new Error('Control Room provider stream event does not match the bound session');
+  }
+  if (state.seenEvents.has(event)) return;
+  if (state.providerStatus !== 'accepted') {
+    throw new Error('Control Room cannot attach stream events to a non-accepted provider session');
+  }
+  if (state.terminal !== undefined) {
+    throw new Error('Control Room provider stream observation already reached a terminal event');
+  }
+  if (event.sequence !== state.nextSequence) {
+    throw new Error('Control Room provider stream events must be observed in exact sequence');
+  }
+
+  state.seenEvents.add(event);
+  state.nextSequence += 1;
+  if (event.usage !== undefined) {
+    state.usageReports += 1;
+    mergeProviderUsage(state.usage, event.usage);
+  }
+  if (event.kind === 'provider-error') {
+    state.terminal = Object.freeze({ kind: 'provider-error' as const });
+    state.cost = providerCostState(event.cost);
+  } else if (event.kind === 'terminal') {
+    if (event.terminalStatus === undefined) {
+      throw new Error('Control Room provider terminal event is missing terminal status');
+    }
+    state.terminal = Object.freeze({ kind: 'terminal' as const, status: event.terminalStatus });
+    state.cost = providerCostState(event.cost);
   }
 }
 
@@ -144,6 +358,10 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
     lessonId?: string;
     reusedLessonIds: readonly string[];
   }>();
+  const observedBufferedProviderResults = new WeakSet<object>();
+  const bufferedProviderObservations: BufferedProviderObservation[] = [];
+  const streamProviderObservations = new WeakMap<GovernedProviderStreamSession, StreamProviderObservationState>();
+  const streamProviderObservationList: StreamProviderObservationState[] = [];
 
   return {
     observeProxyEvent(event) {
@@ -193,6 +411,54 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
         status: result.status,
         ...(result.lessonId === undefined ? {} : { lessonId: result.lessonId }),
         reusedLessonIds: Object.freeze([...new Set(reusedLessonIds)]),
+      });
+    },
+
+    observeProviderExecution(result) {
+      if (!isGeneratedGovernedProviderExecutionResult(result)) {
+        throw new Error('Control Room provider execution requires a process-local FuryPipe result');
+      }
+      if (observedBufferedProviderResults.has(result)) return;
+      if (bufferedProviderObservations.length >= MAX_PROVIDER_OBSERVATIONS) {
+        throw new Error('Control Room provider observation limit reached');
+      }
+      const usage = snapshotProviderUsage(result.usage);
+      bufferedProviderObservations.push(Object.freeze({
+        providerStatus: result.providerRequest.status,
+        ...(usage === undefined ? {} : { usage }),
+        cost: providerCostState(result.cost),
+      }));
+      observedBufferedProviderResults.add(result);
+    },
+
+    observeProviderStreamSession(session) {
+      if (!isGeneratedGovernedProviderStreamSession(session)) {
+        throw new Error('Control Room provider stream observation requires a process-local FuryPipe session');
+      }
+      const existing = streamProviderObservations.get(session);
+      if (existing) return Object.freeze({
+        observeEvent: (event: GovernedProviderStreamEvent) => observeStreamEvent(existing, event),
+      });
+      if (streamProviderObservationList.length >= MAX_PROVIDER_OBSERVATIONS) {
+        throw new Error('Control Room provider stream observation limit reached');
+      }
+      const state: StreamProviderObservationState = {
+        providerId: session.providerId,
+        model: session.model,
+        workloadId: session.workloadId,
+        requestDigest: session.requestDigest,
+        providerStatus: session.providerRequest.status,
+        nextSequence: 0,
+        terminal: undefined,
+        usageReports: 0,
+        usage: {},
+        cost: undefined,
+        seenEvents: new WeakSet<object>(),
+      };
+      streamProviderObservations.set(session, state);
+      streamProviderObservationList.push(state);
+      return Object.freeze({
+        observeEvent: (event: GovernedProviderStreamEvent) => observeStreamEvent(state, event),
       });
     },
 
@@ -249,6 +515,10 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
         recovery,
         agent,
         learning,
+        provider: providerEvidenceFromObservations(
+          bufferedProviderObservations,
+          streamProviderObservationList,
+        ),
         mcp: clone(options.mcp ?? NOT_AVAILABLE_MCP),
         i18n: clone(options.i18n ?? NOT_AVAILABLE_I18N),
         webStudio: clone(options.webStudio ?? NOT_AVAILABLE_WEB_STUDIO),
