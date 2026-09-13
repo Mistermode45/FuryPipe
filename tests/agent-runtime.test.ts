@@ -56,6 +56,44 @@ describe('FuryPipe Agent runtime', () => {
     await expect(claimMemory.claimExecution!('bounded-overflow', 'start')).rejects.toThrow(/claim limit/);
   });
 
+  it('does not expose mutable in-memory history records', async () => {
+    const memory = createInMemoryAgentMemoryStore();
+    await memory.append({
+      format: 'furypipe-agent-memory-record/v1',
+      runId: 'immutable-history',
+      stage: 'research',
+      resultDigest: 'opaque-digest',
+      status: 'handoff_required',
+      consumedTokens: 3,
+    });
+    const listed = await memory.list('immutable-history');
+    expect(Object.isFrozen(listed[0])).toBe(true);
+    expect(() => {
+      (listed[0] as { consumedTokens: number }).consumedTokens = 999;
+    }).toThrow();
+    expect((await memory.list('immutable-history'))[0]?.consumedTokens).toBe(3);
+  });
+
+  it('fails closed when a custom memory adapter returns a non-boolean execution claim', async () => {
+    const result = await runAgent({
+      objective: 'Reject malformed claim adapters.',
+      runId: 'malformed-claim-adapter',
+      executors: stageExecutors([]),
+      memory: {
+        async append() {},
+        async list() { return []; },
+        async claimExecution() { return 'yes' as unknown as boolean; },
+      },
+    });
+    expect(result).toMatchObject({
+      status: 'failed',
+      failure: {
+        code: 'MEMORY_FAILED',
+        reason: 'agent execution claim could not be recorded',
+      },
+    });
+  });
+
   it('executes the real stage callbacks in order with read-only defaults', async () => {
     const seen: string[] = [];
     let skillCalled = false;
