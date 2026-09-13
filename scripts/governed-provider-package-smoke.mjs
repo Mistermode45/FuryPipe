@@ -91,7 +91,7 @@ try {
     ],
     [
       'furypipe/governed-provider-executor',
-      "typeof m.createGovernedProviderExecutor === 'function'",
+      "typeof m.createGovernedProviderExecutor === 'function' && typeof m.isGeneratedGovernedProviderExecutionResult === 'function'",
     ],
     [
       'furypipe/provider-execution-errors',
