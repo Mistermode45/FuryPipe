@@ -777,7 +777,16 @@ function executionState(
   return 'ambiguous';
 }
 
-function planMetadata(plan: ReturnType<ReturnType<typeof createProviderAttemptPlanner>['plan']>) {
+interface FuryProviderRetryFallbackPlanMetadata {
+  readonly adapterState?: 'IDENTITY' | 'APPLIED' | 'BLOCKED';
+  readonly adapterId?: string;
+  readonly contextProfileState?: 'IDENTITY' | 'QUALIFIED' | 'BLOCKED';
+  readonly contextProfileId?: string;
+}
+
+function planMetadata(
+  plan: ReturnType<ReturnType<typeof createProviderAttemptPlanner>['plan']>,
+): FuryProviderRetryFallbackPlanMetadata {
   return {
     adapterState: plan.adapter.adapterState,
     ...(plan.adapter.adapterId === undefined ? {} : { adapterId: plan.adapter.adapterId }),
@@ -846,7 +855,7 @@ export function createProviderRetryFallbackOrchestrator(
         let stage: FuryProviderRetryFallbackAttemptStage = 'plan';
         let requestDigest: string | undefined;
         let promptDigest: string | undefined;
-        let metadata: ReturnType<typeof planMetadata> = {};
+        let metadata: FuryProviderRetryFallbackPlanMetadata = {};
         let execution: GovernedProviderExecutionResult;
 
         try {
