@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isGeneratedProviderAttemptContextResult,
   prepareProviderAttemptContext,
   FuryProviderAttemptContextRuntimeError,
 } from '../src/provider-attempt-context-runtime.js';
@@ -582,5 +583,37 @@ describe('Provider Attempt Context Runtime', () => {
       executionAuthorized: false,
       currentContextResultVerified: false,
     });
+  });
+
+  it('marks the original immutable Context Runtime result with process-local provenance', () => {
+    const result = prepareProviderAttemptContext({
+      attemptPlan: makePlanner().plan(attempt()), items: [],
+    });
+
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(isGeneratedProviderAttemptContextResult(result)).toBe(true);
+  });
+
+  it('does not treat a shallow copy as a generated Context Runtime result', () => {
+    const result = prepareProviderAttemptContext({
+      attemptPlan: makePlanner().plan(attempt()), items: [],
+    });
+
+    expect(isGeneratedProviderAttemptContextResult({ ...result })).toBe(false);
+  });
+
+  it('does not treat a JSON round-trip as a generated Context Runtime result', () => {
+    const result = prepareProviderAttemptContext({
+      attemptPlan: makePlanner().plan(attempt()), items: [],
+    });
+
+    expect(isGeneratedProviderAttemptContextResult(JSON.parse(JSON.stringify(result)))).toBe(false);
+  });
+
+  it('does not treat a fabricated Context Runtime-shaped object as authentic', () => {
+    expect(isGeneratedProviderAttemptContextResult({
+      format: 'furypipe-provider-attempt-context-runtime/v1',
+      providerId: 'openai', model: 'gpt-5.6-sol', workloadId: 'coding',
+    })).toBe(false);
   });
 });

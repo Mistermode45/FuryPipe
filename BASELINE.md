@@ -222,3 +222,21 @@ Baseline code : `v5-production-hardening` / `423bef619c4306557838142008a858db65b
 | Intégrations SaaS/externes | NOT_EXECUTED | pas de compte/token, tool call, probe health ou coût facturable |
 
 Le statut MCP du produit demeure `PARTIAL` : OAuth réel, audience/issuer du verifier hébergé, interopérabilité multi-client et permissions sur des instances réelles restent à valider hors de cet environnement. L’audit conformance existant est épinglé à `48aaec7373ba87195922d6757b099804da9de6bc` et ne vaut pas certification des commits MCP ultérieurs.
+
+## Governed Provider Request Executor — 2026-09-13
+
+Baseline de code : `v5-production-hardening` / `d6b1944404e23c5a76a36b4b8ef6def6d8386d53`. Branche de travail : `v5-codex-governed-provider-executor`.
+
+| Vérification | Résultat | Mesure / preuve |
+|---|---|---|
+| `pnpm install --frozen-lockfile` | PASS | pnpm projet 10.21.0; lockfile inchangé |
+| `pnpm run audit` | PASS | aucune vulnérabilité de production connue |
+| `pnpm run typecheck` | PASS | sortie 0 |
+| Tests ciblés | PASS | 5 fichiers; 90 tests |
+| `pnpm test` | PASS | 151 fichiers; 1 813 tests |
+| `pnpm run build` | PASS | modules/déclarations, `dist/node.js`, `dist/mcp.js`; version 0.13.2 |
+| `pnpm run package:smoke` | PASS | package smoke, benchmark-claim smoke, provider-attempt smoke sur tarball local |
+| Transport provider réel | NOT_EXECUTED | fake transports locaux uniquement; aucun réseau/provider réel/credential |
+| Package public export | NOT_CHANGED | intégration packaging réservée à une autre piste |
+| GitHub CI / PR | PASS / OPEN DRAFT | PR #106 vers `v5-production-hardening`, head `dcf22da274abb67eb5a8c9c147d8fff3d87b23d1`; 20 contrôles passés dont matrice 9/9 OS × Node; dependency review et attestation du tarball `SKIPPED` conditionnellement; PR non fusionnée |
+| Publication / release / merge / deploy | NOT_EXECUTED | hors scope sans approbation explicite |
