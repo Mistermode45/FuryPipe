@@ -194,11 +194,17 @@ function validatePermit(
   return permit;
 }
 
-function validateEvidence(
-  value: GovernedProviderExecutionResult['network'] | GovernedProviderExecutionResult['providerRequest'],
-  allowed: readonly string[],
+function validateEvidence<T extends string>(
+  value: Readonly<{
+    readonly status: T;
+    readonly evidence: 'transport-reported' | 'not-reported';
+  }>,
+  allowed: readonly T[],
   label: string,
-): typeof value {
+): Readonly<{
+  readonly status: T;
+  readonly evidence: 'transport-reported' | 'not-reported';
+}> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${label} evidence is invalid`);
   }
@@ -209,7 +215,7 @@ function validateEvidence(
   if (value.evidence === 'not-reported' && value.status !== 'unknown') {
     throw new Error(`${label} cannot claim a concrete status without transport evidence`);
   }
-  return Object.freeze({ status: value.status, evidence: value.evidence }) as typeof value;
+  return Object.freeze({ status: value.status, evidence: value.evidence });
 }
 
 function validateUsage(
