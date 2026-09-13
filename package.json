@@ -237,6 +237,10 @@
     "./provider-attempt-receipt": {
       "types": "./dist/provider-attempt-receipt.d.ts",
       "import": "./dist/provider-attempt-receipt.js"
+    },
+    "./provider-attempt-context-receipt": {
+      "types": "./dist/provider-attempt-context-receipt.d.ts",
+      "import": "./dist/provider-attempt-context-receipt.js"
     }
   },
   "files": [
@@ -280,7 +284,8 @@
     "docs/CONTEXT_OPTIMIZER_PROFILES.md",
     "docs/PROVIDER_ATTEMPT_PLANNER.md",
     "docs/PROVIDER_ATTEMPT_CONTEXT_RUNTIME.md",
-    "docs/PROVIDER_ATTEMPT_RECEIPTS.md"
+    "docs/PROVIDER_ATTEMPT_RECEIPTS.md",
+    "docs/PROVIDER_ATTEMPT_CONTEXT_RECEIPTS.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
