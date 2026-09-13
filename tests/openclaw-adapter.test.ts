@@ -62,6 +62,16 @@ describe('OpenClaw adapter', () => {
     const report = discoverOpenClaw({ home: root, env: { OPENCLAW_CONFIG_PATH: configPath }, checkRuntime: false });
     expect(report.config.status).toBe('invalid');
     expect(JSON.stringify(report)).not.toContain('secret-fixture');
-    expect(report.security.warnings).toContain('config is not valid JSON5');
+    expect(report.security.warnings).toContain('config is not valid JSON5 or exceeds the 1 MiB inspection bound');
+  });
+
+  it('refuses to parse a configuration larger than the fixed inspection bound', () => {
+    const root = fixture();
+    const configPath = path.join(root, 'large.json5');
+    fs.writeFileSync(configPath, `// ${'x'.repeat(1_048_576)}`);
+    const report = discoverOpenClaw({ home: root, env: { OPENCLAW_CONFIG_PATH: configPath }, checkRuntime: false });
+    expect(report.config.status).toBe('invalid');
+    expect(report.config.agentEntryCount).toBe(0);
+    expect(report.security.warnings).toContain('config is not valid JSON5 or exceeds the 1 MiB inspection bound');
   });
 });
