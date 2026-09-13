@@ -129,6 +129,39 @@ describe('MCP stdio runtime observability', () => {
     await handle.close();
   });
 
+  it('keeps Control Room partial when request correlation becomes ambiguous', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-stdio-ambiguous-'));
+    roots.push(root);
+    const transport = new TestStdioTransport();
+    const handle = runModernMcpStdio(
+      createRecoveryStore(root, { namespace: 'stdio-ambiguous' }),
+      { transport },
+    );
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 1 });
+    runtime.observeMcpStdioHandle(handle);
+
+    const request = {
+      jsonrpc: '2.0',
+      id: 99,
+      method: 'tools/list',
+      params: {
+        _meta: {
+          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
+      },
+    } as JSONRPCMessage;
+    transport.receive(request);
+    transport.receive(request);
+
+    await waitFor(() => transport.sent.length >= 2);
+    const evidence = getProductionMcpStdioRuntimeEvidence(handle);
+    expect(evidence?.trackingOverflows).toBeGreaterThan(0);
+    expect(evidence?.completedExchanges).toBe(1);
+    expect(runtime.snapshot().sections.mcp.evidence.stdio).toBe('PARTIAL');
+    await handle.close();
+  });
+
   it('observes a real child-process stdin/stdout exchange without contaminating the JSON-RPC wire', async () => {
     const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-stdio-child-'));
     roots.push(root);
