@@ -87,11 +87,20 @@ export interface RecoveryListOptions {
   readonly limit?: number;
 }
 
-export interface RecoveryPutBound {
+export interface RecoveryCapacityBound {
   /** Exact metadata values counted under the same Recovery write lock. */
   readonly metadata: Readonly<Record<string, string | number | boolean | null>>;
   /** Reject creation of a new unique object once this many matching manifests exist. */
   readonly maxMatches: number;
+}
+
+export interface RecoveryPutBound extends RecoveryCapacityBound {
+  /**
+   * Additional capacity/uniqueness constraints evaluated atomically under the
+   * same inter-process Recovery lock. This lets callers enforce both a broad
+   * quota and a narrow uniqueness key without a list→put race.
+   */
+  readonly additionalBounds?: readonly RecoveryCapacityBound[];
 }
 
 export interface RecoveryStore {
@@ -722,14 +731,25 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
   ): Promise<RecoveryHandle> {
     const view = asUint8Array(bytes);
     if (view.byteLength > maxObjectBytes) throw new Error('recovery object exceeds the configured object quota');
+    const capacityBounds: readonly RecoveryCapacityBound[] = bound === undefined
+      ? []
+      : [bound, ...(bound.additionalBounds ?? [])];
     if (bound !== undefined) {
-      if (!bound || typeof bound !== 'object' || !bound.metadata || typeof bound.metadata !== 'object'
-        || Array.isArray(bound.metadata) || !Number.isSafeInteger(bound.maxMatches)
-        || bound.maxMatches < 1 || bound.maxMatches > 10_000) {
-        throw new RangeError('recovery bounded put maxMatches must be an integer from 1 to 10000');
+      if (!bound || typeof bound !== 'object'
+        || (bound.additionalBounds !== undefined
+          && (!Array.isArray(bound.additionalBounds) || bound.additionalBounds.length > 7))) {
+        throw new RangeError('recovery bounded put additionalBounds must contain at most 7 constraints');
       }
-      if (Object.entries(bound.metadata).some(([key, value]) => metadata?.[key] !== value)) {
-        throw new Error('recovery bounded put metadata must satisfy its capacity filter');
+      for (const capacityBound of capacityBounds) {
+        if (!capacityBound || typeof capacityBound !== 'object'
+          || !capacityBound.metadata || typeof capacityBound.metadata !== 'object'
+          || Array.isArray(capacityBound.metadata) || !Number.isSafeInteger(capacityBound.maxMatches)
+          || capacityBound.maxMatches < 1 || capacityBound.maxMatches > 10_000) {
+          throw new RangeError('recovery bounded put maxMatches must be an integer from 1 to 10000');
+        }
+        if (Object.entries(capacityBound.metadata).some(([key, value]) => metadata?.[key] !== value)) {
+          throw new Error('recovery bounded put metadata must satisfy every capacity filter');
+        }
       }
     }
     const digest = digestBytes(view);
@@ -746,16 +766,18 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
       if (encryption !== undefined && existingStorage === undefined && !encryption.allowLegacyPlaintext) {
         throw new Error('recovery object is plaintext; explicit rekey migration is required');
       }
-      if (bound !== undefined
-        && Object.entries(bound.metadata).some(([key, value]) => existingManifest.metadata?.[key] !== value)) {
-        throw new Error('recovery bounded put existing object is outside its capacity filter');
+      if (capacityBounds.some((capacityBound) =>
+        Object.entries(capacityBound.metadata).some(([key, value]) => existingManifest.metadata?.[key] !== value))) {
+        throw new Error('recovery bounded put existing object is outside one of its capacity filters');
       }
       return makeHandle(digest, existing.byteLength, existingManifest?.metadata, existingStorage);
     }
 
-    if (bound !== undefined) {
-      const matches = await countMatchingManifests(bound.metadata, bound.maxMatches);
-      if (matches >= bound.maxMatches) throw new Error('recovery bounded put matching-object limit exceeded');
+    for (const capacityBound of capacityBounds) {
+      const matches = await countMatchingManifests(capacityBound.metadata, capacityBound.maxMatches);
+      if (matches >= capacityBound.maxMatches) {
+        throw new Error('recovery bounded put matching-object limit exceeded');
+      }
     }
 
     const storage: RecoveryStorage | undefined = encryption === undefined
