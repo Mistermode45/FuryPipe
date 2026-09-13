@@ -40,29 +40,13 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function selectedRunIds(selection) {
-  return Object.freeze({
-    codeql: selection.selected.codeql?.runId,
-    secretScan: selection.selected.secretScan?.runId,
-    licenseCompliance: selection.selected.licenseCompliance?.runId,
-    supplyChain: selection.selected.supplyChain?.runId,
+function evidenceFingerprint(evidence) {
+  return JSON.stringify({
+    codeql: evidence.codeql,
+    secretScan: evidence.secretScan,
+    licenseCompliance: evidence.licenseCompliance,
+    supplyChain: evidence.supplyChain,
   });
-}
-
-function evidenceRunIds(evidence) {
-  return Object.freeze({
-    codeql: evidence.codeql?.runId,
-    secretScan: evidence.secretScan?.runId,
-    licenseCompliance: evidence.licenseCompliance?.runId,
-    supplyChain: evidence.supplyChain?.run.runId,
-  });
-}
-
-function sameRunIdentity(a, b) {
-  return a.codeql === b.codeql
-    && a.secretScan === b.secretScan
-    && a.licenseCompliance === b.licenseCompliance
-    && a.supplyChain === b.supplyChain;
 }
 
 async function collectOnce(client, sourceCommit) {
@@ -96,11 +80,10 @@ async function collectStableEvidence(client, sourceCommit) {
     }
 
     const candidate = evaluation.evidence;
-    const freshRuns = await client.listWorkflowRunsForCommit(sourceCommit);
-    const freshSelection = inspectSecurityCiWorkflowRuns(freshRuns, sourceCommit);
+    const freshEvaluation = await collectOnce(client, sourceCommit);
     if (
-      freshSelection.waiting.length > 0
-      || !sameRunIdentity(evidenceRunIds(candidate), selectedRunIds(freshSelection))
+      freshEvaluation.state !== 'ready'
+      || evidenceFingerprint(candidate) !== evidenceFingerprint(freshEvaluation.evidence)
     ) {
       if (Date.now() >= deadline) {
         throw new Error('Security CI evidence collection timed out during final freshness verification');
@@ -110,7 +93,7 @@ async function collectStableEvidence(client, sourceCommit) {
       continue;
     }
 
-    return candidate;
+    return freshEvaluation.evidence;
   }
 }
 
