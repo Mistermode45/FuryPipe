@@ -320,8 +320,9 @@ function validateDeferred(
   }
 
   const ids = new Set<string>();
-  const counts = Object.fromEntries(DEFERRED_REASONS.map((reason) => [reason, 0]))
-    as Record<FuryContextDeferredItem['reason'], number>;
+  const counts = Object.fromEntries(
+    DEFERRED_REASONS.map((reason) => [reason, 0]),
+  ) as Record<FuryContextDeferredItem['reason'], number>;
   const digestEntries: Readonly<Record<string, unknown>>[] = [];
 
   for (const [index, item] of value.entries()) {
