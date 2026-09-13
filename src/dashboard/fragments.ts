@@ -274,7 +274,7 @@ function statTile(
   tip = '',
 ): string {
   const q = tip
-    ? `<span class="q" tabindex="0" aria-label="${escapeHtml(tip)}" data-tip="${escapeHtml(tip)}">?</span>`
+    ? `<span class="q" tabindex="0" aria-label="${escapeHtml(tip)}" title="${escapeHtml(tip)}" data-tip="${escapeHtml(tip)}">?</span>`
     : '';
   return (
     `<div class="tile">` +
@@ -1106,16 +1106,28 @@ const CSS = `
     border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border-strong);
     color: var(--muted); font-size: 9px; font-weight: 700; cursor: help; position: relative; outline: none; }
   .q:hover, .q:focus-visible { color: var(--flame-ink); border-color: var(--flame); }
-  .q::after { content: attr(data-tip); position: absolute; z-index: 50; left: 50%; bottom: calc(100% + 8px);
-    width: min(280px, 75vw); transform: translate(-50%, 4px); padding: 8px 10px; border-radius: 7px;
+  .q::after { content: attr(data-tip); position: absolute; z-index: 50; left: 0; bottom: calc(100% + 8px);
+    width: min(280px, calc(100vw - 32px)); transform: translateY(4px); padding: 8px 10px; border-radius: 7px;
     background: var(--ink); color: var(--surface); box-shadow: var(--shadow); font-size: 11px; font-weight: 500;
-    line-height: 1.4; text-align: left; pointer-events: none; opacity: 0; visibility: hidden;
+    line-height: 1.4; text-align: left; pointer-events: none; opacity: 0; visibility: hidden; display: none;
     transition: opacity .12s, transform .12s, visibility .12s; }
-  .q::before { content: ''; position: absolute; z-index: 51; left: 50%; bottom: calc(100% + 3px);
-    transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--ink);
-    pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .12s, visibility .12s; }
-  .q:hover::after, .q:focus-visible::after { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
-  .q:hover::before, .q:focus-visible::before { opacity: 1; visibility: visible; }
+  .q::before { content: ''; position: absolute; z-index: 51; left: 2px; bottom: calc(100% + 3px);
+    border: 5px solid transparent; border-top-color: var(--ink);
+    pointer-events: none; opacity: 0; visibility: hidden; display: none; transition: opacity .12s, visibility .12s; }
+  .tile:nth-child(3) .q::after, .tile:nth-child(4) .q::after { left: auto; right: 0; }
+  .tile:nth-child(3) .q::before, .tile:nth-child(4) .q::before { left: auto; right: 2px; }
+  .q:hover::after, .q:focus-visible::after { display: block; opacity: 1; visibility: visible; transform: translateY(0); }
+  .q:hover::before, .q:focus-visible::before { display: block; opacity: 1; visibility: visible; }
+  @media (max-width: 1000px) {
+    .tile:nth-child(odd) .q::after { left: 0; right: auto; }
+    .tile:nth-child(odd) .q::before { left: 2px; right: auto; }
+    .tile:nth-child(even) .q::after { left: auto; right: 0; }
+    .tile:nth-child(even) .q::before { left: auto; right: 2px; }
+  }
+  @media (max-width: 560px) {
+    .tile .q::after { left: 0; right: auto; }
+    .tile .q::before { left: 2px; right: auto; }
+  }
 
   /* drawer */
   .drawer { margin: 0 0 14px; background: var(--surface); border: 1px solid var(--border);
