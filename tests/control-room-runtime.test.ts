@@ -346,6 +346,13 @@ describe('Control Room live runtime collector', () => {
     expect(events.length).toBe(3);
 
     expect(() => observation.observeEvent({ ...events[0] } as never)).toThrow(/process-local/i);
+
+    const otherSession = await makeProviderStream();
+    const otherEvents = [];
+    for await (const event of otherSession.events) otherEvents.push(event);
+    expect(otherSession.requestDigest).toBe(session.requestDigest);
+    expect(() => observation.observeEvent(otherEvents[0]!)).toThrow(/exact bound session/i);
+
     expect(() => observation.observeEvent(events[1]!)).toThrow(/exact sequence/i);
 
     observation.observeEvent(events[0]!);
