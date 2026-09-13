@@ -342,6 +342,7 @@ function mcpEvidenceFromObservations(
       : 'NOT_EXECUTED';
 
   let stdioExchanges = 0;
+  let stdioTrackingUncertain = false;
   for (const handle of stdioHandles) {
     const evidence = getProductionMcpStdioRuntimeEvidence(handle);
     if (evidence === undefined) {
@@ -354,11 +355,12 @@ function mcpEvidenceFromObservations(
     safeRuntimeCount(evidence.trackingOverflows, 'Control Room MCP stdio trackingOverflows');
     stdioExchanges += evidence.completedExchanges;
     safeRuntimeCount(stdioExchanges, 'Control Room MCP stdio total completedExchanges');
+    stdioTrackingUncertain ||= evidence.trackingOverflows > 0;
   }
 
   const stdio: McpEvidence['stdio'] = stdioHandles.length === 0
     ? 'NOT_AVAILABLE'
-    : stdioExchanges > 0
+    : stdioExchanges > 0 && !stdioTrackingUncertain
       ? 'VERIFIED'
       : 'PARTIAL';
 
