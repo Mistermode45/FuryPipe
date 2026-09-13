@@ -528,6 +528,15 @@ export function createLongTermMemoryStore(store: RecoveryStore): LongTermMemoryS
             contentType: MEMORY_CONTENT_TYPE,
           },
           maxMatches: MAX_WRITABLE_RECORDS,
+          additionalBounds: [{
+            metadata: {
+              source: MEMORY_SOURCE,
+              contentType: MEMORY_CONTENT_TYPE,
+              memoryKey: key,
+              version: record.version,
+            },
+            maxMatches: 1,
+          }],
         },
       );
 
