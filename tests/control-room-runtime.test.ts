@@ -1,7 +1,91 @@
 import { describe, expect, it } from 'vitest';
 import { createControlRoomRuntime } from '../src/control-room/runtime.js';
+import { createGovernedProviderExecutor } from '../src/governed-provider-executor.js';
+import { createGovernedProviderStreamExecutor } from '../src/governed-provider-stream-executor.js';
+import { createProviderExecutionGate } from '../src/provider-execution-gate.js';
+import { createProviderTransportRegistry } from '../src/provider-transport.js';
+import {
+  createProviderStreamTransportRegistry,
+  type ProviderStreamTransport,
+} from '../src/provider-stream-transport.js';
+import { makePolicy, makeRequest, makeRuntime } from './helpers/provider-executor.js';
 
 const SHA = 'a'.repeat(40);
+
+const PROVIDER_AT = 1_000;
+
+function streamEvents(values: readonly unknown[]): AsyncIterable<unknown> {
+  return Object.freeze({
+    async *[Symbol.asyncIterator](): AsyncGenerator<unknown> {
+      for (const value of values) yield value;
+    },
+  });
+}
+
+async function makeBufferedProviderResult() {
+  const request = makeRequest({ task: 'PRIVATE_BUFFERED_PROVIDER_PROMPT' });
+  const providerRuntime = makeRuntime({ providerId: request.providerId });
+  const gate = createProviderExecutionGate({ providerRuntime, now: () => PROVIDER_AT });
+  const permit = gate.authorize(request, makePolicy(request));
+  const executor = createGovernedProviderExecutor({
+    transports: createProviderTransportRegistry([{
+      providerId: 'openai',
+      protocol: 'openai',
+      execute: async (received) => ({
+        providerId: 'openai',
+        model: received.model,
+        networkStatus: 'executed',
+        providerRequestStatus: 'accepted',
+        usage: { inputTokens: 7, outputTokens: 2 },
+      }),
+    }]),
+    providerRuntime,
+    now: () => PROVIDER_AT,
+  });
+  return executor.execute(request, permit);
+}
+
+async function makeProviderStream() {
+  const request = makeRequest({ task: 'PRIVATE_STREAM_PROVIDER_PROMPT' });
+  const providerRuntime = makeRuntime({ providerId: request.providerId });
+  const gate = createProviderExecutionGate({ providerRuntime, now: () => PROVIDER_AT });
+  const permit = gate.authorize(request, makePolicy(request));
+  const transport: ProviderStreamTransport = {
+    providerId: 'openai',
+    protocol: 'openai',
+    open: async (received) => ({
+      providerId: 'openai',
+      model: received.model,
+      networkStatus: 'executed',
+      providerRequestStatus: 'accepted',
+      httpStatus: 200,
+      events: streamEvents([
+        {
+          kind: 'text-delta',
+          providerEventType: 'response.output_text.delta',
+          text: 'PRIVATE_STREAM_OUTPUT_TEXT',
+        },
+        {
+          kind: 'usage',
+          providerEventType: 'response.usage',
+          usage: { inputTokens: 5, cacheReadTokens: 2 },
+        },
+        {
+          kind: 'terminal',
+          providerEventType: 'response.completed',
+          terminalStatus: 'completed',
+          usage: { outputTokens: 3 },
+        },
+      ]),
+    }),
+  };
+  const executor = createGovernedProviderStreamExecutor({
+    transports: createProviderStreamTransportRegistry([transport]),
+    providerRuntime,
+    now: () => PROVIDER_AT,
+  });
+  return executor.open(request, permit);
+}
 
 function receipt(
   verificationStatus: 'verified' | 'unverified',
@@ -191,6 +275,90 @@ describe('Control Room live runtime collector', () => {
     expect(JSON.stringify(snapshot)).not.toContain('PRIVATE-');
     expect(JSON.stringify(snapshot)).not.toContain('new-lesson');
     expect(JSON.stringify(snapshot)).not.toContain('old-a');
+  });
+
+  it('collects authentic buffered and streaming provider metadata without retaining prompt or output plaintext', async () => {
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 7 });
+    const buffered = await makeBufferedProviderResult();
+    runtime.observeProviderExecution(buffered);
+    runtime.observeProviderExecution(buffered);
+
+    const session = await makeProviderStream();
+    const observation = runtime.observeProviderStreamSession(session);
+    expect(runtime.observeProviderStreamSession(session)).toBeDefined();
+
+    const openSnapshot = runtime.snapshot();
+    expect(openSnapshot.sections.provider.evidence).toMatchObject({
+      bufferedExecutions: 1,
+      streamSessions: 1,
+      acceptedRequests: 2,
+      streamOpenAccepted: 1,
+      runtimeObservability: 'VERIFIED',
+      providerVerification: 'NOT_AVAILABLE',
+    });
+    expect(openSnapshot.sections.provider.status).toBe('PARTIAL');
+
+    for await (const event of session.events) {
+      observation.observeEvent(event);
+      observation.observeEvent(event);
+    }
+
+    const snapshot = runtime.snapshot();
+    expect(snapshot.sections.provider.evidence).toMatchObject({
+      bufferedExecutions: 1,
+      streamSessions: 1,
+      acceptedRequests: 2,
+      rejectedRequests: 0,
+      unknownRequests: 0,
+      streamCompleted: 1,
+      streamOpenAccepted: 0,
+      usageReports: 3,
+      inputTokens: 12,
+      outputTokens: 5,
+      cacheReadTokens: 2,
+      cacheWriteTokens: 0,
+      knownCostObservations: 0,
+      unknownCostObservations: 2,
+      runtimeObservability: 'VERIFIED',
+      providerVerification: 'NOT_AVAILABLE',
+    });
+    expect(snapshot.sections.provider.status).toBe('PARTIAL');
+    expect(snapshot.sections.provider.warnings.join(' ')).toMatch(/independently unverified/i);
+
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain('PRIVATE_BUFFERED_PROVIDER_PROMPT');
+    expect(serialized).not.toContain('PRIVATE_STREAM_PROVIDER_PROMPT');
+    expect(serialized).not.toContain('PRIVATE_STREAM_OUTPUT_TEXT');
+  });
+
+  it('rejects forged provider results, sessions and stream events instead of promoting copied evidence', async () => {
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 8 });
+    const buffered = await makeBufferedProviderResult();
+
+    expect(() => runtime.observeProviderExecution({ ...buffered } as never)).toThrow(/process-local/i);
+
+    const session = await makeProviderStream();
+    expect(() => runtime.observeProviderStreamSession({ ...session } as never)).toThrow(/process-local/i);
+
+    const observation = runtime.observeProviderStreamSession(session);
+    const events = [];
+    for await (const event of session.events) events.push(event);
+    expect(events.length).toBe(3);
+
+    expect(() => observation.observeEvent({ ...events[0] } as never)).toThrow(/process-local/i);
+
+    const otherSession = await makeProviderStream();
+    const otherEvents = [];
+    for await (const event of otherSession.events) otherEvents.push(event);
+    expect(otherSession.requestDigest).toBe(session.requestDigest);
+    expect(() => observation.observeEvent(otherEvents[0]!)).toThrow(/exact bound session/i);
+
+    expect(() => observation.observeEvent(events[1]!)).toThrow(/exact sequence/i);
+
+    observation.observeEvent(events[0]!);
+    observation.observeEvent(events[1]!);
+    observation.observeEvent(events[2]!);
+    expect(runtime.snapshot().sections.provider.evidence.streamCompleted).toBe(1);
   });
 
   it('rejects malformed Agent/Learning observations before they can poison Control Room counters', () => {

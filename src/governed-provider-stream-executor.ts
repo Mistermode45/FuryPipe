@@ -89,6 +89,8 @@ export interface GovernedProviderStreamExecutorOptions {
 
 const GENERATED_STREAM_SESSIONS = new WeakSet<object>();
 const GENERATED_STREAM_EVENTS = new WeakSet<object>();
+const GENERATED_STREAM_SESSION_IDENTITIES = new WeakMap<object, object>();
+const GENERATED_STREAM_EVENT_IDENTITIES = new WeakMap<object, object>();
 const TRANSPORT_KEYS = ['providerId', 'protocol', 'open'] as const;
 
 export function isGeneratedGovernedProviderStreamSession(
@@ -101,6 +103,25 @@ export function isGeneratedGovernedProviderStreamEvent(
   value: unknown,
 ): value is GovernedProviderStreamEvent {
   return value !== null && typeof value === 'object' && GENERATED_STREAM_EVENTS.has(value);
+}
+
+/**
+ * Process-local exact session/event relation check.
+ *
+ * A matching provider/model/request digest is intentionally insufficient:
+ * two authorized attempts may execute the same immutable request. This binds
+ * each yielded event to the exact stream session that generated it.
+ */
+export function isGeneratedGovernedProviderStreamEventForSession(
+  session: GovernedProviderStreamSession,
+  event: GovernedProviderStreamEvent,
+): boolean {
+  if (!isGeneratedGovernedProviderStreamSession(session) || !isGeneratedGovernedProviderStreamEvent(event)) {
+    return false;
+  }
+  const sessionIdentity = GENERATED_STREAM_SESSION_IDENTITIES.get(session);
+  return sessionIdentity !== undefined
+    && GENERATED_STREAM_EVENT_IDENTITIES.get(event) === sessionIdentity;
 }
 
 function fail(code: FuryGovernedProviderStreamErrorCode, transportInvoked = false): never {
@@ -249,6 +270,7 @@ function governedEvents(
   source: AsyncIterable<unknown>,
   runtime: ProviderRuntimeState,
   requireTerminal: boolean,
+  sessionIdentity: object,
 ): AsyncIterable<GovernedProviderStreamEvent> {
   return Object.freeze({
     async *[Symbol.asyncIterator](): AsyncGenerator<GovernedProviderStreamEvent> {
@@ -290,6 +312,7 @@ function governedEvents(
             ...(terminal ? { cost: exactCost(runtime, request, usage) } : {}),
           });
           GENERATED_STREAM_EVENTS.add(governed);
+          GENERATED_STREAM_EVENT_IDENTITIES.set(governed, sessionIdentity);
           sequence += 1;
           yield governed;
         }
@@ -374,6 +397,7 @@ export function createGovernedProviderStreamExecutor(
 
       const streamSession = validateProviderStreamTransportSession(rawSession, request);
       assertSessionConsistency(streamSession);
+      const sessionIdentity = Object.freeze({});
       const session: GovernedProviderStreamSession = Object.freeze({
         format: 'furypipe-governed-provider-stream-session/v1',
         state: 'STREAM_SESSION',
@@ -394,9 +418,11 @@ export function createGovernedProviderStreamExecutor(
           streamSession.events,
           options.providerRuntime,
           streamSession.providerRequest.status === 'accepted',
+          sessionIdentity,
         ),
       });
       GENERATED_STREAM_SESSIONS.add(session);
+      GENERATED_STREAM_SESSION_IDENTITIES.set(session, sessionIdentity);
       return session;
     },
   });

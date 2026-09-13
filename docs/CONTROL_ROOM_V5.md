@@ -20,6 +20,7 @@ The snapshot covers:
 - Recovery and `BACKUP_EXISTS` vs `RESTORE_VERIFIED`;
 - Agent runtime;
 - Human/Agent Learning;
+- governed provider execution and streaming runtime observations;
 - MCP transport/auth/conformance;
 - i18n runtime/wiring;
 - Web/Figma Studio;
@@ -65,7 +66,8 @@ The Control Room model is metadata-only. It must never become a channel for:
 - recovered object plaintext;
 - learner identifiers;
 - secret values;
-- raw protected ExactGuard spans.
+- raw protected ExactGuard spans;
+- provider prompt/output plaintext, raw response bytes or provider request IDs.
 
 Counts, statuses, digests, commit IDs and bounded evidence metadata are permitted.
 
@@ -107,6 +109,52 @@ These observers deliberately do **not** infer stronger guarantees:
 - observing a Learning cycle does not prove durable storage or semantic retrieval.
 
 Those statuses remain `NOT_AVAILABLE` unless the host supplies separate verified evidence. Run IDs, cycle IDs, lesson IDs, content handles, objectives, task text and evidence text are not emitted in the Control Room snapshot.
+
+
+## Governed provider runtime observations
+
+The live collector can ingest authentic process-local outputs from the governed provider runtimes:
+
+- `observeProviderExecution(result)` observes one buffered `furypipe-governed-provider-execution-result/v1`;
+- `observeProviderStreamSession(session)` binds one exact governed stream session and returns a session-scoped observer;
+- the returned `observeEvent(event)` consumes only authentic governed events from that exact stream, in exact sequence.
+
+The collector accepts these values only when their process-local FuryPipe provenance checks succeed. Serialized values, object spreads, `structuredClone` copies and hand-crafted lookalikes are rejected. Re-observing the same exact buffered result, stream session or governed stream event is idempotent and does not inflate counters.
+
+The Provider section exposes bounded aggregate metadata only:
+
+- buffered execution and stream-session counts;
+- accepted / rejected / unknown provider-request counts;
+- stream completed / incomplete / failed / cancelled / requires-action / unknown / provider-error counts;
+- accepted streams for which no terminal event has yet been observed;
+- reported token categories;
+- known-vs-unknown cost observation counts;
+- runtime-observability and provider-verification states.
+
+It deliberately does **not** retain or emit:
+
+- FuryPrompt or request plaintext;
+- streamed text deltas;
+- provider response bytes;
+- provider request IDs;
+- finish reasons or provider error messages;
+- API keys, authorization headers or other credentials.
+
+`runtimeObservability: VERIFIED` means only that the Control Room observed authentic process-local FuryPipe runtime objects. It does not convert transport-reported network/provider evidence into independently verified truth.
+
+Accordingly, runtime-collected Provider evidence defaults to:
+
+```text
+runtimeObservability = VERIFIED   # after at least one authentic observation
+providerVerification = NOT_AVAILABLE
+Provider section status = PARTIAL
+```
+
+A provider request reported as accepted, an HTTP 2xx stream, a terminal provider event or provider-reported usage/cost remains transport/runtime evidence. None of those proves provider uptime, account authorization, billing authenticity or network truth independently.
+
+An accepted stream remains visibly open until its governed terminal/provider-error event is observed. The Control Room does not infer completion from session creation or elapsed time.
+
+The source-bound host evidence file described below does **not** currently accept a Provider section. Independent provider verification needs a dedicated evidence contract rather than a static JSON field that could silently relabel transport-reported data.
 
 
 ## Source-bound host evidence file
