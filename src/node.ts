@@ -39,6 +39,11 @@ import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
 import { createControlRoomRuntime } from './control-room/runtime.js';
 import { loadControlRoomHostEvidence, type ControlRoomHostEvidence } from './control-room/evidence-file.js';
+import {
+  loadControlRoomSecurityCiEvidenceFile,
+  resolveControlRoomSecurityEvidence,
+} from './control-room/security-ci-evidence-file.js';
+import type { SecurityEvidence } from './control-room/index.js';
 
 /** Runtime config. The core transform tuning comes from DEFAULTS in
  *  transform.ts; startup knobs cover deployment plus emergency GPT scope
@@ -106,6 +111,19 @@ function controlRoomHostEvidence(sourceCommit: string | undefined): ControlRoomH
   } catch (caught) {
     const reason = caught instanceof Error ? caught.message : 'invalid evidence';
     console.warn(`[furypipe] ignored Control Room host evidence: ${reason}`);
+    return undefined;
+  }
+}
+
+function controlRoomSecurityCiEvidence(sourceCommit: string | undefined): SecurityEvidence | undefined {
+  if (sourceCommit === undefined) return undefined;
+  const file = process.env.FURYPIPE_CONTROL_ROOM_SECURITY_CI_EVIDENCE?.trim();
+  if (!file) return undefined;
+  try {
+    return loadControlRoomSecurityCiEvidenceFile(file, sourceCommit).security;
+  } catch (caught) {
+    const reason = caught instanceof Error ? caught.message : 'invalid evidence';
+    console.warn(`[furypipe] ignored Control Room Security CI evidence: ${reason}`);
     return undefined;
   }
 }
@@ -1272,6 +1290,13 @@ async function main(): Promise<void> {
   // enables live runtime evidence only when that identity is supplied explicitly.
   const sourceCommit = controlRoomSourceCommit();
   const hostEvidence = controlRoomHostEvidence(sourceCommit);
+  const securityCiEvidence = controlRoomSecurityCiEvidence(sourceCommit);
+  const resolvedSecurity = resolveControlRoomSecurityEvidence(hostEvidence?.security, securityCiEvidence);
+  if (resolvedSecurity.conflict) {
+    console.warn(
+      '[furypipe] Control Room Security evidence conflict: source-bound CI evidence overrides static host security evidence',
+    );
+  }
   const controlRoomRuntime = sourceCommit === undefined
     ? undefined
     : createControlRoomRuntime({
@@ -1282,7 +1307,7 @@ async function main(): Promise<void> {
         ...(hostEvidence?.mcp === undefined ? {} : { mcp: hostEvidence.mcp }),
         ...(hostEvidence?.i18n === undefined ? {} : { i18n: hostEvidence.i18n }),
         ...(hostEvidence?.webStudio === undefined ? {} : { webStudio: hostEvidence.webStudio }),
-        ...(hostEvidence?.security === undefined ? {} : { security: hostEvidence.security }),
+        ...(resolvedSecurity.security === undefined ? {} : { security: resolvedSecurity.security }),
         ...(hostEvidence?.benchmarks === undefined ? {} : { benchmarks: hostEvidence.benchmarks }),
         ...(hostEvidence?.releaseReadiness === undefined ? {} : { releaseReadiness: hostEvidence.releaseReadiness }),
       });
