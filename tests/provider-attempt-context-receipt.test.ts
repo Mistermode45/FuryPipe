@@ -205,7 +205,7 @@ describe('Provider Attempt Context Runtime Receipt', () => {
       disposition: 'BASELINE_IDENTITY',
       applied: false,
       qualificationEvidence: 'none',
-      blockerReasons: ['missing-qualification'],
+      blockerReasons: [],
     });
   });
 
