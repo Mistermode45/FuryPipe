@@ -99,6 +99,16 @@ describe('Recovery Store', () => {
       bound,
     )).rejects.toThrow(/matching-object limit/);
 
+    await expect(store.putBounded!(
+      new TextEncoder().encode('malformed-additional'),
+      { source: 'bounded-claims' },
+      {
+        metadata: { source: 'bounded-claims' },
+        maxMatches: 2,
+        additionalBounds: {} as never,
+      },
+    )).rejects.toThrow(/additionalBounds/);
+
     expect(await store.list?.({ metadata: { source: 'bounded-claims' } })).toHaveLength(1);
   });
 
