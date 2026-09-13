@@ -48,6 +48,8 @@ try {
     'docs/PROVIDER_ATTEMPT_ADAPTER.md',
     'docs/CONTEXT_OPTIMIZER_PROFILES.md',
     'docs/PROVIDER_ATTEMPT_PLANNER.md',
+    'docs/PROVIDER_ATTEMPT_CONTEXT_RUNTIME.md',
+    'docs/PROVIDER_ATTEMPT_RECEIPTS.md',
   ]) {
     assert(packedFiles.has(doc), `${doc} is missing from the public package`);
   }
@@ -70,7 +72,15 @@ try {
     ],
     [
       'furypipe/provider-attempt-planner',
-      "typeof m.createProviderAttemptPlanner === 'function'",
+      "typeof m.createProviderAttemptPlanner === 'function' && typeof m.isGeneratedProviderAttemptPlan === 'function'",
+    ],
+    [
+      'furypipe/provider-attempt-context-runtime',
+      "typeof m.prepareProviderAttemptContext === 'function' && typeof m.FuryProviderAttemptContextRuntimeError === 'function'",
+    ],
+    [
+      'furypipe/provider-attempt-receipt',
+      "typeof m.createProviderAttemptPlanReceipt === 'function' && typeof m.verifyProviderAttemptPlanReceipt === 'function'",
     ],
   ];
 
