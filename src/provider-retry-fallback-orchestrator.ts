@@ -856,7 +856,7 @@ export function createProviderRetryFallbackOrchestrator(
         let requestDigest: string | undefined;
         let promptDigest: string | undefined;
         let metadata: FuryProviderRetryFallbackPlanMetadata = {};
-        let execution: GovernedProviderExecutionResult;
+        let execution: unknown;
 
         try {
           const plan = planner.plan({
@@ -1019,7 +1019,8 @@ export function createProviderRetryFallbackOrchestrator(
             stage: 'execute',
             decision: 'STOP_BLOCKED',
             transportInvoked: true,
-            requestDigest: execution.requestDigest,
+            ...(requestDigest === undefined ? {} : { requestDigest }),
+            ...(promptDigest === undefined ? {} : { promptDigest }),
             ...metadata,
             errorCode: 'execution-result-provenance-failed',
           }));
