@@ -373,7 +373,9 @@ export function renderStaticStudioPage(
     `<title>${escapeStudioHtml(title)}</title>`,
     `<meta name="description" content="${escapeStudioHtml(description)}">`,
     `<link rel="canonical" href="${escapeStudioHtml(canonical.toString())}">`,
-    '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;; frame-ancestors &#39;none&#39;">',
+    // frame-ancestors is intentionally absent here: browsers ignore it in a CSP meta element.
+    // Hosts that need anti-framing must send frame-ancestors as an HTTP response header.
+    '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;">',
     '</head>',
     `<body data-studio-project="${escapeStudioHtml(project.id)}" data-studio-variant="${escapeStudioHtml(variant.id)}">`,
     '<main>',
