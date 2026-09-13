@@ -96,9 +96,29 @@ function canonicalJson(value: unknown): string {
 
 function plainRecord(value: unknown, label: string): Readonly<Record<string, unknown>> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} must be a plain object`);
-  const prototype = Object.getPrototypeOf(value);
+  let prototype: object | null;
+  let keys: readonly PropertyKey[];
+  try {
+    prototype = Object.getPrototypeOf(value);
+    keys = Reflect.ownKeys(value);
+  } catch {
+    throw new Error(`${label} properties are not safely readable`);
+  }
   if (prototype !== Object.prototype && prototype !== null) throw new Error(`${label} must be a plain object`);
-  return value as Readonly<Record<string, unknown>>;
+
+  const safe = Object.create(null) as Record<string, unknown>;
+  for (const key of keys) {
+    if (typeof key !== 'string') throw new Error(`${label} contains a symbol property`);
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, key);
+    } catch {
+      throw new Error(`${label} properties are not safely readable`);
+    }
+    if (!descriptor || !('value' in descriptor)) throw new Error(`${label} contains an accessor property`);
+    safe[key] = descriptor.value;
+  }
+  return safe;
 }
 
 function exactKeys(record: Readonly<Record<string, unknown>>, expected: readonly string[], label: string): void {
@@ -253,6 +273,7 @@ function assertSnapshotRefMatches(
     || record.count !== loaded.count
     || record.headDigest !== loaded.headDigest
     || canonicalJson(record.parent) !== canonicalJson(loaded.parent)
+    || canonicalJson(record.verification) !== canonicalJson(loaded.verification)
   ) {
     throw new Error('provider audit snapshot reference does not match durable content');
   }
