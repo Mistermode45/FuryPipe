@@ -18,7 +18,15 @@ branch policy require their corresponding GitHub origins.
 The evaluator also requires the complete canonical V5 gate identity set and
 fixed required/optional classification from `createV5ReleaseGates()`. Omitting
 an external gate or relabeling a required gate as optional cannot produce a
-green technical report.
+green technical report. The v2 report persists the boolean `performanceClaims`
+policy itself: consumers require exactly 17 canonical gates when it is false
+and the conditional provider benchmark as the 18th required gate when it is
+true. A report whose claim policy and required-gate count disagree is rejected.
+
+Release authorization is an exact four-field runtime contract
+(`mergeDefaultBranch`, `createReleaseTag`, `publishNpm`,
+`deployProduction`). Unknown keys are rejected rather than copied into
+Control Room or RC evidence.
 
 ## Files
 
@@ -96,6 +104,9 @@ origin appropriate to that artifact. These references are validated metadata,
 not cryptographic authentication of the referenced system.
 
 The RC snapshot can return `READY_FOR_RELEASE_DECISION`, but it copies authorization separately and always returns `releaseActionsExecuted: false`.
+Validated artifact proofs are copied and deeply frozen before they enter the
+snapshot, so mutation of caller-owned proof objects after validation cannot
+rewrite the recorded evidence.
 
 Supporting operator documents:
 
