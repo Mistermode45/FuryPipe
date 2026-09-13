@@ -84,6 +84,7 @@ try {
   assert(packedFiles.has('docs/CAPABILITY_CATALOG.md'), 'Capability Catalog documentation is missing from the public package');
   assert(packedFiles.has('docs/ECOSYSTEM_INGESTION.md'), 'Ecosystem Ingestion documentation is missing from the public package');
   assert(packedFiles.has('docs/SKILL_ECOSYSTEM_2026.md'), '2026 Skill Ecosystem documentation is missing from the public package');
+  assert(packedFiles.has('docs/PROVIDER_RETRY_FALLBACK_ORCHESTRATOR.md'), 'Provider Retry/Fallback Orchestrator documentation is missing from the public package');
   assert(packedFiles.has('docs/FURYTRUST.md'), 'FuryTrust documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_CATALOG_RESOLVER.md'), 'Capability Catalog Resolver documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_ACTIVATION.md'), 'Capability Activation documentation is missing from the public package');
@@ -202,6 +203,12 @@ try {
     "const m = await import('furypipe/provider-runtime'); if (typeof m.createProviderRuntimeState !== 'function') process.exit(1);",
   ], installDir);
   assert(providerRuntimeExport.stderr === '', `Provider runtime package export wrote stderr: ${providerRuntimeExport.stderr}`);
+  const retryFallbackExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/provider-retry-fallback-orchestrator'); if (typeof m.createProviderRetryFallbackOrchestrator !== 'function' || typeof m.isGeneratedProviderRetryFallbackResult !== 'function') process.exit(1);",
+  ], installDir);
+  assert(retryFallbackExport.stderr === '', `Provider Retry/Fallback Orchestrator package export wrote stderr: ${retryFallbackExport.stderr}`);
   const omniRouteExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
