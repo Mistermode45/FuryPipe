@@ -198,6 +198,7 @@ describe('Provider Attempt Plan Receipt', () => {
     expect(first.receiptDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(first.prompt.promptDigest).toMatch(/^fp_[0-9a-f]{64}$/u);
     expect(first.prompt.sourceDigest).toMatch(/^fp_src_[0-9a-f]{64}$/u);
+    expect(first.prompt.compileInputDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(first.adapter.state).toBe('IDENTITY');
     expect(first.contextProfile.state).toBe('IDENTITY');
     expect(first.verification).toEqual({
@@ -322,6 +323,20 @@ describe('Provider Attempt Plan Receipt', () => {
 
     expect(() => createProviderAttemptPlanReceipt(inconsistent as unknown as FuryProviderAttemptPlan))
       .toThrow(/QUALIFIED context profile/);
+  });
+
+  it('fails closed when FuryPrompt compile metadata differs even if rendered text can match', () => {
+    const plan = identityPlan();
+    const inconsistent = {
+      ...plan,
+      prompt: {
+        ...plan.prompt,
+        exactGuardMode: 'balanced' as const,
+      },
+    };
+
+    expect(() => createProviderAttemptPlanReceipt(inconsistent as unknown as FuryProviderAttemptPlan))
+      .toThrow(/prompt must exactly match adapter plan prompt/);
   });
 
   it('fails closed when the top-level prompt differs from the adapter prompt', () => {
