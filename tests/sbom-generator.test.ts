@@ -77,5 +77,36 @@ describe('SPDX SBOM generator', () => {
         relatedSpdxElement: byName.get('vitest'),
       },
     ]));
+
+    await expect(execFileAsync(process.execPath, [
+      'scripts/security/verify-sbom.mjs',
+      input.replace('pnpm-list.json', 'package.json'),
+      output,
+    ], { cwd: process.cwd() })).rejects.toThrow();
+
+    const packageJson = join(root, 'package.json');
+    await writeFile(packageJson, JSON.stringify({
+      name: 'furypipe',
+      version: '0.13.2',
+      dependencies: { json5: '^2.2.3' },
+      devDependencies: { vitest: '^4.0.18' },
+    }), 'utf8');
+    await expect(execFileAsync(process.execPath, [
+      'scripts/security/verify-sbom.mjs',
+      packageJson,
+      output,
+    ], { cwd: process.cwd() })).resolves.toBeDefined();
+
+    const incomplete = join(root, 'incomplete.spdx.json');
+    await writeFile(incomplete, JSON.stringify({
+      spdxVersion: 'SPDX-2.3',
+      packages: [document.packages.find((pkg) => pkg.name === 'furypipe')],
+      relationships: [],
+    }), 'utf8');
+    await expect(execFileAsync(process.execPath, [
+      'scripts/security/verify-sbom.mjs',
+      packageJson,
+      incomplete,
+    ], { cwd: process.cwd() })).rejects.toThrow();
   });
 });
