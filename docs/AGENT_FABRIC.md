@@ -61,11 +61,14 @@ Recovery immuable et indexé par des métadonnées exactes (`source`, `runId`,
 `stage`, `contentType`). Le payload ne contient que le format, l’étape, le
 statut et le digest opaque du résultat ; l’objectif, le prompt et les preuves
 textuelles n’y sont pas écrits. Le compteur cumulatif `consumedTokens` reste
-enregistré pour vérifier les budgets à la reprise. L’ordre est explicite par
-séquence et les revendications atomiques sont des objets séparés. Les claims
-Recovery sont limités atomiquement à 10 000 objets par `runId`, sous le même
-verrou d’écriture que la création d’objet ; un claim identique déjà persisté
-reste idempotent et ne consomme pas une nouvelle capacité. L’adaptateur durable
+enregistré pour vérifier les budgets à la reprise. L’ordre est explicite par séquence. La publication des records de stage utilise
+désormais deux contraintes atomiques sous le même verrou inter-processus :
+quota borné par `runId` et unicité de la séquence. Deux adapters Recovery
+concurrents ne peuvent donc plus publier durablement deux records avec la même
+séquence ; une collision est relue puis retentée dans une boucle bornée. Les
+revendications atomiques sont des objets séparés. Les claims Recovery sont
+limités atomiquement à 10 000 objets par `runId` ; un claim identique déjà
+persisté reste idempotent et ne consomme pas une nouvelle capacité. L’adaptateur durable
 requiert donc un RecoveryStore fournissant `list()` et `putBounded()`.
 La liste des manifests de stage est bornée à 10 000 éléments et la lecture
 revalide chaque enveloppe avant de la rendre au runtime.
