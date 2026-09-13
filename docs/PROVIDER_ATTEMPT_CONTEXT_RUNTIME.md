@@ -4,7 +4,7 @@
 
 `prepareProviderAttemptContext()` runs the existing local Context Optimizer for one immutable provider attempt, then appends the selected existing representations to that attempt's `FuryPrompt` as explicitly untrusted data.
 
-This is a preparation boundary only. It does not call a provider, connect to a service, execute a tool/MCP method/subagent, write files, or grant execution authority. The runtime is implemented in `src/provider-attempt-context-runtime.ts`; it is intentionally not added to the package export map in this change because the public-package surface is maintained by a separate track.
+This is a preparation boundary only. It does not call a provider, connect to a service, execute a tool/MCP method/subagent, write files, or grant execution authority. The runtime is implemented in `src/provider-attempt-context-runtime.ts` and is available from the installed package through `furypipe/provider-attempt-context-runtime`.
 
 ## Composition order
 
@@ -27,6 +27,8 @@ Every fallback must use its own planner-produced attempt plan and rerun `prepare
 ## API
 
 ```ts
+import { prepareProviderAttemptContext } from 'furypipe/provider-attempt-context-runtime';
+
 const prepared = await prepareFuryTask({
   objective,
   furyPrompt: basePrompt,
@@ -124,4 +126,4 @@ A future provider executor may consume this output only after its own request-sh
 - A qualified profile's benchmark scope is historical evidence; the current host inventory is not thereby benchmarked.
 - Planner-plan provenance is process-local and intentionally not serializable across processes.
 - The textual untrusted-data boundary is a prompt contract, not a cryptographic isolation mechanism. The runtime rejects its closing delimiter in selected content but cannot guarantee model behavior.
-- This change does not add a public package export or wire the runtime into Task Orchestrator or a provider executor.
+- The runtime is publicly importable, but it is not automatically wired into Task Orchestrator or a provider executor.
