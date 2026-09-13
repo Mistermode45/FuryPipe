@@ -331,6 +331,23 @@ async function runCase(browser, dashboard, testCase) {
       selectValue: document.querySelector('select.mini-btn')?.value ?? null,
       topbarVisible: !!document.querySelector('.topbar') && getComputedStyle(document.querySelector('.topbar')).display !== 'none',
       sectionCount: document.querySelectorAll('section.section').length,
+      overflowElements: [...document.querySelectorAll('*')]
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            tag: element.tagName.toLowerCase(),
+            id: element.id || '',
+            cls: typeof element.className === 'string' ? element.className.slice(0, 120) : '',
+            left: Math.round(rect.left * 10) / 10,
+            right: Math.round(rect.right * 10) / 10,
+            width: Math.round(rect.width * 10) / 10,
+            scrollWidth: element.scrollWidth,
+            clientWidth: element.clientWidth,
+          };
+        })
+        .filter((item) => item.right > document.documentElement.clientWidth + 1 || item.left < -1)
+        .sort((a, b) => (b.right - document.documentElement.clientWidth) - (a.right - document.documentElement.clientWidth))
+        .slice(0, 12),
     }))()`);
 
     assert(base.lang === testCase.locale, `${testCase.name}: expected lang=${testCase.locale}, got ${base.lang}`);
@@ -341,7 +358,7 @@ async function runCase(browser, dashboard, testCase) {
     assert(base.selectValue === testCase.locale, `${testCase.name}: locale selector mismatch`);
     assert(base.topbarVisible === true, `${testCase.name}: topbar is not visible`);
     assert(base.sectionCount >= 4, `${testCase.name}: expected dashboard sections`);
-    assert(base.scrollWidth <= base.clientWidth + 1, `${testCase.name}: root horizontal overflow ${base.scrollWidth} > ${base.clientWidth}`);
+    assert(base.scrollWidth <= base.clientWidth + 1, `${testCase.name}: root horizontal overflow ${base.scrollWidth} > ${base.clientWidth}; offenders=${JSON.stringify(base.overflowElements)}`);
     assert(base.bodyScrollWidth <= base.clientWidth + 1, `${testCase.name}: body horizontal overflow ${base.bodyScrollWidth} > ${base.clientWidth}`);
 
     const theme = await cdp.evaluate(`(() => {
