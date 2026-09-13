@@ -4,6 +4,7 @@ import {
   evaluateBenchmarkClaim,
   type FuryBenchmarkBaseline,
   type FuryBenchmarkClaimDecision,
+  type FuryBenchmarkDigestIdentity,
 } from './benchmark-claim-gate.js';
 import type {
   FuryContextKind,
@@ -48,6 +49,13 @@ export interface FuryContextOptimizerProfileQualification {
   readonly provider: string;
   readonly model: string;
   readonly workloadId: string;
+  readonly benchmarkScope: {
+    readonly fixture: FuryBenchmarkDigestIdentity;
+    readonly prompt: FuryBenchmarkDigestIdentity;
+    readonly toolset: FuryBenchmarkDigestIdentity;
+    readonly context: FuryBenchmarkDigestIdentity;
+    readonly cacheState: 'cold' | 'warm' | 'disabled';
+  };
   readonly baseline: FuryBenchmarkBaseline;
   readonly comparability: 'VERIFIED';
   readonly claimStatus: 'CLAIM_ELIGIBLE';
@@ -439,6 +447,11 @@ export function qualifyContextOptimizerProfile(
   if (claim.scope.provider !== provider || claim.scope.model !== model) {
     blockers.push('scope-mismatch: benchmark suite provider/model does not match qualification scope');
   }
+  if (claim.scope.repetitionsPerVariant < MIN_REPETITIONS) {
+    blockers.push(
+      `insufficient-repetitions: context optimizer qualification requires at least ${MIN_REPETITIONS} repetitions per variant`,
+    );
+  }
 
   const decisionBase = {
     format: 'furypipe-context-optimizer-profile-qualification-decision/v1' as const,
@@ -487,6 +500,13 @@ export function qualifyContextOptimizerProfile(
     provider,
     model,
     workloadId,
+    benchmarkScope: Object.freeze({
+      fixture: claim.scope.fixture,
+      prompt: claim.scope.prompt,
+      toolset: claim.scope.toolset,
+      context: claim.scope.context,
+      cacheState: claim.scope.cacheState,
+    }),
     baseline,
     comparability: 'VERIFIED' as const,
     claimStatus: 'CLAIM_ELIGIBLE' as const,
