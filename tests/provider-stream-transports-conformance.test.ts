@@ -228,7 +228,7 @@ describe('production provider SSE stream conformance', () => {
 
   it('Gemini exposes text only from model_output steps and suppresses thought/function payloads', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
-      expect(String(input)).toBe('https://generativelanguage.googleapis.com/v1/interactions');
+      expect(String(input)).toBe('https://generativelanguage.googleapis.com/v1/interactions?alt=sse');
       expect(header(init, 'x-goog-api-key')).toBe('offline-google-stream-key');
       expect(header(init, 'authorization')).toBeNull();
       expect(body(init)).toEqual({
