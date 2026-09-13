@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -25,6 +25,7 @@ function expectMode(target: string, expected: number): void {
 let child: ChildProcess | undefined;
 let upstream: Server | undefined;
 let dir: string | undefined;
+const auxiliaryDirs: string[] = [];
 
 async function removeTempTree(target: string): Promise<void> {
   // Windows can keep a just-closed child-process handle alive after the child
@@ -61,7 +62,16 @@ afterEach(async () => {
   upstream = undefined;
   if (dir) await removeTempTree(dir);
   dir = undefined;
+  await Promise.all(auxiliaryDirs.splice(0).map((root) => removeTempTree(root)));
 });
+
+function writeAuxiliaryJson(name: string, value: unknown): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'furypipe-node-evidence-'));
+  auxiliaryDirs.push(root);
+  const file = path.join(root, name);
+  fs.writeFileSync(file, JSON.stringify(value), { encoding: 'utf8', mode: 0o600 });
+  return file;
+}
 
 async function freePort(): Promise<number> {
   const server = net.createServer();
@@ -76,6 +86,7 @@ async function startNode(extraEnv: Record<string, string> = {}): Promise<{
   base: string;
   eventsFile: string;
   configFile: string;
+  output: () => string;
 }> {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxpipe-node-security-'));
   const port = await freePort();
@@ -136,8 +147,161 @@ async function startNode(extraEnv: Record<string, string> = {}): Promise<{
     };
     poll();
   });
-  return { base: `http://127.0.0.1:${port}`, eventsFile, configFile };
+  return {
+    base: `http://127.0.0.1:${port}`,
+    eventsFile,
+    configFile,
+    output: () => output.join(''),
+  };
 }
+
+describe('Node CLI evidence help', () => {
+  it('documents the source-bound Security CI evidence environment variable', () => {
+    const result = spawnSync(process.execPath, [tsxCli, 'src/node.ts', '--help'], {
+      cwd: repoRoot,
+      env: process.env,
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('FURYPIPE_SOURCE_COMMIT');
+    expect(result.stdout).toContain('FURYPIPE_CONTROL_ROOM_EVIDENCE');
+    expect(result.stdout).toContain('FURYPIPE_CONTROL_ROOM_SECURITY_CI_EVIDENCE');
+    expect(result.stdout).toContain('exact-source CI security');
+  });
+});
+
+describe('Node Control Room Security CI ingestion', () => {
+  const sourceCommit = 'a'.repeat(40);
+
+  function securityCiEvidence() {
+    return {
+      format: 'furypipe-control-room-security-ci-evidence/v1',
+      generatedAt: 1,
+      sourceCommit,
+      codeql: { runId: 1, headSha: sourceCommit, conclusion: 'success' },
+      secretScan: { runId: 2, headSha: sourceCommit, conclusion: 'success' },
+      licenseCompliance: { runId: 3, headSha: sourceCommit, conclusion: 'success' },
+      supplyChain: {
+        run: { runId: 4, headSha: sourceCommit, conclusion: 'success' },
+        jobs: {
+          actionPinning: 'success',
+          dependencyAudit: 'success',
+          sbom: 'success',
+          dependencyReview: 'skipped',
+        },
+      },
+    };
+  }
+
+  it('feeds exact-source Security CI evidence into the live Control Room endpoint', async () => {
+    const ciFile = writeAuxiliaryJson('security-ci.json', securityCiEvidence());
+    const { base } = await startNode({
+      FURYPIPE_SOURCE_COMMIT: sourceCommit,
+      FURYPIPE_CONTROL_ROOM_SECURITY_CI_EVIDENCE: ciFile,
+    });
+
+    const response = await fetch(`${base}/api/control-room.json`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as any;
+    expect(body.sourceCommit).toBe(sourceCommit);
+    expect(body.sections.security.evidence).toEqual({
+      codeql: 'VERIFIED',
+      secretScan: 'VERIFIED',
+      dependencyAudit: 'VERIFIED',
+      sbom: 'VERIFIED',
+      actionPinning: 'VERIFIED',
+      licenseCompliance: 'VERIFIED',
+      dependencyReview: 'NOT_EXECUTED',
+    });
+    expect(body.sections.security.status).toBe('PARTIAL');
+  });
+
+  it('ignores stale Security CI evidence and preserves valid static host security', async () => {
+    const staleCommit = 'b'.repeat(40);
+    const ciFile = writeAuxiliaryJson('security-ci-stale.json', {
+      ...securityCiEvidence(),
+      sourceCommit: staleCommit,
+      codeql: { runId: 1, headSha: staleCommit, conclusion: 'success' },
+      secretScan: { runId: 2, headSha: staleCommit, conclusion: 'success' },
+      licenseCompliance: { runId: 3, headSha: staleCommit, conclusion: 'success' },
+      supplyChain: {
+        run: { runId: 4, headSha: staleCommit, conclusion: 'success' },
+        jobs: {
+          actionPinning: 'success',
+          dependencyAudit: 'success',
+          sbom: 'success',
+          dependencyReview: 'skipped',
+        },
+      },
+    });
+    const hostFile = writeAuxiliaryJson('host-evidence-fallback.json', {
+      format: 'furypipe-control-room-host-evidence/v1',
+      generatedAt: 1,
+      sourceCommit,
+      security: {
+        codeql: 'BLOCKED',
+        secretScan: 'VERIFIED',
+        dependencyAudit: 'PARTIAL',
+        sbom: 'PARTIAL',
+        actionPinning: 'VERIFIED',
+        licenseCompliance: 'VERIFIED',
+        dependencyReview: 'NOT_EXECUTED',
+      },
+    });
+    const { base, output } = await startNode({
+      FURYPIPE_SOURCE_COMMIT: sourceCommit,
+      FURYPIPE_CONTROL_ROOM_EVIDENCE: hostFile,
+      FURYPIPE_CONTROL_ROOM_SECURITY_CI_EVIDENCE: ciFile,
+    });
+
+    const response = await fetch(`${base}/api/control-room.json`);
+    const body = await response.json() as any;
+    expect(body.sections.security.evidence).toEqual({
+      codeql: 'BLOCKED',
+      secretScan: 'VERIFIED',
+      dependencyAudit: 'PARTIAL',
+      sbom: 'PARTIAL',
+      actionPinning: 'VERIFIED',
+      licenseCompliance: 'VERIFIED',
+      dependencyReview: 'NOT_EXECUTED',
+    });
+    expect(output()).toMatch(/ignored Control Room Security CI evidence: .*sourceCommit/i);
+    expect(output()).not.toContain('source-bound CI evidence overrides static host security evidence');
+  });
+
+  it('uses exact-source CI Security evidence on conflict and emits an explicit warning', async () => {
+    const ciFile = writeAuxiliaryJson('security-ci.json', securityCiEvidence());
+    const hostFile = writeAuxiliaryJson('host-evidence.json', {
+      format: 'furypipe-control-room-host-evidence/v1',
+      generatedAt: 1,
+      sourceCommit,
+      security: {
+        codeql: 'BLOCKED',
+        secretScan: 'VERIFIED',
+        dependencyAudit: 'NOT_EXECUTED',
+        sbom: 'NOT_EXECUTED',
+        actionPinning: 'NOT_EXECUTED',
+        licenseCompliance: 'VERIFIED',
+        dependencyReview: 'VERIFIED',
+      },
+    });
+    const { base, output } = await startNode({
+      FURYPIPE_SOURCE_COMMIT: sourceCommit,
+      FURYPIPE_CONTROL_ROOM_EVIDENCE: hostFile,
+      FURYPIPE_CONTROL_ROOM_SECURITY_CI_EVIDENCE: ciFile,
+    });
+
+    const response = await fetch(`${base}/api/control-room.json`);
+    const body = await response.json() as any;
+    expect(body.sections.security.evidence.codeql).toBe('VERIFIED');
+    expect(body.sections.security.evidence.dependencyAudit).toBe('VERIFIED');
+    expect(body.sections.security.evidence.dependencyReview).toBe('NOT_EXECUTED');
+    expect(output()).toContain(
+      'Control Room Security evidence conflict: source-bound CI evidence overrides static host security evidence',
+    );
+  });
+});
 
 describe('Node dashboard security', () => {
   it('rejects cross-origin mutations and accepts same-origin mutations', async () => {
