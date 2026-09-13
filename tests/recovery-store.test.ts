@@ -80,6 +80,12 @@ describe('Recovery Store', () => {
     expect(duplicate.metadata?.token).toBe('first');
 
     await expect(store.putBounded!(
+      new TextEncoder().encode('wrong-domain'),
+      { source: 'other-domain' },
+      bound,
+    )).rejects.toThrow(/must satisfy its capacity filter/);
+
+    await expect(store.putBounded!(
       new TextEncoder().encode('claim-two'),
       { source: 'bounded-claims', token: 'third' },
       bound,
