@@ -61,6 +61,10 @@ try {
     'docs/PROVIDER_EXECUTION_AUDIT_LEDGER.md is missing from the public package',
   );
   assert(
+    packedFiles.has('docs/PROVIDER_EXECUTION_AUDIT_LEDGER_RECOVERY.md'),
+    'docs/PROVIDER_EXECUTION_AUDIT_LEDGER_RECOVERY.md is missing from the public package',
+  );
+  assert(
     packedFiles.has('docs/PRODUCTION_PROVIDER_TRANSPORTS.md'),
     'docs/PRODUCTION_PROVIDER_TRANSPORTS.md is missing from the public package',
   );
@@ -108,6 +112,10 @@ try {
     [
       'furypipe/provider-execution-audit-ledger',
       "typeof m.createProviderExecutionAuditLedger === 'function' && typeof m.appendProviderExecutionAuditLedger === 'function' && typeof m.verifyProviderExecutionAuditLedger === 'function'",
+    ],
+    [
+      'furypipe/provider-execution-audit-ledger-recovery',
+      "typeof m.persistProviderExecutionAuditLedgerSnapshot === 'function' && typeof m.loadProviderExecutionAuditLedgerSnapshot === 'function' && typeof m.appendProviderExecutionAuditLedgerSnapshot === 'function' && typeof m.findProviderExecutionAuditLedgerSnapshot === 'function' && typeof m.verifyProviderExecutionAuditLedgerSnapshotLineage === 'function'",
     ],
     [
       'furypipe/provider-transports',
