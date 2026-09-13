@@ -117,6 +117,36 @@ describe('provider transport health observation', () => {
     });
   });
 
+  it('applies explicitly classified negative evidence and makes runtime availability fail closed', async () => {
+    const runtime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
+    const result = await execution({
+      providerRequestStatus: 'rejected',
+      httpStatus: 503,
+    });
+    const assessment = assessProviderTransportHealth(
+      result,
+      {
+        availableTtlMs: 30_000,
+        unavailableHttpStatuses: [503],
+        unavailableTtlMs: 2_000,
+      },
+      { startedAt: 100, finishedAt: 200 },
+    );
+
+    expect(applyProviderTransportHealthAssessment(runtime, assessment)).toBe(true);
+    expect(runtime.health('openai', 500)).toMatchObject({
+      availability: 'unavailable',
+      fresh: true,
+      evidenceKind: 'transport-result',
+    });
+    expect(runtime.selectFallback([
+      { providerId: 'openai', model: 'gpt-5.6-sol' },
+    ], 500).assessments[0]).toMatchObject({
+      eligible: false,
+      reason: 'provider_unavailable',
+    });
+  });
+
   it('does not turn not-reported transport state into health evidence', async () => {
     const result = await execution({ networkStatus: undefined });
     const assessment = assessProviderTransportHealth(
