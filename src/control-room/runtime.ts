@@ -4,6 +4,7 @@ import type { AgentLearningCycleResult } from '../learning.js';
 import type { ReleaseReadinessReport } from '../release-readiness/index.js';
 import {
   getProductionMcpRuntimeEvidence,
+  getProductionMcpStdioRuntimeEvidence,
   isGeneratedModernMcpStdioHandle,
   type ProductionMcpHttpHandler,
 } from '../mcp-modern.js';
@@ -296,7 +297,7 @@ function providerEvidenceFromObservations(
 
 function mcpEvidenceFromObservations(
   httpHandlers: readonly ProductionMcpHttpHandler[],
-  stdioHandlesObserved: number,
+  stdioHandles: readonly object[],
 ): McpEvidence {
   let sawRequest = false;
   let sawDispatch = false;
@@ -340,8 +341,29 @@ function mcpEvidenceFromObservations(
       ? 'PARTIAL'
       : 'NOT_EXECUTED';
 
+  let stdioExchanges = 0;
+  for (const handle of stdioHandles) {
+    const evidence = getProductionMcpStdioRuntimeEvidence(handle);
+    if (evidence === undefined) {
+      throw new Error('Control Room MCP stdio handle lost process-local FuryPipe provenance');
+    }
+    safeRuntimeCount(evidence.inboundMessages, 'Control Room MCP stdio inboundMessages');
+    safeRuntimeCount(evidence.inboundRequests, 'Control Room MCP stdio inboundRequests');
+    safeRuntimeCount(evidence.outboundMessages, 'Control Room MCP stdio outboundMessages');
+    safeRuntimeCount(evidence.completedExchanges, 'Control Room MCP stdio completedExchanges');
+    safeRuntimeCount(evidence.trackingOverflows, 'Control Room MCP stdio trackingOverflows');
+    stdioExchanges += evidence.completedExchanges;
+    safeRuntimeCount(stdioExchanges, 'Control Room MCP stdio total completedExchanges');
+  }
+
+  const stdio: McpEvidence['stdio'] = stdioHandles.length === 0
+    ? 'NOT_AVAILABLE'
+    : stdioExchanges > 0
+      ? 'VERIFIED'
+      : 'PARTIAL';
+
   return Object.freeze({
-    stdio: stdioHandlesObserved > 0 ? 'PARTIAL' : 'NOT_AVAILABLE',
+    stdio,
     http,
     bearerAuth,
     oauth,
@@ -439,7 +461,7 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
   const observedMcpHttpHandlers = new WeakSet<object>();
   const mcpHttpHandlers: ProductionMcpHttpHandler[] = [];
   const observedMcpStdioHandles = new WeakSet<object>();
-  let mcpStdioHandlesObserved = 0;
+  const mcpStdioHandles: object[] = [];
 
   return {
     observeProxyEvent(event) {
@@ -509,9 +531,9 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
       }
       const key = handle as object;
       if (observedMcpStdioHandles.has(key)) return;
-      if (mcpStdioHandlesObserved >= 1_000) throw new Error('Control Room MCP stdio observation limit reached');
+      if (mcpStdioHandles.length >= 1_000) throw new Error('Control Room MCP stdio observation limit reached');
       observedMcpStdioHandles.add(key);
-      mcpStdioHandlesObserved += 1;
+      mcpStdioHandles.push(key);
     },
 
     observeProviderExecution(result) {
@@ -621,7 +643,7 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
         ),
         mcp: options.mcp
           ? clone(options.mcp)
-          : mcpEvidenceFromObservations(mcpHttpHandlers, mcpStdioHandlesObserved),
+          : mcpEvidenceFromObservations(mcpHttpHandlers, mcpStdioHandles),
         i18n: clone(options.i18n ?? NOT_AVAILABLE_I18N),
         webStudio: clone(options.webStudio ?? NOT_AVAILABLE_WEB_STUDIO),
         security: clone(options.security ?? NOT_AVAILABLE_SECURITY),
