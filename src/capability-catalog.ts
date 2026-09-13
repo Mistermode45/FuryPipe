@@ -10,8 +10,8 @@ export * from './ecosystem/types.js';
 export {
   normalizeCapabilityCandidate,
   serializeCapabilityCandidate,
-  serializeCapabilityManifest,
 } from './ecosystem/normalize.js';
+export { serializeCapabilityManifest } from './ecosystem/importer.js';
 export * from './ecosystem/registry.js';
 export * from './fury-trust.js';
 export * from './fury-score.js';
