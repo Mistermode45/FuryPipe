@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createRecoveryStore } from '../src/core/recovery-store.js';
 import { listenMcpHttpNode, type NodeMcpHttpServer } from '../src/mcp-http-node.js';
+import { getProductionMcpRuntimeEvidence } from '../src/mcp-modern.js';
 
 const roots: string[] = [];
 const listeners: NodeMcpHttpServer[] = [];
@@ -53,7 +54,7 @@ describe('Node MCP HTTP listener', () => {
   });
 
   it('serves a real local HTTP request through the secured handler', async () => {
-    const { url } = await listener();
+    const { value, url } = await listener();
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -68,6 +69,12 @@ describe('Node MCP HTTP listener', () => {
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     const payload = await response.json() as { result: { tools: unknown[] } };
     expect(payload.result.tools).toHaveLength(11);
+    expect(getProductionMcpRuntimeEvidence(value.handler)).toMatchObject({
+      requests: 1,
+      dispatchedRequests: 1,
+      bearerAuthConfigured: false,
+      bearerAuthSuccesses: 0,
+    });
   });
 
   it('keeps the listener path isolated and rejects unsupported methods', async () => {
