@@ -50,6 +50,7 @@ try {
     'docs/PROVIDER_ATTEMPT_PLANNER.md',
     'docs/PROVIDER_ATTEMPT_CONTEXT_RUNTIME.md',
     'docs/PROVIDER_ATTEMPT_RECEIPTS.md',
+    'docs/PROVIDER_ATTEMPT_CONTEXT_RECEIPTS.md',
   ]) {
     assert(packedFiles.has(doc), `${doc} is missing from the public package`);
   }
@@ -81,6 +82,10 @@ try {
     [
       'furypipe/provider-attempt-receipt',
       "typeof m.createProviderAttemptPlanReceipt === 'function' && typeof m.verifyProviderAttemptPlanReceipt === 'function'",
+    ],
+    [
+      'furypipe/provider-attempt-context-receipt',
+      "typeof m.createProviderAttemptContextReceipt === 'function' && typeof m.verifyProviderAttemptContextReceipt === 'function'",
     ],
   ];
 
