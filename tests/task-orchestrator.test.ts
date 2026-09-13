@@ -6,6 +6,10 @@ import {
   createFuryPluginBundleRegistry,
 } from '../src/plugin-bundles.js';
 import { prepareFuryTask } from '../src/task-orchestrator.js';
+import { createCapabilityRegistry } from '../src/ecosystem/registry.js';
+import { normalizeCapabilityCandidate } from '../src/ecosystem/normalize.js';
+import { evaluateFuryTrust } from '../src/fury-trust.js';
+import { makeCapabilityCandidate } from './helpers/ecosystem-candidate.js';
 
 function registerSkill(
   registry: ReturnType<typeof createAgentSkillRegistry>,
@@ -172,6 +176,56 @@ describe('FuryPipe Task Orchestrator', () => {
     expect(result.autoInvokeSkillsByStage.research).toContain('repo-analysis');
     expect(skillExecutions).toBe(0);
     expect(mcpExecutions).toBe(0);
+  });
+
+  it('exposes catalog recommendations without activating them in the runtime capability plan', async () => {
+    const skills = createAgentSkillRegistry();
+    registerSkill(skills, 'repo-analysis', 'repository', 'research');
+
+    const candidate = normalizeCapabilityCandidate(makeCapabilityCandidate({
+      name: 'Advisory Catalog Candidate',
+      source: {
+        kind: 'git',
+        url: 'https://github.com/fury-example/advisory-catalog-candidate',
+        repositoryUrl: 'https://github.com/fury-example/advisory-catalog-candidate',
+        version: '1.0.0',
+        commitSha: '8'.repeat(40),
+      },
+    }));
+    const registry = createCapabilityRegistry([candidate]);
+    registry.recordTrustReport(evaluateFuryTrust(
+      candidate,
+      [{ path: 'src/index.ts', content: 'export const value = 1;' }],
+      {
+        decision: 'APPROVE',
+        reviewerId: 'task-orchestrator-test',
+        reviewedAt: '2026-09-13T00:00:00Z',
+        evidenceReference: 'review:task-orchestrator',
+      },
+    ));
+
+    const common = {
+      objective: 'Implement a production repository change.',
+      furyPrompt: { sections: { task: 'Implement the change.' } },
+      capability: { skillRegistry: skills },
+    } as const;
+
+    const baseline = await prepareFuryTask(common);
+    const withCatalog = await prepareFuryTask({
+      ...common,
+      catalog: {
+        registry,
+        relevance: [{ candidateId: candidate.id, relevance: 1 }],
+      },
+    });
+
+    expect(withCatalog.catalogResolution?.recommendations[0]?.candidateId).toBe(candidate.id);
+    expect(withCatalog.catalogResolution?.executionAuthorized).toBe(false);
+    expect(withCatalog.capabilityPlan).toEqual(baseline.capabilityPlan);
+    expect(withCatalog.skills).toEqual(baseline.skills);
+    expect(withCatalog.autoInvokeSkillsByStage).toEqual(baseline.autoInvokeSkillsByStage);
+    expect(withCatalog.autoInvokeMcpByStage).toEqual(baseline.autoInvokeMcpByStage);
+    expect(withCatalog.pluginActivations).toEqual(baseline.pluginActivations);
   });
 
   it('can optimize context without injecting it into FuryPrompt', async () => {
