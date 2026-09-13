@@ -1,5 +1,15 @@
 # Governed Provider Request Executor
 
+## Process-local execution result provenance
+
+Successful execution results are now registered process-locally. Consumers that
+need to distinguish the exact object returned by the Governed Provider Executor
+from a copied, serialized, or fabricated lookalike can call
+`isGeneratedGovernedProviderExecutionResult()`.
+
+This is an in-process identity check only. It is not a signed attestation and must
+not be promoted to persistent provenance.
+
 ## Scope and boundary
 
 This track adds a local, host-governed boundary between an exact

@@ -277,6 +277,10 @@
     "./provider-transports": {
       "types": "./dist/provider-transports/index.d.ts",
       "import": "./dist/provider-transports/index.js"
+    },
+    "./provider-transport-health": {
+      "types": "./dist/provider-transport-health.d.ts",
+      "import": "./dist/provider-transport-health.js"
     }
   },
   "files": [
@@ -326,7 +330,8 @@
     "docs/GOVERNED_PROVIDER_EXECUTION_RECEIPTS.md",
     "docs/PROVIDER_EXECUTION_AUDIT_CHAIN.md",
     "docs/PROVIDER_EXECUTION_AUDIT_LEDGER.md",
-    "docs/PRODUCTION_PROVIDER_TRANSPORTS.md"
+    "docs/PRODUCTION_PROVIDER_TRANSPORTS.md",
+    "docs/PROVIDER_TRANSPORT_HEALTH.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",

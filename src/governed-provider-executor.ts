@@ -64,6 +64,17 @@ export interface GovernedProviderExecutorOptions {
   readonly now?: () => number;
 }
 
+const generatedGovernedProviderExecutionResults = new WeakSet<object>();
+
+/** Process-local provenance check; serialized/copied results deliberately fail. */
+export function isGeneratedGovernedProviderExecutionResult(
+  value: unknown,
+): value is GovernedProviderExecutionResult {
+  return typeof value === 'object'
+    && value !== null
+    && generatedGovernedProviderExecutionResults.has(value);
+}
+
 const TRANSPORT_KEYS = ['providerId', 'protocol', 'execute'] as const;
 
 function snapshotTransport(value: unknown, request: FuryProviderRequestEnvelope): ProviderTransport {
@@ -219,10 +230,10 @@ export function createGovernedProviderExecutor(
 
       const result = validateProviderTransportResult(rawResult, request);
       const cost = costEstimate(options.providerRuntime, request, result.usage);
-      return Object.freeze({
-        format: 'furypipe-governed-provider-execution-result/v1',
-        state: 'TRANSPORT_RESULT',
-        transportInvoked: true,
+      const executionResult = Object.freeze({
+        format: 'furypipe-governed-provider-execution-result/v1' as const,
+        state: 'TRANSPORT_RESULT' as const,
+        transportInvoked: true as const,
         providerId: request.providerId,
         model: request.model,
         workloadId: request.workloadId,
@@ -237,6 +248,8 @@ export function createGovernedProviderExecutor(
         ...(result.finishReason === undefined ? {} : { finishReason: result.finishReason }),
         cost,
       });
+      generatedGovernedProviderExecutionResults.add(executionResult);
+      return executionResult;
     },
   });
 }
