@@ -75,7 +75,11 @@ function terminalStatus(value: unknown): ProviderStreamTerminalStatus {
 }
 
 function eventType(frame: ProviderSseFrame, value: Record<string, unknown> | undefined): string {
-  return safeString(value?.event_type) ?? (frame.event.length > 0 ? frame.event : 'unknown');
+  const jsonType = safeString(value?.event_type);
+  if (frame.event.length > 0 && jsonType !== undefined && frame.event !== jsonType) {
+    throw new TypeError('provider SSE event type mismatch');
+  }
+  return jsonType ?? (frame.event.length > 0 ? frame.event : 'unknown');
 }
 
 function createGoogleMapper(): ProviderSseEventMapper {
