@@ -56,6 +56,44 @@ describe('FuryPipe Agent runtime', () => {
     await expect(claimMemory.claimExecution!('bounded-overflow', 'start')).rejects.toThrow(/claim limit/);
   });
 
+  it('does not expose mutable in-memory history records', async () => {
+    const memory = createInMemoryAgentMemoryStore();
+    await memory.append({
+      format: 'furypipe-agent-memory-record/v1',
+      runId: 'immutable-history',
+      stage: 'research',
+      resultDigest: 'opaque-digest',
+      status: 'handoff_required',
+      consumedTokens: 3,
+    });
+    const listed = await memory.list('immutable-history');
+    expect(Object.isFrozen(listed[0])).toBe(true);
+    expect(() => {
+      (listed[0] as { consumedTokens: number }).consumedTokens = 999;
+    }).toThrow();
+    expect((await memory.list('immutable-history'))[0]?.consumedTokens).toBe(3);
+  });
+
+  it('fails closed when a custom memory adapter returns a non-boolean execution claim', async () => {
+    const result = await runAgent({
+      objective: 'Reject malformed claim adapters.',
+      runId: 'malformed-claim-adapter',
+      executors: stageExecutors([]),
+      memory: {
+        async append() {},
+        async list() { return []; },
+        async claimExecution() { return 'yes' as unknown as boolean; },
+      },
+    });
+    expect(result).toMatchObject({
+      status: 'failed',
+      failure: {
+        code: 'MEMORY_FAILED',
+        reason: 'agent execution claim could not be recorded',
+      },
+    });
+  });
+
   it('executes the real stage callbacks in order with read-only defaults', async () => {
     const seen: string[] = [];
     let skillCalled = false;
@@ -478,6 +516,43 @@ describe('FuryPipe Agent runtime', () => {
       expect(handles).toHaveLength(1);
       expect(handles?.[0]?.metadata?.sequence).toBe(0);
       expect(new TextDecoder().decode(await store.get(handles![0]!))).not.toContain('objective');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('assigns unique Recovery history sequences across concurrent adapters', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-agent-history-race-'));
+    try {
+      const firstMemory = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent' }));
+      const secondMemory = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent' }));
+      const base = {
+        format: 'furypipe-agent-memory-record/v1' as const,
+        runId: 'cross-adapter-history',
+        stage: 'research' as const,
+        status: 'completed' as const,
+        consumedTokens: 1,
+      };
+
+      await Promise.all([
+        firstMemory.append({ ...base, resultDigest: 'opaque-a' }),
+        secondMemory.append({ ...base, resultDigest: 'opaque-b' }),
+      ]);
+
+      const reopened = createRecoveryAgentMemoryStore(createRecoveryStore(root, { namespace: 'agent' }));
+      const records = await reopened.list('cross-adapter-history');
+      expect(records).toHaveLength(2);
+      expect(new Set(records.map((record) => record.resultDigest))).toEqual(new Set(['opaque-a', 'opaque-b']));
+
+      const raw = createRecoveryStore(root, { namespace: 'agent' });
+      const handles = await raw.list?.({
+        metadata: {
+          source: 'agent-runtime',
+          contentType: 'application/vnd.furypipe.agent-memory-record+json',
+          runId: 'cross-adapter-history',
+        },
+      });
+      expect(handles?.map((handle) => handle.metadata?.sequence).sort()).toEqual([0, 1]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

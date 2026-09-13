@@ -3,6 +3,7 @@ import { lstatSync, readFileSync, statSync } from 'node:fs';
 import {
   getV5RequiredReleaseGateIds,
   isAllowedV5ReleaseGateOrigin,
+  isExactReleaseAuthorization,
   V5_RELEASE_GATE_REQUIREDNESS,
 } from '../release-readiness/index.js';
 import type { ReleaseReadinessReport, ReleaseGateState, ReleaseEvidenceOrigin } from '../release-readiness/index.js';
@@ -195,6 +196,7 @@ function parseReleaseReadiness(value: unknown, sourceCommit: string, hostGenerat
   const packageVersion = boundedString(v.packageVersion, 'releaseReadiness.packageVersion', 128);
   if (!SEMVER.test(packageVersion)) throw new Error('releaseReadiness.packageVersion is invalid');
   if (v.channel !== 'rc' && v.channel !== 'stable') throw new Error('releaseReadiness.channel is invalid');
+  if (typeof v.performanceClaims !== 'boolean') throw new Error('releaseReadiness.performanceClaims is invalid');
   if (v.status !== 'BLOCKED' && v.status !== 'READY_FOR_RELEASE_DECISION') throw new Error('releaseReadiness.status is invalid');
   if (v.releaseActionsExecuted !== false) throw new Error('releaseReadiness.releaseActionsExecuted must be false');
   const generatedAt = count(v.generatedAt, 'releaseReadiness.generatedAt');
@@ -261,8 +263,11 @@ function parseReleaseReadiness(value: unknown, sourceCommit: string, hostGenerat
   });
   const verifiedRequiredGates = count(v.verifiedRequiredGates, 'releaseReadiness.verifiedRequiredGates', 128);
   const requiredGates = count(v.requiredGates, 'releaseReadiness.requiredGates', 128);
-  const requiredGateIds = getV5RequiredReleaseGateIds(requiredGates);
-  if (!requiredGateIds) throw new Error('releaseReadiness required gate count is not canonical');
+  const expectedRequiredGateCount = 17 + (v.performanceClaims ? 1 : 0);
+  const requiredGateIds = requiredGates === expectedRequiredGateCount
+    ? getV5RequiredReleaseGateIds(requiredGates)
+    : undefined;
+  if (!requiredGateIds) throw new Error('releaseReadiness required gate count is not canonical for performanceClaims');
   const requiredGateIdSet = new Set(requiredGateIds);
   const verifiedRequiredIds = new Set(requiredGateIds.filter((gateId) => verifiedIds.has(gateId)));
   if (blockers.some((blocker) => !requiredGateIdSet.has(blocker.gateId))
@@ -282,6 +287,9 @@ function parseReleaseReadiness(value: unknown, sourceCommit: string, hostGenerat
   }
 
   const authorizationValue = object(v.authorization, 'releaseReadiness.authorization');
+  if (!isExactReleaseAuthorization(authorizationValue)) {
+    throw new Error('releaseReadiness.authorization must contain exactly the four boolean authorization fields');
+  }
   const authorization = Object.freeze({
     mergeDefaultBranch: bool(authorizationValue.mergeDefaultBranch, 'releaseReadiness.authorization.mergeDefaultBranch'),
     createReleaseTag: bool(authorizationValue.createReleaseTag, 'releaseReadiness.authorization.createReleaseTag'),
@@ -295,6 +303,7 @@ function parseReleaseReadiness(value: unknown, sourceCommit: string, hostGenerat
     sourceCommit,
     packageVersion,
     channel: v.channel,
+    performanceClaims: v.performanceClaims,
     status: v.status,
     blockers: Object.freeze(blockers),
     warnings: Object.freeze(warnings),

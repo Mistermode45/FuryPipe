@@ -39,9 +39,17 @@ The latest revision determines current state. Older revisions remain auditable u
 
 ### Conflict behavior
 
-Concurrent writers can race on the same memory/version. FuryPipe does not silently pick a winner. If more than one highest revision exists, reads fail closed with a revision-conflict error.
+Concurrent writers may observe the same prior revision, but publication now
+combines two Recovery constraints atomically under the same inter-process
+lock: the global writable-memory bound and uniqueness of
+`(memoryKey, version)`. Two writers therefore cannot persist two distinct
+records with the same revision number. One writer wins; the other fails closed
+before publishing the conflicting manifest.
 
-This is safer than silently merging contradictory long-term memory. Strict multi-writer transactions still require an external coordinator or future transactional backend.
+Legacy or externally-corrupted duplicate highest revisions are still detected
+on read and fail closed. FuryPipe does not silently merge contradictory
+long-term memory. Full multi-object transactions still require an external
+coordinator or future transactional backend.
 
 ## Scope isolation
 

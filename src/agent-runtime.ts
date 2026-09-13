@@ -386,7 +386,7 @@ export function createInMemoryAgentMemoryStore(): AgentMemoryStore {
       if (existing.length >= MAX_AGENT_MEMORY_RECORDS || recordCount >= MAX_IN_MEMORY_AGENT_RECORDS) {
         throw new Error('agent memory record limit exceeded');
       }
-      existing.push({ ...record });
+      existing.push(Object.freeze({ ...record }));
       records.set(record.runId, existing);
       recordCount += 1;
     },
@@ -401,7 +401,7 @@ export function createInMemoryAgentMemoryStore(): AgentMemoryStore {
       }
       const key = `${runId}\0${claimId}`;
       if (claims.has(key)) return false;
-      if (claims.size >= MAX_IN_MEMORY_AGENT_CLAIMS) throw new Error('agent memory execution claim limit exceeded');
+      if (claims.size >= MAX_AGENT_MEMORY_CLAIMS) throw new Error('agent memory execution claim limit exceeded');
       claims.add(key);
       return true;
     },
@@ -415,8 +415,10 @@ const AGENT_MEMORY_CLAIM_CONTENT_TYPE = 'application/vnd.furypipe.agent-memory-c
 const MAX_AGENT_MEMORY_RUN_ID = 256;
 const MAX_AGENT_MEMORY_DIGEST = 256;
 const MAX_AGENT_MEMORY_RECORDS = 10_000;
+const MAX_AGENT_MEMORY_WRITABLE_RECORDS = MAX_AGENT_MEMORY_RECORDS - 1;
 const MAX_IN_MEMORY_AGENT_RECORDS = 10_000;
-const MAX_IN_MEMORY_AGENT_CLAIMS = 10_000;
+const MAX_AGENT_MEMORY_CLAIMS = 10_000;
+const MAX_AGENT_APPEND_ATTEMPTS = 8;
 
 interface AgentMemoryEnvelope {
   readonly format: 'furypipe-agent-memory-envelope/v1';
@@ -448,29 +450,72 @@ function validateMemoryRunId(runId: string): void {
  */
 export function createRecoveryAgentMemoryStore(store: RecoveryStore): AgentMemoryStore {
   if (typeof store.list !== 'function') throw new Error('Recovery store does not support bounded manifest listing');
+  if (typeof store.putBounded !== 'function') throw new Error('Recovery store does not support atomic bounded writes');
   const listManifests = store.list.bind(store);
+  const putBounded = store.putBounded.bind(store);
   return {
     async append(record) {
       validateMemoryRunId(record.runId);
       if (!validatePersistedRecord(record)) throw new Error('agent memory record is invalid');
-      const existing = [...await listManifests({
-        limit: MAX_AGENT_MEMORY_RECORDS,
-        metadata: { source: AGENT_MEMORY_SOURCE, contentType: AGENT_MEMORY_CONTENT_TYPE, runId: record.runId },
-      })];
-      if (existing.length >= MAX_AGENT_MEMORY_RECORDS) throw new Error('agent memory record limit exceeded');
-      existing.sort((left, right) => Number(left.metadata?.sequence) - Number(right.metadata?.sequence));
-      if (existing.some((handle, index) => handle.metadata?.sequence !== index)) {
-        throw new Error('agent memory record ordering is invalid');
+
+      for (let attempt = 0; attempt < MAX_AGENT_APPEND_ATTEMPTS; attempt += 1) {
+        const existing = [...await listManifests({
+          limit: MAX_AGENT_MEMORY_RECORDS,
+          metadata: { source: AGENT_MEMORY_SOURCE, contentType: AGENT_MEMORY_CONTENT_TYPE, runId: record.runId },
+        })];
+        if (existing.length >= MAX_AGENT_MEMORY_WRITABLE_RECORDS) throw new Error('agent memory record limit exceeded');
+        existing.sort((left, right) => Number(left.metadata?.sequence) - Number(right.metadata?.sequence));
+        if (existing.some((handle, index) => handle.metadata?.sequence !== index)) {
+          throw new Error('agent memory record ordering is invalid');
+        }
+
+        const sequence = existing.length;
+        const metadata = {
+          source: AGENT_MEMORY_SOURCE,
+          contentType: AGENT_MEMORY_CONTENT_TYPE,
+          runId: record.runId,
+          stage: record.stage,
+          sequence,
+        } as const;
+        const envelope: AgentMemoryEnvelope = {
+          format: 'furypipe-agent-memory-envelope/v1',
+          sequence,
+          record: { ...record },
+        };
+
+        try {
+          await putBounded(
+            new TextEncoder().encode(JSON.stringify(envelope)),
+            metadata,
+            {
+              metadata: {
+                source: AGENT_MEMORY_SOURCE,
+                contentType: AGENT_MEMORY_CONTENT_TYPE,
+                runId: record.runId,
+              },
+              maxMatches: MAX_AGENT_MEMORY_WRITABLE_RECORDS,
+              additionalBounds: [{
+                metadata: {
+                  source: AGENT_MEMORY_SOURCE,
+                  contentType: AGENT_MEMORY_CONTENT_TYPE,
+                  runId: record.runId,
+                  sequence,
+                },
+                maxMatches: 1,
+              }],
+            },
+          );
+          return;
+        } catch (caught) {
+          const message = caught instanceof Error ? caught.message : '';
+          if (message.includes('matching-object limit exceeded') && attempt + 1 < MAX_AGENT_APPEND_ATTEMPTS) {
+            continue;
+          }
+          throw caught;
+        }
       }
-      const sequence = existing.length;
-      const envelope: AgentMemoryEnvelope = { format: 'furypipe-agent-memory-envelope/v1', sequence, record: { ...record } };
-      await store.put(new TextEncoder().encode(JSON.stringify(envelope)), {
-        source: AGENT_MEMORY_SOURCE,
-        contentType: AGENT_MEMORY_CONTENT_TYPE,
-        runId: record.runId,
-        stage: record.stage,
-        sequence,
-      });
+
+      throw new Error('agent memory append contention exceeded its bounded retry limit');
     },
     async list(runId) {
       validateMemoryRunId(runId);
@@ -517,12 +562,19 @@ export function createRecoveryAgentMemoryStore(store: RecoveryStore): AgentMemor
       const identity = createHash('sha256').update(`${runId}\0${claimId}`, 'utf8').digest('hex');
       const claimToken = randomUUID();
       const bytes = new TextEncoder().encode(`furypipe-agent-memory-claim/v1\0${identity}`);
-      const handle = await store.put(bytes, {
+      const handle = await putBounded(bytes, {
         source: AGENT_MEMORY_CLAIM_SOURCE,
         contentType: AGENT_MEMORY_CLAIM_CONTENT_TYPE,
         runId,
         claimDigest: identity,
         claimToken,
+      }, {
+        metadata: {
+          source: AGENT_MEMORY_CLAIM_SOURCE,
+          contentType: AGENT_MEMORY_CLAIM_CONTENT_TYPE,
+          runId,
+        },
+        maxMatches: MAX_AGENT_MEMORY_CLAIMS,
       });
       return handle.metadata?.claimToken === claimToken;
     },
@@ -698,6 +750,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   try {
     const claimId = resumeFrom === undefined ? 'start' : `resume:${snapshotClaimDigest(resumeFrom)}`;
     claimed = await memory.claimExecution(runId, claimId);
+    if (typeof claimed !== 'boolean') throw new Error('agent execution claim result is invalid');
   } catch {
     return {
       format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,

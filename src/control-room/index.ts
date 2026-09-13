@@ -1,6 +1,7 @@
 import {
   getV5RequiredReleaseGateIds,
   isAllowedV5ReleaseGateOrigin,
+  isExactReleaseAuthorization,
   V5_RELEASE_GATE_REQUIREDNESS,
 } from '../release-readiness/index.js';
 import type { ReleaseReadinessReport } from '../release-readiness/index.js';
@@ -328,6 +329,9 @@ function validateInput(input: ControlRoomInput): void {
     if (!SEMVER.test(release.packageVersion) || (release.channel !== 'rc' && release.channel !== 'stable')) {
       throw new Error('release readiness package identity is invalid');
     }
+    if (typeof release.performanceClaims !== 'boolean') {
+      throw new Error('release readiness performanceClaims is invalid');
+    }
     if (release.status !== 'BLOCKED' && release.status !== 'READY_FOR_RELEASE_DECISION') {
       throw new Error('release readiness status is invalid');
     }
@@ -349,11 +353,8 @@ function validateInput(input: ControlRoomInput): void {
       throw new Error('release readiness warnings are invalid');
     }
     const authorization = release.authorization;
-    if (!authorization || typeof authorization.mergeDefaultBranch !== 'boolean'
-      || typeof authorization.createReleaseTag !== 'boolean'
-      || typeof authorization.publishNpm !== 'boolean'
-      || typeof authorization.deployProduction !== 'boolean') {
-      throw new Error('release readiness authorization is invalid');
+    if (!isExactReleaseAuthorization(authorization)) {
+      throw new Error('release readiness authorization is invalid or contains unexpected fields');
     }
     safeCount(release.blockers.length, 'release.blockers');
     safeCount(release.warnings.length, 'release.warnings');
@@ -362,8 +363,11 @@ function validateInput(input: ControlRoomInput): void {
     if (release.verifiedRequiredGates > release.requiredGates) {
       throw new Error('release verified gate count cannot exceed required gate count');
     }
-    const requiredGateIds = getV5RequiredReleaseGateIds(release.requiredGates);
-    if (!requiredGateIds) throw new Error('release required gate count does not match the canonical V5 gate set');
+    const expectedRequiredGateCount = 17 + (release.performanceClaims ? 1 : 0);
+    const requiredGateIds = release.requiredGates === expectedRequiredGateCount
+      ? getV5RequiredReleaseGateIds(release.requiredGates)
+      : undefined;
+    if (!requiredGateIds) throw new Error('release required gate count does not match performanceClaims and the canonical V5 gate set');
     const requiredGateIdSet = new Set(requiredGateIds);
     if (!Array.isArray(release.verifiedGateEvidence) || release.verifiedGateEvidence.length > 128) {
       throw new Error('release verified gate evidence is invalid');

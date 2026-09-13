@@ -92,6 +92,35 @@ describe('Release Readiness V5', () => {
     expect(report.releaseActionsExecuted).toBe(false);
   });
 
+  it('binds performanceClaims into the report and validates authorization/state at runtime', () => {
+    const report = evaluateReleaseReadiness({
+      ...input(),
+      performanceClaims: true,
+    });
+    expect(report.performanceClaims).toBe(true);
+    expect(report.requiredGates).toBe(18);
+
+    expect(() => evaluateReleaseReadiness({
+      ...input(),
+      authorization: {
+        ...input().authorization,
+        unexpected: true,
+      } as unknown as ReleaseReadinessInput['authorization'],
+    })).toThrow(/exactly the four boolean authorization fields/);
+
+    expect(() => evaluateReleaseReadiness({
+      ...input(),
+      gates: input().gates.map((gate) => gate.id === 'runtime.agent'
+        ? { ...gate, state: 'GREEN' as unknown as typeof gate.state }
+        : gate),
+    })).toThrow(/release gate state is invalid/);
+
+    expect(() => evaluateReleaseReadiness({
+      ...input(),
+      performanceClaims: 'no' as unknown as boolean,
+    })).toThrow(/performanceClaims must be boolean/);
+  });
+
   it('fails closed when VERIFIED gates omit or mismatch source-bound provenance', () => {
     const base = input();
     const withoutProvenance = evaluateReleaseReadiness({

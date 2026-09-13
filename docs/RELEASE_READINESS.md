@@ -18,7 +18,15 @@ branch policy require their corresponding GitHub origins.
 The evaluator also requires the complete canonical V5 gate identity set and
 fixed required/optional classification from `createV5ReleaseGates()`. Omitting
 an external gate or relabeling a required gate as optional cannot produce a
-green technical report.
+green technical report. The v2 report persists the boolean `performanceClaims`
+policy itself: consumers require exactly 17 canonical gates when it is false
+and the conditional provider benchmark as the 18th required gate when it is
+true. A report whose claim policy and required-gate count disagree is rejected.
+
+Release authorization is an exact four-field runtime contract
+(`mergeDefaultBranch`, `createReleaseTag`, `publishNpm`,
+`deployProduction`). Unknown keys are rejected rather than copied into
+Control Room or RC evidence.
 
 ## Files
 
@@ -84,8 +92,10 @@ This evaluator is intended to feed Control Room and future RC automation once th
 `createRcEvidenceSnapshot()` emits `furypipe-rc-evidence/v2` and requires the
 RC source SHA and package version to match the Release Readiness report. Each
 workflow observation carries its head SHA and update timestamp; the latest run
-ID for each required workflow must be successful on the exact RC SHA, so an
-older green run cannot mask a newer skipped/failing/mixed-SHA run. Every
+ID for each required workflow — CI, CodeQL, Secret Scan, Supply Chain, License
+Compliance, Provenance Attestation and Benchmark Contract — must be successful
+on the exact RC SHA, so an older green run cannot mask a newer
+skipped/failing/mixed-SHA run. Every
 workflow record also requires an explicit `github-actions` origin and a
 bounded Actions run reference; these fields locate caller-supplied evidence but
 do not independently authenticate it. Every
@@ -96,6 +106,10 @@ origin appropriate to that artifact. These references are validated metadata,
 not cryptographic authentication of the referenced system.
 
 The RC snapshot can return `READY_FOR_RELEASE_DECISION`, but it copies authorization separately and always returns `releaseActionsExecuted: false`.
+Validated workflow/artifact evidence is canonicalized to known schema fields
+before entering the snapshot. Unknown runtime fields are discarded, and
+artifact proofs are copied and deeply frozen, so caller-owned mutation or
+schema smuggling cannot rewrite or expand the recorded evidence.
 
 Supporting operator documents:
 

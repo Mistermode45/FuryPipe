@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createRecoveryStore } from '../src/core/recovery-store.js';
-import type { RecoveryHandle, RecoveryListOptions, RecoveryStore } from '../src/core/recovery-store.js';
+import type { RecoveryHandle, RecoveryListOptions, RecoveryPutBound, RecoveryStore } from '../src/core/recovery-store.js';
 import {
   createLongTermMemoryStore,
   promoteValidatedLessonToLongTermMemory,
@@ -146,6 +146,23 @@ describe('long-term memory', () => {
         objects.set(digest, { handle, bytes });
         return handle;
       },
+      async putBounded(
+        value: Uint8Array | ArrayBuffer,
+        metadata: Record<string, string | number | boolean | null | undefined> | undefined,
+        bound: RecoveryPutBound,
+      ) {
+        const bytes = value instanceof Uint8Array ? new Uint8Array(value) : new Uint8Array(value);
+        const digest = createHash('sha256').update(bytes).digest('hex');
+        const existing = objects.get(digest);
+        if (existing) return existing.handle;
+        const matches = [...objects.values()].filter(({ handle }) => Object.entries(bound.metadata)
+          .every(([key, expected]) => handle.metadata?.[key] === expected));
+        if (matches.length >= bound.maxMatches) throw new Error('recovery bounded put matching-object limit exceeded');
+        const handle: RecoveryHandle = { format: 'furypipe-recovery/v1', algorithm: 'sha256', digest, bytes: bytes.byteLength,
+          ...(metadata ? { metadata } : {}) };
+        objects.set(digest, { handle, bytes });
+        return handle;
+      },
       async get(value: RecoveryHandle | string) {
         const stored = objects.get(getDigest(value));
         if (!stored) throw new Error('missing recovery object');
@@ -198,6 +215,80 @@ describe('long-term memory', () => {
     expect(history[0]?.version).toBe(513);
     expect(history.at(-1)?.version).toBe(2);
     expect((await memory.purge('many-revisions', scope)).deletedRevisions).toBe(513);
+  });
+
+  it('can purge a legacy saturated revision set even when reads fail closed', async () => {
+    const objects = new Map<string, { readonly handle: RecoveryHandle; readonly bytes: Uint8Array }>();
+    const digestOf = (value: Uint8Array) => createHash('sha256').update(value).digest('hex');
+    const getDigest = (value: RecoveryHandle | string): string => typeof value === 'string'
+      ? value.split('/').at(-1)!
+      : value.digest;
+    const recoveryStub = {
+      async put(value: Uint8Array | ArrayBuffer, metadata?: Record<string, string | number | boolean | null | undefined>) {
+        const bytes = value instanceof Uint8Array ? new Uint8Array(value) : new Uint8Array(value);
+        const digest = digestOf(bytes);
+        const existing = objects.get(digest);
+        if (existing) return existing.handle;
+        const handle: RecoveryHandle = { format: 'furypipe-recovery/v1', algorithm: 'sha256', digest, bytes: bytes.byteLength,
+          ...(metadata ? { metadata } : {}) };
+        objects.set(digest, { handle, bytes });
+        return handle;
+      },
+      async putBounded(
+        value: Uint8Array | ArrayBuffer,
+        metadata: Record<string, string | number | boolean | null | undefined> | undefined,
+        bound: RecoveryPutBound,
+      ) {
+        const matches = [...objects.values()].filter(({ handle }) => Object.entries(bound.metadata)
+          .every(([key, expected]) => handle.metadata?.[key] === expected));
+        if (matches.length >= bound.maxMatches) throw new Error('recovery bounded put matching-object limit exceeded');
+        return this.put(value, metadata);
+      },
+      async get(value: RecoveryHandle | string) {
+        const stored = objects.get(getDigest(value));
+        if (!stored) throw new Error('missing recovery object');
+        return new Uint8Array(stored.bytes);
+      },
+      async verify(value: RecoveryHandle | string) {
+        const digest = getDigest(value);
+        const stored = objects.get(digest);
+        return { ok: stored !== undefined, handle: `furypipe-recovery/v1/sha256/${digest}`, exists: stored !== undefined,
+          digestMatches: stored !== undefined, bytes: stored?.bytes.byteLength ?? 0 };
+      },
+      async list(options: RecoveryListOptions = {}) {
+        const matches = [...objects.values()].filter(({ handle }) => Object.entries(options.metadata ?? {})
+          .every(([key, expected]) => handle.metadata?.[key] === expected));
+        return matches.slice(0, options.limit ?? 10_000).map(({ handle }) => handle);
+      },
+      async delete(value: RecoveryHandle | string) { return objects.delete(getDigest(value)); },
+    };
+    const memory = createLongTermMemoryStore(recoveryStub as unknown as RecoveryStore);
+    const initial = await memory.apply({
+      operation: 'ADD', memoryId: 'saturated-memory', scope, now: 1,
+      reason: 'initial', memoryClass: 'Project', contentHandle: 'opaque://saturated/1',
+      contentDigest: 'digest-1', source: 'test', terms: ['saturation'],
+    });
+    const template = initial.record!;
+    const metadata = initial.handle!.metadata!;
+    for (let version = 2; version <= 10_001; version += 1) {
+      const record = {
+        ...template,
+        version,
+        contentHandle: `opaque://saturated/${version}`,
+        contentDigest: `digest-${version}`,
+        updatedAt: version,
+        supersedesVersion: version - 1,
+      };
+      await recoveryStub.put(new TextEncoder().encode(JSON.stringify(record)), {
+        ...metadata,
+        version,
+        updatedAt: version,
+      });
+    }
+
+    await expect(memory.latest('saturated-memory', scope)).rejects.toThrow(/safety limit/);
+    expect((await memory.purge('saturated-memory', scope)).deletedRevisions).toBe(10_001);
+    expect(await memory.latest('saturated-memory', scope)).toBeUndefined();
   });
 
   it('supports logical DELETE and explicit physical purge', async () => {
@@ -418,6 +509,88 @@ describe('long-term memory', () => {
       scope,
       terms: ['temporary'],
     })).rejects.toThrow(/Working memory/);
+  });
+
+  it('prevents concurrent writers from persisting duplicate revision numbers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-ltm-race-'));
+    roots.push(root);
+    const initialRecovery = createRecoveryStore(root, { namespace: 'ltm' });
+    const initial = createLongTermMemoryStore(initialRecovery);
+    await initial.apply({
+      operation: 'ADD',
+      memoryId: 'race-memory',
+      scope,
+      now: 10,
+      reason: 'initial',
+      memoryClass: 'Project',
+      contentHandle: 'opaque://race/v1',
+      contentDigest: 'digest-v1',
+      source: 'test',
+      terms: ['race'],
+    });
+
+    let waiting = 0;
+    let releaseBarrier!: () => void;
+    const barrier = new Promise<void>((resolve) => { releaseBarrier = resolve; });
+    const withSnapshotBarrier = (store: RecoveryStore): RecoveryStore => {
+      let armed = true;
+      return {
+        ...store,
+        async list(options: RecoveryListOptions = {}) {
+          const handles = await store.list!(options);
+          if (armed && typeof options.metadata?.memoryKey === 'string') {
+            armed = false;
+            waiting += 1;
+            if (waiting === 2) releaseBarrier();
+            await barrier;
+          }
+          return handles;
+        },
+      };
+    };
+
+    const first = createLongTermMemoryStore(withSnapshotBarrier(createRecoveryStore(root, { namespace: 'ltm' })));
+    const second = createLongTermMemoryStore(withSnapshotBarrier(createRecoveryStore(root, { namespace: 'ltm' })));
+
+    const updates = await Promise.allSettled([
+      first.apply({
+        operation: 'UPDATE',
+        memoryId: 'race-memory',
+        scope,
+        now: 20,
+        reason: 'writer-a',
+        memoryClass: 'Project',
+        contentHandle: 'opaque://race/a',
+        contentDigest: 'digest-a',
+        source: 'test-a',
+        terms: ['race'],
+      }),
+      second.apply({
+        operation: 'UPDATE',
+        memoryId: 'race-memory',
+        scope,
+        now: 21,
+        reason: 'writer-b',
+        memoryClass: 'Project',
+        contentHandle: 'opaque://race/b',
+        contentDigest: 'digest-b',
+        source: 'test-b',
+        terms: ['race'],
+      }),
+    ]);
+
+    expect(updates.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = updates.find((result) => result.status === 'rejected');
+    expect(rejected?.status).toBe('rejected');
+    if (rejected?.status === 'rejected') {
+      expect(String(rejected.reason)).toMatch(/matching-object limit exceeded/);
+    }
+
+    const reopened = createLongTermMemoryStore(createRecoveryStore(root, { namespace: 'ltm' }));
+    expect(await reopened.latest('race-memory', scope)).toMatchObject({ version: 2, state: 'active' });
+    const history = await reopened.history({ memoryId: 'race-memory', scope, limit: 10 });
+    expect(history).toHaveLength(2);
+    expect(history.map((record) => record.version)).toEqual([2, 1]);
   });
 
   it('rejects malformed temporal windows and illegal mutation transitions', async () => {

@@ -73,7 +73,8 @@ function workflows(): RcWorkflowEvidence[] {
     { name: 'Secret Scan', runId: 3, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:3', conclusion: 'success' },
     { name: 'Supply Chain', runId: 4, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:4', conclusion: 'success' },
     { name: 'License Compliance', runId: 5, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:5', conclusion: 'success' },
-    { name: 'Benchmark Contract', runId: 6, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:6', conclusion: 'success' },
+    { name: 'Provenance Attestation', runId: 6, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:6', conclusion: 'success' },
+    { name: 'Benchmark Contract', runId: 7, headSha: SHA, updatedAt: 1, origin: 'github-actions', reference: 'run:7', conclusion: 'success' },
   ];
 }
 
@@ -299,6 +300,152 @@ describe('RC evidence snapshot', () => {
     expect(report.requiredGates).toBe(18);
     expect(report.verifiedRequiredGates).toBe(18);
     expect(snapshot.blockers).not.toContainEqual(expect.objectContaining({ id: 'readiness.integrity' }));
+  });
+
+  it('rejects a readiness report whose performanceClaims flag contradicts its required-gate count', () => {
+    const base = readiness();
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: base.generatedAt + 100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: {
+        ...base,
+        performanceClaims: true,
+      },
+      workflowRuns: workflows(),
+      artifacts: artifacts(),
+    });
+    expect(snapshot.preparationStatus).toBe('BLOCKED');
+    expect(snapshot.blockers).toContainEqual(expect.objectContaining({
+      id: 'readiness.integrity',
+      state: 'MISMATCH',
+    }));
+  });
+
+  it('deep-freezes copied artifact proofs after validation', () => {
+    const artifactInput = artifacts();
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: 1_725_000_000_100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: readiness(),
+      workflowRuns: workflows(),
+      artifacts: artifactInput,
+    });
+    const packageProof = snapshot.artifacts.proofs?.packageSmoke;
+    expect(Object.isFrozen(snapshot.artifacts)).toBe(true);
+    expect(Object.isFrozen(snapshot.artifacts.proofs)).toBe(true);
+    expect(Object.isFrozen(packageProof)).toBe(true);
+
+    const originalReference = packageProof?.reference;
+    expect(() => {
+      (artifactInput.proofs!.packageSmoke as { reference: string }).reference = 'tampered';
+    }).not.toThrow();
+    expect(snapshot.artifacts.proofs?.packageSmoke?.reference).toBe(originalReference);
+    expect(snapshot.artifacts.proofs?.packageSmoke?.reference).not.toBe('tampered');
+  });
+
+  it('requires the Provenance Attestation workflow on the exact RC source commit', () => {
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: 1_725_000_000_100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: readiness(),
+      workflowRuns: workflows().filter((run) => run.name !== 'Provenance Attestation'),
+      artifacts: artifacts(),
+    });
+    expect(snapshot.preparationStatus).toBe('BLOCKED');
+    expect(snapshot.blockers).toContainEqual(expect.objectContaining({
+      id: 'workflow.provenance-attestation',
+      state: 'NOT_EXECUTED',
+    }));
+  });
+
+  it('rejects VERIFIED entries inside the readiness blocker list', () => {
+    const base = readiness();
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: base.generatedAt + 100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: {
+        ...base,
+        status: 'BLOCKED',
+        blockers: [{
+          gateId: 'runtime.mcp',
+          title: 'MCP',
+          state: 'VERIFIED',
+          reason: 'invalid blocker state',
+        }],
+        verifiedRequiredGates: base.verifiedRequiredGates - 1,
+        verifiedGateEvidence: base.verifiedGateEvidence.filter((evidence) => evidence.gateId !== 'runtime.mcp'),
+      },
+      workflowRuns: workflows(),
+      artifacts: artifacts(),
+    });
+    expect(snapshot.blockers).toContainEqual(expect.objectContaining({
+      id: 'readiness.integrity',
+      state: 'MISMATCH',
+    }));
+  });
+
+  it('canonicalizes workflow and artifact evidence without copying unknown runtime fields', () => {
+    const workflow = {
+      ...workflows()[0]!,
+      secretExtra: 'must-not-survive',
+    } as RcWorkflowEvidence;
+    const artifactInput = {
+      ...artifacts(),
+      secretExtra: 'must-not-survive',
+      proofs: {
+        ...artifacts().proofs,
+        packageSmoke: {
+          ...artifacts().proofs!.packageSmoke!,
+          secretExtra: 'must-not-survive',
+        },
+      },
+    } as RcArtifactEvidence;
+
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: 1_725_000_000_100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: readiness(),
+      workflowRuns: [workflow, ...workflows().slice(1)],
+      artifacts: artifactInput,
+    });
+
+    expect((snapshot.workflowRuns[0] as unknown as Record<string, unknown>).secretExtra).toBeUndefined();
+    expect((snapshot.artifacts as unknown as Record<string, unknown>).secretExtra).toBeUndefined();
+    expect((snapshot.artifacts.proofs?.packageSmoke as unknown as Record<string, unknown>).secretExtra).toBeUndefined();
+  });
+
+  it('denies authorization objects with unexpected runtime keys', () => {
+    const base = readiness();
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: base.generatedAt + 100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: {
+        ...base,
+        authorization: {
+          ...base.authorization,
+          unexpected: true,
+        } as unknown as typeof base.authorization,
+      },
+      workflowRuns: workflows(),
+      artifacts: artifacts(),
+    });
+    expect(snapshot.preparationStatus).toBe('BLOCKED');
+    expect(snapshot.authorization).toEqual({
+      mergeDefaultBranch: false,
+      createReleaseTag: false,
+      publishNpm: false,
+      deployProduction: false,
+    });
+    expect(snapshot.blockers).toContainEqual(expect.objectContaining({
+      id: 'readiness.integrity',
+      state: 'MISMATCH',
+    }));
   });
 
   it('rejects a required gate reported as both verified and blocked', () => {

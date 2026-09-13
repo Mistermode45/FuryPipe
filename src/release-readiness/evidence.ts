@@ -1,6 +1,7 @@
 import {
   getV5RequiredReleaseGateIds,
   isAllowedV5ReleaseGateOrigin,
+  isExactReleaseAuthorization,
   V5_RELEASE_GATE_REQUIREDNESS,
 } from './index.js';
 import type { ReleaseAuthorization, ReleaseEvidenceOrigin, ReleaseReadinessReport } from './index.js';
@@ -117,6 +118,9 @@ function validateInput(input: RcEvidenceInput): void {
   if (input.readiness.status !== 'BLOCKED' && input.readiness.status !== 'READY_FOR_RELEASE_DECISION') {
     throw new Error('RC evidence readiness status is invalid');
   }
+  if (typeof input.readiness.performanceClaims !== 'boolean') {
+    throw new Error('RC evidence readiness performanceClaims is invalid');
+  }
   if (!Array.isArray(input.workflowRuns) || input.workflowRuns.length > 64) {
     throw new Error('RC workflow evidence must contain at most 64 runs');
   }
@@ -214,7 +218,7 @@ function artifactBlockers(artifacts: RcArtifactEvidence, sourceCommit: string): 
 }
 
 function workflowBlockers(runs: readonly RcWorkflowEvidence[], sourceCommit: string): RcPreparationBlocker[] {
-  const required = ['CI', 'CodeQL', 'Secret Scan', 'Supply Chain', 'License Compliance', 'Benchmark Contract'];
+  const required = ['CI', 'CodeQL', 'Secret Scan', 'Supply Chain', 'License Compliance', 'Provenance Attestation', 'Benchmark Contract'];
   const blockers: RcPreparationBlocker[] = [];
   for (const name of required) {
     const matching = runs.filter((run) => run.name === name);
@@ -244,18 +248,63 @@ function workflowBlockers(runs: readonly RcWorkflowEvidence[], sourceCommit: str
   return blockers;
 }
 
+function freezeArtifactProof(proof: RcArtifactProof): RcArtifactProof {
+  return Object.freeze({
+    sourceCommit: proof.sourceCommit,
+    observedAt: proof.observedAt,
+    origin: proof.origin,
+    reference: proof.reference,
+    ...(proof.artifactSha256 === undefined ? {} : { artifactSha256: proof.artifactSha256 }),
+  });
+}
+
+function freezeArtifactEvidence(artifacts: RcArtifactEvidence): RcArtifactEvidence {
+  const proofs = artifacts.proofs === undefined
+    ? undefined
+    : Object.freeze(Object.fromEntries(
+      Object.entries(artifacts.proofs).map(([key, proof]) => [
+        key,
+        proof === undefined ? undefined : freezeArtifactProof(proof),
+      ]),
+    ) as Partial<Record<RcArtifactProofKey, RcArtifactProof>>);
+  return Object.freeze({
+    packageSmoke: artifacts.packageSmoke,
+    installationSmoke: artifacts.installationSmoke,
+    upgradeSmoke: artifacts.upgradeSmoke,
+    rollbackEvidence: artifacts.rollbackEvidence,
+    sbom: artifacts.sbom,
+    provenance: artifacts.provenance,
+    compatibilityMatrix: artifacts.compatibilityMatrix,
+    migrationNotes: artifacts.migrationNotes,
+    releaseNotes: artifacts.releaseNotes,
+    ...(artifacts.packageSha256 === undefined ? {} : { packageSha256: artifacts.packageSha256 }),
+    ...(proofs === undefined ? {} : { proofs }),
+  });
+}
+
+function freezeWorkflowEvidence(run: RcWorkflowEvidence): RcWorkflowEvidence {
+  return Object.freeze({
+    name: run.name,
+    runId: run.runId,
+    headSha: run.headSha,
+    updatedAt: run.updatedAt,
+    origin: run.origin,
+    reference: run.reference,
+    conclusion: run.conclusion,
+  });
+}
+
 export function createRcEvidenceSnapshot(input: RcEvidenceInput): RcEvidenceSnapshot {
   validateInput(input);
 
   const blockers: RcPreparationBlocker[] = [];
   const authorization = input.readiness.authorization;
-  const authorizationValid = !!authorization && typeof authorization === 'object'
-    && typeof authorization.mergeDefaultBranch === 'boolean'
-    && typeof authorization.createReleaseTag === 'boolean'
-    && typeof authorization.publishNpm === 'boolean'
-    && typeof authorization.deployProduction === 'boolean';
+  const authorizationValid = isExactReleaseAuthorization(authorization);
   const safeAuthorization = authorizationValid ? Object.freeze({ ...authorization }) : DENY_ALL_AUTHORIZATION;
-  const effectiveRequiredGateIds = getV5RequiredReleaseGateIds(input.readiness.requiredGates);
+  const expectedRequiredGateCount = 17 + (input.readiness.performanceClaims ? 1 : 0);
+  const effectiveRequiredGateIds = input.readiness.requiredGates === expectedRequiredGateCount
+    ? getV5RequiredReleaseGateIds(input.readiness.requiredGates)
+    : undefined;
   const effectiveRequiredGateSet = new Set(effectiveRequiredGateIds ?? []);
   const verifiedEvidenceIds = new Set<string>();
   const blockerIds = new Set<string>();
@@ -269,7 +318,7 @@ export function createRcEvidenceSnapshot(input: RcEvidenceInput): RcEvidenceSnap
       && !blockerIds.has(blocker.gateId)
       && (blockerIds.add(blocker.gateId), true)
       && typeof blocker.title === 'string' && blocker.title.length > 0 && blocker.title.length <= 160
-      && ['VERIFIED', 'PARTIAL', 'NOT_EXECUTED', 'BLOCKED', 'BLOCKED_BY_REPO_SETTING', 'NOT_APPLICABLE'].includes(blocker.state)
+      && ['PARTIAL', 'NOT_EXECUTED', 'BLOCKED', 'BLOCKED_BY_REPO_SETTING', 'NOT_APPLICABLE'].includes(blocker.state)
       && typeof blocker.reason === 'string' && blocker.reason.length > 0 && blocker.reason.length <= 1024)
     && Array.isArray(input.readiness.warnings)
     && input.readiness.warnings.length <= 128
@@ -352,8 +401,8 @@ export function createRcEvidenceSnapshot(input: RcEvidenceInput): RcEvidenceSnap
     readinessStatus: input.readiness.status,
     preparationStatus: blockers.length === 0 ? 'READY_FOR_RELEASE_DECISION' : 'BLOCKED',
     blockers: Object.freeze(blockers.map((blocker) => Object.freeze({ ...blocker }))),
-    workflowRuns: Object.freeze(input.workflowRuns.map((run) => Object.freeze({ ...run }))),
-    artifacts: Object.freeze({ ...input.artifacts }),
+    workflowRuns: Object.freeze(input.workflowRuns.map(freezeWorkflowEvidence)),
+    artifacts: freezeArtifactEvidence(input.artifacts),
     authorization: safeAuthorization,
     releaseActionsExecuted: false,
   });

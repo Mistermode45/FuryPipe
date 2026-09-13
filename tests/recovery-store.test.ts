@@ -61,6 +61,104 @@ describe('Recovery Store', () => {
     await expect(store.list?.({ limit: 0 })).rejects.toThrow('list limit');
   });
 
+  it('atomically bounds unique objects by metadata while preserving idempotent puts', async () => {
+    const { store } = await createStoreFixture();
+    expect(typeof store.putBounded).toBe('function');
+    const bound = { metadata: { source: 'bounded-claims' }, maxMatches: 1 };
+
+    const first = await store.putBounded!(
+      new TextEncoder().encode('claim-one'),
+      { source: 'bounded-claims', token: 'first' },
+      bound,
+    );
+    const duplicate = await store.putBounded!(
+      new TextEncoder().encode('claim-one'),
+      { source: 'bounded-claims', token: 'second' },
+      bound,
+    );
+    expect(duplicate.digest).toBe(first.digest);
+    expect(duplicate.metadata?.token).toBe('first');
+
+    await expect(store.putBounded!(
+      new TextEncoder().encode('wrong-domain'),
+      { source: 'other-domain' },
+      bound,
+    )).rejects.toThrow(/must satisfy every capacity filter/);
+
+    const crossDomainBytes = new TextEncoder().encode('cross-domain-existing');
+    await store.put(crossDomainBytes, { source: 'other-domain' });
+    await expect(store.putBounded!(
+      crossDomainBytes,
+      { source: 'bounded-claims' },
+      bound,
+    )).rejects.toThrow(/existing object is outside one of its capacity filters/);
+
+    await expect(store.putBounded!(
+      new TextEncoder().encode('claim-two'),
+      { source: 'bounded-claims', token: 'third' },
+      bound,
+    )).rejects.toThrow(/matching-object limit/);
+
+    await expect(store.putBounded!(
+      new TextEncoder().encode('malformed-additional'),
+      { source: 'bounded-claims' },
+      {
+        metadata: { source: 'bounded-claims' },
+        maxMatches: 2,
+        additionalBounds: {} as never,
+      },
+    )).rejects.toThrow(/additionalBounds/);
+
+    expect(await store.list?.({ metadata: { source: 'bounded-claims' } })).toHaveLength(1);
+  });
+
+  it('enforces broad quota and narrow uniqueness constraints under one Recovery lock', async () => {
+    const { root, store } = await createStoreFixture();
+    const peer = createRecoveryStore(root, { namespace: 'test-tenant' });
+    const bound = (sequence: number) => ({
+      metadata: { source: 'sequenced', runId: 'run-1' },
+      maxMatches: 3,
+      additionalBounds: [{
+        metadata: { source: 'sequenced', runId: 'run-1', sequence },
+        maxMatches: 1,
+      }],
+    });
+
+    const [a, b] = await Promise.allSettled([
+      store.putBounded!(
+        new TextEncoder().encode('writer-a'),
+        { source: 'sequenced', runId: 'run-1', sequence: 0 },
+        bound(0),
+      ),
+      peer.putBounded!(
+        new TextEncoder().encode('writer-b'),
+        { source: 'sequenced', runId: 'run-1', sequence: 0 },
+        bound(0),
+      ),
+    ]);
+
+    expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
+    const rejected = a.status === 'rejected' ? a.reason : b.status === 'rejected' ? b.reason : undefined;
+    expect(String(rejected)).toMatch(/matching-object limit exceeded/);
+    expect(await store.list?.({ metadata: { source: 'sequenced', runId: 'run-1', sequence: 0 } })).toHaveLength(1);
+
+    await store.putBounded!(
+      new TextEncoder().encode('writer-c'),
+      { source: 'sequenced', runId: 'run-1', sequence: 1 },
+      bound(1),
+    );
+    await store.putBounded!(
+      new TextEncoder().encode('writer-d'),
+      { source: 'sequenced', runId: 'run-1', sequence: 2 },
+      bound(2),
+    );
+    await expect(store.putBounded!(
+      new TextEncoder().encode('writer-e'),
+      { source: 'sequenced', runId: 'run-1', sequence: 3 },
+      bound(3),
+    )).rejects.toThrow(/matching-object limit exceeded/);
+  });
+
   it('keeps a collision-free immutable object and rejects malformed handles', async () => {
     const { root, store } = await createStoreFixture();
     const bytes = new TextEncoder().encode('same content');
