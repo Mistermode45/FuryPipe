@@ -1593,7 +1593,7 @@ export class DashboardState {
       }
       case 'header': {
         const s = (await this.serveStats().json()) as StatsPayload;
-        return htmlResponse(renderHeaderFragment(s, port));
+        return htmlResponse(renderHeaderFragment(s, port, locale));
       }
       case 'recent': {
         const r = (await this.serveRecent().json()) as RecentPayload;
@@ -1613,11 +1613,11 @@ export class DashboardState {
               : this.images[this.images.length - 1];
           sourceText = entry?.sourceText ?? null;
         }
-        return htmlResponse(renderLatestFragment({ payload: r, pin, showSource, sourceText }));
+        return htmlResponse(renderLatestFragment({ payload: r, pin, showSource, sourceText }, locale));
       }
       case 'sessions': {
         const res = await this.serveSessionsJson();
-        if (!res.ok) return htmlResponse(`<div class="status">sessions unavailable</div>`);
+        if (!res.ok) return htmlResponse(`<div class="status">${escapeHtml(dashboardT(locale, 'dashboard.sessions.unavailable'))}</div>`);
         const p = (await res.json()) as SessionsPayload;
         return htmlResponse(renderSessionsFragment(p, locale));
       }
