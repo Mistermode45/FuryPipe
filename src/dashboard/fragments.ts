@@ -682,7 +682,11 @@ export function renderRecentFragment(p: RecentPayload, locale = 'en'): string {
               cc > 0 &&
               saved + cc * (CACHE_CREATE_RATE - CACHE_READ_RATE) > 0;
             const createNote = createLoss
-              ? ` <span class="mk-create" title="Cache-create turn: this loss is the one-time ${CACHE_CREATE_RATE}× premium for writing ${numFmt(cc)} tokens to cache. Later turns re-read that prefix at ${CACHE_READ_RATE}×, which typically recoups it.">create</span>`
+              ? ` <span class="mk-create" title="${escapeHtml(t('dashboard.recent.createTip', {
+                  createRate: CACHE_CREATE_RATE,
+                  tokens: numFmt(cc),
+                  readRate: CACHE_READ_RATE,
+                }))}">${escapeHtml(t('dashboard.recent.create'))}</span>`
               : '';
             const savedCell = saved == null
               ? `<td class="num muted">—</td>`
@@ -692,8 +696,8 @@ export function renderRecentFragment(p: RecentPayload, locale = 'en'): string {
                   ? `<td class="num neg">${numFmt(saved)}${createNote}</td>`
                   : `<td class="num">0</td>`;
             const imaged = e.cc_added
-              ? `<span class="badge badge-img">image</span>`
-              : `<span class="badge badge-txt">text</span>`;
+              ? `<span class="badge badge-img">${escapeHtml(t('dashboard.recent.image'))}</span>`
+              : `<span class="badge badge-txt">${escapeHtml(t('dashboard.recent.text'))}</span>`;
             return (
               `<tr>` +
               `<td class="muted">${i + 1}</td>` +
@@ -713,14 +717,14 @@ export function renderRecentFragment(p: RecentPayload, locale = 'en'): string {
   return (
     `<table class="rtable"><thead><tr>` +
     `<th>#</th>` +
-    `<th>Result</th>` +
-    `<th>Endpoint</th>` +
-    `<th>Model</th>` +
-    `<th title="Was this request's context compressed into an image?">Sent as</th>` +
-    `<th class="num" title="Tokens the provider reported as served from cache">Cache hits</th>` +
-    `<th class="num" title="Billing-equivalent input if kept as plain text, after cache create/read rates">As text</th>` +
-    `<th class="num" title="Actual billing-equivalent input after imaging, after cache create/read rates">Sent</th>` +
-    `<th class="num" title="As-text minus Sent; negative means imaging cost more">Saved/lost</th>` +
+    `<th>${escapeHtml(t('dashboard.recent.result'))}</th>` +
+    `<th>${escapeHtml(t('dashboard.recent.endpoint'))}</th>` +
+    `<th>${escapeHtml(t('dashboard.recent.model'))}</th>` +
+    `<th title="${escapeHtml(t('dashboard.recent.sentAsTip'))}">${escapeHtml(t('dashboard.recent.sentAs'))}</th>` +
+    `<th class="num" title="${escapeHtml(t('dashboard.recent.cacheHitsTip'))}">${escapeHtml(t('dashboard.recent.cacheHits'))}</th>` +
+    `<th class="num" title="${escapeHtml(t('dashboard.recent.asTextTip'))}">${escapeHtml(t('dashboard.recent.asText'))}</th>` +
+    `<th class="num" title="${escapeHtml(t('dashboard.recent.sentTip'))}">${escapeHtml(t('dashboard.recent.sent'))}</th>` +
+    `<th class="num" title="${escapeHtml(t('dashboard.recent.savedLostTip'))}">${escapeHtml(t('dashboard.recent.savedLost'))}</th>` +
     `<th></th>` +
     `</tr></thead><tbody>${body}</tbody></table>`
   );
@@ -735,7 +739,11 @@ export interface LatestFragmentInput {
   sourceText: string | null; // null = not captured
 }
 
-export function renderLatestFragment(inp: LatestFragmentInput): string {
+export function renderLatestFragment(inp: LatestFragmentInput, locale = 'en'): string {
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(locale, key, params);
   const { payload, pin, showSource, sourceText } = inp;
   const hasPreview = payload.has_preview === true;
   const meta = payload.preview_meta ?? '';
@@ -750,35 +758,35 @@ export function renderLatestFragment(inp: LatestFragmentInput): string {
 
   const pinBar =
     pin != null
-      ? `<div class="viewer-bar"><button class="mini-btn" type="button" onclick="ppPin(null)">← back to latest</button><span class="mini-label">image #${pin}</span></div>`
+      ? `<div class="viewer-bar"><button class="mini-btn" type="button" onclick="ppPin(null)">${escapeHtml(t('dashboard.latest.back'))}</button><span class="mini-label">${escapeHtml(t('dashboard.latest.image', { id: pin }))}</span></div>`
       : '';
 
   let main: string;
   if (pin != null && pinnedEvicted) {
-    main = `<div class="evicted">image #${pin} is no longer in the buffer</div>`;
+    main = `<div class="evicted">${escapeHtml(t('dashboard.latest.evicted', { id: pin }))}</div>`;
   } else if (pin != null || hasPreview) {
     // When source pane is open the image appears inside the pairing — don't duplicate it.
-    main = showSource ? '' : `<div class="frame"><img src="${imgSrc}" alt="rendered page" /></div>`;
+    main = showSource ? '' : `<div class="frame"><img src="${imgSrc}" alt="${escapeHtml(t('dashboard.latest.renderedAlt'))}" /></div>`;
   } else {
-    main = `<div class="empty-note">No images yet — they appear the instant pxpipe compresses a request.</div>`;
+    main = `<div class="empty-note">${escapeHtml(t('dashboard.latest.noImages'))}</div>`;
   }
 
   const showBtn = pin != null ? !pinnedEvicted : hasPreview;
   const caption =
-    pin != null ? `image #${pin}` : meta ? `${escapeHtml(meta)} · top-left at native size` : '';
+    pin != null ? escapeHtml(t('dashboard.latest.image', { id: pin })) : meta ? `${escapeHtml(meta)} · ${escapeHtml(t('dashboard.latest.topLeft'))}` : '';
   const srcBtn = showBtn
-    ? `<button class="mini-btn" type="button" onclick="ppSource(${showSource ? 'false' : 'true'})">${showSource ? 'hide source text' : 'show the text behind this image'}</button>`
+    ? `<button class="mini-btn" type="button" onclick="ppSource(${showSource ? 'false' : 'true'})">${escapeHtml(t(showSource ? 'dashboard.latest.hideSource' : 'dashboard.latest.showSource'))}</button>`
     : '';
 
   let pane = '';
   if (showSource) {
     pane =
       sourceText == null
-        ? `<div class="evicted">source text wasn't captured for this image</div>`
+        ? `<div class="evicted">${escapeHtml(t('dashboard.latest.sourceMissing'))}</div>`
         : `<div class="pairing">` +
-          `<div class="pair-col"><div class="pair-head pair-img">What the model sees · image</div><div class="frame frame-sm"><img src="${imgSrc}" alt="rendered page" /></div></div>` +
-          `<div class="pair-mid">made from ↓</div>` +
-          `<div class="pair-col"><div class="pair-head pair-txt">The original text · byte-exact</div><pre class="src-pane">${escapeHtml(sourceText)}</pre></div>` +
+          `<div class="pair-col"><div class="pair-head pair-img">${escapeHtml(t('dashboard.latest.modelSees'))}</div><div class="frame frame-sm"><img src="${imgSrc}" alt="${escapeHtml(t('dashboard.latest.renderedAlt'))}" /></div></div>` +
+          `<div class="pair-mid">${escapeHtml(t('dashboard.latest.madeFrom'))}</div>` +
+          `<div class="pair-col"><div class="pair-head pair-txt">${escapeHtml(t('dashboard.latest.originalText'))}</div><pre class="src-pane">${escapeHtml(sourceText)}</pre></div>` +
           `</div>`;
   }
 
@@ -899,26 +907,26 @@ export function renderStatsTableFragment(p: FullStatsPayload, locale = 'en'): st
   return (
     `<div class="status">${numFmt(p.parsed)} ${escapeHtml(t('dashboard.stats.eventsParsed'))}</div>` +
     `<table class="dtable"><tbody>` +
-    tr('requests', numFmt(s.total)) +
+    tr(t('dashboard.stats.requests'), numFmt(s.total)) +
     tr('2xx / 4xx / 5xx', `${numFmt(s.ok2xx)} / ${numFmt(s.err4xx)} / ${numFmt(s.err5xx)}`) +
-    tr('compressed', numFmt(s.compressed)) +
-    tr('passthrough', numFmt(s.passthrough)) +
-    tr('input tokens', numFmt(s.inputTokensTotal)) +
-    tr('cache create', numFmt(s.cacheCreateTokensTotal)) +
-    tr('cache read', numFmt(s.cacheReadTokensTotal)) +
-    tr('cache hit (by tokens)', hitRateTok) +
-    tr('cache hit (by events)', hitRateEv) +
-    tr('original chars', numFmt(s.origCharsTotal)) +
-    tr('image bytes', numFmt(s.imageBytesTotal)) +
-    tr('bytes / char', charRatio) +
+    tr(t('dashboard.stats.compressed'), numFmt(s.compressed)) +
+    tr(t('dashboard.stats.passthrough'), numFmt(s.passthrough)) +
+    tr(t('dashboard.stats.inputTokens'), numFmt(s.inputTokensTotal)) +
+    tr(t('dashboard.stats.cacheCreate'), numFmt(s.cacheCreateTokensTotal)) +
+    tr(t('dashboard.stats.cacheRead'), numFmt(s.cacheReadTokensTotal)) +
+    tr(t('dashboard.stats.cacheHitTokens'), hitRateTok) +
+    tr(t('dashboard.stats.cacheHitEvents'), hitRateEv) +
+    tr(t('dashboard.stats.originalChars'), numFmt(s.origCharsTotal)) +
+    tr(t('dashboard.stats.imageBytes'), numFmt(s.imageBytesTotal)) +
+    tr(t('dashboard.stats.bytesChar'), charRatio) +
     (s.pinEvents
       ? tr(
-          'pin footer (uncached)',
+          t('dashboard.stats.pinFooter'),
           `${numFmt(s.pinCharsTotal ?? 0)} chars / ${numFmt(s.pinEvents)} req`,
         )
       : '') +
-    tr('latency p50 / p95', `${numFmt(s.durationP50)} / ${numFmt(s.durationP95)} ms`) +
-    tr('first-byte p50 / p95', `${numFmt(s.firstByteP50)} / ${numFmt(s.firstByteP95)} ms`) +
+    tr(t('dashboard.stats.latency'), `${numFmt(s.durationP50)} / ${numFmt(s.durationP95)} ms`) +
+    tr(t('dashboard.stats.firstByte'), `${numFmt(s.firstByteP50)} / ${numFmt(s.firstByteP95)} ms`) +
     `</tbody></table>`
   );
 }
