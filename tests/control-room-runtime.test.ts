@@ -1,5 +1,8 @@
+import { OAuthError, OAuthErrorCode, type AuthInfo, type OAuthTokenVerifier } from '@modelcontextprotocol/server';
 import { describe, expect, it } from 'vitest';
 import { createControlRoomRuntime } from '../src/control-room/runtime.js';
+import { createRecoveryStore } from '../src/core/recovery-store.js';
+import { createProductionMcpHandler } from '../src/mcp-modern.js';
 import { createGovernedProviderExecutor } from '../src/governed-provider-executor.js';
 import { createGovernedProviderStreamExecutor } from '../src/governed-provider-stream-executor.js';
 import { createProviderExecutionGate } from '../src/provider-execution-gate.js';
@@ -145,6 +148,157 @@ describe('Control Room live runtime collector', () => {
     expect(snapshot.sections.benchmarks.evidence.providerRuns).toBe('NOT_AVAILABLE');
     expect(snapshot.sections.release.evidence.technicalStatus).toBe('NOT_AVAILABLE');
     expect(snapshot.overall).not.toBe('HEALTHY');
+  });
+
+  it('derives fail-visible MCP HTTP evidence from an exact process-local production handler', async () => {
+    const handler = createProductionMcpHandler(createRecoveryStore('unused-control-room-mcp'), {
+      allowedHostnames: ['localhost'],
+      allowUnauthenticatedLoopback: true,
+    });
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 2 });
+    runtime.observeMcpHttpHandler(handler);
+    runtime.observeMcpHttpHandler(handler);
+
+    expect(runtime.snapshot().sections.mcp.evidence).toEqual({
+      stdio: 'NOT_AVAILABLE',
+      http: 'NOT_EXECUTED',
+      bearerAuth: 'NOT_EXECUTED',
+      oauth: 'NOT_EXECUTED',
+      externalConformance: 'NOT_AVAILABLE',
+    });
+
+    const rejected = await handler.fetch(new Request('https://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        host: 'attacker.test',
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    }));
+    expect(rejected.status).toBe(403);
+    expect(runtime.snapshot().sections.mcp.evidence.http).toBe('PARTIAL');
+
+    const body = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+      params: {
+        _meta: {
+          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
+      },
+    });
+    const accepted = await handler.fetch(new Request('https://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        host: 'localhost',
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-protocol-version': '2026-07-28',
+        'mcp-method': 'tools/list',
+      },
+      body,
+    }));
+    expect(accepted.status).toBe(200);
+
+    const evidence = runtime.snapshot().sections.mcp;
+    expect(evidence.evidence).toEqual({
+      stdio: 'NOT_AVAILABLE',
+      http: 'VERIFIED',
+      bearerAuth: 'NOT_EXECUTED',
+      oauth: 'NOT_EXECUTED',
+      externalConformance: 'NOT_AVAILABLE',
+    });
+    expect(evidence.status).toBe('PARTIAL');
+    await handler.close();
+  });
+
+  it('verifies local Bearer execution without promoting OAuth or external conformance', async () => {
+    const verifier: OAuthTokenVerifier = {
+      async verifyAccessToken(token): Promise<AuthInfo> {
+        if (token !== 'CONTROL_ROOM_PRIVATE_TOKEN') {
+          throw new OAuthError(OAuthErrorCode.InvalidToken, 'invalid token');
+        }
+        return {
+          token,
+          clientId: 'control-room-test-client',
+          scopes: ['mcp'],
+          expiresAt: Math.floor(Date.now() / 1000) + 60,
+        };
+      },
+    };
+    const handler = createProductionMcpHandler(createRecoveryStore('unused-control-room-mcp-auth'), {
+      allowedHostnames: ['localhost'],
+      bearerAuth: {
+        verifier,
+        requiredScopes: ['mcp'],
+        resourceMetadataUrl: 'https://localhost/.well-known/oauth-protected-resource/mcp',
+      },
+    });
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 2 });
+    runtime.observeMcpHttpHandler(handler);
+
+    expect(runtime.snapshot().sections.mcp.evidence).toMatchObject({
+      http: 'NOT_EXECUTED',
+      bearerAuth: 'PARTIAL',
+      oauth: 'PARTIAL',
+      externalConformance: 'NOT_AVAILABLE',
+    });
+
+    const body = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+      params: {
+        _meta: {
+          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
+      },
+    });
+    const request = new Request('https://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        host: 'localhost',
+        authorization: 'Bearer CONTROL_ROOM_PRIVATE_TOKEN',
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-protocol-version': '2026-07-28',
+        'mcp-method': 'tools/list',
+      },
+      body,
+    });
+    expect((await handler.fetch(request)).status).toBe(200);
+
+    const snapshot = runtime.snapshot();
+    expect(snapshot.sections.mcp.evidence).toEqual({
+      stdio: 'NOT_AVAILABLE',
+      http: 'VERIFIED',
+      bearerAuth: 'VERIFIED',
+      oauth: 'PARTIAL',
+      externalConformance: 'NOT_AVAILABLE',
+    });
+    expect(snapshot.sections.mcp.status).toBe('PARTIAL');
+    expect(snapshot.sections.mcp.warnings.join(' ')).toMatch(/Authorization Server conformance is proven/i);
+    expect(snapshot.sections.mcp.warnings.join(' ')).toMatch(/external client\/network conformance is not verified/i);
+    expect(JSON.stringify(snapshot)).not.toContain('CONTROL_ROOM_PRIVATE_TOKEN');
+    expect(JSON.stringify(snapshot)).not.toContain('control-room-test-client');
+    await handler.close();
+  });
+
+  it('rejects copied MCP handlers and forged stdio handles instead of promoting runtime evidence', async () => {
+    const handler = createProductionMcpHandler(createRecoveryStore('unused-control-room-mcp-copy'), {
+      allowedHostnames: ['localhost'],
+      allowUnauthenticatedLoopback: true,
+    });
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 2 });
+
+    expect(() => runtime.observeMcpHttpHandler({ ...handler } as never)).toThrow(/process-local/i);
+    expect(() => runtime.observeMcpStdioHandle({ close() {} })).toThrow(/process-local/i);
+    expect(runtime.snapshot().sections.mcp.evidence.externalConformance).toBe('NOT_AVAILABLE');
+    await handler.close();
   });
 
   it('accepts explicit host evidence overrides without mutating them', () => {

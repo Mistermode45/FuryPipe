@@ -111,7 +111,7 @@ try {
   const httpExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
-    "const m = await import('furypipe/mcp-modern'); if (typeof m.createProductionMcpHandler !== 'function') process.exit(1);",
+    "const m = await import('furypipe/mcp-modern'); if (typeof m.createProductionMcpHandler !== 'function' || typeof m.getProductionMcpRuntimeEvidence !== 'function' || typeof m.isGeneratedModernMcpStdioHandle !== 'function') process.exit(1);",
   ], installDir);
   assert(httpExport.stderr === '', `MCP HTTP package export wrote stderr: ${httpExport.stderr}`);
   const nodeHttpExport = await run(process.execPath, [

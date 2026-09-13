@@ -157,6 +157,40 @@ An accepted stream remains visibly open until its governed terminal/provider-err
 The source-bound host evidence file described below does **not** currently accept a Provider section. Independent provider verification needs a dedicated evidence contract rather than a static JSON field that could silently relabel transport-reported data.
 
 
+## MCP runtime observations
+
+The live collector can also observe exact process-local MCP runtime objects:
+
+- `observeMcpHttpHandler(handler)` accepts only a `createProductionMcpHandler()` result whose identity still exists in FuryPipe's internal WeakMap;
+- `observeMcpStdioHandle(handle)` accepts only a handle returned by `runModernMcpStdio()`.
+
+The production HTTP boundary retains only bounded runtime counters and configuration booleans:
+
+- number of requests reaching the FuryPipe boundary;
+- number of requests dispatched to the MCP SDK handler;
+- whether Bearer verification is configured;
+- number of successful Bearer verifications;
+- whether OAuth discovery metadata is configured;
+- number of discovery metadata responses.
+
+It does **not** retain request bodies, JSON-RPC params, tool arguments, Host/Origin values, Authorization headers, access tokens, `AuthInfo`, client IDs or recovery plaintext.
+
+Control Room derives MCP status conservatively:
+
+- authentic HTTP handler with no request: `http = NOT_EXECUTED`;
+- boundary request rejected before dispatch: `http = PARTIAL`;
+- request dispatched to the local MCP SDK handler: `http = VERIFIED` for the **local handler path only**;
+- Bearer configured but no successful verification: `bearerAuth = PARTIAL`;
+- successful local Bearer verification: `bearerAuth = VERIFIED`;
+- any locally observed OAuth resource-server/discovery configuration remains `oauth = PARTIAL`;
+- `externalConformance = NOT_AVAILABLE` unless a separate exact-source host evidence report provides stronger evidence;
+- an authentic stdio handle proves local construction only, therefore runtime-derived `stdio = PARTIAL`.
+
+These statuses must not be read as hosted interoperability claims. In particular, `http = VERIFIED` proves local dispatch through the production boundary, not DNS/TLS reachability or a remote client. `bearerAuth = VERIFIED` proves the configured local verifier accepted one request, not that a real Authorization Server was integrated. Local OAuth metadata never promotes external conformance.
+
+If `ControlRoomRuntimeOptions.mcp` is supplied explicitly, that source-bound host evidence remains authoritative and is not silently overwritten by runtime-derived observations.
+
+
 ## Source-bound host evidence file
 
 The Node host can now combine live runtime observations with bounded evidence produced by CI or another trusted host process.
