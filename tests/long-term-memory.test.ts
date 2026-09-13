@@ -511,6 +511,88 @@ describe('long-term memory', () => {
     })).rejects.toThrow(/Working memory/);
   });
 
+  it('prevents concurrent writers from persisting duplicate revision numbers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-ltm-race-'));
+    roots.push(root);
+    const initialRecovery = createRecoveryStore(root, { namespace: 'ltm' });
+    const initial = createLongTermMemoryStore(initialRecovery);
+    await initial.apply({
+      operation: 'ADD',
+      memoryId: 'race-memory',
+      scope,
+      now: 10,
+      reason: 'initial',
+      memoryClass: 'Project',
+      contentHandle: 'opaque://race/v1',
+      contentDigest: 'digest-v1',
+      source: 'test',
+      terms: ['race'],
+    });
+
+    let waiting = 0;
+    let releaseBarrier!: () => void;
+    const barrier = new Promise<void>((resolve) => { releaseBarrier = resolve; });
+    const withSnapshotBarrier = (store: RecoveryStore): RecoveryStore => {
+      let armed = true;
+      return {
+        ...store,
+        async list(options: RecoveryListOptions = {}) {
+          const handles = await store.list!(options);
+          if (armed && typeof options.metadata?.memoryKey === 'string') {
+            armed = false;
+            waiting += 1;
+            if (waiting === 2) releaseBarrier();
+            await barrier;
+          }
+          return handles;
+        },
+      };
+    };
+
+    const first = createLongTermMemoryStore(withSnapshotBarrier(createRecoveryStore(root, { namespace: 'ltm' })));
+    const second = createLongTermMemoryStore(withSnapshotBarrier(createRecoveryStore(root, { namespace: 'ltm' })));
+
+    const updates = await Promise.allSettled([
+      first.apply({
+        operation: 'UPDATE',
+        memoryId: 'race-memory',
+        scope,
+        now: 20,
+        reason: 'writer-a',
+        memoryClass: 'Project',
+        contentHandle: 'opaque://race/a',
+        contentDigest: 'digest-a',
+        source: 'test-a',
+        terms: ['race'],
+      }),
+      second.apply({
+        operation: 'UPDATE',
+        memoryId: 'race-memory',
+        scope,
+        now: 21,
+        reason: 'writer-b',
+        memoryClass: 'Project',
+        contentHandle: 'opaque://race/b',
+        contentDigest: 'digest-b',
+        source: 'test-b',
+        terms: ['race'],
+      }),
+    ]);
+
+    expect(updates.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = updates.find((result) => result.status === 'rejected');
+    expect(rejected?.status).toBe('rejected');
+    if (rejected?.status === 'rejected') {
+      expect(String(rejected.reason)).toMatch(/matching-object limit exceeded/);
+    }
+
+    const reopened = createLongTermMemoryStore(createRecoveryStore(root, { namespace: 'ltm' }));
+    expect(await reopened.latest('race-memory', scope)).toMatchObject({ version: 2, state: 'active' });
+    const history = await reopened.history({ memoryId: 'race-memory', scope, limit: 10 });
+    expect(history).toHaveLength(2);
+    expect(history.map((record) => record.version)).toEqual([2, 1]);
+  });
+
   it('rejects malformed temporal windows and illegal mutation transitions', async () => {
     const { memory } = await memoryStore();
 
