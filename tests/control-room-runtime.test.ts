@@ -1,3 +1,4 @@
+import { OAuthError, OAuthErrorCode, type AuthInfo, type OAuthTokenVerifier } from '@modelcontextprotocol/server';
 import { describe, expect, it } from 'vitest';
 import { createControlRoomRuntime } from '../src/control-room/runtime.js';
 import { createRecoveryStore } from '../src/core/recovery-store.js';
@@ -211,6 +212,77 @@ describe('Control Room live runtime collector', () => {
       externalConformance: 'NOT_AVAILABLE',
     });
     expect(evidence.status).toBe('PARTIAL');
+    await handler.close();
+  });
+
+  it('verifies local Bearer execution without promoting OAuth or external conformance', async () => {
+    const verifier: OAuthTokenVerifier = {
+      async verifyAccessToken(token): Promise<AuthInfo> {
+        if (token !== 'CONTROL_ROOM_PRIVATE_TOKEN') {
+          throw new OAuthError(OAuthErrorCode.InvalidToken, 'invalid token');
+        }
+        return {
+          token,
+          clientId: 'control-room-test-client',
+          scopes: ['mcp'],
+          expiresAt: Math.floor(Date.now() / 1000) + 60,
+        };
+      },
+    };
+    const handler = createProductionMcpHandler(createRecoveryStore('unused-control-room-mcp-auth'), {
+      allowedHostnames: ['localhost'],
+      bearerAuth: {
+        verifier,
+        requiredScopes: ['mcp'],
+        resourceMetadataUrl: 'https://localhost/.well-known/oauth-protected-resource/mcp',
+      },
+    });
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 2 });
+    runtime.observeMcpHttpHandler(handler);
+
+    expect(runtime.snapshot().sections.mcp.evidence).toMatchObject({
+      http: 'NOT_EXECUTED',
+      bearerAuth: 'PARTIAL',
+      oauth: 'PARTIAL',
+      externalConformance: 'NOT_AVAILABLE',
+    });
+
+    const body = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+      params: {
+        _meta: {
+          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
+      },
+    });
+    const request = new Request('https://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        host: 'localhost',
+        authorization: 'Bearer CONTROL_ROOM_PRIVATE_TOKEN',
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-protocol-version': '2026-07-28',
+        'mcp-method': 'tools/list',
+      },
+      body,
+    });
+    expect((await handler.fetch(request)).status).toBe(200);
+
+    const snapshot = runtime.snapshot();
+    expect(snapshot.sections.mcp.evidence).toEqual({
+      stdio: 'NOT_AVAILABLE',
+      http: 'VERIFIED',
+      bearerAuth: 'VERIFIED',
+      oauth: 'PARTIAL',
+      externalConformance: 'NOT_AVAILABLE',
+    });
+    expect(snapshot.sections.mcp.status).toBe('PARTIAL');
+    expect(JSON.stringify(snapshot)).not.toContain('CONTROL_ROOM_PRIVATE_TOKEN');
+    expect(JSON.stringify(snapshot)).not.toContain('control-room-test-client');
     await handler.close();
   });
 
