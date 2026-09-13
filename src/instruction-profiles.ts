@@ -10,6 +10,8 @@ export const FURY_INSTRUCTION_PROFILE_IDS = Object.freeze([
   'spec-driven-development',
   'systematic-debugging',
   'codebase-audit-discipline',
+  'ui-design-discipline',
+  'product-marketing-context-discipline',
 ] as const);
 
 export type FuryInstructionProfileId = typeof FURY_INSTRUCTION_PROFILE_IDS[number];
@@ -185,12 +187,84 @@ const CODEBASE_AUDIT_DISCIPLINE: FuryInstructionProfile = Object.freeze({
   }),
 });
 
+
+const UI_DESIGN_DISCIPLINE: FuryInstructionProfile = Object.freeze({
+  id: 'ui-design-discipline',
+  name: 'Production UI design discipline',
+  version: '1.0.0',
+  source: Object.freeze({
+    repository: 'https://github.com/Nutlope/hallmark',
+    commitSha: '13ac0ec7e148655948100b6396439e481361d690',
+    sourcePath: 'skills/hallmark/SKILL.md',
+    licenseStatus: 'VERIFIED',
+    decision: 'ADAPT',
+  }),
+  additions: Object.freeze({
+    intent: Object.freeze([
+      'Treat UI work as a scoped design-system change: understand the existing product conventions before introducing new visual structure, tokens, interactions or components.',
+    ]),
+    context: Object.freeze([
+      'Before designing in an existing project, inspect the established framework, typography, palette/tokens, spacing, component ownership, responsive conventions and motion patterns when available.',
+    ]),
+    constraints: Object.freeze([
+      'Preserve existing routes, component ownership, product copy intent and design-system contracts unless the requested scope explicitly authorizes broader replacement.',
+      'Do not fabricate metrics, testimonials, customer logos, case-study claims or other proof content to make a layout look complete; represent missing proof as unknown or request real evidence.',
+      'Learn from visual references at the level of hierarchy, rhythm, component archetypes and design principles rather than producing a pixel-faithful copy of a third-party design.',
+    ]),
+    plan: Object.freeze([
+      'Choose the page or component scope first, then define hierarchy, tokens, interaction states, responsive behavior and accessibility before polishing visual details.',
+    ]),
+    acceptanceCriteria: Object.freeze([
+      'Interactive UI exposes appropriate hover, focus-visible, active, disabled and task-relevant loading/error/success states, and the requested experience remains usable at narrow and wide viewports.',
+    ]),
+    verification: Object.freeze([
+      'Review the result for responsive overflow, readable hierarchy, keyboard focus, contrast, state completeness, invented content and accidental divergence from the project design system before declaring the UI complete.',
+    ]),
+  }),
+});
+
+const PRODUCT_MARKETING_CONTEXT_DISCIPLINE: FuryInstructionProfile = Object.freeze({
+  id: 'product-marketing-context-discipline',
+  name: 'Evidence-grounded product marketing context',
+  version: '1.0.0',
+  source: Object.freeze({
+    repository: 'https://github.com/coreyhaines31/marketingskills',
+    commitSha: '5b2c0007766c6a1cf1d53fd8fc73e979e0821022',
+    sourcePath: 'skills/product-marketing/SKILL.md',
+    licenseStatus: 'VERIFIED',
+    decision: 'ADAPT',
+  }),
+  additions: Object.freeze({
+    intent: Object.freeze([
+      'Establish reusable product, audience, positioning, voice and proof context before producing downstream marketing strategy or copy.',
+    ]),
+    context: Object.freeze([
+      'Ground product claims in supplied material or repository evidence, and keep target audience, jobs-to-be-done, pains, alternatives, differentiation, objections, customer language, brand voice, proof points and conversion goals distinguishable.',
+    ]),
+    constraints: Object.freeze([
+      'Do not invent customer quotes, performance metrics, customer counts, logos, pricing, competitive facts or proof points; mark missing evidence as unknown and keep hypotheses separate from facts.',
+      'Prefer exact customer or stakeholder language when it is supplied, while preserving source attribution and avoiding unsupported polishing that changes the meaning.',
+    ]),
+    plan: Object.freeze([
+      'Resolve foundational product and audience context first, identify evidence gaps and contradictions, then apply only the marketing tactic or channel-specific method required by the task.',
+    ]),
+    outputContract: Object.freeze([
+      'Separate known product facts, target audience, positioning/differentiation, customer language, brand voice, proof, goals, assumptions and unresolved questions so the context can be reused without silently converting assumptions into facts.',
+    ]),
+    verification: Object.freeze([
+      'Before publishing a marketing deliverable, trace factual claims and proof points back to provided evidence and flag any claim that still requires confirmation.',
+    ]),
+  }),
+});
+
 export const FURY_INSTRUCTION_PROFILES: Readonly<Record<FuryInstructionProfileId, FuryInstructionProfile>> =
   Object.freeze({
     'karpathy-coding-discipline': KARPATHY_CODING_DISCIPLINE,
     'spec-driven-development': SPEC_DRIVEN_DEVELOPMENT,
     'systematic-debugging': SYSTEMATIC_DEBUGGING,
     'codebase-audit-discipline': CODEBASE_AUDIT_DISCIPLINE,
+    'ui-design-discipline': UI_DESIGN_DISCIPLINE,
+    'product-marketing-context-discipline': PRODUCT_MARKETING_CONTEXT_DISCIPLINE,
   });
 
 function normalizeValues(value: FuryPromptSectionValue | undefined): string[] {
@@ -260,4 +334,46 @@ export function applyInstructionProfiles(
 
 export function inspectInstructionProfiles(): readonly FuryInstructionProfile[] {
   return Object.freeze(FURY_INSTRUCTION_PROFILE_IDS.map((id) => FURY_INSTRUCTION_PROFILES[id]));
+}
+
+export type FuryInstructionWorkload =
+  | 'general-engineering'
+  | 'feature-development'
+  | 'bugfix'
+  | 'codebase-audit'
+  | 'production-hardening'
+  | 'ui-development'
+  | 'marketing'
+  | 'research';
+
+const RECOMMENDED_PROFILES_BY_WORKLOAD: Readonly<
+  Record<FuryInstructionWorkload, readonly FuryInstructionProfileId[]>
+> = Object.freeze({
+  'general-engineering': Object.freeze(['karpathy-coding-discipline']),
+  'feature-development': Object.freeze(['karpathy-coding-discipline', 'spec-driven-development']),
+  bugfix: Object.freeze(['karpathy-coding-discipline', 'systematic-debugging']),
+  'codebase-audit': Object.freeze(['codebase-audit-discipline']),
+  'production-hardening': Object.freeze([
+    'karpathy-coding-discipline',
+    'spec-driven-development',
+    'systematic-debugging',
+    'codebase-audit-discipline',
+  ]),
+  'ui-development': Object.freeze([
+    'karpathy-coding-discipline',
+    'spec-driven-development',
+    'ui-design-discipline',
+  ]),
+  marketing: Object.freeze(['product-marketing-context-discipline']),
+  research: Object.freeze([]),
+});
+
+export function recommendInstructionProfiles(
+  workload: FuryInstructionWorkload,
+): readonly FuryInstructionProfileId[] {
+  const profiles = RECOMMENDED_PROFILES_BY_WORKLOAD[workload];
+  if (profiles === undefined) {
+    throw new Error(`unknown FuryPipe instruction workload: ${String(workload)}`);
+  }
+  return Object.freeze([...profiles]);
 }
