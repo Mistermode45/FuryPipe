@@ -92,8 +92,10 @@ This evaluator is intended to feed Control Room and future RC automation once th
 `createRcEvidenceSnapshot()` emits `furypipe-rc-evidence/v2` and requires the
 RC source SHA and package version to match the Release Readiness report. Each
 workflow observation carries its head SHA and update timestamp; the latest run
-ID for each required workflow must be successful on the exact RC SHA, so an
-older green run cannot mask a newer skipped/failing/mixed-SHA run. Every
+ID for each required workflow — CI, CodeQL, Secret Scan, Supply Chain, License
+Compliance, Provenance Attestation and Benchmark Contract — must be successful
+on the exact RC SHA, so an older green run cannot mask a newer
+skipped/failing/mixed-SHA run. Every
 workflow record also requires an explicit `github-actions` origin and a
 bounded Actions run reference; these fields locate caller-supplied evidence but
 do not independently authenticate it. Every
@@ -104,9 +106,10 @@ origin appropriate to that artifact. These references are validated metadata,
 not cryptographic authentication of the referenced system.
 
 The RC snapshot can return `READY_FOR_RELEASE_DECISION`, but it copies authorization separately and always returns `releaseActionsExecuted: false`.
-Validated artifact proofs are copied and deeply frozen before they enter the
-snapshot, so mutation of caller-owned proof objects after validation cannot
-rewrite the recorded evidence.
+Validated workflow/artifact evidence is canonicalized to known schema fields
+before entering the snapshot. Unknown runtime fields are discarded, and
+artifact proofs are copied and deeply frozen, so caller-owned mutation or
+schema smuggling cannot rewrite or expand the recorded evidence.
 
 Supporting operator documents:
 
