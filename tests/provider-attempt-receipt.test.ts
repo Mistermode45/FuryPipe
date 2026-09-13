@@ -247,6 +247,31 @@ describe('Provider Attempt Plan Receipt', () => {
     expect(verifyProviderAttemptPlanReceipt(receipt, plan)).toBe(true);
   });
 
+  it('verifies a semantically identical receipt regardless of top-level JSON key order', () => {
+    const plan = qualifiedPlan();
+    const receipt = createProviderAttemptPlanReceipt(plan);
+    const reordered = Object.fromEntries(Object.entries(receipt).reverse());
+
+    expect(verifyProviderAttemptPlanReceipt(
+      reordered as unknown as typeof receipt,
+      plan,
+    )).toBe(true);
+  });
+
+  it('rejects extra receipt fields even when the original digest is retained', () => {
+    const plan = identityPlan();
+    const receipt = createProviderAttemptPlanReceipt(plan);
+    const extended = {
+      ...receipt,
+      unexpected: 'field',
+    };
+
+    expect(verifyProviderAttemptPlanReceipt(
+      extended as unknown as typeof receipt,
+      plan,
+    )).toBe(false);
+  });
+
   it('rejects a tampered receipt', () => {
     const plan = identityPlan();
     const receipt = createProviderAttemptPlanReceipt(plan);
