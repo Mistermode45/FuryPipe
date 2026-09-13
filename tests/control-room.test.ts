@@ -90,6 +90,30 @@ function input(): ControlRoomInput {
       durableStore: 'PARTIAL',
       semanticRetrieval: 'NOT_EXECUTED',
     },
+    provider: {
+      bufferedExecutions: 1,
+      streamSessions: 1,
+      acceptedRequests: 2,
+      rejectedRequests: 0,
+      unknownRequests: 0,
+      streamCompleted: 1,
+      streamIncomplete: 0,
+      streamFailed: 0,
+      streamCancelled: 0,
+      streamRequiresAction: 0,
+      streamTerminalUnknown: 0,
+      streamProviderErrors: 0,
+      streamOpenAccepted: 0,
+      usageReports: 2,
+      inputTokens: 10,
+      outputTokens: 4,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 2,
+      knownCostObservations: 1,
+      unknownCostObservations: 1,
+      runtimeObservability: 'VERIFIED',
+      providerVerification: 'PARTIAL',
+    },
     mcp: {
       stdio: 'VERIFIED',
       http: 'VERIFIED',
@@ -137,6 +161,8 @@ describe('Control Room V5 kernel', () => {
     expect(snapshot.overall).toBe('BLOCKED');
     expect(snapshot.sections.receipts.status).toBe('VERIFIED');
     expect(snapshot.sections.recovery.status).toBe('PARTIAL');
+    expect(snapshot.sections.provider.status).toBe('PARTIAL');
+    expect(snapshot.sections.provider.warnings[0]).toMatch(/independently unverified/i);
     expect(snapshot.sections.security.status).toBe('BLOCKED');
     expect(snapshot.sections.benchmarks.status).toBe('PARTIAL');
     expect(snapshot.sections.release.status).toBe('NOT_AVAILABLE');
@@ -233,6 +259,11 @@ describe('Control Room V5 kernel', () => {
       ...value.learning,
       durableStore: 'VERIFIED',
       semanticRetrieval: 'VERIFIED',
+    };
+    value.provider = {
+      ...value.provider!,
+      runtimeObservability: 'VERIFIED',
+      providerVerification: 'VERIFIED',
     };
     value.mcp = {
       stdio: 'VERIFIED',
