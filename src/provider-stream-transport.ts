@@ -12,6 +12,7 @@ import type { ProviderTransportResult } from './provider-transport.js';
 
 export const MAX_PROVIDER_STREAM_EVENT_BYTES = 262_144;
 export const MAX_PROVIDER_STREAM_TEXT_BYTES = 8 * 1024 * 1024;
+export const MAX_PROVIDER_STREAM_WIRE_BYTES = 16 * 1024 * 1024;
 
 export interface ProviderStreamTransportExecutionContext {
   readonly requestDigest: string;
@@ -20,6 +21,7 @@ export interface ProviderStreamTransportExecutionContext {
   readonly workloadId: string;
   readonly maxEventBytes: typeof MAX_PROVIDER_STREAM_EVENT_BYTES;
   readonly maxTextBytes: typeof MAX_PROVIDER_STREAM_TEXT_BYTES;
+  readonly maxWireBytes: typeof MAX_PROVIDER_STREAM_WIRE_BYTES;
   readonly signal?: AbortSignal;
 }
 
@@ -103,21 +105,21 @@ function streamFail(
   throw new FuryGovernedProviderStreamError(code, transportInvoked);
 }
 
-function status(
+function status<T extends string>(
   record: Readonly<Record<string, unknown>>,
   key: string,
-  allowed: readonly string[],
+  allowed: readonly T[],
 ): {
-  readonly status: 'executed' | 'not-executed' | 'unknown';
+  readonly status: T | 'unknown';
   readonly evidence: 'transport-reported' | 'not-reported';
 } {
   const value = record[key];
   if (value === undefined) return Object.freeze({ status: 'unknown', evidence: 'not-reported' });
-  if (typeof value !== 'string' || !allowed.includes(value)) {
+  if (typeof value !== 'string' || !allowed.includes(value as T)) {
     streamFail('stream-session-invalid', true);
   }
   return Object.freeze({
-    status: value as 'executed' | 'not-executed' | 'unknown',
+    status: value as T,
     evidence: 'transport-reported',
   });
 }
@@ -176,11 +178,7 @@ export function validateProviderStreamTransportSession(
     ? undefined
     : safeOptionalIdentifier(record.providerRequestId, 256);
   const network = status(record, 'networkStatus', ['executed', 'not-executed', 'unknown']);
-  const providerRequestRaw = status(record, 'providerRequestStatus', ['accepted', 'rejected', 'unknown']);
-  const providerRequest = Object.freeze({
-    status: providerRequestRaw.status as 'accepted' | 'rejected' | 'unknown',
-    evidence: providerRequestRaw.evidence,
-  });
+  const providerRequest = status(record, 'providerRequestStatus', ['accepted', 'rejected'] as const);
 
   let httpStatus: number | undefined;
   if (record.httpStatus !== undefined) {
