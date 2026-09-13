@@ -80,6 +80,7 @@ try {
   const packedFiles = new Set((metadata.files ?? []).map((entry) => entry.path));
   assert(!packedFiles.has('docs/PXPIPE_GAP_ANALYSIS.md'), 'historical gap analysis leaked into the public package');
   assert(packedFiles.has('docs/CLI.md'), 'FuryPipe CLI documentation is missing from the public package');
+  assert(packedFiles.has('docs/MODEL_ADAPTERS.md'), 'Model Adapter documentation is missing from the public package');
   tarball = path.resolve(root, metadata.filename);
   assert(existsSync(tarball), `npm pack did not create ${metadata.filename}`);
 
@@ -237,6 +238,12 @@ try {
     "const m = await import('furypipe/task-orchestrator'); if (typeof m.prepareFuryTask !== 'function') process.exit(1);",
   ], installDir);
   assert(taskOrchestratorExport.stderr === '', `Task Orchestrator package export wrote stderr: ${taskOrchestratorExport.stderr}`);
+  const modelAdapterRegistryExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/model-adapter-registry'); if (typeof m.createModelAdapterRegistry !== 'function' || typeof m.digestModelAdapter !== 'function') process.exit(1);",
+  ], installDir);
+  assert(modelAdapterRegistryExport.stderr === '', `Model Adapter Registry package export wrote stderr: ${modelAdapterRegistryExport.stderr}`);
   await runMcp(process.execPath, [mcp], {
     jsonrpc: '2.0',
     id: 1,

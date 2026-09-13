@@ -205,6 +205,10 @@
     "./task-orchestrator": {
       "types": "./dist/task-orchestrator.d.ts",
       "import": "./dist/task-orchestrator.js"
+    },
+    "./model-adapter-registry": {
+      "types": "./dist/model-adapter-registry.d.ts",
+      "import": "./dist/model-adapter-registry.js"
     }
   },
   "files": [
@@ -236,7 +240,8 @@
     "docs/INSTRUCTION_FABRIC.md",
     "docs/CONTEXT_OPTIMIZER.md",
     "docs/CONTINUOUS_MEMORY_TURN.md",
-    "docs/TASK_ORCHESTRATOR.md"
+    "docs/TASK_ORCHESTRATOR.md",
+    "docs/MODEL_ADAPTERS.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
