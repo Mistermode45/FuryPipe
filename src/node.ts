@@ -70,8 +70,22 @@ interface RuntimeConfig {
   maxRequestBytes?: number;
 }
 
-const DEFAULT_CONFIG_FILE = path.join(os.homedir(), '.config', 'pxpipe', 'config.json');
-const DEFAULT_EVENTS_FILE = path.join(os.homedir(), '.pxpipe', 'events.jsonl');
+const DEFAULT_CONFIG_FILE = path.join(os.homedir(), '.config', 'furypipe', 'config.json');
+const LEGACY_CONFIG_FILE = path.join(os.homedir(), '.config', 'pxpipe', 'config.json');
+const DEFAULT_EVENTS_FILE = path.join(os.homedir(), '.furypipe', 'events.jsonl');
+const LEGACY_EVENTS_FILE = path.join(os.homedir(), '.pxpipe', 'events.jsonl');
+
+function compatibilityDefault(primary: string, legacy: string): string {
+  return fs.existsSync(primary) || !fs.existsSync(legacy) ? primary : legacy;
+}
+
+function defaultConfigFile(): string {
+  return compatibilityDefault(DEFAULT_CONFIG_FILE, LEGACY_CONFIG_FILE);
+}
+
+function defaultEventsFile(): string {
+  return compatibilityDefault(DEFAULT_EVENTS_FILE, LEGACY_EVENTS_FILE);
+}
 
 function controlRoomSourceCommit(): string | undefined {
   const value = process.env.FURYPIPE_SOURCE_COMMIT?.trim();
@@ -106,7 +120,7 @@ function normalizeModelsConfig(value: unknown): string | undefined {
 }
 
 function applyConfigFileDefaults(): void {
-  const file = furyEnvValue(process.env.FURYPIPE_CONFIG, process.env.PXPIPE_CONFIG) ?? DEFAULT_CONFIG_FILE;
+  const file = furyEnvValue(process.env.FURYPIPE_CONFIG, process.env.PXPIPE_CONFIG) ?? defaultConfigFile();
   if (!fs.existsSync(file)) return;
   let parsed: unknown;
   try {
@@ -132,7 +146,7 @@ function applyConfigFileDefaults(): void {
  *  NOTE: on the next start an explicit FURYPIPE_MODELS env still wins over the
  *  persisted value (same precedence as every other config-file default). */
 function persistModelBasesToConfig(bases: readonly string[]): void {
-  const file = furyEnvValue(process.env.FURYPIPE_CONFIG, process.env.PXPIPE_CONFIG) ?? DEFAULT_CONFIG_FILE;
+  const file = furyEnvValue(process.env.FURYPIPE_CONFIG, process.env.PXPIPE_CONFIG) ?? defaultConfigFile();
   let cfg: Record<string, unknown> = {};
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
@@ -183,7 +197,7 @@ function parseCli(argv: string[]): RuntimeConfig {
     }
     if (a.startsWith('-')) {
       console.error(`[furypipe] unknown option: ${a}`);
-      console.error(`[pxpipe] this build accepts no flags; run \`pxpipe --help\` for env vars`);
+      console.error(`[furypipe] this build accepts no flags; run \`furypipe --help\` for env vars`);
       process.exit(2);
     }
   }
@@ -218,7 +232,7 @@ function parseCli(argv: string[]): RuntimeConfig {
     gatewayBaseUrl,
     gatewayHeaders: parseGatewayHeaders(furyEnvValue(process.env.FURYPIPE_GATEWAY_HEADERS, process.env.PXPIPE_GATEWAY_HEADERS)),
     omniRouteApiKey: process.env.OMNIROUTE_API_KEY,
-    eventsFile: furyEnvValue(process.env.FURYPIPE_LOG, process.env.PXPIPE_LOG) ?? DEFAULT_EVENTS_FILE,
+    eventsFile: furyEnvValue(process.env.FURYPIPE_LOG, process.env.PXPIPE_LOG) ?? defaultEventsFile(),
     // Off by default: either side of a 4xx may hold prompts or secrets.
     // Opt in for debugging only. (issue #69)
     captureErrorReqBody: furyEnvValue(process.env.FURYPIPE_DEBUG_CAPTURE_4XX, process.env.PXPIPE_DEBUG_CAPTURE_4XX) === '1',
@@ -306,9 +320,9 @@ Environment:
   FURYPIPE_MODELS         comma-separated model bases to image (Claude/Gemini/GPT/Grok);
                           default claude-fable-5,gemini (every Gemini; Sol/Opus/GPT-5.5/Grok opt-in);
                           off disables
-  FURYPIPE_CONFIG         JSON config path (legacy default ~/.config/pxpipe/config.json)
+  FURYPIPE_CONFIG         JSON config path (default ~/.config/furypipe/config.json)
                           supports {"models": [...]} or {"models": "off"}
-  FURYPIPE_LOG            JSONL events path (legacy default ~/.pxpipe/events.jsonl)
+  FURYPIPE_LOG            JSONL events path (default ~/.furypipe/events.jsonl)
   FURYPIPE_DUMP_DIR       debug: write every rendered PNG here (what the model
                           sees); off unless set. Compress arm only.
   FURYPIPE_RENDER_CACHE_BYTES max bytes of rendered pages to keep in memory
@@ -709,7 +723,7 @@ class FileTracker implements Tracker {
     } catch (err) {
       if (!this.brokenLogged) {
         console.error(
-          `[pxpipe] FileTracker disabled — cannot open ${this.filePath}: ${(err as Error).message}`,
+          `[furypipe] FileTracker disabled — cannot open ${this.filePath}: ${(err as Error).message}`,
         );
         this.brokenLogged = true;
       }
@@ -746,7 +760,7 @@ class FileTracker implements Tracker {
     } catch (err) {
       if (!this.brokenLogged) {
         console.error(
-          `[pxpipe] FileTracker write failed: ${(err as Error).message}`,
+          `[furypipe] FileTracker write failed: ${(err as Error).message}`,
         );
         this.brokenLogged = true;
       }
@@ -818,13 +832,13 @@ async function maybeWriteBodySidecar(
   }
 }
 
-// ---- pxpipe export -------------------------------------------------------
+// ---- FuryPipe export -------------------------------------------------------
 
 function printExportHelp(): void {
-  console.log(`pxpipe export — render code/text to PNG pages for compressed LLM context
+  console.log(`furypipe export — render code/text to PNG pages for compressed LLM context
 
 Usage:
-  pxpipe export [target ...]    default target is "." (current directory)
+  furypipe export [target ...]    default target is "." (current directory)
 
 Targets:
   Files or directories to include. Multiple targets are joined with a header
@@ -844,7 +858,7 @@ Options:
   -h, --help         show this help
 
 Output:
-  <out>/pxpipe-export-<hash>/
+  <out>/furypipe-export-<hash>/
     page-001.png ...  rendered image pages
     factsheet.txt     verbatim precision tokens (paths, SHAs, ids, numbers)
     manifest.json     metadata + token report
@@ -856,12 +870,12 @@ Report columns:
   % saved       (text − image) / text × 100
 
 Examples:
-  pxpipe export .                              # whole directory
-  pxpipe export --include "*.ts" src/          # TypeScript files only
-  pxpipe export --git                          # uncommitted changes
-  pxpipe export --diff HEAD~3                  # last 3 commits
-  pxpipe export --open src/                    # render src/, then reveal the folder
-  cat big-file.txt | pxpipe export --stdin
+  furypipe export .                              # whole directory
+  furypipe export --include "*.ts" src/          # TypeScript files only
+  furypipe export --git                          # uncommitted changes
+  furypipe export --diff HEAD~3                  # last 3 commits
+  furypipe export --open src/                    # render src/, then reveal the folder
+  cat big-file.txt | furypipe export --stdin
 `);
 }
 
@@ -915,7 +929,7 @@ function collectFilesFromTargets(
   for (const target of targets) {
     let st: fs.Stats;
     try { st = fs.statSync(target); } catch {
-      console.warn(`[pxpipe export] skipping inaccessible target: ${target}`);
+      console.warn(`[furypipe export] skipping inaccessible target: ${target}`);
       continue;
     }
     if (st.isDirectory()) {
@@ -925,7 +939,7 @@ function collectFilesFromTargets(
       const r = readExportTextFile(target, rel, include, exclude);
       if (r.kind === 'ok') files.push({ relPath: rel, content: r.content });
       else if (r.kind !== 'excluded') {
-        console.warn(`[pxpipe export] skipping ${r.kind} file: ${target}`);
+        console.warn(`[furypipe export] skipping ${r.kind} file: ${target}`);
       }
     }
   }
@@ -956,7 +970,7 @@ async function collectSource(opts: ExportParsed): Promise<[string, string[]]> {
     const cwd = opts.targets.length > 0 ? opts.targets[0]! : process.cwd();
     const diff = gitRun(['diff', opts.diff], cwd);
     if (diff === null) {
-      console.error(`[pxpipe export] git diff ${opts.diff} failed`);
+      console.error(`[furypipe export] git diff ${opts.diff} failed`);
       process.exit(1);
     }
     return [diff, []];
@@ -981,7 +995,7 @@ async function collectSource(opts: ExportParsed): Promise<[string, string[]]> {
       const r = readExportTextFile(full, rel, opts.include, opts.exclude);
       if (r.kind === 'ok') untracked += `\n===== ${rel} =====\n` + r.content;
       else if (r.kind !== 'excluded') {
-        console.warn(`[pxpipe export] skipping ${r.kind} untracked file: ${rel}`);
+        console.warn(`[furypipe export] skipping ${r.kind} untracked file: ${rel}`);
       }
     }
     const sourceText = diff + untracked;
@@ -992,7 +1006,7 @@ async function collectSource(opts: ExportParsed): Promise<[string, string[]]> {
   const targets = opts.targets.length > 0 ? opts.targets : ['.'];
   const files = collectFilesFromTargets(targets, opts.include, opts.exclude);
   if (files.length === 0) {
-    console.warn('[pxpipe export] no files collected');
+    console.warn('[furypipe export] no files collected');
   }
   const sourceText = files
     .map((f) => `===== ${f.relPath} =====\n${f.content}`)
@@ -1037,7 +1051,7 @@ function printExportReport(opts: ExportParsed, outDir: string, sourceFiles: stri
     ? ` (${tokenReport.factsheetDropped} dropped)`
     : '';
   console.log(
-    `\npxpipe export\n` +
+    `\nfurypipe export\n` +
     `  out:            ${outDir}\n` +
     `  files:          ${formatNumber(sourceFiles.length)}\n` +
     `  source chars:   ${formatNumber(manifest.sourceChars)}\n` +
@@ -1063,8 +1077,8 @@ async function runExport(argv: string[]): Promise<void> {
     process.exit(0);
   }
   if (parseResult.kind === 'error') {
-    console.error(`[pxpipe export] ${parseResult.message}`);
-    console.error(`[pxpipe export] run \`pxpipe export --help\` for usage`);
+    console.error(`[furypipe export] ${parseResult.message}`);
+    console.error(`[furypipe export] run \`furypipe export --help\` for usage`);
     process.exit(2);
   }
 
@@ -1076,7 +1090,7 @@ async function runExport(argv: string[]): Promise<void> {
   // Unique output dir: <out>/pxpipe-export-XXXXXX/. mkdtemp guarantees a fresh, random
   // directory so concurrent runs never collide and stale page-NNN.png never bleed in.
   fs.mkdirSync(opts.out, { recursive: true });
-  const outDir = fs.mkdtempSync(path.join(opts.out, 'pxpipe-export-'));
+  const outDir = fs.mkdtempSync(path.join(opts.out, 'furypipe-export-'));
 
   // Run core export
   const result = await runExportCore(sourceText, {
@@ -1132,7 +1146,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'stats') {
     // Offline log analysis — reads the events JSONL without a running proxy.
     // The live dashboard covers the same data while FuryPipe is up.
-    const defaultFile = furyEnvValue(process.env.FURYPIPE_LOG, process.env.PXPIPE_LOG) ?? DEFAULT_EVENTS_FILE;
+    const defaultFile = furyEnvValue(process.env.FURYPIPE_LOG, process.env.PXPIPE_LOG) ?? defaultEventsFile();
     const { code, out, err } = await runStats(argv.slice(1), defaultFile);
     if (out) process.stdout.write(out + '\n');
     if (err) process.stderr.write(err + '\n');
@@ -1159,7 +1173,7 @@ async function main(): Promise<void> {
       if (a === '--route') {
         const spec = warpArgv[i + 1];
         if (spec === undefined) {
-          console.error('[pxpipe] warp: --route needs PATTERN=TARGET');
+          console.error('[furypipe] warp: --route needs PATTERN=TARGET');
           process.exit(2);
         }
         warpRoutes.push(spec);
@@ -1217,10 +1231,10 @@ async function main(): Promise<void> {
   if (authTokenFile) {
     console.log('[furypipe] ANTHROPIC_OAUTH_TOKEN_FILE set — bearer resolved per request');
   }
-  // Debug aid: when PXPIPE_DUMP_DIR is set, persist every rendered PNG this
+  // Debug aid: when FURYPIPE_DUMP_DIR is set, persist every rendered PNG this
   // process emits, so you can eyeball exactly what the model received (OCR /
   // legibility audits, demo inspection). Best-effort — never affects requests.
-  // Note: the PXPIPE_DISABLE arm renders nothing, so only the compress proxy
+  // Note: the FURYPIPE_DISABLE arm renders nothing, so only the compress proxy
   // produces files here.
   let imageDumpDir: string | undefined = furyEnvValue(process.env.FURYPIPE_DUMP_DIR, process.env.PXPIPE_DUMP_DIR)?.trim() || undefined;
   let imageDumpSeq = 0;
@@ -1320,7 +1334,7 @@ async function main(): Promise<void> {
     //      when upstream is unhealthy without restarting.
     //   2. Otherwise use DEFAULTS in transform.ts for break-even gating.
     transform: () => {
-      // A/B harness: PXPIPE_DISABLE=1 forces passthrough (compress=false) for the
+      // A/B harness: FURYPIPE_DISABLE=1 forces passthrough (compress=false) for the
       // whole process, so the "normal" arm can be scripted on its own port while
       // still logging real usage + count_tokens baselines to its own FURYPIPE_LOG.
       // (The dashboard kill switch does the same thing at runtime.)
@@ -1338,7 +1352,7 @@ async function main(): Promise<void> {
       // info.firstImagePng, so capturing has to happen on the raw event.
       dashboard.update(e);
       controlRoomRuntime?.observeProxyEvent(e);
-      // Debug: persist this request's rendered PNGs (see PXPIPE_DUMP_DIR above).
+      // Debug: persist this request's rendered PNGs (see FURYPIPE_DUMP_DIR above).
       // Filenames sort by request order: <stamp>_reqNNN_<model>_pNN.png.
       if (imageDumpDir && e.info?.imagePngs && e.info.imagePngs.length > 0) {
         const seq = ++imageDumpSeq;
@@ -1394,20 +1408,20 @@ async function main(): Promise<void> {
         `[${new Date().toISOString()}] ${e.method} ${e.path} → ${e.status} (${timing}) ${tag}${usageTag}`,
       );
 
-      // Upstream error bodies are present only under PXPIPE_DEBUG_CAPTURE_4XX;
+      // Upstream error bodies are present only under FURYPIPE_DEBUG_CAPTURE_4XX;
       // custom gateways may echo prompt fragments or credentials in them.
       if (e.errorBody) {
         const trimmed = e.errorBody.length > 400
           ? e.errorBody.slice(0, 400) + '…'
           : e.errorBody;
-        console.warn(`[pxpipe ${e.status}] upstream body: ${trimmed}`);
+        console.warn(`[furypipe ${e.status}] upstream body: ${trimmed}`);
       }
 
       // Canary: surface unknown tag-shaped blocks so a Claude Code release
       // that adds a new dynamic tag is caught within hours.
       if (e.info?.unknownStaticTags && e.info.unknownStaticTags.length > 0) {
         console.warn(
-          `[pxpipe warn] unknown tag(s) in static slab: ${e.info.unknownStaticTags.join(', ')}  ` +
+          `[furypipe warn] unknown tag(s) in static slab: ${e.info.unknownStaticTags.join(', ')}  ` +
             `— may need to add to DYNAMIC_BLOCK_TAGS (per-turn) or KNOWN_STATIC_TAGS (static) in src/core/transform.ts`,
         );
       }
@@ -1429,7 +1443,7 @@ async function main(): Promise<void> {
         // it (still too big to inline). We never lose the sha8 / error_body.
       }
 
-      // Persistent JSONL event for offline analysis (pxpipe stats etc.).
+      // Persistent JSONL event for offline analysis (furypipe stats etc.).
       tracker.emit(toTrackEvent(e));
     },
   };
@@ -1464,7 +1478,7 @@ async function main(): Promise<void> {
       })
       .catch((err) => {
         if (isConnectionAbort(err) && (req.aborted || res.destroyed)) return;
-        console.error('[pxpipe] handler error:', err);
+        console.error('[furypipe] handler error:', err);
         if (!res.headersSent) res.statusCode = 500;
         if (!res.writableEnded) res.end();
       });
@@ -1491,7 +1505,7 @@ async function main(): Promise<void> {
   };
 
   server.listen(opts.port, opts.host, () => {
-    console.log(`[pxpipe] listening on http://${displayHost}:${opts.port}`);
+    console.log(`[furypipe] listening on http://${displayHost}:${opts.port}`);
     if (!isLoopbackHost) {
       console.warn('[furypipe] non-loopback bind enabled; proxy API is reachable off-host, dashboard routes remain loopback-only');
     }
@@ -1508,11 +1522,11 @@ async function main(): Promise<void> {
   let shuttingDown = false;
   const shutdown = (sig: string) => {
     if (shuttingDown) {
-      console.log(`[pxpipe] ${sig} again — forcing exit`);
+      console.log(`[furypipe] ${sig} again — forcing exit`);
       process.exit(130);
     }
     shuttingDown = true;
-    console.log(`[pxpipe] ${sig} — shutting down`);
+    console.log(`[furypipe] ${sig} — shutting down`);
     // Flush+close the tracker so we don't drop the last few events on exit.
     if (tracker instanceof FileTracker) tracker.close();
     server.close(() => process.exit(0));
@@ -1531,6 +1545,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('[pxpipe] fatal:', err);
+  console.error('[furypipe] fatal:', err);
   process.exit(1);
 });
