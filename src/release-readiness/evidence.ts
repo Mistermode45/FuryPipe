@@ -218,7 +218,7 @@ function artifactBlockers(artifacts: RcArtifactEvidence, sourceCommit: string): 
 }
 
 function workflowBlockers(runs: readonly RcWorkflowEvidence[], sourceCommit: string): RcPreparationBlocker[] {
-  const required = ['CI', 'CodeQL', 'Secret Scan', 'Supply Chain', 'License Compliance', 'Benchmark Contract'];
+  const required = ['CI', 'CodeQL', 'Secret Scan', 'Supply Chain', 'License Compliance', 'Provenance Attestation', 'Benchmark Contract'];
   const blockers: RcPreparationBlocker[] = [];
   for (const name of required) {
     const matching = runs.filter((run) => run.name === name);
@@ -248,18 +248,49 @@ function workflowBlockers(runs: readonly RcWorkflowEvidence[], sourceCommit: str
   return blockers;
 }
 
+function freezeArtifactProof(proof: RcArtifactProof): RcArtifactProof {
+  return Object.freeze({
+    sourceCommit: proof.sourceCommit,
+    observedAt: proof.observedAt,
+    origin: proof.origin,
+    reference: proof.reference,
+    ...(proof.artifactSha256 === undefined ? {} : { artifactSha256: proof.artifactSha256 }),
+  });
+}
+
 function freezeArtifactEvidence(artifacts: RcArtifactEvidence): RcArtifactEvidence {
   const proofs = artifacts.proofs === undefined
     ? undefined
     : Object.freeze(Object.fromEntries(
       Object.entries(artifacts.proofs).map(([key, proof]) => [
         key,
-        proof === undefined ? undefined : Object.freeze({ ...proof }),
+        proof === undefined ? undefined : freezeArtifactProof(proof),
       ]),
     ) as Partial<Record<RcArtifactProofKey, RcArtifactProof>>);
   return Object.freeze({
-    ...artifacts,
+    packageSmoke: artifacts.packageSmoke,
+    installationSmoke: artifacts.installationSmoke,
+    upgradeSmoke: artifacts.upgradeSmoke,
+    rollbackEvidence: artifacts.rollbackEvidence,
+    sbom: artifacts.sbom,
+    provenance: artifacts.provenance,
+    compatibilityMatrix: artifacts.compatibilityMatrix,
+    migrationNotes: artifacts.migrationNotes,
+    releaseNotes: artifacts.releaseNotes,
+    ...(artifacts.packageSha256 === undefined ? {} : { packageSha256: artifacts.packageSha256 }),
     ...(proofs === undefined ? {} : { proofs }),
+  });
+}
+
+function freezeWorkflowEvidence(run: RcWorkflowEvidence): RcWorkflowEvidence {
+  return Object.freeze({
+    name: run.name,
+    runId: run.runId,
+    headSha: run.headSha,
+    updatedAt: run.updatedAt,
+    origin: run.origin,
+    reference: run.reference,
+    conclusion: run.conclusion,
   });
 }
 
@@ -287,7 +318,7 @@ export function createRcEvidenceSnapshot(input: RcEvidenceInput): RcEvidenceSnap
       && !blockerIds.has(blocker.gateId)
       && (blockerIds.add(blocker.gateId), true)
       && typeof blocker.title === 'string' && blocker.title.length > 0 && blocker.title.length <= 160
-      && ['VERIFIED', 'PARTIAL', 'NOT_EXECUTED', 'BLOCKED', 'BLOCKED_BY_REPO_SETTING', 'NOT_APPLICABLE'].includes(blocker.state)
+      && ['PARTIAL', 'NOT_EXECUTED', 'BLOCKED', 'BLOCKED_BY_REPO_SETTING', 'NOT_APPLICABLE'].includes(blocker.state)
       && typeof blocker.reason === 'string' && blocker.reason.length > 0 && blocker.reason.length <= 1024)
     && Array.isArray(input.readiness.warnings)
     && input.readiness.warnings.length <= 128
@@ -370,7 +401,7 @@ export function createRcEvidenceSnapshot(input: RcEvidenceInput): RcEvidenceSnap
     readinessStatus: input.readiness.status,
     preparationStatus: blockers.length === 0 ? 'READY_FOR_RELEASE_DECISION' : 'BLOCKED',
     blockers: Object.freeze(blockers.map((blocker) => Object.freeze({ ...blocker }))),
-    workflowRuns: Object.freeze(input.workflowRuns.map((run) => Object.freeze({ ...run }))),
+    workflowRuns: Object.freeze(input.workflowRuns.map(freezeWorkflowEvidence)),
     artifacts: freezeArtifactEvidence(input.artifacts),
     authorization: safeAuthorization,
     releaseActionsExecuted: false,
