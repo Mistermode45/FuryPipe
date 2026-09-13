@@ -259,6 +259,7 @@ function governedEvents(
 
       try {
         for await (const raw of source) {
+          if (!requireTerminal) fail('stream-session-invalid', true);
           if (terminalSeen) fail('stream-event-invalid', true);
           const event = validateProviderStreamTransportEvent(raw);
           if (event.kind === 'text-delta') {
