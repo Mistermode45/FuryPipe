@@ -358,3 +358,19 @@ V1 does not:
 
 These boundaries keep token optimization evidence-driven without turning
 benchmark metadata into execution authority.
+
+## Public package surface
+
+The profile qualification and registry API is available through:
+
+```ts
+import {
+  createContextOptimizerProfileRegistry,
+  qualifyContextOptimizerProfile,
+  digestContextOptimizerProfile,
+} from 'furypipe/context-optimizer-profile';
+```
+
+The package smoke test validates this subpath from a packed and freshly
+installed tarball. Public export does not authorize provider execution or
+secret context.

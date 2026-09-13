@@ -116,7 +116,17 @@ contamination, missing fallback qualification, mutation isolation, and the
 registry's unsafe-section and size bounds.
 
 The module is a pure composition primitive. It is not wired into
-`ProviderRuntimeState`, `Task Orchestrator`, a provider executor, or public
-package exports. The host that creates an actual provider attempt must call the
-planner with that attempt's exact identity and use the returned prompt for that
-attempt only.
+`ProviderRuntimeState`, `Task Orchestrator`, or a provider executor. The host
+that creates an actual provider attempt must call the planner with that
+attempt's exact identity and use the returned prompt for that attempt only.
+
+## Public package surface
+
+The planner is available from the installed package through:
+
+```ts
+import { createProviderAttemptAdapterPlanner } from 'furypipe/provider-attempt-adapter';
+```
+
+The package smoke test validates this subpath from a packed and freshly
+installed tarball. Public export does not add execution authority.

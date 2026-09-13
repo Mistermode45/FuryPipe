@@ -221,3 +221,15 @@ That future layer must define explicit precedence between:
 
 It must not label an altered set of options as benchmark-qualified unless the
 altered profile has its own qualification.
+
+## Public package surface
+
+The composite planner is available through:
+
+```ts
+import { createProviderAttemptPlanner } from 'furypipe/provider-attempt-planner';
+```
+
+The package smoke test validates the export from a packed and freshly installed
+tarball. This surface remains planning-only and does not execute a provider or
+Context Optimizer.

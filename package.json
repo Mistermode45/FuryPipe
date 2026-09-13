@@ -217,6 +217,18 @@
     "./benchmark-claim-gate": {
       "types": "./dist/benchmark-claim-gate.d.ts",
       "import": "./dist/benchmark-claim-gate.js"
+    },
+    "./provider-attempt-adapter": {
+      "types": "./dist/provider-attempt-adapter.d.ts",
+      "import": "./dist/provider-attempt-adapter.js"
+    },
+    "./context-optimizer-profile": {
+      "types": "./dist/context-optimizer-profile.d.ts",
+      "import": "./dist/context-optimizer-profile.js"
+    },
+    "./provider-attempt-planner": {
+      "types": "./dist/provider-attempt-planner.d.ts",
+      "import": "./dist/provider-attempt-planner.js"
     }
   },
   "files": [
@@ -255,7 +267,10 @@
     "docs/FURYTRUST.md",
     "docs/CAPABILITY_CATALOG_RESOLVER.md",
     "docs/CAPABILITY_ACTIVATION.md",
-    "docs/BENCHMARK_CLAIM_GATE.md"
+    "docs/BENCHMARK_CLAIM_GATE.md",
+    "docs/PROVIDER_ATTEMPT_ADAPTER.md",
+    "docs/CONTEXT_OPTIMIZER_PROFILES.md",
+    "docs/PROVIDER_ATTEMPT_PLANNER.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
@@ -268,7 +283,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package:smoke": "node scripts/package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs",
+    "package:smoke": "node scripts/package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
     "vendor:ui": "node scripts/vendor-ui.mjs"
   },
