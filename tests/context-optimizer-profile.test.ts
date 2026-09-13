@@ -20,11 +20,11 @@ function summary(median: number, repetitions = 5) {
   };
 }
 
-function metric(raw: number, pxpipe: number, furypipe: number) {
+function metric(raw: number, pxpipe: number, furypipe: number, repetitions = 5) {
   return {
-    raw: summary(raw),
-    pxpipe: summary(pxpipe),
-    furypipe: summary(furypipe),
+    raw: summary(raw, repetitions),
+    pxpipe: summary(pxpipe, repetitions),
+    furypipe: summary(furypipe, repetitions),
   };
 }
 
@@ -37,8 +37,10 @@ function benchmarkSuite(overrides: {
   rawQuality?: number;
   pxpipeQuality?: number;
   furyQuality?: number;
+  repetitions?: number;
 } = {}) {
   const digest = (id: string, ch: string) => ({ id, sha256: ch.repeat(64) });
+  const repetitions = overrides.repetitions ?? 5;
   const rawTokens = overrides.rawTokens ?? 1000;
   const pxpipeTokens = overrides.pxpipeTokens ?? 850;
   const furyTokens = overrides.furyTokens ?? 700;
@@ -46,8 +48,8 @@ function benchmarkSuite(overrides: {
   return {
     schema_version: 'furypipe-benchmark-suite/v1',
     comparability: 'VERIFIED',
-    repetitions_per_variant: 5,
-    minimum_repetitions_for_claims: 5,
+    repetitions_per_variant: repetitions,
+    minimum_repetitions_for_claims: repetitions,
     claim_status: 'CLAIM_ELIGIBLE',
     claim_blockers: [],
     provider: overrides.provider ?? 'openai',
@@ -58,27 +60,27 @@ function benchmarkSuite(overrides: {
     context: digest('coding-context-v1', 'd'),
     cache_state: 'cold',
     metrics: {
-      input_tokens: metric(rawTokens, pxpipeTokens, furyTokens),
-      output_tokens: metric(100, 100, 100),
-      cache_read_tokens: metric(0, 0, 0),
-      cache_write_tokens: metric(0, 0, 0),
-      vision_tokens: metric(0, 0, 0),
-      latency_ms: metric(1000, 950, 900),
-      ttft_ms: metric(300, 290, 280),
-      local_transform_ms: metric(0, 4, 6),
-      request_bytes: metric(4000, 3400, 2800),
-      response_bytes: metric(500, 500, 500),
-      cost_usd: metric(0.02, 0.018, 0.015),
-      errors: metric(0, 0, 0),
+      input_tokens: metric(rawTokens, pxpipeTokens, furyTokens, repetitions),
+      output_tokens: metric(100, 100, 100, repetitions),
+      cache_read_tokens: metric(0, 0, 0, repetitions),
+      cache_write_tokens: metric(0, 0, 0, repetitions),
+      vision_tokens: metric(0, 0, 0, repetitions),
+      latency_ms: metric(1000, 950, 900, repetitions),
+      ttft_ms: metric(300, 290, 280, repetitions),
+      local_transform_ms: metric(0, 4, 6, repetitions),
+      request_bytes: metric(4000, 3400, 2800, repetitions),
+      response_bytes: metric(500, 500, 500, repetitions),
+      cost_usd: metric(0.02, 0.018, 0.015, repetitions),
+      errors: metric(0, 0, 0, repetitions),
     },
     quality: {
-      raw: summary(overrides.rawQuality ?? 0.90),
-      pxpipe: summary(overrides.pxpipeQuality ?? 0.92),
-      furypipe: summary(overrides.furyQuality ?? 0.95),
+      raw: summary(overrides.rawQuality ?? 0.90, repetitions),
+      pxpipe: summary(overrides.pxpipeQuality ?? 0.92, repetitions),
+      furypipe: summary(overrides.furyQuality ?? 0.95, repetitions),
     },
     exactness: {
-      checked_runs: 15,
-      passing_runs: 15,
+      checked_runs: repetitions * 3,
+      passing_runs: repetitions * 3,
       mismatches: 0,
     },
     errors: {
@@ -164,6 +166,13 @@ describe('Context Optimizer benchmark-qualified profiles', () => {
       provider: 'openai',
       model: 'gpt-5.6-sol',
       workloadId: 'coding',
+      benchmarkScope: expect.objectContaining({
+        fixture: expect.objectContaining({ id: 'coding-context' }),
+        prompt: expect.objectContaining({ id: 'coding-prompt' }),
+        toolset: expect.objectContaining({ id: 'coding-tools' }),
+        context: expect.objectContaining({ id: 'coding-context-v1' }),
+        cacheState: 'cold',
+      }),
       baseline: 'raw',
       repetitions: 5,
       baselineTokenMedian: 1000,
@@ -209,6 +218,16 @@ describe('Context Optimizer benchmark-qualified profiles', () => {
     expect(decision.status).toBe('BLOCKED');
     expect(decision.claim.antiRegression.status).toBe('BLOCKED');
     expect(decision.blockers.join(' ')).toMatch(/quality-regression/);
+  });
+
+  it('requires at least five repetitions per variant even when the suite minimum is lower', () => {
+    const decision = qualify(profile(), {
+      suite: benchmarkSuite({ repetitions: 3 }),
+    });
+
+    expect(decision.status).toBe('BLOCKED');
+    expect(decision.blockers.join(' ')).toMatch(/insufficient-repetitions/);
+    expect(decision.qualification).toBeUndefined();
   });
 
   it('blocks a profile when the measured token reduction misses the requested threshold', () => {
