@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -154,6 +154,22 @@ async function startNode(extraEnv: Record<string, string> = {}): Promise<{
     output: () => output.join(''),
   };
 }
+
+describe('Node CLI evidence help', () => {
+  it('documents the source-bound Security CI evidence environment variable', () => {
+    const result = spawnSync(process.execPath, [tsxCli, 'src/node.ts', '--help'], {
+      cwd: repoRoot,
+      env: process.env,
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('FURYPIPE_SOURCE_COMMIT');
+    expect(result.stdout).toContain('FURYPIPE_CONTROL_ROOM_EVIDENCE');
+    expect(result.stdout).toContain('FURYPIPE_CONTROL_ROOM_SECURITY_CI_EVIDENCE');
+    expect(result.stdout).toContain('exact-source CI security');
+  });
+});
 
 describe('Node Control Room Security CI ingestion', () => {
   const sourceCommit = 'a'.repeat(40);
