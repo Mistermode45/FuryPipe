@@ -199,6 +199,8 @@ describe('serveControlRoomJson', () => {
     const body = await res.json();
     expect(body.format).toBe('furypipe-control-room/v1');
     expect(body.sourceCommit).toBe('a'.repeat(40));
+    expect(body.sections.provider.status).toBe('NOT_EXECUTED');
+    expect(body.sections.provider.evidence.providerVerification).toBe('NOT_AVAILABLE');
     expect(body.sections.security.status).toBe('BLOCKED');
   });
 
@@ -208,6 +210,7 @@ describe('serveControlRoomJson', () => {
     const html = await (await withControlRoom.serveFragment('control-room', new URL('http://localhost/fragments/control-room'), 1234)).text();
     expect(html).toContain('Control Room V5');
     expect(html).toContain('Security / Supply Chain');
+    expect(html).toContain('Provider runtime');
     expect(html).toContain('Release readiness');
     expect(html).toContain('Release readiness · <strong>NOT_AVAILABLE</strong>');
     expect(html).toContain('release actions executed: no');
@@ -223,6 +226,7 @@ describe('serveControlRoomJson', () => {
       1234,
     )).text();
     expect(html).toContain('Sécurité / Supply Chain');
+    expect(html).toContain('Runtime fournisseur');
     expect(html).toContain('Préparation de la release');
     expect(html).toContain('actions de release exécutées : non');
     expect(html).toContain('<strong>NOT_AVAILABLE</strong>');
