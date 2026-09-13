@@ -273,6 +273,10 @@
     "./provider-execution-audit-ledger": {
       "types": "./dist/provider-execution-audit-ledger.d.ts",
       "import": "./dist/provider-execution-audit-ledger.js"
+    },
+    "./provider-transports": {
+      "types": "./dist/provider-transports/index.d.ts",
+      "import": "./dist/provider-transports/index.js"
     }
   },
   "files": [
@@ -321,7 +325,8 @@
     "docs/GOVERNED_PROVIDER_EXECUTOR.md",
     "docs/GOVERNED_PROVIDER_EXECUTION_RECEIPTS.md",
     "docs/PROVIDER_EXECUTION_AUDIT_CHAIN.md",
-    "docs/PROVIDER_EXECUTION_AUDIT_LEDGER.md"
+    "docs/PROVIDER_EXECUTION_AUDIT_LEDGER.md",
+    "docs/PRODUCTION_PROVIDER_TRANSPORTS.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
