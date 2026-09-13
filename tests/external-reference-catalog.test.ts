@@ -74,6 +74,81 @@ describe('external reference catalog', () => {
       .toContain('temporal-knowledge');
   });
 
+  it('catalogs 2026 registries as discovery rather than execution authority', () => {
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'skills-re')).toMatchObject({
+      kind: 'service',
+      mode: 'REFERENCE_ONLY',
+      licenseStatus: 'NOT_APPLICABLE',
+      capabilities: expect.arrayContaining(['skill-registry', 'agent-skills']),
+    });
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'antigravity-awesome-skills')).toMatchObject({
+      mode: 'REFERENCE_ONLY',
+      licenseStatus: 'REPORTED',
+      commitSha: 'fa724b5e12b4e77870ab8a85e5e587474d6cee91',
+      capabilities: expect.arrayContaining(['skill-registry', 'security-testing']),
+    });
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'voltagent-awesome-agent-skills')).toMatchObject({
+      mode: 'REFERENCE_ONLY',
+      licenseStatus: 'REPORTED',
+    });
+  });
+
+  it('keeps mixed or source-available context tools conservative', () => {
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'caveman')).toMatchObject({
+      mode: 'REFERENCE_ONLY',
+      licenseStatus: 'REPORTED',
+      commitSha: '15581d14007fd01fb3f132016741962f34936ca2',
+    });
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'context-mode')).toMatchObject({
+      mode: 'REFERENCE_ONLY',
+      licenseStatus: 'VERIFIED',
+      licenseSpdx: 'Elastic-2.0',
+      commitSha: 'ba5f5dfd1a0cd3e8a8f812c219d50390ed0a61c8',
+    });
+    expect(referencesByCapability('context-efficiency').map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(['caveman', 'context-mode', 'code-review-graph']),
+    );
+  });
+
+  it('pins requested API and code-audit references without overstating trust', () => {
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'api-evangelist-api-layer')).toMatchObject({
+      mode: 'REFERENCE_ONLY',
+      licenseStatus: 'UNKNOWN',
+      commitSha: '549115d70ebd9f0163810b1e5fc3a1b264c53df6',
+      capabilities: ['api-discovery'],
+    });
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'tech-debt-skill')).toMatchObject({
+      mode: 'REFERENCE_ONLY',
+      licenseStatus: 'REPORTED',
+      commitSha: '5a15c1ca4a929b2759461c218478de391a8bda0f',
+    });
+  });
+
+  it('allows verified official and specialist skill sources to remain adapter candidates only', () => {
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'microsoft-skills')).toMatchObject({
+      mode: 'ADAPTER_CANDIDATE',
+      licenseStatus: 'VERIFIED',
+      licenseSpdx: 'MIT',
+    });
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'gemini-skills')).toMatchObject({
+      mode: 'ADAPTER_CANDIDATE',
+      licenseStatus: 'VERIFIED',
+      licenseSpdx: 'Apache-2.0',
+    });
+    expect(EXTERNAL_REFERENCE_CATALOG.find((entry) => entry.id === 'supabase-agent-skills')).toMatchObject({
+      mode: 'ADAPTER_CANDIDATE',
+      licenseStatus: 'VERIFIED',
+      licenseSpdx: 'MIT',
+    });
+    expect(referencesByCapability('ui-design').map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(['ui-ux-pro-max', 'hallmark']),
+    );
+    expect(referencesByCapability('marketing').map((entry) => entry.id)).toContain('marketing-skills');
+    expect(referencesByCapability('code-review').map((entry) => entry.id)).toEqual(
+      expect.arrayContaining(['tech-debt-skill', 'hallmark', 'code-review-graph']),
+    );
+  });
+
   it('returns defensive copies from inspection helpers', () => {
     const first = inspectExternalReferences();
     expect(first).not.toBe(EXTERNAL_REFERENCE_CATALOG);
