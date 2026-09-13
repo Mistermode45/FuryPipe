@@ -236,6 +236,34 @@ The parser reconstructs only the bounded fields above. Logs, workflow URLs, arbi
 This module is a pure evidence adapter. It does not call GitHub, read credentials, query Actions or modify repository settings. A trusted CI/host process must collect the actual terminal conclusions for the exact source SHA and then pass that bounded evidence to FuryPipe. The resulting `snapshot.security` can be supplied to the existing source-bound Control Room host evidence/runtime path.
 
 
+### Node ingestion of Security CI evidence
+
+The Node host can ingest the Security CI evidence document directly when an exact build identity is present:
+
+```text
+FURYPIPE_SOURCE_COMMIT=<exact 40-char commit SHA>
+FURYPIPE_CONTROL_ROOM_SECURITY_CI_EVIDENCE=/absolute/path/to/security-ci-evidence.json
+```
+
+The Security CI file is read locally only. The Node process does not call GitHub or receive a GitHub token. The loader:
+
+- accepts regular files only and rejects symlinks;
+- limits the document to 64 KiB;
+- requires valid JSON;
+- requires every supplied workflow `headSha` and the document `sourceCommit` to match `FURYPIPE_SOURCE_COMMIT`;
+- passes only the canonical `SecurityEvidence` statuses to Control Room.
+
+If `FURYPIPE_CONTROL_ROOM_EVIDENCE` also contains a static `security` section:
+
+- matching Security evidence is accepted without conflict;
+- if the two sources disagree, the exact-source Security CI evidence is authoritative;
+- FuryPipe emits an explicit startup warning and does not merge individual fields from the two sources.
+
+This precedence is intentional. The CI contract binds each supplied workflow run to the exact head SHA, while the generic host evidence format contains only already-derived statuses. A conflict is therefore made visible rather than silently combining two different truths.
+
+An invalid or stale Security CI file is ignored with a warning. Other valid Control Room host/runtime evidence continues to operate; invalid CI evidence is never promoted to a Security status.
+
+
 ## Source-bound host evidence file
 
 The Node host can now combine live runtime observations with bounded evidence produced by CI or another trusted host process.
