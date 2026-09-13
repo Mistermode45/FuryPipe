@@ -3,6 +3,11 @@ import type { AgentRunResult } from '../agent-runtime.js';
 import type { AgentLearningCycleResult } from '../learning.js';
 import type { ReleaseReadinessReport } from '../release-readiness/index.js';
 import {
+  getProductionMcpRuntimeEvidence,
+  isGeneratedModernMcpStdioHandle,
+  type ProductionMcpHttpHandler,
+} from '../mcp-modern.js';
+import {
   isGeneratedGovernedProviderExecutionResult,
   type GovernedProviderExecutionResult,
 } from '../governed-provider-executor.js';
@@ -55,6 +60,16 @@ export interface ControlRoomRuntime {
   observeAgentRun(result: AgentRunResult): void;
   /** Observe the latest state for one opaque Learning cycle ID. Re-observation replaces that cycle's prior state. */
   observeLearningCycle(result: AgentLearningCycleResult): void;
+  /**
+   * Observe one exact production MCP HTTP handler. Snapshot reads its latest
+   * metadata-only process-local counters; copied handlers are rejected.
+   */
+  observeMcpHttpHandler(handler: ProductionMcpHttpHandler): void;
+  /**
+   * Observe one exact stdio handle created by runModernMcpStdio().
+   * Starting the handle proves local construction only, not a client exchange.
+   */
+  observeMcpStdioHandle(handle: unknown): void;
   /** Observe one authentic buffered governed-provider execution exactly once. */
   observeProviderExecution(result: GovernedProviderExecutionResult): void;
   /**
@@ -287,6 +302,68 @@ function providerEvidenceFromObservations(
   return Object.freeze(evidence);
 }
 
+function mcpEvidenceFromObservations(
+  httpHandlers: readonly ProductionMcpHttpHandler[],
+  stdioHandlesObserved: number,
+): McpEvidence {
+  let requests = 0;
+  let dispatchedRequests = 0;
+  let bearerConfigured = false;
+  let bearerSuccesses = 0;
+  let oauthConfigured = false;
+  let oauthResponses = 0;
+
+  for (const handler of httpHandlers) {
+    const evidence = getProductionMcpRuntimeEvidence(handler);
+    if (evidence === undefined) {
+      throw new Error('Control Room MCP HTTP handler lost process-local FuryPipe provenance');
+    }
+    requests += evidence.requests;
+    dispatchedRequests += evidence.dispatchedRequests;
+    bearerConfigured ||= evidence.bearerAuthConfigured;
+    bearerSuccesses += evidence.bearerAuthSuccesses;
+    oauthConfigured ||= evidence.oauthMetadataConfigured;
+    oauthResponses += evidence.oauthMetadataResponses;
+  }
+
+  for (const [label, value] of Object.entries({
+    requests,
+    dispatchedRequests,
+    bearerSuccesses,
+    oauthResponses,
+  })) safeRuntimeCount(value, `Control Room MCP ${label}`);
+
+  const http: McpEvidence['http'] = httpHandlers.length === 0
+    ? 'NOT_AVAILABLE'
+    : dispatchedRequests > 0
+      ? 'VERIFIED'
+      : requests > 0
+        ? 'PARTIAL'
+        : 'NOT_EXECUTED';
+
+  const bearerAuth: McpEvidence['bearerAuth'] = httpHandlers.length === 0
+    ? 'NOT_AVAILABLE'
+    : bearerSuccesses > 0
+      ? 'VERIFIED'
+      : bearerConfigured
+        ? 'PARTIAL'
+        : 'NOT_EXECUTED';
+
+  const oauth: McpEvidence['oauth'] = httpHandlers.length === 0
+    ? 'NOT_AVAILABLE'
+    : oauthConfigured || bearerConfigured || oauthResponses > 0 || bearerSuccesses > 0
+      ? 'PARTIAL'
+      : 'NOT_EXECUTED';
+
+  return Object.freeze({
+    stdio: stdioHandlesObserved > 0 ? 'PARTIAL' : 'NOT_AVAILABLE',
+    http,
+    bearerAuth,
+    oauth,
+    externalConformance: 'NOT_AVAILABLE',
+  });
+}
+
 function clone<T extends object>(value: T): T {
   return { ...value };
 }
@@ -374,6 +451,10 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
   const bufferedProviderObservations: BufferedProviderObservation[] = [];
   const streamProviderObservations = new WeakMap<GovernedProviderStreamSession, StreamProviderObservationState>();
   const streamProviderObservationList: StreamProviderObservationState[] = [];
+  const observedMcpHttpHandlers = new WeakSet<object>();
+  const mcpHttpHandlers: ProductionMcpHttpHandler[] = [];
+  const observedMcpStdioHandles = new WeakSet<object>();
+  let mcpStdioHandlesObserved = 0;
 
   return {
     observeProxyEvent(event) {
@@ -424,6 +505,28 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
         ...(result.lessonId === undefined ? {} : { lessonId: result.lessonId }),
         reusedLessonIds: Object.freeze([...new Set(reusedLessonIds)]),
       });
+    },
+
+    observeMcpHttpHandler(handler) {
+      const evidence = getProductionMcpRuntimeEvidence(handler);
+      if (evidence === undefined) {
+        throw new Error('Control Room MCP HTTP observation requires a process-local FuryPipe production handler');
+      }
+      if (observedMcpHttpHandlers.has(handler as object)) return;
+      if (mcpHttpHandlers.length >= 1_000) throw new Error('Control Room MCP HTTP observation limit reached');
+      observedMcpHttpHandlers.add(handler as object);
+      mcpHttpHandlers.push(handler);
+    },
+
+    observeMcpStdioHandle(handle) {
+      if (!isGeneratedModernMcpStdioHandle(handle)) {
+        throw new Error('Control Room MCP stdio observation requires a process-local FuryPipe handle');
+      }
+      const key = handle as object;
+      if (observedMcpStdioHandles.has(key)) return;
+      if (mcpStdioHandlesObserved >= 1_000) throw new Error('Control Room MCP stdio observation limit reached');
+      observedMcpStdioHandles.add(key);
+      mcpStdioHandlesObserved += 1;
     },
 
     observeProviderExecution(result) {
@@ -531,7 +634,9 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
           bufferedProviderObservations,
           streamProviderObservationList,
         ),
-        mcp: clone(options.mcp ?? NOT_AVAILABLE_MCP),
+        mcp: options.mcp
+          ? clone(options.mcp)
+          : mcpEvidenceFromObservations(mcpHttpHandlers, mcpStdioHandlesObserved),
         i18n: clone(options.i18n ?? NOT_AVAILABLE_I18N),
         webStudio: clone(options.webStudio ?? NOT_AVAILABLE_WEB_STUDIO),
         security: clone(options.security ?? NOT_AVAILABLE_SECURITY),
