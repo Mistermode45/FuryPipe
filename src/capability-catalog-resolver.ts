@@ -5,6 +5,7 @@ import type {
 import {
   rankFuryCapabilities,
   type FuryCapabilityScore,
+  type FuryScoreInput,
   type QualifiedFuryCapabilityPerformanceEvidence,
 } from './fury-score.js';
 
@@ -135,7 +136,7 @@ export function resolveFuryCatalog(
   }
 
   const skipped: FuryCatalogSkippedCandidate[] = [];
-  const scoreInputs = [];
+  const scoreInputs: FuryScoreInput[] = [];
 
   for (const candidate of candidates) {
     const candidateRelevance = relevance.get(candidate.id);
