@@ -376,6 +376,21 @@ describe('production provider SSE stream conformance', () => {
     expect(JSON.stringify(output)).not.toContain('PRIVATE_UNKNOWN_PAYLOAD');
   });
 
+  it('fails closed when SSE event name and JSON event type disagree', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => sse([
+      {
+        event: 'response.output_text.delta',
+        data: { type: 'response.completed', delta: 'ambiguous' },
+      },
+    ]));
+    const { session } = await executeOpenAI(fetchImpl);
+
+    await expect(collect(session.events)).rejects.toMatchObject({
+      code: 'stream-event-invalid',
+      transportInvoked: true,
+    });
+  });
+
   it('fails closed if a provider text delta contains the active credential', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => sse([
       {
