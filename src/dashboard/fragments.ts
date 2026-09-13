@@ -79,7 +79,7 @@ export function renderToggleFragment(enabled: boolean, locale = 'en'): string {
     : `<div class="banner"><strong>${escapeHtml(t('dashboard.toggle.passthroughMode'))}</strong> — ${escapeHtml(t('dashboard.toggle.passthroughDescription'))}</div>`;
   // Button POSTs the OPPOSITE of current state; 2s poll keeps it fresh.
   const confirm = enabled
-    ? ` hx-confirm="Turn compression off?\n\nRequests will pass straight through to Claude, unchanged. Restarting the proxy turns it back on."`
+    ? ` hx-confirm="${escapeHtml(t('dashboard.toggle.confirm'))}"`
     : '';
   return (
     banner +
@@ -194,7 +194,7 @@ export function renderModelsFragment(
     `<input class="models-csv" id="models-csv" type="text" name="list" ` +
     `value="${escapeHtml(active.join(','))}" spellcheck="false" autocomplete="off" ` +
     `hx-post="/fragments/models" hx-target="#frag-models" hx-trigger="change">` +
-    `<span class="hint">CSV of bases, or off · applies on enter/blur · export to persist</span>` +
+    `<span class="hint">${escapeHtml(t('dashboard.models.csvHint'))}</span>` +
     `</div>`
   );
 }
@@ -211,7 +211,10 @@ void INPUT_USD_PER_MTOK; // suppress unused-var; renderHeaderFragment uses the s
 // purpose ("lifeweight"): it answers "did pxpipe move my real, cache-discounted
 // bill since this proxy started", not a raw token count.
 export function renderSessionSummaryFragment(s: StatsPayload, locale = 'en'): string {
-  const t = (key: string): string => dashboardT(locale, key);
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(locale, key, params);
   const measured = s.compressed_requests ?? 0;
   if (measured <= 0) {
     return (
@@ -238,15 +241,14 @@ export function renderSessionSummaryFragment(s: StatsPayload, locale = 'en'): st
 
   return (
     `<div class="hero${positive ? '' : ' hero-neg'}">` +
-    `<div class="hero-eyebrow">Since start · ${numFmt(measured)} request${measured === 1 ? '' : 's'} imaged</div>` +
+    `<div class="hero-eyebrow">${escapeHtml(t('dashboard.summary.sinceStart'))} · ${escapeHtml(t('dashboard.summary.imagedRequests', { count: numFmt(measured) }))}</div>` +
     `<div class="hero-headline"><span class="hero-num">${bigNum}</span> ${word}</div>` +
     `<div class="hero-sub">` +
-    `<strong>${kFmt(actualW)}</strong> provider-accounted input tokens vs <strong>${kFmt(baselineW)}</strong> if this same context ` +
-    `stayed plain text. ${escapeHtml(t('dashboard.summary.latestUntouched'))}` +
+    `<strong>${kFmt(actualW)}</strong> ${escapeHtml(t('dashboard.summary.accountedVs'))} <strong>${kFmt(baselineW)}</strong> ${escapeHtml(t('dashboard.summary.plainText'))} ${escapeHtml(t('dashboard.summary.latestUntouched'))}` +
     `</div>` +
     `<div class="hero-meta">` +
-    `Provider-token basis; cache discounts applied where measurable · ` +
-    `output untouched (${kFmt(rawOutput)}) · no $ assumptions` +
+    `${escapeHtml(t('dashboard.summary.providerBasis'))} · ` +
+    `${escapeHtml(t('dashboard.summary.outputUntouched'))} (${kFmt(rawOutput)}) · ${escapeHtml(t('dashboard.summary.noDollarAssumptions'))}` +
     `</div>` +
     `</div>`
   );
@@ -283,7 +285,11 @@ function statTile(
   );
 }
 
-export function renderHeaderFragment(s: StatsPayload, port: number): string {
+export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en'): string {
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(locale, key, params);
   const pa = s.pricing_assumptions;
   const unpricedImaged = Math.max(
     0,
@@ -299,55 +305,55 @@ export function renderHeaderFragment(s: StatsPayload, port: number): string {
   const withoutAvg = paidImaged > 0 ? cAvg + (s.saved_usd ?? 0) / paidImaged : 0;
   const costTile = paidImaged > 0
     ? statTile(
-        'Cost per request',
+        t('dashboard.header.costPerRequest'),
         `$${cAvg.toFixed(4)}`,
-        `vs $${withoutAvg.toFixed(4)} without pxpipe`,
+        t('dashboard.header.vsWithout', { value: `${withoutAvg.toFixed(4)}` }),
         cAvg <= withoutAvg ? 'pos' : 'neg',
-        'Average cost of paid imaged requests versus the cache-aware text counterfactual for those same requests. Unmeasured requests are assigned zero savings.',
+        t('dashboard.header.costTip'),
       )
     : onlyUnpriced
       ? statTile(
-          'Cost per request',
+          t('dashboard.header.costPerRequest'),
           '—',
-          'provider pricing not configured',
+          t('dashboard.header.pricingNotConfigured'),
           'muted-val',
-          'Token savings are available, but this provider is excluded from Claude-priced dollar estimates.',
+          t('dashboard.header.tokenSavingsNoPricing'),
         )
       : statTile(
-        'Cost per request',
-        'collecting…',
-        'waiting for a paid imaged request',
+        t('dashboard.header.costPerRequest'),
+        t('dashboard.header.collecting'),
+        t('dashboard.header.waitingPaid'),
         'muted-val',
-        'The comparison appears after an imaged request returns provider usage.',
+        t('dashboard.header.comparisonAfterUsage'),
       );
 
   const savedUsdTile = onlyUnpriced
     ? statTile(
-        'Estimated saved',
+        t('dashboard.header.estimatedSaved'),
         '—',
-        'provider pricing not configured',
+        t('dashboard.header.pricingNotConfigured'),
         'muted-val',
-        'Token savings are shown separately. Dollar estimates require provider-specific pricing and are not inferred from Claude rates.',
+        t('dashboard.header.dollarRequiresPricing'),
       )
     : statTile(
-        'Estimated saved',
+        t('dashboard.header.estimatedSaved'),
         `$${(s.saved_usd ?? 0).toFixed(2)}`,
         unpricedImaged > 0
-          ? `${numFmt(unpricedImaged)} provider-priced request${unpricedImaged === 1 ? '' : 's'} excluded`
-          : `at $${pa.input_per_mtok}/M base input price`,
+          ? t('dashboard.header.excludedPricing', { count: numFmt(unpricedImaged) })
+          : t('dashboard.header.baseInputPrice', { value: `${pa.input_per_mtok}` }),
         '',
-        'Cache-aware estimate for requests covered by the configured pricing assumptions. Other providers remain excluded.',
+        t('dashboard.header.estimateTip'),
       );
 
   const strip =
     `<div class="strip">` +
-    statTile('Requests', numFmt(s.requests), `${numFmt(s.compressed_requests)} turned into images`) +
+    statTile(t('dashboard.header.requests'), numFmt(s.requests), t('dashboard.header.turnedIntoImages', { count: numFmt(s.compressed_requests) })) +
     statTile(
-      'Input tokens saved',
+      t('dashboard.header.inputTokensSaved'),
       numFmt(s.saved_input_tokens),
-      'vs sending the same context as text',
+      t('dashboard.header.vsPlainText'),
       'pos',
-       'Bulky context sent as compact images instead of text. Uses provider-reported input tokens and a measured or model-profile text counterfactual; recent turns and output stay text.',
+       t('dashboard.header.inputSavingsTip'),
      ) +
     savedUsdTile +
     costTile +
@@ -355,72 +361,72 @@ export function renderHeaderFragment(s: StatsPayload, port: number): string {
 
   // math drawer
   const savedMath =
-    `<div><span class="k">formula:</span> <span class="v">saved = baseline − actual</span></div>` +
-    `<div><span class="k">weights:</span> <span class="v">input×1.0, cache_write_5m×1.25, cache_write_1h×2.0, cache_read×0.10</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">saved = baseline − actual</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.weights'))}:</span> <span class="v">input×1.0, cache_write_5m×1.25, cache_write_1h×2.0, cache_read×0.10</span></div>` +
     `<div class="sp"></div>` +
-    mathRow('baseline', s.baseline_input_weighted, '(cache-aware: cacheable×weight + cold_tail)') +
-    mathRow('actual', s.actual_input_weighted, '(input + cc_5m×1.25 + cc_1h×2.0 + cr×0.10)') +
+    mathRow('baseline', s.baseline_input_weighted, `(${escapeHtml(t('dashboard.math.cacheAwareBaseline'))})`) +
+    mathRow('actual', s.actual_input_weighted, `(${escapeHtml(t('dashboard.math.actualInput'))})`) +
     mathRow('saved', s.saved_input_tokens, `<span class="op">=</span> baseline − actual`) +
-    `<span class="src">output excluded — identical with/without compression</span>`;
+    `<span class="src">${escapeHtml(t('dashboard.math.outputExcluded'))}</span>`;
 
   const usdMath = onlyUnpriced
-    ? `<div><span class="v">Unavailable for this provider.</span></div>` +
-      `<span class="src">Token savings are still reported; Claude pricing is not applied across providers.</span>`
+    ? `<div><span class="v">${escapeHtml(t('dashboard.math.unavailableProvider'))}</span></div>` +
+      `<span class="src">${escapeHtml(t('dashboard.math.tokenSavingsStill'))}</span>`
     :
     `<div><span class="k">formula:</span> <span class="v">$ saved = saved_tokens × $${pa.input_per_mtok}/Mtok</span></div>` +
     `<div class="sp"></div>` +
-    mathRow('saved_tokens', s.saved_input_tokens, '(cache-aware, input-side)') +
+    mathRow('saved_tokens', s.saved_input_tokens, `(${escapeHtml(t('dashboard.math.inputSide'))})`) +
     mathRow('saved_usd', `$${(s.saved_usd || 0).toFixed(4)} `, `<span class="op">=</span> saved_tokens × input_rate / 1e6`) +
-    `<span class="src">source: ${escapeHtml(pa.source || 'docs.anthropic.com pricing')}</span>`;
+    `<span class="src">${escapeHtml(t('dashboard.math.source'))}: ${escapeHtml(pa.source || 'docs.anthropic.com pricing')}</span>`;
 
   const costPerRequestMath =
     `<div><span class="k">formula:</span> <span class="v">without_pxpipe = actual_imaged + measured_savings</span></div>` +
-    `<div><span class="k">why:</span> <span class="v">both averages cover the same paid imaged requests. Passthrough requests are not used because the profitability gate selects a different, generally smaller population.</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.why'))}:</span> <span class="v">${escapeHtml(t('dashboard.math.samePopulation'))}</span></div>` +
     `<div class="sp"></div>` +
-    mathRow(`actual imaged (n=${paidImaged})`, `$${(s.compressed_actual_usd || 0).toFixed(4)}`, `total · avg $${cAvg.toFixed(4)}/req`) +
-    mathRow('measured savings', `$${(s.saved_usd || 0).toFixed(4)}`, 'cache-aware input-side total') +
-    mathRow('without pxpipe', `$${withoutAvg.toFixed(4)}/req`, '<span class="op">=</span> (actual imaged + measured savings) / n') +
-    `<span class="src">unmeasured imaged rows remain in n and actual cost, with zero assumed savings</span>`;
+    mathRow(`actual imaged (n=${paidImaged})`, `$${(s.compressed_actual_usd || 0).toFixed(4)}`, t('dashboard.math.totalAvg', { value: `${cAvg.toFixed(4)}` })) +
+    mathRow(t('dashboard.math.measuredSavings'), `${(s.saved_usd || 0).toFixed(4)}`, t('dashboard.math.cacheAwareTotal')) +
+    mathRow(t('dashboard.math.withoutPxpipe'), `${withoutAvg.toFixed(4)}/req`, '<span class="op">=</span> (actual imaged + measured savings) / n') +
+    `<span class="src">${escapeHtml(t('dashboard.math.unmeasuredZero'))}</span>`;
 
   const pctMath =
     `<div><span class="k">formula:</span> <span class="v">share_of_spend = saved / (all_baseline_equivalent + all_output × ${pa.output_multiplier})</span></div>` +
-    `<div><span class="k">diagnostic, not the headline:</span> <span class="v">this is a counterfactual ("what you WOULD have paid"). It leans on the count_tokens probe, the cache-aware split, and an input-rate assumption. Useful as a sanity check; the real-traffic answer is the compressed-vs-passthrough split above.</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.diagnostic'))}:</span> <span class="v">${escapeHtml(t('dashboard.math.diagnosticExplanation'))}</span></div>` +
     `<div class="sp"></div>` +
     mathRow('saved', s.saved_input_tokens, '(measured-rows numerator; cache-aware)') +
-    mathRow('all_baseline_equivalent', s.all_baseline_equivalent_weighted, '(every paid request; baseline on measured + actual on the rest)') +
-    mathRow(`all_output × ${pa.output_multiplier}`, s.all_output_weighted, '(every paid request)') +
+    mathRow('all_baseline_equivalent', s.all_baseline_equivalent_weighted, `(${escapeHtml(t('dashboard.math.everyPaidBaseline'))})`) +
+    mathRow(`all_output × ${pa.output_multiplier}`, s.all_output_weighted, `(${escapeHtml(t('dashboard.math.everyPaidRequest'))})`) +
     mathRow('share_of_spend', (s.saved_pct_of_all_spend || 0).toFixed(1) + '%', `<span class="op">=</span> saved / counterfactual_total × 100`) +
-    mathRow('all_usage_requests', s.all_usage_requests, '(denominator request count — compressed + passthrough + probe-failed)') +
-    `<span class="src">measured numerator, all-rows counterfactual denominator — bounded at 100%</span>`;
+    mathRow('all_usage_requests', s.all_usage_requests, `(${escapeHtml(t('dashboard.math.denominatorCount'))})`) +
+    `<span class="src">${escapeHtml(t('dashboard.math.boundedCounterfactual'))}</span>`;
 
   const tokeqMath =
     `<div><span class="k">formula:</span> <span class="v">token_equivalent = input + output × ${pa.output_multiplier}</span></div>` +
-    `<div><span class="k">why:</span> <span class="v">matches Anthropic's per-Mtok price ratio ($${pa.input_per_mtok} input vs $${pa.input_per_mtok * pa.output_multiplier} output) — this is what the weekly-limit meter counts.</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.why'))}:</span> <span class="v">${escapeHtml(t('dashboard.math.weeklyWhy'))} (${pa.input_per_mtok} input / ${pa.input_per_mtok * pa.output_multiplier} output)</span></div>` +
     `<div class="sp"></div>` +
     mathRow('actual_token_equivalent', s.actual_token_equivalent) +
-    mathRow('baseline_token_equivalent', s.baseline_token_equivalent, `(unproxied counterfactual, same ×${pa.output_multiplier} on output)`) +
+    mathRow('baseline_token_equivalent', s.baseline_token_equivalent, `(${escapeHtml(t('dashboard.math.unproxiedCounterfactual'))} ×${pa.output_multiplier})`) +
     `<div class="sp"></div>` +
-    mathRow('events_with_measurement', s.events_with_measurement, '(events where the SSE/JSON scanner produced char counts)') +
+    mathRow('events_with_measurement', s.events_with_measurement, `(${escapeHtml(t('dashboard.math.eventsMeasurement'))})`) +
     mathRow('measured_text_chars', s.measured_text_chars, '') +
     mathRow('measured_thinking_chars', s.measured_thinking_chars, '') +
     mathRow('measured_tool_use_chars', s.measured_tool_use_chars, '') +
-    mathRow('measured_redacted_blocks', s.measured_redacted_block_count, '(opaque encrypted blocks — billed but unmeasurable)') +
-    `<span class="src">measured — no estimation</span>`;
+    mathRow('measured_redacted_blocks', s.measured_redacted_block_count, `(${escapeHtml(t('dashboard.math.opaqueBlocks'))})`) +
+    `<span class="src">${escapeHtml(t('dashboard.math.measuredNoEstimate'))}</span>`;
 
   const drawer =
     `<details class="drawer" id="math-drawer">` +
-    `<summary>Show the math &amp; honesty receipts</summary>` +
-    `<div class="drawer-intro">Every number above, derived from the same per-event log. The proxy only moves <em>input</em> tokens; output is shown on both sides so percentages stay honest.</div>` +
+    `<summary>${escapeHtml(t('dashboard.math.show'))}</summary>` +
+    `<div class="drawer-intro">${escapeHtml(t('dashboard.math.intro'))}</div>` +
     `<div class="math-grid">` +
-    mathBlock('Input tokens saved', savedMath) +
-    mathBlock('Dollars saved', usdMath) +
-    mathBlock('Cost per imaged request', costPerRequestMath) +
-    mathBlock('Share of total spend (diagnostic)', pctMath) +
-    mathBlock('Token-equivalent (what the weekly cap counts)', tokeqMath) +
+    mathBlock(t('dashboard.header.inputTokensSaved'), savedMath) +
+    mathBlock(t('dashboard.math.dollarsSaved'), usdMath) +
+    mathBlock(t('dashboard.math.costImaged'), costPerRequestMath) +
+    mathBlock(t('dashboard.math.shareSpend'), pctMath) +
+    mathBlock(t('dashboard.math.tokenEquivalent'), tokeqMath) +
     `</div></details>`;
 
   // NOTE: tests assert the header fragment contains the port number.
-  const updated = `<div class="updated"><span class="live-dot"></span>live · port ${port} · uptime ${formatDuration(s.uptime_sec)}</div>`;
+  const updated = `<div class="updated"><span class="live-dot"></span>${escapeHtml(t('dashboard.math.live'))} · ${escapeHtml(t('dashboard.math.port'))} ${port} · ${escapeHtml(t('dashboard.math.uptime'))} ${formatDuration(s.uptime_sec)}</div>`;
 
   return strip + drawer + updated;
 }
