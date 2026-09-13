@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createControlRoomRuntime } from '../src/control-room/runtime.js';
 import {
   createControlRoomSecurityCiSnapshot,
   createControlRoomSecurityCiSnapshotFromUnknown,
@@ -128,6 +129,39 @@ describe('Control Room security CI evidence', () => {
     expect(serialized).not.toContain('DO-NOT-KEEP');
     expect(serialized).not.toContain('TOP-SECRET');
     expect(serialized).not.toContain('example.invalid');
+  });
+
+  it('feeds exact-source CI evidence into Control Room without inventing a Dependency Review failure cause', () => {
+    const ci = createControlRoomSecurityCiSnapshot({
+      format: 'furypipe-control-room-security-ci-evidence/v1',
+      generatedAt: 9,
+      sourceCommit: SHA,
+      codeql: run('success', 30),
+      secretScan: run('success', 31),
+      licenseCompliance: run('success', 32),
+      supplyChain: {
+        run: run('failure', 33),
+        jobs: {
+          actionPinning: 'success',
+          dependencyAudit: 'success',
+          sbom: 'success',
+          dependencyReview: 'failure',
+        },
+      },
+    });
+    const runtime = createControlRoomRuntime({
+      sourceCommit: SHA,
+      security: ci.security,
+      now: () => 10,
+    });
+    const section = runtime.snapshot().sections.security;
+
+    expect(section.status).toBe('BLOCKED');
+    expect(section.evidence.dependencyReview).toBe('BLOCKED');
+    expect(section.warnings).toContain(
+      'GitHub Dependency Review is blocked or failed; inspect the source-bound CI evidence and repository settings.',
+    );
+    expect(section.warnings.join(' ')).not.toMatch(/blocked by repository Dependency Graph settings/i);
   });
 
   it('rejects invalid run IDs, timestamps and conclusions', () => {
