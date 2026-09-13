@@ -14,6 +14,11 @@ import {
   type FuryContextOptimizerInput,
   type FuryContextOptimizerPlan,
 } from './context-optimizer.js';
+import {
+  resolveFuryCatalog,
+  type FuryCatalogResolution,
+  type FuryCatalogResolverInput,
+} from './capability-catalog-resolver.js';
 import type { FuryInstructionPlan } from './instruction-fabric.js';
 import type {
   FuryPromptCompileInput,
@@ -38,6 +43,12 @@ export interface FuryTaskPrepareInput {
    * authoritative and is always injected after this object is spread.
    */
   readonly capability: Omit<FuryCapabilityResolveInput, 'objective'>;
+  /**
+   * Optional trust-aware catalog resolution. This is advisory discovery only:
+   * recommendations never become installed, connected, authorized, or selected
+   * runtime capabilities merely by appearing here.
+   */
+  readonly catalog?: FuryCatalogResolverInput;
   readonly instruction?: FuryCapabilityRunOptions;
   readonly context?: FuryTaskContextOptions;
 }
@@ -46,6 +57,8 @@ export interface FuryPreparedTask {
   readonly format: 'furypipe-prepared-task/v1';
   readonly objective: string;
   readonly capabilityPlan: FuryCapabilityPlan;
+  /** Optional advisory catalog resolution. It never authorizes execution. */
+  readonly catalogResolution?: FuryCatalogResolution;
   readonly instructionPlan: FuryInstructionPlan;
   readonly contextPlan: FuryContextOptimizerPlan;
   readonly furyPrompt: FuryPromptCompileInput;
@@ -131,10 +144,11 @@ function injectContext(
  * providers, filesystem writes, deployments, or external side effects.
  *
  * Resolution order:
- * 1. Capability Router
- * 2. Instruction Fabric through prepareCapabilityRun()
- * 3. Context Optimizer
- * 4. Safe data-only context injection into FuryPrompt
+ * 1. Optional Catalog Resolver (advisory recommendations only)
+ * 2. Capability Router against the real registered runtime inventory
+ * 3. Instruction Fabric through prepareCapabilityRun()
+ * 4. Context Optimizer
+ * 5. Safe data-only context injection into FuryPrompt
  */
 export async function prepareFuryTask(input: FuryTaskPrepareInput): Promise<FuryPreparedTask> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
@@ -148,6 +162,9 @@ export async function prepareFuryTask(input: FuryTaskPrepareInput): Promise<Fury
   }
 
   const objective = objectiveText(input.objective);
+  const catalogResolution = input.catalog === undefined
+    ? undefined
+    : resolveFuryCatalog(input.catalog);
   const capabilityPlan = await resolveFuryCapabilities({
     ...input.capability,
     objective,
@@ -180,6 +197,7 @@ export async function prepareFuryTask(input: FuryTaskPrepareInput): Promise<Fury
     format: 'furypipe-prepared-task/v1',
     objective,
     capabilityPlan,
+    ...(catalogResolution === undefined ? {} : { catalogResolution }),
     instructionPlan: prepared.instructionPlan,
     contextPlan,
     furyPrompt,

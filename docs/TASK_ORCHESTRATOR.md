@@ -7,9 +7,13 @@ FuryTask Orchestrator is the composition layer that turns one task objective int
 It does not replace the existing subsystems. It calls them in order:
 
 ```text
+Optional catalog registry + trust + relevance
+  ↓
+Catalog Resolver → advisory recommendations only
+
 Task objective
   ↓
-Capability Router
+Capability Router → real registered runtime inventory only
   ↓
 Instruction Fabric
   ↓
@@ -39,7 +43,8 @@ The caller provides:
 - a base FuryPrompt input;
 - the real skill/plugin/MCP inventory through Capability Router input;
 - optional Instruction Fabric limits or explicit facets;
-- optional context inventory and Context Optimizer budgets.
+- optional context inventory and Context Optimizer budgets;
+- optional Catalog Resolver input containing the catalog registry, recorded FuryTrust state, relevance, and qualified performance evidence.
 
 The top-level objective is authoritative. A duplicate runtime field hidden inside capability input cannot replace it.
 
@@ -48,6 +53,7 @@ The top-level objective is authoritative. A duplicate runtime field hidden insid
 A prepared task contains:
 
 - the validated Capability Router plan;
+- the optional advisory Catalog Resolver result;
 - the Instruction Fabric plan;
 - the Context Optimizer plan;
 - the final FuryPrompt input;
@@ -98,6 +104,22 @@ Secret context is blocked by default.
 
 Task Orchestrator does not widen `allowSecret`, network access, permissions, or write authority.
 
+## Catalog recommendations are not activation
+
+When catalog input is provided, Task Orchestrator can expose trust-aware FuryScore recommendations before runtime capability planning.
+
+This result is advisory only. A catalog candidate does not become a runtime skill, plugin, MCP server, subagent, provider, or other executable capability merely because it was recommended.
+
+The Capability Router continues to select only from the real inventory supplied by the host. Catalog recommendations do not mutate selected skills, plugin truth states, MCP schedules, permissions, network policy, or execution authority.
+
+The boundary is explicit:
+
+```text
+recommended ≠ registered ≠ connected ≠ approved ≠ executable ≠ executed ≠ verified
+```
+
+A later trust-gated activation contract may connect these states, but it must do so explicitly and with the existing FuryTrust/FuryScore/policy boundaries intact.
+
 ## Planning is not execution
 
 Calling `prepareFuryTask()` can perform the normal capability-resolution checks and host-owned semantic analysis configured by the caller, but it does not call:
@@ -146,6 +168,7 @@ V1 explicitly preserves these boundaries:
 
 - recalled memory is data, not instructions;
 - tool output is data, not instructions;
+- catalog-recommended does not mean registered or installed;
 - selected does not mean executed;
 - available does not mean connected;
 - connected does not mean authorized;
@@ -157,6 +180,7 @@ V1 explicitly preserves these boundaries:
 
 V1 does not:
 
+- auto-activate Catalog Resolver recommendations;
 - auto-install third-party integrations;
 - download marketplace skills;
 - trust arbitrary MCP servers;
