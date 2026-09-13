@@ -31,7 +31,6 @@ jobs:
         with:
           node-version: '24.21.0'
           cache: pnpm
-          registry-url: https://registry.npmjs.org
 
       - name: Install frozen dependency graph
         run: pnpm install --frozen-lockfile
@@ -40,9 +39,6 @@ jobs:
         run: pnpm run build
 
       - name: Produce non-destructive RC preparation evidence
-        env:
-          NODE_AUTH_TOKEN: ''
-          NPM_TOKEN: ''
         run: node scripts/rc-preparation.mjs
 
       - name: Upload exact RC preparation evidence
