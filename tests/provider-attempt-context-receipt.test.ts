@@ -137,8 +137,8 @@ function runtimeResult(options: {
   readonly exactness?: 'normal' | 'exact' | 'secret';
 } = {}) {
   const plan = planner({
-    profile: options.profile,
-    qualification: options.qualification,
+    ...(options.profile === undefined ? {} : { profile: options.profile }),
+    ...(options.qualification === undefined ? {} : { qualification: options.qualification }),
   }).plan({
     providerId: 'openai',
     model: 'gpt-5.6-sol',
