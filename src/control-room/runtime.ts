@@ -145,6 +145,10 @@ interface ProviderUsageSummary {
   cacheReadTokens?: number;
 }
 
+type MutableProviderEvidence = {
+  -readonly [K in keyof ProviderEvidence]: ProviderEvidence[K];
+};
+
 interface BufferedProviderObservation {
   readonly providerStatus: ProviderRequestStatus;
   readonly usage?: Readonly<ProviderUsageSummary>;
@@ -202,7 +206,7 @@ function providerEvidenceFromObservations(
   buffered: readonly BufferedProviderObservation[],
   streams: readonly StreamProviderObservationState[],
 ): ProviderEvidence {
-  const evidence: ProviderEvidence = {
+  const evidence: MutableProviderEvidence = {
     bufferedExecutions: buffered.length,
     streamSessions: streams.length,
     acceptedRequests: 0,
