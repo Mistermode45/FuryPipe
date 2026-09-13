@@ -52,6 +52,10 @@ try {
     packedFiles.has('docs/GOVERNED_PROVIDER_EXECUTION_RECEIPTS.md'),
     'docs/GOVERNED_PROVIDER_EXECUTION_RECEIPTS.md is missing from the public package',
   );
+  assert(
+    packedFiles.has('docs/PROVIDER_EXECUTION_AUDIT_CHAIN.md'),
+    'docs/PROVIDER_EXECUTION_AUDIT_CHAIN.md is missing from the public package',
+  );
 
   tarball = path.resolve(root, metadata.filename);
   assert(existsSync(tarball), 'npm pack did not create the tarball');
@@ -84,6 +88,10 @@ try {
     [
       'furypipe/governed-provider-execution-receipt',
       "typeof m.createGovernedProviderExecutionReceipt === 'function' && typeof m.verifyGovernedProviderExecutionReceipt === 'function'",
+    ],
+    [
+      'furypipe/provider-execution-audit-chain',
+      "typeof m.createProviderExecutionAuditChain === 'function' && typeof m.verifyProviderExecutionAuditChain === 'function'",
     ],
   ];
 
