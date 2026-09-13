@@ -13,7 +13,7 @@ No OmniRoute package, binary, provider credential or external service is install
 Local OmniRoute example:
 
 ```text
-PXPIPE_PROVIDER=omniroute
+FURYPIPE_PROVIDER=omniroute
 OMNIROUTE_BASE_URL=http://127.0.0.1:20128/v1
 OMNIROUTE_API_KEY=<your OmniRoute API key>
 furypipe
@@ -24,13 +24,13 @@ The port is intentionally not hard-coded by FuryPipe. Use the actual port/base U
 Remote OmniRoute example:
 
 ```text
-PXPIPE_PROVIDER=omniroute
+FURYPIPE_PROVIDER=omniroute
 OMNIROUTE_BASE_URL=https://gateway.example.com/v1
 OMNIROUTE_API_KEY=<your OmniRoute API key>
 furypipe
 ```
 
-For compatibility, `PXPIPE_GATEWAY_BASE_URL` may be used instead of `OMNIROUTE_BASE_URL`, but the dedicated variable is preferred.
+`FURYPIPE_GATEWAY_BASE_URL` may be used as the generic gateway base when `OMNIROUTE_BASE_URL` is not set; the dedicated OmniRoute variable remains preferred.
 
 ## URL security
 
@@ -71,7 +71,7 @@ This preserves FuryPipe's existing protocol-specific transforms instead of addin
 
 The dedicated key wins over credentials received from the caller. This prevents an inbound OpenAI/Anthropic credential from being disclosed to OmniRoute accidentally.
 
-Generic gateway headers are allowed through `PXPIPE_GATEWAY_HEADERS`, but credential-bearing names such as `Authorization`, `Proxy-Authorization` and cookies are rejected by the OmniRoute adapter. Authentication has one explicit source.
+Generic gateway headers are allowed through `FURYPIPE_GATEWAY_HEADERS`, but credential-bearing names such as `Authorization`, `Proxy-Authorization` and cookies are rejected by the OmniRoute adapter. Authentication has one explicit source.
 
 The adapter inspection output reports only whether authentication is configured. It never returns the API key.
 

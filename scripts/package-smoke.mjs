@@ -92,6 +92,9 @@ try {
   const mcp = path.join(packageRoot, 'bin', 'mcp.js');
   const version = await run(process.execPath, [cli, '--version'], installDir);
   assert(version.stdout.trim() === metadata.version, `CLI version mismatch: ${version.stdout}`);
+  const help = await run(process.execPath, [cli, '--help'], installDir);
+  assert(/FuryPipe/u.test(help.stdout), 'FuryPipe CLI help is missing FuryPipe branding');
+  assert(!/pxpipe export|PXPIPE_PROVIDER|PXPIPE_GATEWAY_BASE_URL|PXPIPE_MODELS/u.test(help.stdout), 'FuryPipe CLI help exposed legacy product branding');
 
   const doctor = await run(process.execPath, [cli, 'doctor', '--json'], installDir);
   const report = JSON.parse(doctor.stdout);

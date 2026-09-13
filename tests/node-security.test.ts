@@ -122,7 +122,7 @@ async function startNode(extraEnv: Record<string, string> = {}): Promise<{
       CHILD_START_TIMEOUT_MS,
     );
     const poll = () => {
-      if (output.join('').includes('[pxpipe] listening on')) {
+      if (output.join('').includes('[furypipe] listening on')) {
         clearTimeout(deadline);
         resolve();
         return;
