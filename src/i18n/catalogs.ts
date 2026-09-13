@@ -274,6 +274,15 @@ export const EN_MESSAGES: MessageCatalog = Object.freeze({
   'dashboard.page.bySaved': 'by tokens saved',
   'dashboard.page.controlRoomSub': 'runtime evidence · fail-visible status',
   'dashboard.page.loadingControlRoom': 'Loading Control Room evidence…',
+  'dashboard.page.proxyHost': 'proxy host',
+  'dashboard.page.aliasHelp': 'Aliases work too. --route PATTERN=http://host:port adds routes beyond api.anthropic.com; a PATTERN that names a port matches only that port. Without warp, point the agent at ANTHROPIC_BASE_URL yourself.',
+  'dashboard.page.pinFileHelp': 'A @pxpipe pin line in the global or project instruction file is relocated the same way on every session. File-backed pins are not removed by unpin commands; edit the source file to remove them.',
+  'dashboard.page.routingOpenAI': 'exact model IDs routed to OpenAI Responses',
+  'dashboard.page.routingCloudflare': 'exact model IDs routed to Cloudflare OpenAI-compatible endpoint',
+  'dashboard.page.routingSwitch': 'Switch to a routed model inside Claude Code with /model claude-<model>, or launch Claude with the same prefixed model ID. Verify discovery with curl …/v1/models.',
+  'dashboard.page.routingEvidence': 'Kimi K3 on Cloudflare is the only non-Anthropic route currently tested end to end; see docs/CLAUDE_CODE_PROVIDER_ROUTING.md.',
+  'dashboard.page.moreTokens': 'more',
+  'dashboard.page.exactIds': 'exact model IDs',
 });
 
 export const FR_MESSAGES: MessageCatalog = Object.freeze({
@@ -557,6 +566,15 @@ export const CORE_CATALOGS = Object.freeze({
   'dashboard.page.bySaved': 'par tokens économisés',
   'dashboard.page.controlRoomSub': 'preuves runtime · statut fail-visible',
   'dashboard.page.loadingControlRoom': 'Chargement des preuves Control Room…',
+  'dashboard.page.proxyHost': 'hôte du proxy',
+  'dashboard.page.aliasHelp': 'Les alias fonctionnent aussi. --route PATTERN=http://host:port ajoute des routes au-delà de api.anthropic.com ; un PATTERN qui nomme un port ne correspond qu’à ce port. Sans warp, pointez vous-même l’agent vers ANTHROPIC_BASE_URL.',
+  'dashboard.page.pinFileHelp': 'Une ligne @pxpipe pin dans le fichier global ou projet d’instructions est déplacée de la même manière à chaque session. Les pins provenant d’un fichier ne sont pas supprimés par les commandes unpin ; modifiez le fichier source pour les retirer.',
+  'dashboard.page.routingOpenAI': 'IDs de modèle exacts routés vers OpenAI Responses',
+  'dashboard.page.routingCloudflare': 'IDs de modèle exacts routés vers l’endpoint compatible OpenAI de Cloudflare',
+  'dashboard.page.routingSwitch': 'Passez à un modèle routé dans Claude Code avec /model claude-<model>, ou lancez Claude avec le même ID de modèle préfixé. Vérifiez la découverte avec curl …/v1/models.',
+  'dashboard.page.routingEvidence': 'Kimi K3 sur Cloudflare est la seule route non Anthropic actuellement testée de bout en bout ; voir docs/CLAUDE_CODE_PROVIDER_ROUTING.md.',
+  'dashboard.page.moreTokens': 'davantage',
+  'dashboard.page.exactIds': 'IDs de modèle exacts',
 });
 
 export const CORE_CATALOGS = Object.freeze({
