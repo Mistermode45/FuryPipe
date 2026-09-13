@@ -46,6 +46,7 @@ Instead it records:
 
 - FuryPrompt `promptDigest`;
 - FuryPrompt source digest;
+- exact FuryPrompt compile-input digest;
 - rendered prompt byte count;
 - FuryPrompt level.
 
@@ -106,9 +107,15 @@ The profile digest is the stable identity for the qualified profile definition.
 ## Prompt consistency
 
 The top-level `plan.prompt` and `plan.adapter.prompt` must compile to the same
-FuryPrompt prompt digest and source digest.
+FuryPrompt prompt digest and source digest, and must also have the same
+canonical compile-input digest.
 
-If they differ, receipt creation fails closed.
+The compile-input digest binds section values plus compile metadata such as
+explicit level, `securityCritical`, and `exactGuardMode`. This closes cases
+where two inputs could render the same text while carrying different compile
+semantics.
+
+If any of these identities differ, receipt creation fails closed.
 
 This prevents an audit receipt from silently describing one prompt while the
 attempt plan carries another.
