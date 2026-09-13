@@ -170,6 +170,77 @@ function parseParent(value: unknown): FuryProviderExecutionAuditLedgerSnapshotPa
   });
 }
 
+function normalizeSnapshotReference(value: unknown): FuryProviderExecutionAuditLedgerSnapshot {
+  const record = plainRecord(value, 'provider audit snapshot reference');
+  exactKeys(
+    record,
+    ['format', 'recoveryHandle', 'recoveryDigest', 'bytes', 'ledgerDigest', 'count', 'headDigest', 'parent', 'verification'],
+    'provider audit snapshot reference',
+  );
+  if (record.format !== 'furypipe-provider-execution-audit-ledger-snapshot/v1') {
+    throw new Error('provider audit snapshot reference format is invalid');
+  }
+
+  const recoveryHandle = recoveryHandleString(record.recoveryHandle as string);
+  const recoveryDigest = exactDigest(record.recoveryDigest, 'provider audit snapshot reference recovery digest');
+  if (recoveryDigestFromHandle(recoveryHandle) !== recoveryDigest) {
+    throw new Error('provider audit snapshot reference recovery handle/digest mismatch');
+  }
+  const bytes = record.bytes;
+  if (!Number.isSafeInteger(bytes) || (bytes as number) < 0) {
+    throw new Error('provider audit snapshot reference byte length is invalid');
+  }
+  const ledgerDigest = exactDigest(record.ledgerDigest, 'provider audit snapshot reference ledger digest');
+  const count = exactCount(record.count, 'provider audit snapshot reference count');
+  const headDigest = record.headDigest === null
+    ? null
+    : exactDigest(record.headDigest, 'provider audit snapshot reference head digest');
+  if ((count === 0 && headDigest !== null) || (count > 0 && headDigest === null)) {
+    throw new Error('provider audit snapshot reference count/head semantics are invalid');
+  }
+  const parent = parseParent(record.parent);
+
+  const verification = plainRecord(record.verification, 'provider audit snapshot reference verification');
+  exactKeys(
+    verification,
+    [
+      'recoveryObjectDigestIntegrity',
+      'ledgerDigestIntegrity',
+      'snapshotPayloadIntegrity',
+      'ledgerProvenance',
+      'snapshotProvenance',
+    ],
+    'provider audit snapshot reference verification',
+  );
+  if (
+    verification.recoveryObjectDigestIntegrity !== 'verified'
+    || verification.ledgerDigestIntegrity !== 'verified'
+    || verification.snapshotPayloadIntegrity !== 'verified'
+    || verification.ledgerProvenance !== 'not-verified'
+    || verification.snapshotProvenance !== 'not-verified'
+  ) {
+    throw new Error('provider audit snapshot reference verification semantics are invalid');
+  }
+
+  return Object.freeze({
+    format: 'furypipe-provider-execution-audit-ledger-snapshot/v1',
+    recoveryHandle,
+    recoveryDigest,
+    bytes: bytes as number,
+    ledgerDigest,
+    count,
+    headDigest,
+    parent,
+    verification: Object.freeze({
+      recoveryObjectDigestIntegrity: 'verified',
+      ledgerDigestIntegrity: 'verified',
+      snapshotPayloadIntegrity: 'verified',
+      ledgerProvenance: 'not-verified',
+      snapshotProvenance: 'not-verified',
+    }),
+  });
+}
+
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     if (Array.isArray(value)) {
@@ -258,22 +329,17 @@ function assertSnapshotRefMatches(
   declared: FuryProviderExecutionAuditLedgerSnapshot,
   loaded: FuryProviderExecutionAuditLedgerSnapshot,
 ): void {
-  const record = plainRecord(declared, 'provider audit snapshot reference');
-  exactKeys(
-    record,
-    ['format', 'recoveryHandle', 'recoveryDigest', 'bytes', 'ledgerDigest', 'count', 'headDigest', 'parent', 'verification'],
-    'provider audit snapshot reference',
-  );
+  const normalized = normalizeSnapshotReference(declared);
   if (
-    record.format !== loaded.format
-    || record.recoveryHandle !== loaded.recoveryHandle
-    || record.recoveryDigest !== loaded.recoveryDigest
-    || record.bytes !== loaded.bytes
-    || record.ledgerDigest !== loaded.ledgerDigest
-    || record.count !== loaded.count
-    || record.headDigest !== loaded.headDigest
-    || canonicalJson(record.parent) !== canonicalJson(loaded.parent)
-    || canonicalJson(record.verification) !== canonicalJson(loaded.verification)
+    normalized.format !== loaded.format
+    || normalized.recoveryHandle !== loaded.recoveryHandle
+    || normalized.recoveryDigest !== loaded.recoveryDigest
+    || normalized.bytes !== loaded.bytes
+    || normalized.ledgerDigest !== loaded.ledgerDigest
+    || normalized.count !== loaded.count
+    || normalized.headDigest !== loaded.headDigest
+    || canonicalJson(normalized.parent) !== canonicalJson(loaded.parent)
+    || canonicalJson(normalized.verification) !== canonicalJson(loaded.verification)
   ) {
     throw new Error('provider audit snapshot reference does not match durable content');
   }
@@ -373,12 +439,13 @@ export async function appendProviderExecutionAuditLedgerSnapshot(
   parent: FuryProviderExecutionAuditLedgerSnapshot,
   chain: FuryProviderExecutionAuditChain,
 ): Promise<FuryProviderExecutionAuditLedgerSnapshot> {
+  const normalizedParent = normalizeSnapshotReference(parent);
   const loaded = await loadProviderExecutionAuditLedgerSnapshot(
     store,
-    parent.recoveryHandle,
-    parent.ledgerDigest,
+    normalizedParent.recoveryHandle,
+    normalizedParent.ledgerDigest,
   );
-  assertSnapshotRefMatches(parent, loaded.snapshot);
+  assertSnapshotRefMatches(normalizedParent, loaded.snapshot);
 
   const nextLedger = appendProviderExecutionAuditLedger(loaded.ledger, chain);
   return persistSnapshot(store, nextLedger, {
@@ -432,12 +499,13 @@ export async function verifyProviderExecutionAuditLedgerSnapshotLineage(
   store: RecoveryStore,
   head: FuryProviderExecutionAuditLedgerSnapshot,
 ): Promise<ProviderExecutionAuditLedgerSnapshotLineageVerification> {
+  const normalizedHead = normalizeSnapshotReference(head);
   let current = await loadProviderExecutionAuditLedgerSnapshot(
     store,
-    head.recoveryHandle,
-    head.ledgerDigest,
+    normalizedHead.recoveryHandle,
+    normalizedHead.ledgerDigest,
   );
-  assertSnapshotRefMatches(head, current.snapshot);
+  assertSnapshotRefMatches(normalizedHead, current.snapshot);
 
   const headRecoveryDigest = current.snapshot.recoveryDigest;
   const headLedgerDigest = current.snapshot.ledgerDigest;
