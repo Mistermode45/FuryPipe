@@ -47,6 +47,8 @@ describe('FuryPipe instruction profiles', () => {
   it('records immutable source provenance for native instruction adaptations', () => {
     const karpathy = FURY_INSTRUCTION_PROFILES['karpathy-coding-discipline'];
     const specDriven = FURY_INSTRUCTION_PROFILES['spec-driven-development'];
+    const debugging = FURY_INSTRUCTION_PROFILES['systematic-debugging'];
+    const audit = FURY_INSTRUCTION_PROFILES['codebase-audit-discipline'];
     expect(karpathy.source).toEqual({
       repository: 'https://github.com/multica-ai/andrej-karpathy-skills',
       commitSha: '2c606141936f1eeef17fa3043a72095b4765b9c2',
@@ -61,7 +63,21 @@ describe('FuryPipe instruction profiles', () => {
       licenseStatus: 'VERIFIED',
       decision: 'ADAPT',
     });
-    expect(inspectInstructionProfiles()).toEqual([karpathy, specDriven]);
+    expect(debugging.source).toEqual({
+      repository: 'https://github.com/obra/superpowers',
+      commitSha: 'b36e0829c6d0140e93cfef2ca599b1b07d4a7797',
+      sourcePath: 'skills/systematic-debugging/SKILL.md',
+      licenseStatus: 'VERIFIED',
+      decision: 'ADAPT',
+    });
+    expect(audit.source).toEqual({
+      repository: 'https://github.com/ksimback/tech-debt-skill',
+      commitSha: '5a15c1ca4a929b2759461c218478de391a8bda0f',
+      sourcePath: 'SKILL.md',
+      licenseStatus: 'DECLARED_MIT_NO_ROOT_LICENSE_FILE',
+      decision: 'ADAPT',
+    });
+    expect(inspectInstructionProfiles()).toEqual([karpathy, specDriven, debugging, audit]);
   });
 
   it('applies the Spec Kit inspired profile as a spec-plan-task-verification contract', () => {
@@ -87,6 +103,59 @@ describe('FuryPipe instruction profiles', () => {
     expect(applied.appliedProfiles).toEqual(['spec-driven-development']);
   });
 
+  it('applies systematic debugging as evidence-first root-cause discipline', () => {
+    const applied = applyInstructionProfiles({
+      sections: { task: 'Fix the flaky provider timeout.' },
+      level: 'ENGINEERING',
+    }, ['systematic-debugging']);
+
+    expect(applied.input.sections.plan).toEqual(expect.arrayContaining([
+      expect.stringContaining('Reproduce the failure'),
+      expect.stringContaining('falsifiable root-cause hypothesis'),
+    ]));
+    expect(applied.input.sections.constraints).toEqual(expect.arrayContaining([
+      expect.stringContaining('speculative fixes'),
+      expect.stringContaining('reassess whether the architecture'),
+    ]));
+    expect(applied.input.sections.verification).toEqual(expect.arrayContaining([
+      expect.stringContaining('original failure'),
+      expect.stringContaining('regression suite'),
+    ]));
+  });
+
+  it('applies codebase audit discipline without turning suspicions into findings', () => {
+    const applied = applyInstructionProfiles({
+      sections: { objective: 'Audit the repository before a production hardening pass.' },
+      level: 'ENGINEERING',
+    }, ['codebase-audit-discipline']);
+
+    expect(applied.input.sections.context).toEqual(expect.arrayContaining([
+      expect.stringContaining('module boundaries'),
+      expect.stringContaining('recent churn'),
+    ]));
+    expect(applied.input.sections.constraints).toEqual(expect.arrayContaining([
+      expect.stringContaining('Do not pad categories'),
+      expect.stringContaining('confirmed debt'),
+    ]));
+    expect(applied.input.sections.outputContract).toEqual(expect.arrayContaining([
+      expect.stringContaining('plausible false positives'),
+    ]));
+  });
+
+  it('composes spec, minimal-change, debugging and audit profiles deterministically', () => {
+    const ids = [
+      'karpathy-coding-discipline',
+      'spec-driven-development',
+      'systematic-debugging',
+      'codebase-audit-discipline',
+    ] as const;
+    const first = applyInstructionProfiles({ sections: { task: 'Repair and harden the failing subsystem.' } }, ids);
+    const second = applyInstructionProfiles({ sections: { task: 'Repair and harden the failing subsystem.' } }, ids);
+    expect(first).toEqual(second);
+    expect(first.appliedProfiles).toEqual(ids);
+    expect(compileFuryPrompt(first.input).prompt).toContain('falsifiable root-cause hypothesis');
+  });
+
   it('rejects duplicate or unknown profile identities', () => {
     expect(() => applyInstructionProfiles(
       { sections: { task: 'x' } },
@@ -104,5 +173,7 @@ describe('FuryPipe instruction profiles', () => {
     expect(encoded).not.toContain("Would a senior engineer say this is overcomplicated?");
     expect(encoded).not.toContain("Don't assume. Don't hide confusion.");
     expect(encoded).not.toContain('If you write 200 lines and it could be 50');
+    expect(encoded).not.toContain('NO FIXES WITHOUT ROOT CAUSE INVESTIGATION FIRST');
+    expect(encoded).not.toContain('Things that look bad but are actually fine');
   });
 });
