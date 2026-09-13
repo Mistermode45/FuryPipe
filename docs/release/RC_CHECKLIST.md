@@ -13,6 +13,26 @@ Before collecting evidence, pin all of the following to the same candidate:
 
 A report from another commit or package version is stale evidence.
 
+## Automated non-destructive preparation
+
+The workflow `.github/workflows/rc-preparation.yml` builds the exact candidate without
+tagging or publishing it. It emits a source-bound RC preparation artifact containing the
+npm tarball and SHA-256, a fresh-install smoke, SPDX 2.3 SBOM, document digests and a
+claim-free RC notes draft.
+
+When a previous stable public version of the same FuryPipe repository exists, the workflow
+also performs a package-level upgrade to the candidate and a package-level rollback to the
+previous version. This proves package-manager reversibility only. It is never promoted to
+production deployment rollback evidence.
+
+If no matching prior public version exists, or the public package provenance does not match
+this repository, upgrade/rollback remains `NOT_EXECUTED` or `BLOCKED` rather than being
+fabricated.
+
+The pull-request preparation workflow deliberately leaves release provenance `PARTIAL`:
+the separate Provenance Attestation workflow validates the pack path on PRs, while signed
+artifact attestation requires its eligible non-PR execution path.
+
 ## Required technical evidence
 
 The RC evidence snapshot remains `BLOCKED` until all required preparation evidence is verified:
@@ -23,6 +43,9 @@ The RC evidence snapshot remains `BLOCKED` until all required preparation eviden
 - Supply Chain / SBOM completed successfully;
 - License Compliance completed successfully;
 - Benchmark Contract completed successfully;
+- Dashboard Browser QA completed successfully for its declared Chromium scope;
+- Web Studio Browser QA completed successfully for its declared Chromium scope when Web Studio is in release scope;
+- repository integration/release branch policy verified from GitHub-origin evidence;
 - package smoke verified;
 - installation smoke verified from the packed artifact;
 - upgrade smoke verified when an earlier supported install exists;
