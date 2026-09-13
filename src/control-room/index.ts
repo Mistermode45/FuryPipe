@@ -453,7 +453,17 @@ export function createControlRoomSnapshot(input: ControlRoomInput): ControlRoomS
         ? [`${provider.streamOpenAccepted} accepted provider stream(s) have no observed terminal event yet.`]
         : []),
     ]),
-    mcp: section(mcpStatus, input.mcp),
+    mcp: section(mcpStatus, input.mcp, [
+      ...(input.mcp.stdio === 'PARTIAL'
+        ? ['MCP stdio was constructed locally; no client exchange is independently observed by this runtime feed.']
+        : []),
+      ...(input.mcp.oauth === 'PARTIAL'
+        ? ['MCP OAuth evidence is local/configuration-level only; no external Authorization Server conformance is proven.']
+        : []),
+      ...(input.mcp.externalConformance !== 'VERIFIED'
+        ? ['MCP external client/network conformance is not verified by local runtime observations.']
+        : []),
+    ]),
     i18n: section(i18nStatus, input.i18n),
     webStudio: section(webStudioStatus, input.webStudio),
     security: section(securityStatus, input.security, [
