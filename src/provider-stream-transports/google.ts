@@ -180,7 +180,7 @@ export function createGoogleProviderStreamTransport(options: ProviderHttpTranspo
   return createProviderSseStreamTransport({
     providerId: 'google',
     protocol: 'google',
-    endpoint: 'https://generativelanguage.googleapis.com/v1/interactions',
+    endpoint: 'https://generativelanguage.googleapis.com/v1/interactions?alt=sse',
     authHeader: 'x-goog-api-key',
     runtime,
     buildBody: (request: FuryProviderRequestEnvelope) => ({
