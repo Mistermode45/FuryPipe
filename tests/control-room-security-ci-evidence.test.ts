@@ -164,6 +164,41 @@ describe('Control Room security CI evidence', () => {
     expect(section.warnings.join(' ')).not.toMatch(/blocked by repository Dependency Graph settings/i);
   });
 
+  it('rejects duplicate workflow run IDs and contradictory Supply Chain evidence', () => {
+    expect(() => parseControlRoomSecurityCiEvidence({
+      format: 'furypipe-control-room-security-ci-evidence/v1',
+      generatedAt: 1,
+      sourceCommit: SHA,
+      codeql: run('success', 50),
+      secretScan: run('success', 50),
+    }, SHA)).toThrow(/run IDs must be unique/i);
+
+    expect(() => parseControlRoomSecurityCiEvidence({
+      format: 'furypipe-control-room-security-ci-evidence/v1',
+      generatedAt: 1,
+      sourceCommit: SHA,
+      supplyChain: {
+        run: run('success', 51),
+        jobs: {
+          actionPinning: 'success',
+          dependencyAudit: 'failure',
+        },
+      },
+    }, SHA)).toThrow(/Successful Supply Chain workflow cannot contain failed or cancelled job evidence/i);
+
+    expect(() => parseControlRoomSecurityCiEvidence({
+      format: 'furypipe-control-room-security-ci-evidence/v1',
+      generatedAt: 1,
+      sourceCommit: SHA,
+      supplyChain: {
+        run: run('skipped', 52),
+        jobs: {
+          actionPinning: 'success',
+        },
+      },
+    }, SHA)).toThrow(/Skipped Supply Chain workflow cannot contain executed job evidence/i);
+  });
+
   it('rejects invalid run IDs, timestamps and conclusions', () => {
     expect(() => parseControlRoomSecurityCiEvidence({
       format: 'furypipe-control-room-security-ci-evidence/v1',
