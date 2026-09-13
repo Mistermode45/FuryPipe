@@ -191,6 +191,51 @@ These statuses must not be read as hosted interoperability claims. In particular
 If `ControlRoomRuntimeOptions.mcp` is supplied explicitly, that source-bound host evidence remains authoritative and is not silently overwritten by runtime-derived observations.
 
 
+## Security CI evidence contract
+
+The public `furypipe/control-room-security-evidence` module converts terminal CI results into the canonical Control Room `SecurityEvidence` shape without making network calls.
+
+Input format:
+
+```text
+furypipe-control-room-security-ci-evidence/v1
+```
+
+Every supplied workflow run includes:
+
+- a positive GitHub Actions run ID;
+- the exact lowercase 40-character `headSha`;
+- one terminal conclusion: `success`, `failure`, `cancelled` or `skipped`.
+
+The evidence document itself is also bound to an exact `sourceCommit`. Any workflow whose `headSha` differs from that source commit is rejected even if its conclusion says `success`.
+
+The mapping is deliberately conservative:
+
+| CI conclusion | Control Room status |
+| --- | --- |
+| `success` | `VERIFIED` |
+| `failure` | `BLOCKED` |
+| `cancelled` | `PARTIAL` |
+| `skipped` | `NOT_EXECUTED` |
+| missing evidence | `NOT_AVAILABLE` |
+
+The current repository workflows map as follows:
+
+- `CodeQL` workflow -> `security.codeql`;
+- `Secret Scan` workflow -> `security.secretScan`;
+- `License Compliance` workflow -> `security.licenseCompliance`;
+- Supply Chain job `Workflow action pinning` -> `security.actionPinning`;
+- Supply Chain job `Frozen dependency audit` -> `security.dependencyAudit`;
+- Supply Chain job `SPDX SBOM` -> `security.sbom`;
+- Supply Chain job `GitHub dependency review` -> `security.dependencyReview`.
+
+A successful Supply Chain workflow does **not** automatically verify every nested security field. Job conclusions are mapped independently. In particular, the Dependency Review job is conditionally skipped when the repository dependency graph setting is not enabled; that remains `NOT_EXECUTED`, not `VERIFIED`.
+
+The parser reconstructs only the bounded fields above. Logs, workflow URLs, arbitrary messages, artifact contents and unknown/secret-bearing fields are discarded.
+
+This module is a pure evidence adapter. It does not call GitHub, read credentials, query Actions or modify repository settings. A trusted CI/host process must collect the actual terminal conclusions for the exact source SHA and then pass that bounded evidence to FuryPipe. The resulting `snapshot.security` can be supplied to the existing source-bound Control Room host evidence/runtime path.
+
+
 ## Source-bound host evidence file
 
 The Node host can now combine live runtime observations with bounded evidence produced by CI or another trusted host process.
