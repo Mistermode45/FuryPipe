@@ -388,9 +388,6 @@ function validateContextPlan(
   if (includedBytes > maxBytes || plan.included.length > maxItems) {
     throw new Error('context plan exceeds its declared budgets');
   }
-  if (totalCandidateBytes < includedBytes || preferredEligibleBytes < includedBytes) {
-    throw new Error('context plan byte summaries are inconsistent');
-  }
   if (savedBytesVsPreferred !== Math.max(0, preferredEligibleBytes - includedBytes)) {
     throw new Error('context savedBytesVsPreferred is inconsistent');
   }
