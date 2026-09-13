@@ -264,12 +264,32 @@ async function closeTarget(debugPort, targetId) {
   await fetch(`http://${HOST}:${debugPort}/json/close/${encodeURIComponent(targetId)}`).catch(() => undefined);
 }
 
+const BREAKPOINT_WIDTHS = [
+  { id: 'desktop', width: 1440, height: 1000 },
+  { id: 'above-1000', width: 1001, height: 900 },
+  { id: 'at-1000', width: 1000, height: 900 },
+  { id: 'above-860', width: 861, height: 900 },
+  { id: 'at-860', width: 860, height: 900 },
+  { id: 'above-560', width: 561, height: 844 },
+  { id: 'at-560', width: 560, height: 844 },
+  { id: 'mobile', width: 390, height: 844 },
+];
+
 const CASES = [
-  { name: 'fr-desktop', locale: 'fr', direction: 'ltr', width: 1440, height: 1000 },
-  { name: 'fr-tablet', locale: 'fr', direction: 'ltr', width: 900, height: 1000 },
-  { name: 'fr-mobile', locale: 'fr', direction: 'ltr', width: 390, height: 844 },
-  { name: 'rtl-desktop', locale: 'ar-XB', direction: 'rtl', width: 1280, height: 900 },
-  { name: 'rtl-mobile', locale: 'ar-XB', direction: 'rtl', width: 390, height: 844 },
+  ...BREAKPOINT_WIDTHS.map((viewport) => ({
+    name: `fr-${viewport.id}`,
+    locale: 'fr',
+    direction: 'ltr',
+    width: viewport.width,
+    height: viewport.height,
+  })),
+  ...BREAKPOINT_WIDTHS.map((viewport) => ({
+    name: `rtl-${viewport.id}`,
+    locale: 'ar-XB',
+    direction: 'rtl',
+    width: viewport.width,
+    height: viewport.height,
+  })),
 ];
 
 async function runCase(browser, dashboard, testCase) {
