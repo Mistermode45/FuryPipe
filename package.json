@@ -209,6 +209,10 @@
     "./model-adapter-registry": {
       "types": "./dist/model-adapter-registry.d.ts",
       "import": "./dist/model-adapter-registry.js"
+    },
+    "./capability-catalog": {
+      "types": "./dist/capability-catalog.d.ts",
+      "import": "./dist/capability-catalog.js"
     }
   },
   "files": [
@@ -241,7 +245,12 @@
     "docs/CONTEXT_OPTIMIZER.md",
     "docs/CONTINUOUS_MEMORY_TURN.md",
     "docs/TASK_ORCHESTRATOR.md",
-    "docs/MODEL_ADAPTERS.md"
+    "docs/MODEL_ADAPTERS.md",
+    "docs/CAPABILITY_CATALOG.md",
+    "docs/ECOSYSTEM_INGESTION.md",
+    "docs/FURYTRUST.md",
+    "docs/CAPABILITY_CATALOG_RESOLVER.md",
+    "docs/CAPABILITY_ACTIVATION.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",

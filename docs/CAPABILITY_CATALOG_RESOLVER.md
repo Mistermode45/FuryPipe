@@ -164,26 +164,30 @@ Capability Catalog Resolver performs no:
 
 It is a planning/ranking primitive only.
 
-## Relationship to Capability Router
+## Relationship to Task Orchestrator and Capability Router
 
-The intended future path is:
+Task Orchestrator can now expose an optional Catalog Resolver result during
+planning. That integration is advisory only and does not mutate the real
+Capability Router inventory.
+
+The current path is:
 
 ```text
 user task
    ↓
-Capability Router / semantic analyzer
-   ↓
-candidate relevance
+host/semantic relevance
    ↓
 Capability Catalog Resolver
    ↓
-ranked trusted recommendations
+ranked trust-aware recommendations
    ↓
-host policy / availability / permission checks
+Task Orchestrator advisory catalogResolution
    ↓
-Capability Router runtime inventory
+separate host registration / connection / approval
    ↓
-Agent Runtime
+Capability Router real runtime inventory
+   ↓
+governed Agent Runtime / policy path
 ```
 
 The catalog must never bypass the runtime inventory.
