@@ -50,6 +50,12 @@ export interface FuryProviderAttemptPlanner {
 
 const MAX_CONTEXT_PROFILES = 256;
 const MAX_CONTEXT_QUALIFICATIONS = 1024;
+const GENERATED_PROVIDER_ATTEMPT_PLANS = new WeakSet<object>();
+
+/** True only for immutable plans emitted by this planner in the current process. */
+export function isGeneratedProviderAttemptPlan(value: unknown): value is FuryProviderAttemptPlan {
+  return value !== null && typeof value === 'object' && GENERATED_PROVIDER_ATTEMPT_PLANS.has(value);
+}
 
 function snapshotContextRegistry(
   registry: FuryContextOptimizerProfileRegistry,
@@ -133,7 +139,7 @@ export function createProviderAttemptPlanner(
         throw new Error('provider attempt planner detected inconsistent subsystem scope');
       }
 
-      return Object.freeze({
+      const plan: FuryProviderAttemptPlan = Object.freeze({
         format: 'furypipe-provider-attempt-plan/v1',
         providerId: adapter.providerId,
         model: adapter.model,
@@ -147,6 +153,8 @@ export function createProviderAttemptPlanner(
         optimizerExecuted: false,
         executionAuthorized: false,
       });
+      GENERATED_PROVIDER_ATTEMPT_PLANS.add(plan);
+      return plan;
     },
   });
 }
