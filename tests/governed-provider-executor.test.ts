@@ -300,7 +300,7 @@ describe('governed provider executor', () => {
     expect(executeAnthropic).not.toHaveBeenCalled();
   });
 
-  it('rejects a permit after expiration but accepts it at the exact expiresAt boundary', async () => {
+  it('rejects a permit at and after expiration while accepting it immediately before', async () => {
     const request = makeRequest();
     const execute = vi.fn(async () => openAiResult());
     const transports = createProviderTransportRegistry([
@@ -313,7 +313,12 @@ describe('governed provider executor', () => {
     expect(execute).not.toHaveBeenCalled();
 
     const boundary = authorizedExecutor(request, transports, { executorNow: () => at + 1_000 });
-    await expect(boundary.executor.execute(request, boundary.permit)).resolves.toMatchObject({ transportInvoked: true });
+    await expect(boundary.executor.execute(request, boundary.permit))
+      .rejects.toMatchObject({ code: 'permit-expired', transportInvoked: false });
+    expect(execute).not.toHaveBeenCalled();
+
+    const beforeBoundary = authorizedExecutor(request, transports, { executorNow: () => at + 999 });
+    await expect(beforeBoundary.executor.execute(request, beforeBoundary.permit)).resolves.toMatchObject({ transportInvoked: true });
     expect(execute).toHaveBeenCalledOnce();
   });
 

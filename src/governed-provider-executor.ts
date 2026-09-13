@@ -28,6 +28,9 @@ export interface GovernedProviderExecutionResult {
   readonly model: string;
   readonly workloadId: string;
   readonly requestDigest: string;
+  /** Process-local timestamps captured around this exact transport invocation. */
+  readonly transportStartedAt: number;
+  readonly transportFinishedAt?: number;
   readonly providerRequestId?: string;
   readonly network: {
     readonly status: 'executed' | 'not-executed' | 'unknown';
@@ -228,6 +231,15 @@ export function createGovernedProviderExecutor(
         fail('transport-error', true);
       }
 
+      let transportFinishedAt: number | undefined;
+      try {
+        const finishedAt = nowSource();
+        if (safeTimestamp(finishedAt) && finishedAt >= now) transportFinishedAt = finishedAt;
+      } catch {
+        // A completed provider call remains reportable, but without a trustworthy
+        // finish timestamp it cannot create freshness evidence.
+      }
+
       const result = validateProviderTransportResult(rawResult, request);
       const cost = costEstimate(options.providerRuntime, request, result.usage);
       const executionResult = Object.freeze({
@@ -238,6 +250,8 @@ export function createGovernedProviderExecutor(
         model: request.model,
         workloadId: request.workloadId,
         requestDigest: request.requestDigest,
+        transportStartedAt: now,
+        ...(transportFinishedAt === undefined ? {} : { transportFinishedAt }),
         ...(result.providerRequestId === undefined ? {} : { providerRequestId: result.providerRequestId }),
         network: result.network,
         providerRequest: result.providerRequest,

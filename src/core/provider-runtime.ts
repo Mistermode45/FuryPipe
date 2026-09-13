@@ -124,6 +124,8 @@ export interface ProviderRuntimeState {
   inspect(now?: number): ProviderRuntimeInspection;
 }
 
+const MAX_PROVIDER_RUNTIME_PRICE_ENTRIES = 10_000;
+
 function safeMetadataSource(value: string): string {
   if (value.length < 1 || value.length > 200 || /[\u0000-\u001f\u007f]/u.test(value)) {
     throw new Error('provider runtime evidence source must be 1-200 printable characters');
@@ -174,7 +176,7 @@ export function createProviderRuntimeState(baseRegistry: ProviderRegistry): Prov
     finiteTimestamp(now, 'provider runtime now');
     const observation = healthByProvider.get(id);
     if (!observation) return { providerId: id, availability: 'unknown', fresh: false };
-    if (now > observation.expiresAt) {
+    if (now >= observation.expiresAt) {
       return {
         providerId: id,
         availability: 'unknown',
@@ -216,6 +218,10 @@ export function createProviderRuntimeState(baseRegistry: ProviderRegistry): Prov
     registerPrice(price) {
       const id = resolveProvider(price.providerId);
       const model = exactModel(price.model);
+      const key = costKey(id, model);
+      if (!prices.has(key) && prices.size >= MAX_PROVIDER_RUNTIME_PRICE_ENTRIES) {
+        throw new RangeError(`provider runtime price table is limited to ${MAX_PROVIDER_RUNTIME_PRICE_ENTRIES} entries`);
+      }
       const normalized: ProviderModelPrice = {
         ...price,
         providerId: id,
@@ -231,7 +237,7 @@ export function createProviderRuntimeState(baseRegistry: ProviderRegistry): Prov
         observedAt: finiteTimestamp(price.observedAt, 'provider price observedAt'),
         source: safeMetadataSource(price.source),
       };
-      prices.set(costKey(id, model), normalized);
+      prices.set(key, normalized);
     },
 
     health: getHealth,

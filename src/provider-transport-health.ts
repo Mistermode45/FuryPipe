@@ -19,7 +19,8 @@ export type ProviderTransportHealthReason =
   | 'transport-evidence-insufficient'
   | 'http-status-missing'
   | 'http-status-inconsistent'
-  | 'rejection-not-classified';
+  | 'rejection-not-classified'
+  | 'transport-timing-unavailable';
 
 export interface ProviderTransportHealthPolicy {
   /** FuryPipe-local freshness window for accepted HTTP results. No default is inferred. */
@@ -130,7 +131,7 @@ function addExpiry(observedAt: number, ttlMs: number): number {
 export function assessProviderTransportHealth(
   execution: unknown,
   policy: ProviderTransportHealthPolicy,
-  timing: ProviderTransportHealthTiming,
+  timing?: ProviderTransportHealthTiming,
 ): ProviderTransportHealthAssessment {
   if (!isGeneratedGovernedProviderExecutionResult(execution)) {
     throw new TypeError('governed provider execution result lacks process-local provenance');
@@ -143,16 +144,19 @@ export function assessProviderTransportHealth(
     || !exactIdentifier(result.model, 256)
     || !exactIdentifier(result.workloadId, 256)
     || typeof result.requestDigest !== 'string'
-    || !/^[a-f0-9]{64}$/u.test(result.requestDigest)) {
+    || !/^[a-f0-9]{64}$/u.test(result.requestDigest)
+    || !safeTimestamp(result.transportStartedAt)
+    || (result.transportFinishedAt !== undefined
+      && (!safeTimestamp(result.transportFinishedAt) || result.transportFinishedAt < result.transportStartedAt))) {
     throw new TypeError('governed provider execution result is invalid for health assessment');
   }
 
-  const startedAt = timing?.startedAt;
-  const finishedAt = timing?.finishedAt;
-  if (!safeTimestamp(startedAt) || !safeTimestamp(finishedAt) || finishedAt < startedAt) {
-    throw new RangeError('provider transport health timing must contain ordered safe timestamps');
+  const startedAt = result.transportStartedAt as number;
+  const finishedAt = result.transportFinishedAt;
+  if (timing !== undefined && (timing.startedAt !== startedAt || timing.finishedAt !== finishedAt)) {
+    throw new RangeError('provider transport health timing must match the governed execution timestamps');
   }
-  const latencyMs = finishedAt - startedAt;
+  const latencyMs = finishedAt === undefined ? 0 : finishedAt - startedAt;
   if (!Number.isSafeInteger(latencyMs)) throw new RangeError('provider transport health latency is invalid');
 
   const availableTtlMs = healthTtl(policy?.availableTtlMs, 'availableTtlMs');
@@ -170,10 +174,14 @@ export function assessProviderTransportHealth(
   let reason: ProviderTransportHealthReason = 'transport-evidence-insufficient';
   let expiresAt: number | undefined;
 
+  if (finishedAt === undefined) reason = 'transport-timing-unavailable';
+
   const networkExecuted = network.status === 'executed' && network.evidence === 'transport-reported';
   const requestReported = providerRequest.evidence === 'transport-reported';
 
-  if (networkExecuted && requestReported && providerRequest.status === 'accepted') {
+  if (finishedAt === undefined) {
+    // The transport result is useful to the caller, but cannot refresh health.
+  } else if (networkExecuted && requestReported && providerRequest.status === 'accepted') {
     if (httpStatus === undefined) {
       reason = 'http-status-missing';
     } else if (httpStatus >= 200 && httpStatus < 300) {
@@ -201,7 +209,7 @@ export function assessProviderTransportHealth(
     model: result.model,
     workloadId: result.workloadId,
     requestDigest: result.requestDigest,
-    observedAt: finishedAt,
+    observedAt: finishedAt ?? startedAt,
     latencyMs,
     availability,
     reason,
