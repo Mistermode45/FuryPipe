@@ -161,3 +161,18 @@ V1 does not:
 - claim exact provider token counts.
 
 These boundaries are intentional: context reduction must not become an implicit data-corruption or authority-escalation mechanism.
+
+## Benchmark-qualified profiles
+
+Reusable optimizer budgets and thresholds can be qualified separately against
+real benchmark evidence through `src/context-optimizer-profile.ts`.
+
+That layer does not change this optimizer's deterministic selection algorithm.
+It binds a profile digest to exact provider/model/workload evidence and composes
+the Benchmark Claim Gate so measured token savings cannot hide a quality,
+exactness, or error regression.
+
+See `docs/CONTEXT_OPTIMIZER_PROFILES.md`.
+
+Profile qualification does not enable `allowSecret`, execute the optimizer, or
+authorize provider/runtime execution.
