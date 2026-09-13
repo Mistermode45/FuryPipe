@@ -109,14 +109,6 @@ const NOT_AVAILABLE_LEARNING: LearningEvidence = Object.freeze({
   semanticRetrieval: 'NOT_AVAILABLE',
 });
 
-const NOT_AVAILABLE_MCP: McpEvidence = Object.freeze({
-  stdio: 'NOT_AVAILABLE',
-  http: 'NOT_AVAILABLE',
-  bearerAuth: 'NOT_AVAILABLE',
-  oauth: 'NOT_AVAILABLE',
-  externalConformance: 'NOT_AVAILABLE',
-});
-
 const NOT_AVAILABLE_I18N: I18nEvidence = Object.freeze({
   locale: 'en',
   direction: 'ltr',
