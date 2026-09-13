@@ -164,6 +164,32 @@ describe('governed provider stream executor', () => {
     expect(await collect(session.events)).toEqual([]);
   });
 
+  it('rejects any event emitted by a non-accepted session before exposing it', async () => {
+    const transport: ProviderStreamTransport = {
+      providerId: 'openai',
+      protocol: 'openai',
+      open: async (request) => ({
+        providerId: 'openai',
+        model: request.model,
+        networkStatus: 'executed',
+        providerRequestStatus: 'rejected',
+        httpStatus: 429,
+        events: events([{
+          kind: 'text-delta',
+          providerEventType: 'response.output_text.delta',
+          text: 'must-not-leak',
+        }]),
+      }),
+    };
+    const { request, permit, executor } = setup(transport);
+    const session = await executor.open(request, permit);
+
+    await expect(collect(session.events)).rejects.toMatchObject({
+      code: 'stream-session-invalid',
+      transportInvoked: true,
+    });
+  });
+
   it('rejects contradictory accepted/non-2xx session evidence', async () => {
     const transport: ProviderStreamTransport = {
       providerId: 'openai',
