@@ -87,8 +87,17 @@ export interface RecoveryListOptions {
   readonly limit?: number;
 }
 
+export interface RecoveryPutBound {
+  /** Exact metadata values counted under the same Recovery write lock. */
+  readonly metadata: Readonly<Record<string, string | number | boolean | null>>;
+  /** Reject creation of a new unique object once this many matching manifests exist. */
+  readonly maxMatches: number;
+}
+
 export interface RecoveryStore {
   put(bytes: Uint8Array | ArrayBuffer, metadata?: RecoveryMetadata): Promise<RecoveryHandle>;
+  /** Optional atomic capacity primitive; createRecoveryStore implements it. */
+  putBounded?(bytes: Uint8Array | ArrayBuffer, metadata: RecoveryMetadata | undefined, bound: RecoveryPutBound): Promise<RecoveryHandle>;
   get(handle: RecoveryHandle | string): Promise<Uint8Array>;
   fetchRange(handle: RecoveryHandle | string, start: number, endExclusive?: number): Promise<Uint8Array>;
   fetchLines(handle: RecoveryHandle | string, fromLine: number, toLine?: number): Promise<string>;
@@ -680,59 +689,105 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
     }
   }
 
+  async function countMatchingManifests(
+    filters: Readonly<Record<string, string | number | boolean | null>>,
+    stopAt: number,
+  ): Promise<number> {
+    const manifestRoot = join(scopedRoot, 'manifests');
+    let names: string[];
+    try {
+      names = (await readdir(manifestRoot)).filter((name) => name.endsWith('.json')).sort();
+    } catch (caught) {
+      if (isErrno(caught, 'ENOENT')) return 0;
+      throw caught;
+    }
+    let matches = 0;
+    for (const name of names) {
+      const digest = name.slice(0, -'.json'.length);
+      if (!/^[0-9a-f]{64}$/u.test(digest)) continue;
+      const manifest = await readManifest(digest);
+      if (manifest === undefined) continue;
+      const manifestMetadata = manifest.metadata ?? {};
+      if (Object.entries(filters).some(([key, value]) => manifestMetadata[key] !== value)) continue;
+      matches += 1;
+      if (matches >= stopAt) break;
+    }
+    return matches;
+  }
+
+  async function putUnlocked(
+    bytes: Uint8Array | ArrayBuffer,
+    metadata?: RecoveryMetadata,
+    bound?: RecoveryPutBound,
+  ): Promise<RecoveryHandle> {
+    const view = asUint8Array(bytes);
+    if (view.byteLength > maxObjectBytes) throw new Error('recovery object exceeds the configured object quota');
+    const digest = digestBytes(view);
+    const manifestFile = metadataPath(scopedRoot, digest);
+    const existingManifest = await readManifest(digest);
+    const existingVariants = await objectVariants(scopedRoot, digest);
+    const existingStorage = existingManifest?.storage;
+    if (existingManifest !== undefined || existingVariants.length > 0) {
+      if (existingManifest === undefined) {
+        throw new Error('recovery object has no manifest; refusing migration by overwrite');
+      }
+      const existing = await readStored(digest, existingManifest, true);
+      if (digestBytes(existing) !== digest) throw new Error('recovery object integrity check failed');
+      if (encryption !== undefined && existingStorage === undefined && !encryption.allowLegacyPlaintext) {
+        throw new Error('recovery object is plaintext; explicit rekey migration is required');
+      }
+      return makeHandle(digest, existing.byteLength, existingManifest?.metadata, existingStorage);
+    }
+
+    if (bound !== undefined) {
+      if (!bound || typeof bound !== 'object' || !bound.metadata || typeof bound.metadata !== 'object'
+        || Array.isArray(bound.metadata) || !Number.isSafeInteger(bound.maxMatches)
+        || bound.maxMatches < 1 || bound.maxMatches > 10_000) {
+        throw new RangeError('recovery bounded put maxMatches must be an integer from 1 to 10000');
+      }
+      const matches = await countMatchingManifests(bound.metadata, bound.maxMatches);
+      if (matches >= bound.maxMatches) throw new Error('recovery bounded put matching-object limit exceeded');
+    }
+
+    const storage: RecoveryStorage | undefined = encryption === undefined
+      ? undefined
+      : { format: 'aes-256-gcm/v1', keyId: encryption.activeKeyId };
+    let stored: Uint8Array;
+    if (storage === undefined) {
+      stored = view;
+    } else {
+      const key = encryption?.keys.get(storage.keyId);
+      if (key === undefined) throw new Error(`recovery encryption key is unavailable: ${storage.keyId}`);
+      stored = encryptBytes(view, digest, key);
+    }
+    const target = objectPathFor(scopedRoot, digest, storage);
+    if ((await totalObjectBytes(join(scopedRoot, 'objects'))) + stored.byteLength > maxTotalBytes) {
+      throw new Error('recovery namespace exceeds the configured total quota');
+    }
+    if ((await globalObjectBytes(storeRoot)) + stored.byteLength > maxGlobalBytes) {
+      throw new Error('recovery store exceeds the configured global quota');
+    }
+    await ensurePrivateDirectory(dirname(target));
+    await ensurePrivateDirectory(dirname(manifestFile));
+    await writeExclusiveAtomic(target, stored);
+    const handle = makeHandle(digest, view.byteLength, metadata, storage);
+    try {
+      await writeManifest(manifestFile, handle);
+    } catch (error) {
+      // The object is intentionally left as a GC-visible orphan. A failed
+      // manifest write must never pretend the content was committed.
+      throw error;
+    }
+    return handle;
+  }
+
   return {
     put(bytes, metadata) {
-      return enqueue(async () => {
-        const view = asUint8Array(bytes);
-        if (view.byteLength > maxObjectBytes) throw new Error('recovery object exceeds the configured object quota');
-        const digest = digestBytes(view);
-        const manifestFile = metadataPath(scopedRoot, digest);
-        const existingManifest = await readManifest(digest);
-        const existingVariants = await objectVariants(scopedRoot, digest);
-        const existingStorage = existingManifest?.storage;
-        if (existingManifest !== undefined || existingVariants.length > 0) {
-          if (existingManifest === undefined) {
-            throw new Error('recovery object has no manifest; refusing migration by overwrite');
-          }
-          const existing = await readStored(digest, existingManifest, true);
-          if (digestBytes(existing) !== digest) throw new Error('recovery object integrity check failed');
-          if (encryption !== undefined && existingStorage === undefined && !encryption.allowLegacyPlaintext) {
-            throw new Error('recovery object is plaintext; explicit rekey migration is required');
-          }
-          return makeHandle(digest, existing.byteLength, existingManifest?.metadata, existingStorage);
-        }
+      return enqueue(() => putUnlocked(bytes, metadata));
+    },
 
-        const storage: RecoveryStorage | undefined = encryption === undefined
-          ? undefined
-          : { format: 'aes-256-gcm/v1', keyId: encryption.activeKeyId };
-        let stored: Uint8Array;
-        if (storage === undefined) {
-          stored = view;
-        } else {
-          const key = encryption?.keys.get(storage.keyId);
-          if (key === undefined) throw new Error(`recovery encryption key is unavailable: ${storage.keyId}`);
-          stored = encryptBytes(view, digest, key);
-        }
-        const target = objectPathFor(scopedRoot, digest, storage);
-        if ((await totalObjectBytes(join(scopedRoot, 'objects'))) + stored.byteLength > maxTotalBytes) {
-          throw new Error('recovery namespace exceeds the configured total quota');
-        }
-        if ((await globalObjectBytes(storeRoot)) + stored.byteLength > maxGlobalBytes) {
-          throw new Error('recovery store exceeds the configured global quota');
-        }
-        await ensurePrivateDirectory(dirname(target));
-        await ensurePrivateDirectory(dirname(manifestFile));
-        await writeExclusiveAtomic(target, stored);
-        const handle = makeHandle(digest, view.byteLength, metadata, storage);
-        try {
-          await writeManifest(manifestFile, handle);
-        } catch (error) {
-          // The object is intentionally left as a GC-visible orphan. A failed
-          // manifest write must never pretend the content was committed.
-          throw error;
-        }
-        return handle;
-      });
+    putBounded(bytes, metadata, bound) {
+      return enqueue(() => putUnlocked(bytes, metadata, bound));
     },
 
     get(handle) {
