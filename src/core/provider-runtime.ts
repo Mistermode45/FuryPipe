@@ -8,7 +8,7 @@ import {
   type ProviderRegistry,
 } from './provider-fabric.js';
 
-export type ProviderHealthEvidenceKind = Extract<ProviderEvidenceKind, 'live-probe' | 'operator-config'>;
+export type ProviderHealthEvidenceKind = Extract<ProviderEvidenceKind, 'live-probe' | 'operator-config' | 'transport-result'>;
 
 export interface ProviderHealthObservation {
   readonly providerId: string;
