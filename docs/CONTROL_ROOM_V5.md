@@ -184,9 +184,11 @@ Control Room derives MCP status conservatively:
 - successful local Bearer verification: `bearerAuth = VERIFIED`;
 - any locally observed OAuth resource-server/discovery configuration remains `oauth = PARTIAL`;
 - `externalConformance = NOT_AVAILABLE` unless a separate exact-source host evidence report provides stronger evidence;
-- an authentic stdio handle proves local construction only, therefore runtime-derived `stdio = PARTIAL`.
+- authentic stdio handle with no correlated exchange: runtime-derived `stdio = PARTIAL`;
+- at least one successfully written request/response pair observed by the exact process-local stdio transport, with no correlation overflow: `stdio = VERIFIED` for the **local transport path only**;
+- duplicate/unbounded request IDs or correlation saturation remain fail-visible and keep `stdio = PARTIAL`.
 
-These statuses must not be read as hosted interoperability claims. In particular, `http = VERIFIED` proves local dispatch through the production boundary, not DNS/TLS reachability or a remote client. `bearerAuth = VERIFIED` proves the configured local verifier accepted one request, not that a real Authorization Server was integrated. Local OAuth metadata never promotes external conformance.
+These statuses must not be read as hosted interoperability claims. In particular, `http = VERIFIED` proves local dispatch through the production boundary, not DNS/TLS reachability or a remote client. `stdio = VERIFIED` proves a real local JSON-RPC request/response crossed the stdio transport and was correlated without ambiguity; it does not prove interoperability with an external hosted client. `bearerAuth = VERIFIED` proves the configured local verifier accepted one request, not that a real Authorization Server was integrated. Local OAuth metadata never promotes external conformance.
 
 If `ControlRoomRuntimeOptions.mcp` is supplied explicitly, that source-bound host evidence remains authoritative and is not silently overwritten by runtime-derived observations.
 
