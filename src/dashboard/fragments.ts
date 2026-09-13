@@ -1336,6 +1336,10 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
   const host = escapeHtml(hostLabel.trim());
   const localeResolution = resolveDashboardLocale(locale);
   const activeLocale = localeResolution.canonical;
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(activeLocale, key, params);
   const languageOptions = DASHBOARD_LOCALES.map((candidate) =>
     `<option value="${candidate}"${candidate === activeLocale ? ' selected' : ''}>${candidate}</option>`
   ).join('');
@@ -1390,7 +1394,7 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
     <div>
       <div class="wordmark-row">
         <div class="wordmark">pxpipe</div>
-        ${host ? `<span class="hostchip" title="proxy host">${host}</span>` : ''}
+        ${host ? `<span class="hostchip" title="${escapeHtml(t('dashboard.page.proxyHost'))}">${host}</span>` : ''}
       </div>
       <div class="tagline">${escapeHtml(dashboardT(activeLocale, 'dashboard.tagline'))}</div>
     </div>
@@ -1408,13 +1412,13 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
 </header>
 
 <details class="models-collapse">
-  <summary class="models-summary">Connect an agent <span class="hint">warp launches any CLI through this proxy · pin keeps instructions last in the request</span></summary>
-  <p>Warp starts the agent with the proxy already wired, no env or config edits:</p>
+  <summary class="models-summary">${escapeHtml(t('dashboard.page.connectAgent'))} <span class="hint">${escapeHtml(t('dashboard.page.connectHint'))}</span></summary>
+  <p>${escapeHtml(t('dashboard.page.warpIntro'))}</p>
   <pre>pxpipe warp -- claude
 pxpipe warp -- codex
 pxpipe warp -- cursor-agent</pre>
   <p>Aliases work too (<code>pxpipe warp -- pp</code>), and <code>--route PATTERN=http://host:port</code> adds routes beyond <code>api.anthropic.com</code> (a PATTERN that names a port matches only that port, e.g. <code>--route '127.0.0.1:9090/v1/*=http://127.0.0.1:${port}'</code> warps an agent pointed at another local proxy). Without warp, point the agent at <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code> yourself.</p>
-  <p>Pin instructions from inside the session — they get moved to the end of every request, where the model actually reads them:</p>
+  <p>${escapeHtml(t('dashboard.page.pinIntro'))}</p>
   <pre>@pxpipe pin be concise, no walls of text
 @pxpipe unpin 2
 @pxpipe unpin all</pre>
@@ -1423,20 +1427,20 @@ pxpipe warp -- cursor-agent</pre>
 </details>
 
 <details class="models-collapse">
-  <summary class="models-summary">Image model scope <span class="hint">Fable 5, Gemini 3.6 Flash, and Gemini 3.7 Flash by default · expand to experiment with other families</span></summary>
-  <div class="models-warning">⚠ Image compression is validated for Fable 5, Gemini 3.6 Flash, and Gemini 3.7 Flash — other families can use <strong>more</strong> tokens, not less. Opt in only for deliberate experiments.</div>
+  <summary class="models-summary">${escapeHtml(t('dashboard.page.modelScope'))} <span class="hint">${escapeHtml(t('dashboard.page.modelScopeHint'))}</span></summary>
+  <div class="models-warning">⚠ ${escapeHtml(t('dashboard.page.modelScopeWarning'))}</div>
   <div id="frag-models" hx-get="/fragments/models" hx-trigger="load, every 2s [!document.activeElement || document.activeElement.id !== 'models-csv']" hx-swap="innerHTML"></div>
-  <div class="models-routing"><span class="hint">imaging scope ≠ provider routing — non-Anthropic IDs also need routing env on the proxy</span> <button class="mini-btn" type="button" onclick="document.getElementById('routing-help').showModal()">routing help</button></div>
+  <div class="models-routing"><span class="hint">${escapeHtml(t('dashboard.page.routingHint'))}</span> <button class="mini-btn" type="button" onclick="document.getElementById('routing-help').showModal()">${escapeHtml(t('dashboard.page.routingHelp'))}</button></div>
 </details>
 
 <dialog id="routing-help" onclick="if (event.target === this) this.close()">
-  <h3>Routing Claude Code to OpenAI / Cloudflare models</h3>
-  <p>Claude models use Anthropic by default. Two optional routes can run together — set on the <strong>pxpipe process</strong> (keep provider credentials out of Claude Code):</p>
+  <h3>${escapeHtml(t('dashboard.page.routingTitle'))}</h3>
+  <p>${escapeHtml(t('dashboard.page.routingIntro'))}</p>
   <ul>
     <li><code>OPENAI_MODELS</code> — exact model IDs routed to OpenAI Responses (<code>OPENAI_UPSTREAM</code> + <code>OPENAI_API_KEY</code>)</li>
     <li><code>CLOUDFLARE_MODELS</code> — exact model IDs routed to Cloudflare's OpenAI-compatible endpoint (<code>CLOUDFLARE_ACCOUNT_ID</code> + <code>CLOUDFLARE_API_TOKEN</code>)</li>
   </ul>
-  <p>If a model appears in both lists: <code>CLOUDFLARE_MODELS &gt; OPENAI_MODELS &gt; default routing</code>.</p>
+  <p>${escapeHtml(t('dashboard.page.routingPrecedence'))} <code>CLOUDFLARE_MODELS &gt; OPENAI_MODELS &gt; default routing</code>.</p>
   <pre>OPENAI_UPSTREAM=https://api.openai.com \\
 OPENAI_API_KEY=your-openai-key \\
 OPENAI_MODELS=gpt-5.6-sol \\
@@ -1446,26 +1450,26 @@ CLOUDFLARE_MODELS=moonshotai/kimi-k3 \\
 npx pxpipe-proxy</pre>
   <p>Non-Anthropic IDs are advertised with a <code>claude-</code> prefix because Claude Code needs a Claude-shaped ID; pxpipe strips it before forwarding. Switch to one inside Claude Code with <code>/model claude-&lt;model&gt;</code> — e.g. <code>/model claude-moonshotai/kimi-k3</code> — or launch with <code>claude --model claude-moonshotai/kimi-k3</code>. Verify discovery with <code>curl …/v1/models</code>.</p>
   <p><code>PXPIPE_MODELS</code> above is separate: it controls image compression, not routing. Kimi K3 on Cloudflare is the only non-Anthropic model tested end to end — see <code>docs/CLAUDE_CODE_PROVIDER_ROUTING.md</code>.</p>
-  <button class="mini-btn" type="button" onclick="this.closest('dialog').close()">close</button>
+  <button class="mini-btn" type="button" onclick="this.closest('dialog').close()">${escapeHtml(t('dashboard.page.close'))}</button>
 </dialog>
 
 <div id="frag-session" hx-get="/fragments/session-summary" hx-trigger="load, every 2s" hx-swap="innerHTML">
-  <div class="hero hero-empty"><div class="hero-headline">Connecting…</div></div>
+  <div class="hero hero-empty"><div class="hero-headline">${escapeHtml(t('dashboard.page.connecting'))}</div></div>
 </div>
 
 <div id="frag-header" hx-get="/fragments/header" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
 
 <section class="section">
-  <h2 class="section-head">What happened to your context <span class="section-sub">click a request to see image vs text</span></h2>
+  <h2 class="section-head">${escapeHtml(t('dashboard.page.contextTitle'))} <span class="section-sub">${escapeHtml(t('dashboard.page.contextSub'))}</span></h2>
   <div class="xray">
     <div class="card">
-      <h3 class="card-head">Recent requests</h3>
+      <h3 class="card-head">${escapeHtml(t('dashboard.page.recent'))}</h3>
       <div id="frag-recent" hx-get="/fragments/recent" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
     </div>
     <div class="card">
-      <h3 class="card-head">Image vs text breakdown</h3>
+      <h3 class="card-head">${escapeHtml(t('dashboard.page.breakdown'))}</h3>
       <div id="frag-context-map" hx-get="/fragments/context-map" hx-trigger="load" hx-swap="innerHTML"></div>
-      <h3 class="card-head spaced">Image ↔ source inspector</h3>
+      <h3 class="card-head spaced">${escapeHtml(t('dashboard.page.inspector'))}</h3>
       <div id="frag-latest" hx-get="/fragments/latest" hx-trigger="load, every 2s, pp-refresh" hx-swap="innerHTML"
            hx-vals='js:{pin: window.pp.pin == null ? "" : window.pp.pin, source: window.pp.src ? "1" : ""}'></div>
     </div>
@@ -1473,17 +1477,17 @@ npx pxpipe-proxy</pre>
 </section>
 
 <section class="section">
-  <h2 class="section-head">Top sessions <span class="section-sub">by tokens saved</span></h2>
+  <h2 class="section-head">${escapeHtml(t('dashboard.page.topSessions'))} <span class="section-sub">${escapeHtml(t('dashboard.page.bySaved'))}</span></h2>
   <div class="card">
     <div id="frag-sessions" hx-get="/fragments/sessions" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
   </div>
 </section>
 
 <section class="section">
-  <h2 class="section-head">Control Room V5 <span class="section-sub">runtime evidence · fail-visible status</span></h2>
+  <h2 class="section-head">Control Room V5 <span class="section-sub">${escapeHtml(t('dashboard.page.controlRoomSub'))}</span></h2>
   <div class="card">
     <div id="frag-control-room" hx-get="/fragments/control-room" hx-trigger="load, every 5s" hx-swap="innerHTML">
-      <div class="status">Loading Control Room evidence…</div>
+      <div class="status">${escapeHtml(t('dashboard.page.loadingControlRoom'))}</div>
     </div>
   </div>
 </section>
