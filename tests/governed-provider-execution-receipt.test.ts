@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { COST_UNKNOWN } from '../src/core/provider-fabric.js';
 import { createProviderExecutionGate } from '../src/provider-execution-gate.js';
 import { createProviderTransportRegistry } from '../src/provider-transport.js';
 import { createGovernedProviderExecutor } from '../src/governed-provider-executor.js';
@@ -114,7 +115,7 @@ describe('Governed Provider Execution Receipt', () => {
       kind: 'success',
       network: { status: 'unknown', evidence: 'not-reported' },
       providerRequest: { status: 'unknown', evidence: 'not-reported' },
-      cost: { status: 'unknown' },
+      cost: { status: COST_UNKNOWN },
     });
   });
 
