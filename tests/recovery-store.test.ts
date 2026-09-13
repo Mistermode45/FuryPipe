@@ -61,6 +61,33 @@ describe('Recovery Store', () => {
     await expect(store.list?.({ limit: 0 })).rejects.toThrow('list limit');
   });
 
+  it('atomically bounds unique objects by metadata while preserving idempotent puts', async () => {
+    const { store } = await createStoreFixture();
+    expect(typeof store.putBounded).toBe('function');
+    const bound = { metadata: { source: 'bounded-claims' }, maxMatches: 1 };
+
+    const first = await store.putBounded!(
+      new TextEncoder().encode('claim-one'),
+      { source: 'bounded-claims', token: 'first' },
+      bound,
+    );
+    const duplicate = await store.putBounded!(
+      new TextEncoder().encode('claim-one'),
+      { source: 'bounded-claims', token: 'second' },
+      bound,
+    );
+    expect(duplicate.digest).toBe(first.digest);
+    expect(duplicate.metadata?.token).toBe('first');
+
+    await expect(store.putBounded!(
+      new TextEncoder().encode('claim-two'),
+      { source: 'bounded-claims', token: 'third' },
+      bound,
+    )).rejects.toThrow(/matching-object limit/);
+
+    expect(await store.list?.({ metadata: { source: 'bounded-claims' } })).toHaveLength(1);
+  });
+
   it('keeps a collision-free immutable object and rejects malformed handles', async () => {
     const { root, store } = await createStoreFixture();
     const bytes = new TextEncoder().encode('same content');
