@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { COST_UNKNOWN } from '../src/core/provider-fabric.js';
 import { createGovernedProviderStreamExecutor } from '../src/governed-provider-stream-executor.js';
 import { createProviderExecutionGate } from '../src/provider-execution-gate.js';
 import {
@@ -359,7 +360,7 @@ describe('governed provider stream executor', () => {
     const terminal = output.at(-1)!;
 
     expect(terminal.cost).toMatchObject({
-      status: 'unknown',
+      status: COST_UNKNOWN,
       reason: 'complete explicit token usage was not reported',
     });
     expect(output[0]?.usage).not.toHaveProperty('cacheWriteTokens');
