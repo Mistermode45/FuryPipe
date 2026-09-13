@@ -19,9 +19,17 @@ function spdxId(name, version) {
   return `SPDXRef-Package-${safe || 'unknown'}`;
 }
 
-function addNode(node, parentId) {
+function addNode(node, parentId, fallbackName) {
   if (!node || typeof node !== 'object') return;
-  const name = typeof node.name === 'string' ? node.name : undefined;
+  // pnpm list --json stores dependency names as object keys. Dependency
+  // records commonly contain version/from/path but no explicit name field.
+  // Preserve that key as the package identity instead of silently dropping
+  // the entire dependency subtree from the SBOM.
+  const name = typeof node.name === 'string'
+    ? node.name
+    : typeof fallbackName === 'string' && fallbackName.length > 0
+      ? fallbackName
+      : undefined;
   const version = typeof node.version === 'string' ? node.version : undefined;
   let currentId = parentId;
 
@@ -50,12 +58,12 @@ function addNode(node, parentId) {
 
   for (const group of ['dependencies', 'devDependencies', 'optionalDependencies']) {
     const deps = node[group];
-    if (!deps || typeof deps !== 'object') continue;
-    for (const dep of Object.values(deps)) addNode(dep, currentId);
+    if (!deps || typeof deps !== 'object' || Array.isArray(deps)) continue;
+    for (const [depName, dep] of Object.entries(deps)) addNode(dep, currentId, depName);
   }
 }
 
-for (const root of roots) addNode(root, undefined);
+for (const root of roots) addNode(root, undefined, undefined);
 
 const sha = (process.env.GITHUB_SHA || 'local').replace(/[^A-Fa-f0-9]/g, '').slice(0, 40) || 'local';
 const namespace = `https://github.com/Mistermode45/FuryPipe/sbom/${sha}`;
