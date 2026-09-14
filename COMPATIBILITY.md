@@ -11,9 +11,9 @@
 | Provider live | aucun endpoint hébergé validé ; runtime d’évidence explicite présent avec disponibilité TTL/fail-closed, sans probe réseau implicite |
 | MCP HTTP/OAuth | handler fetch-native sécurisé + listener Node opt-in loopback testés ; Host/Origin/Bearer/OAuth metadata présents ; Authorization Server/verifier hébergé et conformance réseau externe non validés |
 | OpenClaw | adapter de découverte/config/doctor local présent ; runtime gateway réel NON TESTÉ |
-| Dashboard navigateur | Chromium réel via CDP : FR LTR + `ar-XB` RTL, desktop/mobile et seuils CSS déclarés ; Firefox/WebKit non inférés |
-| Web Studio navigateur | 48 cas Chromium réels (desktop/mobile × 6 viewports × 4 locales) ; 72 cas Firefox/WebKit restent NON_EXECUTED |
-| Policy GitHub | `v5-production-hardening` est actuellement non protégée et aucun ruleset n’est exposé ; la gate de policy reste bloquée tant que le réglage repo n’est pas activé |
+| Dashboard navigateur | QA réelle Chromium/Firefox/WebKit : 48 cas source-bound (3 moteurs × LTR/RTL × 8 largeurs incluant les seuils CSS) ; audit WCAG manuel et terrain restent distincts |
+| Web Studio navigateur | 120 cas réels source-bound via Playwright 1.63.0 : desktop Chromium/Firefox/WebKit + mobile Chromium/WebKit × 6 viewports × 4 locales ; Figma réel, performance terrain et déploiement restent non validés |
+| Policy GitHub | `v5-production-hardening` est protégée par le ruleset actif `FuryPipe Production Hardening` ; PR obligatoire, checks requis, branche à jour, conversations résolues, suppressions et force-push bloqués ; la preuve doit être relue avant release |
 | CI multi-OS | matrice GitHub Actions Ubuntu 24.04 / macOS 14 / Windows 2025 × Node 22.23.2 / 24.21.0 / 26.8.2 ; chaque candidat doit être revalidé sur son SHA exact |
 
 La matrice V5 considère Node 24 comme runtime de production. Node 22 reste
