@@ -53,8 +53,8 @@ Release-Readiness/RC evidence; GitHub workflow triggers and test/report hygiene.
 | Domain | Status | Evidence and boundary |
 | --- | --- | --- |
 | Supplied source, repository access and PR #128 invariants | `VERIFIED` | Remote head/base, PR state and required historical workflows were independently read before editing. Re-check the live PR before handoff. |
-| Dashboard cross-browser matrix | `PARTIAL` | 48 real browser cases pass locally: 3 engines × LTR/RTL × 8 widths. GitHub evidence must pass on the exact final PR head. |
-| Web Studio cross-browser matrix | `PARTIAL` | 120 real browser cases pass locally: 5 browser projects × 6 viewports × 4 locales, against the deterministic static-page fixture. Not a live Figma project or a general-purpose site audit. |
+| Dashboard cross-browser matrix | `VERIFIED` | 48 real browser cases pass locally and the source-bound cross-browser artifact verifies 48/48 on the exact PR head: 3 engines × LTR/RTL × 8 widths. |
+| Web Studio cross-browser matrix | `VERIFIED` | 120 cases pass locally and in the source-bound PR artifact: 5 browser projects × 6 viewports × 4 locales, against the deterministic static-page fixture. Not a live Figma project or a general-purpose site audit. |
 | Recovery durability | `PARTIAL` | Real child processes, stale-lock recovery, atomic residue cleanup, backup/restore, encryption and rekey are exercised. Process kill is not physical power-loss proof; every filesystem crash phase and concurrent operation permutation is not simulated. |
 | Agent Fabric | `PARTIAL` | Ordered callbacks, bounded budgets, claims, concurrent resume and a separate-process Recovery resume are tested. No distributed/multi-host guarantee is inferred. |
 | Long-Term Memory | `PARTIAL` | Version/history, saturation and concurrent UPDATE writers are covered; a deterministic independent-adapter UPDATE/DELETE conflict case was added. Physical multi-process race and storage crash claims remain unverified. |
@@ -200,12 +200,18 @@ Playwright is pinned to `1.63.0` in the development dependencies and lockfile.
 The package and `playwright-core` both declare Apache-2.0; their notices are in
 `THIRD_PARTY_NOTICES.md`. Playwright's browser installation is version-coupled
 and is explicit in CI. The locally installed engines were real Chromium,
-Firefox and WebKit, not Chromium aliases.
+Firefox and WebKit, not Chromium aliases. The exact-head report records
+Chromium `153.0.8010.12`, Firefox `155.0`, and WebKit `26.6`.
 
 | Surface | Chromium | Firefox | WebKit | Count |
 | --- | --- | --- | --- | ---: |
 | Dashboard | 16/16 | 16/16 | 16/16 | 48/48 |
 | Web Studio static QA fixture | 48/48 | 24/24 | 48/48 | 120/120 |
+
+The CI-uploaded JSON artifact was downloaded and its `sourceCommit`, engine
+versions, `VERIFIED` statuses, and 48/120 counts were checked against the
+current audit head. Its external provider/OAuth/hosted-MCP/OpenClaw/Figma fields
+remain `NOT_EXECUTED`.
 
 Dashboard coverage includes French LTR and `ar-XB` RTL, all declared CSS
 breakpoint boundaries and adjacent widths, locale persistence/HTMX propagation,

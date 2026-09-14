@@ -25,7 +25,7 @@ Production base: `v5-production-hardening` at `8299f74439bf74a208431e2106b6ff5c9
 | `pnpm run package:smoke` | PASS — package, benchmark claim, provider attempt and governed-provider smoke. |
 | `node scripts/security/check-actions-pinning.mjs` | PASS — 53 references / 13 workflows. |
 | `git diff --check` | PASS — only Git's LF/CRLF advisory. |
-| Local Playwright cross-browser harness | PASS — Dashboard 48/48; Web Studio 120/120. |
+| Local Playwright cross-browser harness | PASS — Dashboard 48/48; Web Studio 120/120; Chromium 153.0.8010.12, Firefox 155.0, WebKit 26.6. |
 
 The first full test attempt found one faulty SBOM test fixture retaining an
 intentionally mismatched package version. The fixture was restored before the
@@ -36,27 +36,30 @@ The first hosted Node-matrix run on the report-update head exposed a separate
 test-isolation issue: the orphan fixture inherited GitHub Actions' `GITHUB_SHA`
 and failed provenance validation before reaching its graph assertion. The test
 now explicitly binds all child verifiers to the fixture SHA. The full local
-suite passed again with `GITHUB_SHA` pre-set; only post-fix hosted runs on the
-exact final head count as final CI evidence.
+suite passed again with `GITHUB_SHA` pre-set, and the post-fix hosted matrix
+passed all 9/9 jobs on the audit PR head.
 
 ## Exact-head GitHub evidence
 
 Hosted workflows are valid only when their run head matches the current remote
-head of `v5-codex-final-independent-audit`. The authoritative record is the
-job-level checks on the associated Draft PR, not a previous PR's green run or a
-mutable workflow name. Before handoff, inspect each run and child job for:
-
-- CI 9-job Node/OS matrix;
-- CodeQL, Secret Scan, Supply Chain, License Compliance and Provenance;
-- Benchmark Contract, Control Room Security Evidence;
-- Dashboard Browser QA, Web Studio Browser QA and Cross-Browser QA;
-- RC Preparation Evidence.
+head of `v5-codex-final-independent-audit`. At handoff, all 12 required workflow
+runs concluded `success` on the exact PR head. CI's nine Node/OS matrix jobs
+passed 9/9; CodeQL, Secret Scan, Benchmark Contract, Control Room Security
+Evidence, Dashboard Browser QA, Web Studio Browser QA, Cross-Browser QA, RC
+Preparation Evidence, License Compliance (3/3), and Supply Chain (4/4) passed.
+Supply Chain's child Dependency Review ran and passed because the read-only
+repository variable was `true`. Provenance input validation passed, while the
+separate `Attest packed npm artifact` child remained `skipped`; no signed npm
+artifact attestation is claimed. Run IDs are intentionally not stored as
+durable truth; the current PR #129 check set is authoritative.
 
 Inspect Supply Chain child jobs individually. On the observed PR #129 run,
 Dependency Review ran and passed because the read-only repository variable
 `FURYPIPE_DEPENDENCY_GRAPH_ENABLED` was `true`; do not call it `SKIPPED` for
-that run. On a pull request, provenance input validation does not equal an
-emitted signed npm attestation; the separate attestation job was skipped.
+that run. The CI-uploaded Cross-Browser QA artifact was downloaded and its
+source SHA, browser versions, counts, and statuses were checked. On a pull
+request, provenance input validation does not equal an emitted signed npm
+attestation; the separate attestation job was skipped.
 
 ## Read-only external/repository checks
 
