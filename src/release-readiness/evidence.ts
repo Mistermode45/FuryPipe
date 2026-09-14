@@ -19,6 +19,7 @@ export interface RcWorkflowEvidence {
 }
 
 export type RcArtifactProofKey =
+  | 'publicationBaseline'
   | 'packageSmoke' | 'installationSmoke' | 'upgradeSmoke' | 'rollbackEvidence'
   | 'sbom' | 'provenance' | 'compatibilityMatrix' | 'migrationNotes'
   | 'releaseNotes' | 'packageSha256';
@@ -31,7 +32,19 @@ export interface RcArtifactProof {
   readonly artifactSha256?: string;
 }
 
+export type RcPublicationBaselineState =
+  | 'FIRST_PUBLICATION_VERIFIED'
+  | 'PREVIOUS_VERSION_VERIFIED'
+  | 'NOT_EXECUTED'
+  | 'BLOCKED';
+
+export interface RcPublicationBaselineEvidence {
+  readonly state: RcPublicationBaselineState;
+  readonly previousVersion?: string;
+}
+
 export interface RcArtifactEvidence {
+  readonly publicationBaseline?: RcPublicationBaselineEvidence;
   readonly packageSmoke: RcEvidenceState;
   readonly installationSmoke: RcEvidenceState;
   readonly upgradeSmoke: RcEvidenceState;
@@ -87,7 +100,7 @@ const DENY_ALL_AUTHORIZATION: ReleaseAuthorization = Object.freeze({
   deployProduction: false,
 });
 
-const REQUIRED_ARTIFACTS: readonly Exclude<RcArtifactProofKey, 'packageSha256'>[] = Object.freeze([
+const REQUIRED_ARTIFACTS: readonly Exclude<RcArtifactProofKey, 'packageSha256' | 'publicationBaseline'>[] = Object.freeze([
   'packageSmoke',
   'installationSmoke',
   'upgradeSmoke',
@@ -143,7 +156,7 @@ function validateInput(input: RcEvidenceInput): void {
     if (!input.artifacts.proofs || typeof input.artifacts.proofs !== 'object' || Array.isArray(input.artifacts.proofs)) {
       throw new Error('RC artifact proofs must be a record');
     }
-    const validKeys = new Set<string>([...REQUIRED_ARTIFACTS, 'packageSha256']);
+    const validKeys = new Set<string>([...REQUIRED_ARTIFACTS, 'publicationBaseline', 'packageSha256']);
     for (const [key, proof] of Object.entries(input.artifacts.proofs)) {
       if (!validKeys.has(key) || !proof || typeof proof !== 'object'
         || !SHA40.test(proof.sourceCommit)
@@ -153,6 +166,21 @@ function validateInput(input: RcEvidenceInput): void {
         || (proof.artifactSha256 !== undefined && !SHA256.test(proof.artifactSha256))) {
         throw new Error(`RC artifact proof is invalid: ${key}`);
       }
+    }
+  }
+  const publicationBaseline = input.artifacts.publicationBaseline;
+  if (publicationBaseline !== undefined) {
+    if (!publicationBaseline || typeof publicationBaseline !== 'object'
+      || !['FIRST_PUBLICATION_VERIFIED', 'PREVIOUS_VERSION_VERIFIED', 'NOT_EXECUTED', 'BLOCKED']
+        .includes(publicationBaseline.state)) {
+      throw new Error('RC publication baseline is invalid');
+    }
+    if (publicationBaseline.state === 'PREVIOUS_VERSION_VERIFIED') {
+      if (typeof publicationBaseline.previousVersion !== 'string' || !SEMVER.test(publicationBaseline.previousVersion)) {
+        throw new Error('RC previous publication version is invalid');
+      }
+    } else if (publicationBaseline.previousVersion !== undefined) {
+      throw new Error('RC previous publication version is only valid for PREVIOUS_VERSION_VERIFIED');
     }
   }
   for (const key of REQUIRED_ARTIFACTS) {
@@ -174,7 +202,7 @@ function artifactProofFailure(
   if (!proof) return 'VERIFIED artifact has no source-bound evidence reference';
   if (proof.sourceCommit !== sourceCommit) return 'artifact evidence source commit does not match the RC source commit';
   if (proof.observedAt < 0) return 'artifact evidence timestamp is invalid';
-  const requiredOrigins: readonly ReleaseEvidenceOrigin[] = key === 'sbom' || key === 'provenance'
+  const requiredOrigins: readonly ReleaseEvidenceOrigin[] = key === 'sbom' || key === 'provenance' || key === 'publicationBaseline'
     ? ['github-actions']
     : key === 'packageSha256' ? ['local', 'github-actions'] : ['local', 'hosted'];
   if (!requiredOrigins.includes(proof.origin)) return `artifact evidence origin must be one of: ${requiredOrigins.join(', ')}`;
@@ -186,8 +214,42 @@ function artifactProofFailure(
 
 function artifactBlockers(artifacts: RcArtifactEvidence, sourceCommit: string): RcPreparationBlocker[] {
   const blockers: RcPreparationBlocker[] = [];
+  const publicationBaseline = artifacts.publicationBaseline;
+  const publicationBaselineVerified = publicationBaseline?.state === 'FIRST_PUBLICATION_VERIFIED'
+    || publicationBaseline?.state === 'PREVIOUS_VERSION_VERIFIED';
+  const publicationBaselineProofFailure = publicationBaselineVerified
+    ? artifactProofFailure('publicationBaseline', artifacts.proofs?.publicationBaseline,
+      sourceCommit, artifacts.packageSha256)
+    : undefined;
+
+  if (publicationBaseline !== undefined
+    && (!publicationBaselineVerified || publicationBaselineProofFailure !== undefined)) {
+    blockers.push({
+      id: 'artifact.publicationBaseline',
+      state: publicationBaselineProofFailure ? 'MISMATCH'
+        : publicationBaseline.state === 'BLOCKED' ? 'BLOCKED' : 'NOT_EXECUTED',
+      reason: publicationBaselineProofFailure
+        ?? 'public npm publication baseline is not verified',
+    });
+  }
+
+  const verifiedFirstPublication = publicationBaseline?.state === 'FIRST_PUBLICATION_VERIFIED'
+    && publicationBaselineProofFailure === undefined;
+
   for (const key of REQUIRED_ARTIFACTS) {
     const state = artifacts[key];
+
+    if ((key === 'upgradeSmoke' || key === 'rollbackEvidence') && verifiedFirstPublication) {
+      if (state !== 'NOT_EXECUTED') {
+        blockers.push({
+          id: `artifact.${key}`,
+          state: 'MISMATCH',
+          reason: 'first public publication must keep package upgrade/rollback evidence NOT_EXECUTED',
+        });
+      }
+      continue;
+    }
+
     const proofFailure = state === 'VERIFIED'
       ? artifactProofFailure(key, artifacts.proofs?.[key], sourceCommit, artifacts.packageSha256)
       : undefined;
@@ -268,6 +330,14 @@ function freezeArtifactEvidence(artifacts: RcArtifactEvidence): RcArtifactEviden
       ]),
     ) as Partial<Record<RcArtifactProofKey, RcArtifactProof>>);
   return Object.freeze({
+    ...(artifacts.publicationBaseline === undefined ? {} : {
+      publicationBaseline: Object.freeze({
+        state: artifacts.publicationBaseline.state,
+        ...(artifacts.publicationBaseline.previousVersion === undefined
+          ? {}
+          : { previousVersion: artifacts.publicationBaseline.previousVersion }),
+      }),
+    }),
     packageSmoke: artifacts.packageSmoke,
     installationSmoke: artifacts.installationSmoke,
     upgradeSmoke: artifacts.upgradeSmoke,
