@@ -11,6 +11,8 @@ export interface NodeMcpHttpOptions extends ProductionMcpHttpOptions {
   readonly port: number;
   /** Exact path mounted by the listener. */
   readonly path?: string;
+  /** Exact source revision served by this listener, exposed as response provenance. */
+  readonly sourceCommit?: string;
 }
 
 export interface NodeMcpHttpServer {
@@ -144,6 +146,19 @@ async function writeWebResponse(response: Response, out: ServerResponse): Promis
   }
 }
 
+const SOURCE_COMMIT = /^[0-9a-f]{40}$/u;
+
+function withSourceCommit(response: Response, sourceCommit: string | undefined): Response {
+  if (sourceCommit === undefined) return response;
+  const headers = new Headers(response.headers);
+  headers.set('x-furypipe-source-commit', sourceCommit);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 function closeServer(server: Server): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     server.close((error) => {
@@ -171,6 +186,10 @@ export async function listenMcpHttpNode(
     throw new RangeError('MCP HTTP port must be an integer from 0 to 65535');
   }
   if (options.host.trim() === '') throw new Error('MCP HTTP host must not be empty');
+  const sourceCommit = options.sourceCommit?.trim();
+  if (sourceCommit !== undefined && !SOURCE_COMMIT.test(sourceCommit)) {
+    throw new Error('MCP HTTP sourceCommit must be a lowercase 40-character commit SHA');
+  }
   if (options.allowUnauthenticatedLoopback === true && !isLoopbackBindHost(options.host)) {
     throw new Error('unauthenticated MCP HTTP must bind to a loopback interface');
   }
@@ -193,7 +212,7 @@ export async function listenMcpHttpNode(
     const context = toWebRequest(req, res);
     Promise.resolve()
       .then(() => handler.fetch(context.request))
-      .then((response) => writeWebResponse(response, res))
+      .then((response) => writeWebResponse(withSourceCommit(response, sourceCommit), res))
       .catch((error: unknown) => {
         if (isClientDisconnect(error) || res.destroyed) return;
         if (!res.headersSent) {
