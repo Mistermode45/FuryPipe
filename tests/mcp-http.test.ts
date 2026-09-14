@@ -265,6 +265,77 @@ describe('production MCP HTTP boundary', () => {
     });
   });
 
+  it('returns 499 when the client aborts during Bearer verification', async () => {
+    let authStartedResolve!: () => void;
+    const authStarted = new Promise<void>((resolve) => {
+      authStartedResolve = resolve;
+    });
+    const verifier: OAuthTokenVerifier = {
+      async verifyAccessToken(): Promise<AuthInfo> {
+        authStartedResolve();
+        return new Promise<AuthInfo>(() => undefined);
+      },
+    };
+    const mcp = await handler({
+      allowedHostnames: ['localhost'],
+      bearerAuth: { verifier, requiredScopes: ['mcp'] },
+      timeoutMs: 1_000,
+    });
+    const request = modernRequest('tools/list', {});
+    request.headers.set('authorization', 'Bearer opaque-test-token');
+    const controller = new AbortController();
+    const responsePromise = mcp.fetch(new Request(request, { signal: controller.signal }));
+    await authStarted;
+    controller.abort(new DOMException('test cancellation', 'AbortError'));
+    const response = await responsePromise;
+    expect(response.status).toBe(499);
+    expect((await json(response)).error).toMatchObject({ code: -32603, message: 'request cancelled' });
+    expect(getProductionMcpRuntimeEvidence(mcp)).toMatchObject({
+      requests: 1,
+      dispatchedRequests: 0,
+      bearerAuthConfigured: true,
+      bearerAuthSuccesses: 0,
+    });
+  });
+
+  it('returns 499 when the client aborts during an in-flight SDK tool dispatch', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-http-cancel-dispatch-'));
+    roots.push(root);
+    const store = createRecoveryStore(root);
+    let verifyStartedResolve!: () => void;
+    const verifyStarted = new Promise<void>((resolve) => {
+      verifyStartedResolve = resolve;
+    });
+    const blockedStore = {
+      ...store,
+      async verify() {
+        verifyStartedResolve();
+        return new Promise<never>(() => undefined);
+      },
+    };
+    const mcp = createProductionMcpHandler(blockedStore, {
+      allowedHostnames: ['localhost'],
+      allowUnauthenticatedLoopback: true,
+      timeoutMs: 1_000,
+    });
+    handlers.push(mcp);
+    const request = modernRequest('tools/call', {
+      name: 'verify_handle',
+      arguments: { handle: `furypipe-recovery/v1/sha256/${'0'.repeat(64)}` },
+    });
+    const controller = new AbortController();
+    const responsePromise = mcp.fetch(new Request(request, { signal: controller.signal }));
+    await verifyStarted;
+    controller.abort(new DOMException('test cancellation', 'AbortError'));
+    const response = await responsePromise;
+    expect(response.status).toBe(499);
+    expect((await json(response)).error).toMatchObject({ code: -32603, message: 'request cancelled' });
+    expect(getProductionMcpRuntimeEvidence(mcp)).toMatchObject({
+      requests: 1,
+      dispatchedRequests: 1,
+    });
+  });
+
   it('keeps the 2025 stateless fallback available through the secured boundary', async () => {
     const mcp = await handler();
     const response = await mcp.fetch(new Request('https://localhost/mcp', {
