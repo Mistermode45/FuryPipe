@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateHostedMcpEvidence,
   isForbiddenHostedMcpHostname,
+  isForbiddenResolvedAddress,
   modernRpcBody,
   parseHostedMcpTarget,
   parseRpcPayloadText,
@@ -13,6 +14,13 @@ describe('hosted MCP conformance harness', () => {
     expect(isForbiddenHostedMcpHostname('127.0.0.1')).toBe(true);
     expect(isForbiddenHostedMcpHostname('::1')).toBe(true);
     expect(isForbiddenHostedMcpHostname('mcp.example.test')).toBe(false);
+    expect(isForbiddenResolvedAddress('10.0.0.1')).toBe(true);
+    expect(isForbiddenResolvedAddress('172.16.0.1')).toBe(true);
+    expect(isForbiddenResolvedAddress('192.168.1.1')).toBe(true);
+    expect(isForbiddenResolvedAddress('169.254.169.254')).toBe(true);
+    expect(isForbiddenResolvedAddress('100.64.0.1')).toBe(true);
+    expect(isForbiddenResolvedAddress('8.8.8.8')).toBe(false);
+    expect(isForbiddenResolvedAddress('2606:4700:4700::1111')).toBe(false);
     expect(() => parseHostedMcpTarget('http://mcp.example.test/mcp')).toThrow('requires HTTPS');
     expect(() => parseHostedMcpTarget('https://127.0.0.1/mcp')).toThrow('refuses loopback');
     expect(() => parseHostedMcpTarget('https://user:secret@mcp.example.test/mcp')).toThrow('credentials');
