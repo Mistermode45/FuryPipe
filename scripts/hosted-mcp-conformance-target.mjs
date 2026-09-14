@@ -11,15 +11,15 @@ const HOSTNAME = /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?
 
 function required(name) {
   const value = process.env[name];
-  if (!value) throw new Error(\`\${name} is required\`);
+  if (!value) throw new Error(`${name} is required`);
   return value;
 }
 function boundedInteger(name, fallback, minimum, maximum) {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
-  if (!/^\d+$/u.test(raw)) throw new Error(\`\${name} must be an integer\`);
+  if (!/^\d+$/u.test(raw)) throw new Error(`${name} must be an integer`);
   const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new Error(\`\${name} must be between \${minimum} and \${maximum}\`);
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) throw new Error(`${name} must be between ${minimum} and ${maximum}`);
   return value;
 }
 function exactSourceCommit() {
@@ -27,7 +27,7 @@ function exactSourceCommit() {
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim().toLowerCase();
   if (!SHA40.test(commit)) throw new Error('git rev-parse HEAD did not return a lowercase 40-character SHA');
   const expected = process.env.FURYPIPE_SOURCE_COMMIT;
-  if (expected !== undefined && expected !== commit) throw new Error(\`FURYPIPE_SOURCE_COMMIT mismatch: checkout is \${commit}\`);
+  if (expected !== undefined && expected !== commit) throw new Error(`FURYPIPE_SOURCE_COMMIT mismatch: checkout is ${commit}`);
   return commit;
 }
 function hostnames() {
@@ -76,19 +76,19 @@ async function main() {
     bearerAuth: { verifier, requiredScopes: ['mcp'] },
     timeoutMs,
   });
-  process.stdout.write(\`\${JSON.stringify({
+  process.stdout.write(`${JSON.stringify({
     format: 'furypipe-hosted-mcp-conformance-target/v1',
     sourceCommit, bindHost, port, publicHostname, allowedHostnames, path: '/mcp',
     timeoutMs, slowDelayMs,
     auth: 'ephemeral-static-bearer-for-conformance-only',
     oauthAuthorizationServerClaim: false,
     tlsExpectedAtReverseProxy: true,
-  }, null, 2)}\n\`);
+  }, null, 2)}\n`);
   let closing = false;
   const close = async (signal) => {
     if (closing) return;
     closing = true;
-    process.stdout.write(\`Hosted MCP conformance target shutting down (\${signal})\n\`);
+    process.stdout.write(`Hosted MCP conformance target shutting down (${signal})\n`);
     await listener.close();
     process.exitCode = 0;
   };
@@ -96,6 +96,6 @@ async function main() {
   process.once('SIGTERM', () => void close('SIGTERM'));
 }
 main().catch((error) => {
-  console.error(\`Hosted MCP conformance target failed: \${error instanceof Error ? error.message : String(error)}\`);
+  console.error(`Hosted MCP conformance target failed: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
 });
