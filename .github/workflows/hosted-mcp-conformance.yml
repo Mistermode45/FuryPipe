@@ -26,12 +26,16 @@ jobs:
   conformance:
     name: External Inspector conformance
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      github.actor == github.repository_owner &&
       (
-        github.event_name == 'pull_request' &&
-        github.event.action == 'labeled' &&
-        github.event.label.name == 'hosted-mcp-conformance' &&
-        github.event.pull_request.head.repo.full_name == github.repository
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'pull_request' &&
+          github.event.action == 'labeled' &&
+          github.event.label.name == 'hosted-mcp-conformance' &&
+          github.event.pull_request.user.login == github.repository_owner &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        )
       )
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -41,6 +45,7 @@ jobs:
       FURYPIPE_HOSTED_MCP_URL: ${{ inputs.target_url || vars.FURYPIPE_HOSTED_MCP_TARGET_URL }}
       FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS: ${{ inputs.server_timeout_ms || vars.FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS || '1500' }}
       FURYPIPE_HOSTED_MCP_CLIENT_BOUNDARY: github-hosted-runner
+      FURYPIPE_GITHUB_RUNNER_ENVIRONMENT: ${{ runner.environment }}
       FURYPIPE_HOSTED_MCP_OUTPUT_DIR: artifacts/hosted-mcp-conformance
 
     steps:
