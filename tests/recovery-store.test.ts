@@ -17,12 +17,25 @@ async function runRecoveryWorker(request: Record<string, unknown>): Promise<{ co
   const child = spawn(process.execPath, [tsx, worker, JSON.stringify(request)], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
   let stderr = '';
+  let timedOut = false;
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
   child.stdout.on('data', (chunk: string) => { stdout += chunk; });
   child.stderr.on('data', (chunk: string) => { stderr += chunk; });
-  const [result] = await once(child, 'close') as [number | null, string];
-  return { code: result ?? -1, stdout: stdout.trim(), stderr: stderr.trim() };
+  const closed = once(child, 'close');
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    child.kill('SIGKILL');
+  }, 30_000);
+  timeout.unref();
+  let result: number | null;
+  try {
+    [result] = await closed as [number | null, string];
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (timedOut) stderr += `${stderr ? '\n' : ''}recovery worker exceeded its 30-second test bound`;
+  return { code: timedOut ? -1 : result ?? -1, stdout: stdout.trim(), stderr: stderr.trim() };
 }
 
 afterEach(async () => {
