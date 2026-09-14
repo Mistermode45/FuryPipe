@@ -20,11 +20,15 @@ fixture cases across Chromium, Firefox and WebKit. This is not a live Figma or
 arbitrary customer-site audit, and it is not a substitute for the exact-head
 GitHub workflow results recorded on the audit Draft PR.
 
-This candidate is **not release-ready**. Repository branch protections/rulesets
-are absent; signed npm attestation is not produced on a pull request;
+This candidate is **not release-ready**. After the Codex audit completed, the
+maintainer enabled the repository Dependency Graph and an active ruleset named
+`FuryPipe Production Hardening` for `v5-production-hardening`; the previous
+repository-setting blocker is therefore resolved as a configuration issue.
+Signed npm attestation is still not produced on a pull request;
 provider/OAuth/hosted MCP/Figma validation has no supplied external
 environment; and no public earlier FuryPipe npm version exists for package
-upgrade/rollback.
+upgrade/rollback. Repository policy must still be re-read as GitHub-origin
+evidence at the actual release decision.
 
 ## Exact source identity
 
@@ -61,7 +65,7 @@ Release-Readiness/RC evidence; GitHub workflow triggers and test/report hygiene.
 | Provider, policy, cache and retrieval | `PARTIAL` | Local registry/TTL/unknown-cost/bounds and governed fallback tests cover BASE reconstruction, allowlisted statuses, Retry-After and ambiguous-stop behavior. No real provider account, billing, model availability or business result was tested. |
 | External harness readiness | `PARTIAL` | A fail-closed opt-in live OpenClaw health probe is available. Provider live, Authorization Server, hosted MCP and Figma harnesses/evidence remain unavailable or unexecuted. |
 | Supply chain and SBOM | `VERIFIED` | On final PR #129 head, Workflow action pinning, SPDX SBOM, Frozen dependency audit, and GitHub dependency review child jobs all completed successfully. The repository variable condition was true for this run. Local frozen install/audit and adversarial SBOM tests also pass. Signed npm artifact attestation is a separate provenance job and was `SKIPPED`. |
-| GitHub branch/release policy | `BLOCKED_BY_REPO_SETTING` | GitHub API returned `Branch not protected` for `v5-production-hardening`; repository ruleset query returned no rulesets. No setting was changed. |
+| GitHub branch/release policy | `VERIFIED` | Post-audit independent re-check: `v5-production-hardening` reports `protected: true`; ruleset `FuryPipe Production Hardening` is active and targets that branch. It requires PRs, strict required checks, resolved conversations and blocks deletion/non-fast-forward. Release-time evidence must still re-read this mutable GitHub configuration. |
 | RC/release readiness | `BLOCKED` | Exact-source evidence and explicit maintainer authorization are still required. npm package upgrade/rollback is `NOT_EXECUTED` because the registry has no prior public FuryPipe version. |
 | Documentation/status hygiene | `PARTIAL` | Durable task, Web Studio, i18n, migration and RC docs were updated. Old WORKLOG entries dated 2026-09-12 are retained as historical records, not current state. |
 | Test false-green audit | `PARTIAL` | Targeted searches found no skipped tests or literal always-true assertions; child Recovery workers now have a 30-second bound. This is not a manual proof of every assertion in the full suite. |
@@ -143,15 +147,19 @@ Release-Readiness/RC evidence; GitHub workflow triggers and test/report hygiene.
   hosted environment. The final hosted CI matrix must be rechecked on the
   post-fix PR head.
 
-### AUDIT-06 — Repository policy is not configured
+### AUDIT-06 — Repository policy was not configured at audit time
 
 - Severity: **P1 release blocker**; no local code fix is authorized or claimed.
 - Evidence: GitHub branch-protection API returned 404 `Branch not protected`;
   rulesets API returned an empty list.
 - Impact: required PR/check/force-push/deletion/conversation-resolution policy
   cannot be verified as enforced.
-- Disposition: `BLOCKED_BY_REPO_SETTING`; report to maintainer without changing
-  repository settings.
+- Original disposition: `BLOCKED_BY_REPO_SETTING`; Codex correctly reported the
+  external configuration gap without changing repository settings.
+- Post-audit disposition: **resolved by maintainer configuration**. Independent
+  re-check observed ruleset `FuryPipe Production Hardening` active on
+  `v5-production-hardening` and the branch reporting `protected: true`. This is
+  mutable external state and must be revalidated at release time.
 
 ### AUDIT-07 — SBOM alias, optional-dependency and identity edge coverage
 
@@ -313,6 +321,6 @@ test assertion; local tests do not promote hosted/external states.
 - No hosted OAuth/MCP, live OpenClaw or Figma connectivity.
 - No complete WCAG manual audit, OWASP ASVS audit, SEO audit, production Web
   Vitals or deployment verification.
-- No branch-protection/ruleset enforcement.
+- Repository policy is now enforced by the active ruleset, but this report does not claim that mutable GitHub configuration can never change; it must be re-read before release.
 - No signed npm artifact attestation, prior-version npm upgrade/rollback, merge,
   tag, publication, GitHub Release, production deployment or release approval.
