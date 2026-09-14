@@ -67,4 +67,10 @@ describe('ExactGuard', () => {
     expect(spans.some((span) => span.class === 'identifier')).toBe(true);
     expect(spans.some((span) => span.class === 'string_literal')).toBe(true);
   });
+
+  it('rejects sticky global rules because they can silently miss later occurrences', () => {
+    expect(() => detectProtectedSpans('prefix alpha suffix alpha', {
+      rules: [{ id: 'sticky', class: 'identifier', pattern: /alpha/gy }],
+    })).toThrow('sticky rules are not supported');
+  });
 });

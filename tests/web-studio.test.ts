@@ -200,6 +200,7 @@ describe('Web/Figma Studio kernel', () => {
     expect(artifact.html).toContain('Body &lt;script&gt;alert(1)&lt;/script&gt; content');
     expect(artifact.html).not.toContain('<script>');
     expect(artifact.html).toContain('Content-Security-Policy');
+    expect(artifact.html).not.toContain('frame-ancestors');
   });
 
   it('refuses static generation before explicit design approval and unsafe canonical URLs', () => {
@@ -236,7 +237,7 @@ describe('Web/Figma Studio kernel', () => {
     expect(matrix.some((item) => item.locale === 'ar-XB')).toBe(true);
   });
 
-  it('executes host browser QA evidence without promoting it to production verification', async () => {
+  it('keeps a passing browser subset partial until the complete required matrix is covered', async () => {
     const adapter = {
       id: 'playwright-host',
       version: '1.0.0',
@@ -263,13 +264,47 @@ describe('Web/Figma Studio kernel', () => {
     const report = await runStudioBrowserQa(adapter, 'http://127.0.0.1:4173', cases);
     expect(report).toMatchObject({
       totalCases: 8,
+      browserQa: 'PARTIAL',
+      structuralAccessibility: 'PARTIAL',
+      structuralSeo: 'PARTIAL',
+      thirdPartyScriptSurface: 'PARTIAL',
+      productionPerformance: 'NOT_RUN',
+      deployment: 'NOT_RUN',
+      promotionEvidenceCompatible: false,
+      failures: [],
+    });
+  });
+
+  it('marks the complete browser, viewport and locale matrix VERIFIED', async () => {
+    const adapter = {
+      id: 'complete-matrix-fixture',
+      version: '1.0.0',
+      async run(testCase: ReturnType<typeof buildStudioQaMatrix>[number]) {
+        return {
+          caseId: testCase.id,
+          loaded: true,
+          horizontalOverflow: false,
+          keyboardReachable: true,
+          singleH1: true,
+          lang: testCase.locale,
+          direction: testCase.locale === 'ar-XB' ? 'rtl' as const : 'ltr' as const,
+          hasTitle: true,
+          hasMetaDescription: true,
+          hasCanonical: true,
+          brokenLinks: 0,
+          consoleErrors: 0,
+          externalScriptOrigins: [],
+        };
+      },
+    };
+
+    const report = await runStudioBrowserQa(adapter, 'http://127.0.0.1:4173');
+    expect(report).toMatchObject({
+      totalCases: 120,
       browserQa: 'VERIFIED',
       structuralAccessibility: 'VERIFIED',
       structuralSeo: 'VERIFIED',
       thirdPartyScriptSurface: 'VERIFIED',
-      productionPerformance: 'NOT_RUN',
-      deployment: 'NOT_RUN',
-      promotionEvidenceCompatible: false,
       failures: [],
     });
   });

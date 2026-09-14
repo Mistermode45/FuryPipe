@@ -13,8 +13,16 @@ import {
   type BearerAuthOptions,
   type JsonSchemaType,
   type McpHttpHandler,
+  type JSONRPCMessage,
+  type Transport,
+  type TransportSendOptions,
 } from '@modelcontextprotocol/server';
-import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server/stdio';
+import {
+  serveStdio,
+  StdioServerTransport,
+  type ServeStdioOptions,
+  type StdioServerHandle,
+} from '@modelcontextprotocol/server/stdio';
 import {
   executeMcpTool,
   furypipeMcpVersion,
@@ -55,6 +63,15 @@ export interface ProductionMcpRuntimeEvidence {
   readonly oauthMetadataResponses: number;
 }
 
+export interface ProductionMcpStdioRuntimeEvidence {
+  readonly format: 'furypipe-mcp-stdio-runtime-evidence/v1';
+  readonly inboundMessages: number;
+  readonly inboundRequests: number;
+  readonly outboundMessages: number;
+  readonly completedExchanges: number;
+  readonly trackingOverflows: number;
+}
+
 interface MutableProductionMcpRuntimeEvidence {
   requests: number;
   dispatchedRequests: number;
@@ -64,8 +81,19 @@ interface MutableProductionMcpRuntimeEvidence {
   oauthMetadataResponses: number;
 }
 
+interface MutableProductionMcpStdioRuntimeEvidence {
+  inboundMessages: number;
+  inboundRequests: number;
+  outboundMessages: number;
+  completedExchanges: number;
+  trackingOverflows: number;
+}
+
 const MAX_MCP_RUNTIME_COUNT = 1_000_000_000;
+const MAX_MCP_STDIO_PENDING_REQUESTS = 4_096;
+const MAX_MCP_STDIO_REQUEST_ID_LENGTH = 256;
 const PRODUCTION_MCP_RUNTIME_EVIDENCE = new WeakMap<object, MutableProductionMcpRuntimeEvidence>();
+const PRODUCTION_MCP_STDIO_RUNTIME_EVIDENCE = new WeakMap<object, MutableProductionMcpStdioRuntimeEvidence>();
 const GENERATED_MCP_STDIO_HANDLES = new WeakSet<object>();
 
 function incrementRuntimeCounter(value: number): number {
@@ -88,6 +116,28 @@ export function getProductionMcpRuntimeEvidence(value: unknown): ProductionMcpRu
     bearerAuthSuccesses: state.bearerAuthSuccesses,
     oauthMetadataConfigured: state.oauthMetadataConfigured,
     oauthMetadataResponses: state.oauthMetadataResponses,
+  });
+}
+
+
+/**
+ * Read bounded metadata-only evidence from an exact process-local stdio handle.
+ * Request bodies, method names, tool arguments, response payloads and request
+ * IDs are never returned by this surface.
+ */
+export function getProductionMcpStdioRuntimeEvidence(
+  value: unknown,
+): ProductionMcpStdioRuntimeEvidence | undefined {
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return undefined;
+  const state = PRODUCTION_MCP_STDIO_RUNTIME_EVIDENCE.get(value as object);
+  if (state === undefined) return undefined;
+  return Object.freeze({
+    format: 'furypipe-mcp-stdio-runtime-evidence/v1' as const,
+    inboundMessages: state.inboundMessages,
+    inboundRequests: state.inboundRequests,
+    outboundMessages: state.outboundMessages,
+    completedExchanges: state.completedExchanges,
+    trackingOverflows: state.trackingOverflows,
   });
 }
 
@@ -234,7 +284,49 @@ function validateModernRoutingHeaders(value: Record<string, unknown>, request: R
   return undefined;
 }
 
-async function readAndValidateBody(request: Request, maxBytes: number): Promise<{ bytes: Uint8Array; value: Record<string, unknown> } | Response> {
+type DeadlineOutcome<T> =
+  | { readonly kind: 'value'; readonly value: T }
+  | { readonly kind: 'error' }
+  | { readonly kind: 'timeout' }
+  | { readonly kind: 'aborted' };
+
+async function settleBeforeDeadline<T>(
+  promise: Promise<T>,
+  deadlineAt: number,
+  signal?: AbortSignal,
+): Promise<DeadlineOutcome<T>> {
+  if (signal?.aborted) return { kind: 'aborted' };
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) return { kind: 'timeout' };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const abortPromise = new Promise<{ readonly kind: 'aborted' }>((resolve) => {
+    if (signal === undefined) return;
+    onAbort = () => resolve({ kind: 'aborted' });
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([
+      promise.then(
+        (value) => ({ kind: 'value' as const, value }),
+        () => ({ kind: 'error' as const }),
+      ),
+      new Promise<{ readonly kind: 'timeout' }>((resolve) => {
+        timer = setTimeout(() => resolve({ kind: 'timeout' }), remainingMs);
+      }),
+      abortPromise,
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    if (signal !== undefined && onAbort !== undefined) signal.removeEventListener('abort', onAbort);
+  }
+}
+
+async function readAndValidateBody(
+  request: Request,
+  maxBytes: number,
+  deadlineAt: number,
+): Promise<{ bytes: Uint8Array; value: Record<string, unknown> } | Response> {
   const contentLength = request.headers.get('content-length');
   if (contentLength !== null) {
     if (!/^\d+$/u.test(contentLength)) return jsonRpcHttpError(400, -32600, 'invalid Content-Length');
@@ -253,18 +345,36 @@ async function readAndValidateBody(request: Request, maxBytes: number): Promise<
       let total = 0;
       try {
         while (true) {
-          const { value, done } = await reader.read();
+          const outcome = await settleBeforeDeadline(reader.read(), deadlineAt, request.signal);
+          if (outcome.kind === 'timeout') {
+            void reader.cancel().catch(() => undefined);
+            return jsonRpcHttpError(504, -32603, 'MCP request timed out');
+          }
+          if (outcome.kind === 'aborted') {
+            void reader.cancel().catch(() => undefined);
+            return jsonRpcHttpError(499, -32603, 'request cancelled');
+          }
+          if (outcome.kind === 'error') {
+            return request.signal.aborted
+              ? jsonRpcHttpError(499, -32603, 'request cancelled')
+              : jsonRpcHttpError(400, -32700, 'unable to read request body');
+          }
+          const { value, done } = outcome.value;
           if (done) break;
           if (value === undefined) continue;
           if (value.byteLength > maxBytes - total) {
-            await reader.cancel();
+            await reader.cancel().catch(() => undefined);
             return jsonRpcHttpError(413, -32600, 'request body exceeds limit');
           }
           chunks.push(value);
           total += value.byteLength;
         }
       } finally {
-        reader.releaseLock();
+        try {
+          reader.releaseLock();
+        } catch {
+          // A timed-out read may still be settling while cancellation propagates.
+        }
       }
       bytes = new Uint8Array(total);
       let offset = 0;
@@ -274,8 +384,11 @@ async function readAndValidateBody(request: Request, maxBytes: number): Promise<
       }
     }
   } catch {
-    return jsonRpcHttpError(400, -32700, 'unable to read request body');
+    return request.signal.aborted
+      ? jsonRpcHttpError(499, -32603, 'request cancelled')
+      : jsonRpcHttpError(400, -32700, 'unable to read request body');
   }
+  if (Date.now() >= deadlineAt) return jsonRpcHttpError(504, -32603, 'MCP request timed out');
   let value: unknown;
   try {
     value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown;
@@ -292,40 +405,33 @@ async function runWithDeadline(
   handler: McpHttpHandler,
   request: Request,
   body: Uint8Array,
-  timeoutMs: number,
+  deadlineAt: number,
   authInfo?: AuthInfo,
 ): Promise<Response> {
   if (request.signal.aborted) return jsonRpcHttpError(499, -32603, 'request cancelled');
+  if (deadlineAt <= Date.now()) return jsonRpcHttpError(504, -32603, 'MCP request timed out');
   const controller = new AbortController();
-  let timedOut = false;
   const onAbort = () => controller.abort(request.signal.reason);
   request.signal.addEventListener('abort', onAbort, { once: true });
-  let resolveTimeout: ((value: { kind: 'timeout' }) => void) | undefined;
-  const timeoutPromise = new Promise<{ kind: 'timeout' }>((resolve) => {
-    resolveTimeout = resolve;
-  });
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort(new DOMException('MCP request timed out', 'TimeoutError'));
-    resolveTimeout?.({ kind: 'timeout' });
-  }, timeoutMs);
   // TypeScript 7 models Uint8Array<ArrayBufferLike> more narrowly than the
   // web Request constructor, while the runtime accepts this exact byte body.
   const downstream = new Request(request, { body: body as unknown as BodyInit, signal: controller.signal });
-  const responsePromise = handler.fetch(downstream, authInfo === undefined ? undefined : { authInfo });
+  const responsePromise = Promise.resolve().then(
+    () => handler.fetch(downstream, authInfo === undefined ? undefined : { authInfo }),
+  );
   try {
-    const outcome = await Promise.race([
-      responsePromise.then((response) => ({ kind: 'response' as const, response }), () => ({ kind: 'error' as const })),
-      timeoutPromise,
-    ]);
-    if (outcome.kind === 'timeout') return jsonRpcHttpError(504, -32603, 'MCP request timed out');
-    if (outcome.kind === 'error') {
-      if (timedOut || request.signal.aborted) return jsonRpcHttpError(request.signal.aborted ? 499 : 504, -32603, request.signal.aborted ? 'request cancelled' : 'MCP request timed out');
-      return jsonRpcHttpError(500, -32603, 'MCP request failed');
+    const outcome = await settleBeforeDeadline(responsePromise, deadlineAt, request.signal);
+    if (outcome.kind === 'timeout') {
+      controller.abort(new DOMException('MCP request timed out', 'TimeoutError'));
+      return jsonRpcHttpError(504, -32603, 'MCP request timed out');
     }
-    return outcome.response;
+    if (outcome.kind === 'aborted') {
+      controller.abort(request.signal.reason);
+      return jsonRpcHttpError(499, -32603, 'request cancelled');
+    }
+    if (outcome.kind === 'error') return jsonRpcHttpError(500, -32603, 'MCP request failed');
+    return outcome.value;
   } finally {
-    clearTimeout(timer);
     request.signal.removeEventListener('abort', onAbort);
   }
 }
@@ -401,19 +507,34 @@ export function createProductionMcpHandler(
       if (!acceptsMcpResponse(request.headers.get('accept'))) {
         return withHttpResponseHeaders(jsonRpcHttpError(406, -32600, 'Accept must include application/json or text/event-stream'), request);
       }
-      const checked = await readAndValidateBody(request, maxBytes);
+      const deadlineAt = Date.now() + timeoutMs;
+      const checked = await readAndValidateBody(request, maxBytes, deadlineAt);
       if (checked instanceof Response) return withHttpResponseHeaders(checked, request);
       const routingRejection = validateModernRoutingHeaders(checked.value, request);
       if (routingRejection) return withHttpResponseHeaders(routingRejection, request);
       if (authenticate) {
-        const auth = await authenticate(request);
+        const authOutcome = await settleBeforeDeadline(
+          Promise.resolve().then(() => authenticate(request)),
+          deadlineAt,
+          request.signal,
+        );
+        if (authOutcome.kind === 'timeout') {
+          return withHttpResponseHeaders(jsonRpcHttpError(504, -32603, 'MCP request timed out'), request);
+        }
+        if (authOutcome.kind === 'aborted') {
+          return withHttpResponseHeaders(jsonRpcHttpError(499, -32603, 'request cancelled'), request);
+        }
+        if (authOutcome.kind === 'error') {
+          return withHttpResponseHeaders(jsonRpcHttpError(500, -32603, 'MCP authentication failed'), request);
+        }
+        const auth = authOutcome.value;
         if (auth instanceof Response) return withHttpResponseHeaders(auth, request);
         runtimeEvidence.bearerAuthSuccesses = incrementRuntimeCounter(runtimeEvidence.bearerAuthSuccesses);
         runtimeEvidence.dispatchedRequests = incrementRuntimeCounter(runtimeEvidence.dispatchedRequests);
-        return withHttpResponseHeaders(await runWithDeadline(handler, request, checked.bytes, timeoutMs, auth), request);
+        return withHttpResponseHeaders(await runWithDeadline(handler, request, checked.bytes, deadlineAt, auth), request);
       }
       runtimeEvidence.dispatchedRequests = incrementRuntimeCounter(runtimeEvidence.dispatchedRequests);
-      return withHttpResponseHeaders(await runWithDeadline(handler, request, checked.bytes, timeoutMs, requestOptions?.authInfo), request);
+      return withHttpResponseHeaders(await runWithDeadline(handler, request, checked.bytes, deadlineAt, requestOptions?.authInfo), request);
     },
     close: handler.close,
     notify: handler.notify,
@@ -423,11 +544,153 @@ export function createProductionMcpHandler(
   return productionHandler;
 }
 
-/** Official SDK stdio transport; the SDK selects modern or legacy per connection. */
-export function runModernMcpStdio(store: RecoveryStore): StdioServerHandle {
-  const handle = serveStdio(() => createModernMcpServer(store), { legacy: 'serve' });
+type StdioRequestId = string | number;
+
+function stdioRequestIdKey(value: unknown): string | undefined {
+  if (typeof value === 'number') {
+    if (!Number.isSafeInteger(value)) return undefined;
+    return `n:${value}`;
+  }
+  if (typeof value === 'string') {
+    if (value.length < 1 || value.length > MAX_MCP_STDIO_REQUEST_ID_LENGTH || value.includes('\0')) {
+      return undefined;
+    }
+    return `s:${value}`;
+  }
+  return undefined;
+}
+
+function inboundRequestId(message: JSONRPCMessage): StdioRequestId | undefined {
+  if (!('method' in message) || !('id' in message)) return undefined;
+  return typeof message.id === 'string' || typeof message.id === 'number'
+    ? message.id
+    : undefined;
+}
+
+function outboundResponseId(message: JSONRPCMessage): StdioRequestId | undefined {
+  if ('method' in message || !('id' in message)) return undefined;
+  if (!('result' in message) && !('error' in message)) return undefined;
+  return typeof message.id === 'string' || typeof message.id === 'number'
+    ? message.id
+    : undefined;
+}
+
+class ObservableMcpStdioTransport implements Transport {
+  onclose?: () => void;
+  onerror?: (error: Error) => void;
+  onmessage?: Transport['onmessage'];
+
+  private readonly pendingRequestIds = new Set<string>();
+  private started = false;
+
+  constructor(
+    private readonly inner: Transport,
+    private readonly evidence: MutableProductionMcpStdioRuntimeEvidence,
+  ) {}
+
+  get hasPerRequestStream(): boolean | undefined {
+    return this.inner.hasPerRequestStream;
+  }
+
+  get sessionId(): string | undefined {
+    return this.inner.sessionId;
+  }
+
+  set sessionId(value: string | undefined) {
+    this.inner.sessionId = value;
+  }
+
+  setProtocolVersion = (version: string): void => {
+    this.inner.setProtocolVersion?.(version);
+  };
+
+  setSupportedProtocolVersions = (versions: string[]): void => {
+    this.inner.setSupportedProtocolVersions?.(versions);
+  };
+
+  async start(): Promise<void> {
+    if (this.started) throw new Error('Observable MCP stdio transport already started');
+    this.started = true;
+
+    const priorMessage = this.inner.onmessage;
+    const priorError = this.inner.onerror;
+    const priorClose = this.inner.onclose;
+
+    this.inner.onmessage = (message, extra) => {
+      this.evidence.inboundMessages = incrementRuntimeCounter(this.evidence.inboundMessages);
+      const requestId = inboundRequestId(message);
+      if (requestId !== undefined) {
+        this.evidence.inboundRequests = incrementRuntimeCounter(this.evidence.inboundRequests);
+        const key = stdioRequestIdKey(requestId);
+        if (
+          key === undefined
+          || this.pendingRequestIds.has(key)
+          || this.pendingRequestIds.size >= MAX_MCP_STDIO_PENDING_REQUESTS
+        ) {
+          this.evidence.trackingOverflows = incrementRuntimeCounter(this.evidence.trackingOverflows);
+        } else {
+          this.pendingRequestIds.add(key);
+        }
+      }
+      priorMessage?.(message, extra);
+      this.onmessage?.(message, extra);
+    };
+    this.inner.onerror = (error) => {
+      priorError?.(error);
+      this.onerror?.(error);
+    };
+    this.inner.onclose = () => {
+      this.pendingRequestIds.clear();
+      priorClose?.();
+      this.onclose?.();
+    };
+
+    await this.inner.start();
+  }
+
+  async send(message: JSONRPCMessage, options?: TransportSendOptions): Promise<void> {
+    const responseId = outboundResponseId(message);
+    const responseKey = responseId === undefined ? undefined : stdioRequestIdKey(responseId);
+    await this.inner.send(message, options);
+    this.evidence.outboundMessages = incrementRuntimeCounter(this.evidence.outboundMessages);
+    if (responseKey !== undefined && this.pendingRequestIds.delete(responseKey)) {
+      this.evidence.completedExchanges = incrementRuntimeCounter(this.evidence.completedExchanges);
+    }
+  }
+
+  async close(): Promise<void> {
+    this.pendingRequestIds.clear();
+    await this.inner.close();
+  }
+}
+
+/**
+ * Official SDK stdio transport with process-local metadata-only exchange
+ * evidence. Construction alone is not a verified client exchange: Control
+ * Room promotes stdio only after a request/response pair is observed.
+ */
+export function runModernMcpStdio(
+  store: RecoveryStore,
+  options: ServeStdioOptions = {},
+): StdioServerHandle {
+  const runtimeEvidence: MutableProductionMcpStdioRuntimeEvidence = {
+    inboundMessages: 0,
+    inboundRequests: 0,
+    outboundMessages: 0,
+    completedExchanges: 0,
+    trackingOverflows: 0,
+  };
+  const transport = new ObservableMcpStdioTransport(
+    options.transport ?? new StdioServerTransport(),
+    runtimeEvidence,
+  );
+  const handle = serveStdio(
+    () => createModernMcpServer(store),
+    { ...options, legacy: options.legacy ?? 'serve', transport },
+  );
   if (handle !== null && (typeof handle === 'object' || typeof handle === 'function')) {
     GENERATED_MCP_STDIO_HANDLES.add(handle as object);
+    PRODUCTION_MCP_STDIO_RUNTIME_EVIDENCE.set(handle as object, runtimeEvidence);
   }
   return handle;
 }

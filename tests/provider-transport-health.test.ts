@@ -37,7 +37,10 @@ async function execution(overrides: Record<string, unknown> = {}) {
   return createGovernedProviderExecutor({
     transports,
     providerRuntime: runtime,
-    now: () => at,
+    now: (() => {
+      let calls = 0;
+      return () => calls++ === 0 ? at : at + 125;
+    })(),
   }).execute(request, permit);
 }
 
@@ -50,7 +53,6 @@ describe('provider transport health observation', () => {
     expect(() => assessProviderTransportHealth(
       { ...result },
       { availableTtlMs: 30_000 },
-      { startedAt: 1_000, finishedAt: 1_125 },
     )).toThrow(/process-local provenance/);
   });
 
@@ -59,7 +61,6 @@ describe('provider transport health observation', () => {
     const assessment = assessProviderTransportHealth(
       result,
       { availableTtlMs: 30_000 },
-      { startedAt: 1_000, finishedAt: 1_125 },
     );
 
     expect(assessment).toMatchObject({
@@ -79,7 +80,6 @@ describe('provider transport health observation', () => {
     const assessment = assessProviderTransportHealth(
       result,
       { availableTtlMs: 30_000 },
-      { startedAt: 10, finishedAt: 20 },
     );
     expect(assessment.availability).toBe('unknown');
     expect(assessment.reason).toBe('http-status-missing');
@@ -95,7 +95,6 @@ describe('provider transport health observation', () => {
     const conservative = assessProviderTransportHealth(
       result,
       { availableTtlMs: 30_000 },
-      { startedAt: 100, finishedAt: 150 },
     );
     expect(conservative.availability).toBe('unknown');
     expect(conservative.reason).toBe('rejection-not-classified');
@@ -107,12 +106,11 @@ describe('provider transport health observation', () => {
         unavailableHttpStatuses: [503],
         unavailableTtlMs: 5_000,
       },
-      { startedAt: 100, finishedAt: 150 },
     );
     expect(explicit).toMatchObject({
       availability: 'unavailable',
       reason: 'explicit-negative-http-status',
-      expiresAt: 5_150,
+      expiresAt: 6_125,
       retryAfterMs: 2_000,
     });
   });
@@ -130,7 +128,6 @@ describe('provider transport health observation', () => {
         unavailableHttpStatuses: [503],
         unavailableTtlMs: 2_000,
       },
-      { startedAt: 100, finishedAt: 200 },
     );
 
     expect(applyProviderTransportHealthAssessment(runtime, assessment)).toBe(true);
@@ -152,7 +149,6 @@ describe('provider transport health observation', () => {
     const assessment = assessProviderTransportHealth(
       result,
       { availableTtlMs: 30_000 },
-      { startedAt: 100, finishedAt: 150 },
     );
     expect(assessment.availability).toBe('unknown');
     expect(assessment.reason).toBe('transport-evidence-insufficient');
@@ -163,24 +159,23 @@ describe('provider transport health observation', () => {
     const assessment = assessProviderTransportHealth(
       await execution(),
       { availableTtlMs: 1_000 },
-      { startedAt: 100, finishedAt: 200 },
     );
 
     expect(applyProviderTransportHealthAssessment(runtime, assessment)).toBe(true);
     expect(runtime.health('openai', 500)).toMatchObject({
       availability: 'available',
       fresh: true,
-      observedAt: 200,
-      expiresAt: 1_200,
-      latencyMs: 100,
+      observedAt: 1_125,
+      expiresAt: 2_125,
+      latencyMs: 125,
       source: 'governed-provider-transport-result',
       evidenceKind: 'transport-result',
     });
-    expect(runtime.health('openai', 1_201)).toMatchObject({
+    expect(runtime.health('openai', 2_125)).toMatchObject({
       availability: 'unknown',
       fresh: false,
-      observedAt: 200,
-      expiresAt: 1_200,
+      observedAt: 1_125,
+      expiresAt: 2_125,
     });
   });
 
@@ -189,7 +184,6 @@ describe('provider transport health observation', () => {
     const assessment = assessProviderTransportHealth(
       await execution({ providerRequestStatus: 'rejected', httpStatus: 401 }),
       { availableTtlMs: 1_000 },
-      { startedAt: 100, finishedAt: 200 },
     );
     expect(applyProviderTransportHealthAssessment(runtime, assessment)).toBe(false);
     expect(runtime.health('openai', 200)).toMatchObject({ availability: 'unknown', fresh: false });
@@ -221,31 +215,69 @@ describe('provider transport health observation', () => {
     expect(() => assessProviderTransportHealth(
       result,
       { availableTtlMs: 0 },
-      { startedAt: 1, finishedAt: 2 },
     )).toThrow(/availableTtlMs/);
 
     expect(() => assessProviderTransportHealth(
       result,
       { availableTtlMs: MAX_PROVIDER_TRANSPORT_HEALTH_TTL_MS + 1 },
-      { startedAt: 1, finishedAt: 2 },
     )).toThrow(/availableTtlMs/);
 
     expect(() => assessProviderTransportHealth(
       result,
       { availableTtlMs: 1_000, unavailableHttpStatuses: [503] },
-      { startedAt: 1, finishedAt: 2 },
     )).toThrow(/unavailableTtlMs/);
 
     expect(() => assessProviderTransportHealth(
       result,
       { availableTtlMs: 1_000, unavailableHttpStatuses: [200], unavailableTtlMs: 1_000 },
-      { startedAt: 1, finishedAt: 2 },
     )).toThrow(/rejection statuses/);
 
     expect(() => assessProviderTransportHealth(
       result,
       { availableTtlMs: 1_000 },
       { startedAt: 3, finishedAt: 2 },
-    )).toThrow(/ordered safe timestamps/);
+    )).toThrow(/match the governed execution timestamps/);
+  });
+
+  it('does not allow callers to re-age an old transport result into fresh health', async () => {
+    const result = await execution();
+    const runtime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
+
+    expect(() => assessProviderTransportHealth(result, { availableTtlMs: 30_000 }, {
+      startedAt: 20_000,
+      finishedAt: 20_125,
+    })).toThrow(/match the governed execution timestamps/);
+
+    const assessment = assessProviderTransportHealth(result, { availableTtlMs: 30_000 });
+    expect(assessment.expiresAt).toBe(31_125);
+    expect(applyProviderTransportHealthAssessment(runtime, assessment)).toBe(true);
+    expect(runtime.health('openai', 31_125)).toMatchObject({ availability: 'unknown', fresh: false });
+  });
+
+  it('does not create availability when the execution clock cannot capture a finish timestamp', async () => {
+    const request = makeRequest();
+    const runtime = makeRuntime();
+    const gate = createProviderExecutionGate({ providerRuntime: runtime, now: () => at });
+    const permit = gate.authorize(request, makePolicy(request));
+    let calls = 0;
+    const result = await createGovernedProviderExecutor({
+      transports: createProviderTransportRegistry([{
+        providerId: request.providerId,
+        protocol: request.protocol,
+        execute: async () => ({ providerId: request.providerId, model: request.model,
+          networkStatus: 'executed', providerRequestStatus: 'accepted', httpStatus: 200 }),
+      }]),
+      providerRuntime: runtime,
+      now: () => {
+        calls += 1;
+        if (calls === 1) return at;
+        throw new Error('clock unavailable');
+      },
+    }).execute(request, permit);
+
+    expect(assessProviderTransportHealth(result, { availableTtlMs: 30_000 })).toMatchObject({
+      availability: 'unknown',
+      reason: 'transport-timing-unavailable',
+    });
   });
 });

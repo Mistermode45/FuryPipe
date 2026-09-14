@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 
 const [inputPath, outputPath = 'sbom.spdx.json'] = process.argv.slice(2);
@@ -15,13 +16,30 @@ const packages = new Map();
 const relationships = new Set();
 
 function spdxId(name, version) {
+  const identity = `${name}\0${version}`;
   const safe = `${name}-${version}`.replace(/[^A-Za-z0-9.-]+/g, '-').replace(/^-+|-+$/g, '');
-  return `SPDXRef-Package-${safe || 'unknown'}`;
+  const suffix = createHash('sha256').update(identity, 'utf8').digest('hex');
+  return `SPDXRef-Package-${safe || 'unknown'}-${suffix}`;
 }
 
-function addNode(node, parentId) {
+function packageNameFromReference(reference) {
+  if (typeof reference !== 'string') return undefined;
+  const value = reference.startsWith('npm:') ? reference.slice(4) : reference;
+  const match = value.startsWith('@')
+    ? /^(@[^\/]+\/[^@\/]+)(?:@.*)?$/u.exec(value)
+    : /^([^@/]+)(?:@.*)?$/u.exec(value);
+  return match?.[1];
+}
+
+function addNode(node, parentId, fallbackName) {
   if (!node || typeof node !== 'object') return;
-  const name = typeof node.name === 'string' ? node.name : undefined;
+  // pnpm list --json stores dependency names as object keys. Dependency
+  // records commonly contain version/from/path but no explicit name field.
+  // Preserve that key as the package identity instead of silently dropping
+  // the entire dependency subtree from the SBOM.
+  const name = typeof node.name === 'string' && node.name.length > 0
+    ? node.name
+    : packageNameFromReference(node.from) || fallbackName;
   const version = typeof node.version === 'string' ? node.version : undefined;
   let currentId = parentId;
 
@@ -50,14 +68,18 @@ function addNode(node, parentId) {
 
   for (const group of ['dependencies', 'devDependencies', 'optionalDependencies']) {
     const deps = node[group];
-    if (!deps || typeof deps !== 'object') continue;
-    for (const dep of Object.values(deps)) addNode(dep, currentId);
+    if (!deps || typeof deps !== 'object' || Array.isArray(deps)) continue;
+    for (const [depName, dep] of Object.entries(deps)) addNode(dep, currentId, depName);
   }
 }
 
-for (const root of roots) addNode(root, undefined);
+for (const root of roots) addNode(root, undefined, undefined);
 
-const sha = (process.env.GITHUB_SHA || 'local').replace(/[^A-Fa-f0-9]/g, '').slice(0, 40) || 'local';
+const sourceCommit = process.env.FURYPIPE_SOURCE_COMMIT || process.env.GITHUB_SHA || '';
+if (sourceCommit && !/^[0-9a-f]{40}$/u.test(sourceCommit)) {
+  throw new Error('FURYPIPE_SOURCE_COMMIT/GITHUB_SHA must be an exact lowercase 40-character commit SHA');
+}
+const sha = /^[0-9a-f]{40}$/u.test(sourceCommit) ? sourceCommit : 'local';
 const namespace = `https://github.com/Mistermode45/FuryPipe/sbom/${sha}`;
 
 const document = {

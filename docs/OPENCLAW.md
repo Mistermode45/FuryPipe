@@ -50,3 +50,18 @@ Sécurité :
 Le résultat distingue `healthy`, `not_ready`, `unreachable` et `invalid_contract`, puis expose un overall `healthy/degraded/unavailable`.
 
 Cette primitive ne transforme pas M9 en validation OpenClaw hébergée. Tant qu'un vrai Gateway de l'environnement cible n'est pas sondé, `OPENCLAW_NOT_TESTED` / `BLOCKED_EXTERNAL_ENV` reste le statut honnête pour la preuve externe.
+
+### Harness explicite
+
+Un opérateur peut lancer le probe réel sans interaction modèle avec :
+
+```powershell
+$env:FURYPIPE_ALLOW_OPENCLAW_PROBE = '1'
+$env:OPENCLAW_GATEWAY_URL = 'http://127.0.0.1:18789'
+pnpm run openclaw:probe
+```
+
+Sans les deux variables, le harness retourne `BLOCKED_EXTERNAL_ENV` sans requête.
+Une cible non-loopback nécessite en plus l'opt-in explicite `--allow-remote` et
+doit utiliser un ingress privé/TLS approuvé. Le rapport ne contient ni token ni
+body HTTP distant ; il ne contacte que les trois endpoints de santé documentés.

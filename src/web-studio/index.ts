@@ -373,7 +373,9 @@ export function renderStaticStudioPage(
     `<title>${escapeStudioHtml(title)}</title>`,
     `<meta name="description" content="${escapeStudioHtml(description)}">`,
     `<link rel="canonical" href="${escapeStudioHtml(canonical.toString())}">`,
-    '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;; frame-ancestors &#39;none&#39;">',
+    // frame-ancestors is intentionally absent here: browsers ignore it in a CSP meta element.
+    // Hosts that need anti-framing must send frame-ancestors as an HTTP response header.
+    '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;">',
     '</head>',
     `<body data-studio-project="${escapeStudioHtml(project.id)}" data-studio-variant="${escapeStudioHtml(variant.id)}">`,
     '<main>',
@@ -449,6 +451,7 @@ export async function runStudioBrowserQa(
     throw new Error('studio QA cases must contain between 1 and 500 items');
   }
   const ids = new Set<string>();
+  const requiredCases = new Map(buildStudioQaMatrix().map((testCase) => [testCase.id, testCase]));
   const failures: Array<{ caseId: string; reasons: readonly string[] }> = [];
   let qaOk = true;
   let accessibilityOk = true;
@@ -456,6 +459,15 @@ export async function runStudioBrowserQa(
   let scriptsOk = true;
 
   for (const testCase of cases) {
+    const requiredCase = requiredCases.get(testCase.id);
+    if (!requiredCase
+      || testCase.browserProject !== requiredCase.browserProject
+      || testCase.viewport.id !== requiredCase.viewport.id
+      || testCase.viewport.width !== requiredCase.viewport.width
+      || testCase.viewport.height !== requiredCase.viewport.height
+      || testCase.locale !== requiredCase.locale) {
+      throw new Error(`studio QA case is not part of the required browser matrix: ${testCase.id}`);
+    }
     if (ids.has(testCase.id)) throw new Error(`duplicate studio QA case id: ${testCase.id}`);
     ids.add(testCase.id);
     const target = new URL('/', origin);
@@ -508,14 +520,20 @@ export async function runStudioBrowserQa(
     if (reasons.length > 0) failures.push(Object.freeze({ caseId: testCase.id, reasons: Object.freeze(reasons) }));
   }
 
+  const completeMatrix = ids.size === requiredCases.size
+    && [...requiredCases.keys()].every((id) => ids.has(id));
+  const status = (passed: boolean): GateStatus => passed
+    ? (completeMatrix ? 'VERIFIED' : 'PARTIAL')
+    : 'FAILED';
+
   return Object.freeze({
     format: 'furypipe-web-studio-browser-qa/v1',
     adapter: Object.freeze({ id: adapter.id, version: adapter.version }),
     totalCases: cases.length,
-    browserQa: qaOk ? 'VERIFIED' : 'FAILED',
-    structuralAccessibility: accessibilityOk ? 'VERIFIED' : 'FAILED',
-    structuralSeo: seoOk ? 'VERIFIED' : 'FAILED',
-    thirdPartyScriptSurface: scriptsOk ? 'VERIFIED' : 'FAILED',
+    browserQa: status(qaOk),
+    structuralAccessibility: status(accessibilityOk),
+    structuralSeo: status(seoOk),
+    thirdPartyScriptSurface: status(scriptsOk),
     productionPerformance: 'NOT_RUN',
     deployment: 'NOT_RUN',
     promotionEvidenceCompatible: false,

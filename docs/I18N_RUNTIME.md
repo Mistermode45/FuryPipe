@@ -2,7 +2,7 @@
 
 ## Status
 
-`PARTIAL / CLI_AND_DASHBOARD_SHELL_WIRED`
+`PARTIAL / CLI_AND_DASHBOARD_HUMAN_COPY_WIRED_REAL_CHROMIUM_QA`
 
 FuryPipe now has a runtime locale controller in addition to the BCP-47 translation core.
 
@@ -32,14 +32,16 @@ The dashboard now has a real request-scoped locale surface:
 - browser persistence through `localStorage` key `furypipe-locale`;
 - htmx requests inherit the active locale;
 - Control Room human labels are localized;
-- technical status values, commit SHAs and protocol identifiers remain unchanged.
+- deep dashboard analytical copy is localized, including cost/savings explanations and the math drawer;
+- OpenAI Responses composition labels, request x-ray, recent-request columns, image/source inspector and legacy stats labels are localized;
+- agent connection help, model-scope warnings and provider-routing help are localized while commands and environment variables remain exact;
+- technical status values, commit SHAs, formulas/variable identifiers and protocol identifiers remain unchanged.
 
 The following remain deliberately not claimed:
 
-- full translation of every legacy dashboard fragment;
-- translated MCP/protocol payloads;
-- translated code/config/IDs/hashes;
-- visual browser validation of every RTL layout.
+- translated MCP/protocol payloads; protocol/machine payloads intentionally remain exact;
+- translated code/config/IDs/hashes/formula identifiers;
+- hosted/browser visual validation of every RTL layout and every responsive breakpoint.
 
 Protocol and exact machine values remain outside translation.
 
@@ -81,16 +83,22 @@ The active dashboard locale is now propagated to the primary htmx fragments inst
 
 Localized human UI currently includes:
 
-- compression kill-switch banner/state/action/hint;
-- provider model-scope labels and hints;
-- session-summary empty state and token-direction wording;
-- recent-request empty state and Details action;
+- compression kill-switch banner/state/action/confirmation/hint;
+- provider model-scope labels, warnings and routing help;
+- session summary, cost/savings tiles and deep math explanations;
+- recent-request empty state, columns, tooltips and cache-create explanation;
 - session tracking empty state/axis;
-- empty/evicted Context Map guidance;
-- basic stats empty/parsed-event labels.
+- Context Map buckets, cache-aware comparison copy, image-cap warnings and OpenAI Responses composition diagnostics;
+- image/source inspector controls and labels;
+- full-history legacy stat row labels;
+- Control Room human labels and release-readiness copy.
 
 The English locale remains the default, preserving existing CLI/dashboard behavior and legacy test contracts.
 
 Machine values remain untranslated: model IDs, HTTP statuses, paths, environment variable names, token counts, pricing figures, request IDs, hashes, protocol values and raw technical error strings.
 
-Some deep analytical copy (formula explanations, detailed Responses-composition labels and legacy stat table row names) still remains English. M18 therefore remains PARTIAL rather than claiming full dashboard translation.
+The remaining PARTIAL status is not a claim that dashboard human-copy or browser
+RTL/responsive validation is unwired. Real Chromium, Firefox and WebKit runs now cover
+the declared Dashboard locale/viewport matrix locally; the source-bound hosted workflow
+must still complete on the exact candidate SHA. Protocol/machine payloads remain
+intentionally untranslated. English remains the default and pseudo-locales remain QA-only.

@@ -1,6 +1,12 @@
 import { lstatSync, readFileSync, statSync } from 'node:fs';
 
-import type { ReleaseReadinessReport, ReleaseGateState } from '../release-readiness/index.js';
+import {
+  getV5RequiredReleaseGateIds,
+  isAllowedV5ReleaseGateOrigin,
+  isExactReleaseAuthorization,
+  V5_RELEASE_GATE_REQUIREDNESS,
+} from '../release-readiness/index.js';
+import type { ReleaseReadinessReport, ReleaseGateState, ReleaseEvidenceOrigin } from '../release-readiness/index.js';
 import {
   createControlRoomSnapshot,
   type AgentEvidence,
@@ -183,22 +189,31 @@ function parseBenchmarks(value: unknown): BenchmarkEvidence {
   });
 }
 
-function parseReleaseReadiness(value: unknown, sourceCommit: string): ReleaseReadinessReport {
+function parseReleaseReadiness(value: unknown, sourceCommit: string, hostGeneratedAt: number): ReleaseReadinessReport {
   const v = object(value, 'releaseReadiness');
-  if (v.format !== 'furypipe-release-readiness/v1') throw new Error('releaseReadiness.format is invalid');
+  if (v.format !== 'furypipe-release-readiness/v2') throw new Error('releaseReadiness.format is invalid');
   if (v.sourceCommit !== sourceCommit) throw new Error('releaseReadiness.sourceCommit does not match evidence sourceCommit');
   const packageVersion = boundedString(v.packageVersion, 'releaseReadiness.packageVersion', 128);
   if (!SEMVER.test(packageVersion)) throw new Error('releaseReadiness.packageVersion is invalid');
   if (v.channel !== 'rc' && v.channel !== 'stable') throw new Error('releaseReadiness.channel is invalid');
+  if (typeof v.performanceClaims !== 'boolean') throw new Error('releaseReadiness.performanceClaims is invalid');
   if (v.status !== 'BLOCKED' && v.status !== 'READY_FOR_RELEASE_DECISION') throw new Error('releaseReadiness.status is invalid');
   if (v.releaseActionsExecuted !== false) throw new Error('releaseReadiness.releaseActionsExecuted must be false');
+  const generatedAt = count(v.generatedAt, 'releaseReadiness.generatedAt');
+  if (generatedAt > hostGeneratedAt) throw new Error('releaseReadiness.generatedAt is later than containing evidence');
 
   const rawBlockers = v.blockers;
   if (!Array.isArray(rawBlockers) || rawBlockers.length > 128) throw new Error('releaseReadiness.blockers is invalid');
+  const blockerIds = new Set<string>();
   const blockers = rawBlockers.map((item, index) => {
     const blocker = object(item, `releaseReadiness.blockers[${index}]`);
+    const gateId = boundedString(blocker.gateId, `releaseReadiness.blockers[${index}].gateId`, 64);
+    if (!Object.hasOwn(V5_RELEASE_GATE_REQUIREDNESS, gateId) || blockerIds.has(gateId)) {
+      throw new Error('releaseReadiness blocker gate identity is unknown or duplicated');
+    }
+    blockerIds.add(gateId);
     return Object.freeze({
-      gateId: boundedString(blocker.gateId, `releaseReadiness.blockers[${index}].gateId`, 128),
+      gateId,
       title: boundedString(blocker.title, `releaseReadiness.blockers[${index}].title`, 256),
       state: releaseState(blocker.state, `releaseReadiness.blockers[${index}].state`),
       reason: boundedString(blocker.reason, `releaseReadiness.blockers[${index}].reason`, 1024),
@@ -211,7 +226,70 @@ function parseReleaseReadiness(value: unknown, sourceCommit: string): ReleaseRea
     boundedString(warning, `releaseReadiness.warnings[${index}]`, 1024)
   );
 
+  const rawVerifiedEvidence = v.verifiedGateEvidence;
+  if (!Array.isArray(rawVerifiedEvidence) || rawVerifiedEvidence.length > 128) {
+    throw new Error('releaseReadiness.verifiedGateEvidence is invalid');
+  }
+  const verifiedIds = new Set<string>();
+  const origins: readonly ReleaseEvidenceOrigin[] = ['local', 'github-actions', 'github', 'hosted', 'provider'];
+  const verifiedGateEvidence = rawVerifiedEvidence.map((item, index) => {
+    const evidence = object(item, `releaseReadiness.verifiedGateEvidence[${index}]`);
+    const gateId = boundedString(evidence.gateId, `releaseReadiness.verifiedGateEvidence[${index}].gateId`, 64);
+    if (!Object.hasOwn(V5_RELEASE_GATE_REQUIREDNESS, gateId)) {
+      throw new Error('releaseReadiness verified gate identity is unknown');
+    }
+    if (verifiedIds.has(gateId)) throw new Error('releaseReadiness.verifiedGateEvidence contains duplicate gate IDs');
+    verifiedIds.add(gateId);
+    const evidenceSourceCommit = boundedString(evidence.sourceCommit,
+      `releaseReadiness.verifiedGateEvidence[${index}].sourceCommit`, 40);
+    if (evidenceSourceCommit !== sourceCommit) throw new Error('release gate provenance sourceCommit does not match evidence sourceCommit');
+    const observedAt = count(evidence.observedAt, `releaseReadiness.verifiedGateEvidence[${index}].observedAt`);
+    if (observedAt > generatedAt || observedAt > hostGeneratedAt) {
+      throw new Error('release gate provenance is later than its containing report');
+    }
+    if (typeof evidence.origin !== 'string' || !origins.includes(evidence.origin as ReleaseEvidenceOrigin)) {
+      throw new Error('release gate provenance origin is invalid');
+    }
+    if (!isAllowedV5ReleaseGateOrigin(gateId, evidence.origin as ReleaseEvidenceOrigin)) {
+      throw new Error('release gate provenance origin violates the canonical V5 gate policy');
+    }
+    return Object.freeze({
+      gateId,
+      sourceCommit: evidenceSourceCommit,
+      observedAt,
+      origin: evidence.origin as ReleaseEvidenceOrigin,
+      reference: boundedString(evidence.reference, `releaseReadiness.verifiedGateEvidence[${index}].reference`, 512),
+    });
+  });
+  const verifiedRequiredGates = count(v.verifiedRequiredGates, 'releaseReadiness.verifiedRequiredGates', 128);
+  const requiredGates = count(v.requiredGates, 'releaseReadiness.requiredGates', 128);
+  const expectedRequiredGateCount = 17 + (v.performanceClaims ? 1 : 0);
+  const requiredGateIds = requiredGates === expectedRequiredGateCount
+    ? getV5RequiredReleaseGateIds(requiredGates)
+    : undefined;
+  if (!requiredGateIds) throw new Error('releaseReadiness required gate count is not canonical for performanceClaims');
+  const requiredGateIdSet = new Set(requiredGateIds);
+  const verifiedRequiredIds = new Set(requiredGateIds.filter((gateId) => verifiedIds.has(gateId)));
+  if (blockers.some((blocker) => !requiredGateIdSet.has(blocker.gateId))
+    || [...blockerIds].some((gateId) => verifiedIds.has(gateId))
+    || !requiredGateIds.every((gateId) => verifiedIds.has(gateId) !== blockerIds.has(gateId))
+    || verifiedRequiredGates !== verifiedRequiredIds.size
+    || verifiedRequiredGates > requiredGates || verifiedGateEvidence.length < verifiedRequiredGates) {
+    throw new Error('releaseReadiness verified gate counts lack source-bound evidence');
+  }
+  if (v.status === 'READY_FOR_RELEASE_DECISION'
+    && (blockers.length !== 0 || verifiedRequiredGates !== requiredGates
+      || !requiredGateIds.every((gateId) => verifiedIds.has(gateId)))) {
+    throw new Error('releaseReadiness READY status contradicts blockers or gate counts');
+  }
+  if (v.status === 'BLOCKED' && blockers.length === 0) {
+    throw new Error('releaseReadiness BLOCKED status has no blocker or incomplete required gate');
+  }
+
   const authorizationValue = object(v.authorization, 'releaseReadiness.authorization');
+  if (!isExactReleaseAuthorization(authorizationValue)) {
+    throw new Error('releaseReadiness.authorization must contain exactly the four boolean authorization fields');
+  }
   const authorization = Object.freeze({
     mergeDefaultBranch: bool(authorizationValue.mergeDefaultBranch, 'releaseReadiness.authorization.mergeDefaultBranch'),
     createReleaseTag: bool(authorizationValue.createReleaseTag, 'releaseReadiness.authorization.createReleaseTag'),
@@ -220,16 +298,18 @@ function parseReleaseReadiness(value: unknown, sourceCommit: string): ReleaseRea
   });
 
   return Object.freeze({
-    format: 'furypipe-release-readiness/v1',
-    generatedAt: count(v.generatedAt, 'releaseReadiness.generatedAt'),
+    format: 'furypipe-release-readiness/v2',
+    generatedAt,
     sourceCommit,
     packageVersion,
     channel: v.channel,
+    performanceClaims: v.performanceClaims,
     status: v.status,
     blockers: Object.freeze(blockers),
     warnings: Object.freeze(warnings),
-    verifiedRequiredGates: count(v.verifiedRequiredGates, 'releaseReadiness.verifiedRequiredGates', 128),
-    requiredGates: count(v.requiredGates, 'releaseReadiness.requiredGates', 128),
+    verifiedRequiredGates,
+    requiredGates,
+    verifiedGateEvidence: Object.freeze(verifiedGateEvidence),
     authorization,
     releaseActionsExecuted: false,
   });
@@ -288,7 +368,7 @@ export function parseControlRoomHostEvidence(value: unknown, expectedSourceCommi
     ...optional(v.webStudio, (input) => ({ webStudio: parseWebStudio(input) })),
     ...optional(v.security, (input) => ({ security: parseSecurity(input) })),
     ...optional(v.benchmarks, (input) => ({ benchmarks: parseBenchmarks(input) })),
-    ...optional(v.releaseReadiness, (input) => ({ releaseReadiness: parseReleaseReadiness(input, sourceCommit) })),
+    ...optional(v.releaseReadiness, (input) => ({ releaseReadiness: parseReleaseReadiness(input, sourceCommit, generatedAt) })),
   });
 
   // Reuse the canonical Control Room validator for cross-field invariants.

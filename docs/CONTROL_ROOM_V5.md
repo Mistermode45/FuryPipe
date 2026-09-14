@@ -184,9 +184,11 @@ Control Room derives MCP status conservatively:
 - successful local Bearer verification: `bearerAuth = VERIFIED`;
 - any locally observed OAuth resource-server/discovery configuration remains `oauth = PARTIAL`;
 - `externalConformance = NOT_AVAILABLE` unless a separate exact-source host evidence report provides stronger evidence;
-- an authentic stdio handle proves local construction only, therefore runtime-derived `stdio = PARTIAL`.
+- authentic stdio handle with no correlated exchange: runtime-derived `stdio = PARTIAL`;
+- at least one successfully written request/response pair observed by the exact process-local stdio transport, with no correlation overflow: `stdio = VERIFIED` for the **local transport path only**;
+- duplicate/unbounded request IDs or correlation saturation remain fail-visible and keep `stdio = PARTIAL`.
 
-These statuses must not be read as hosted interoperability claims. In particular, `http = VERIFIED` proves local dispatch through the production boundary, not DNS/TLS reachability or a remote client. `bearerAuth = VERIFIED` proves the configured local verifier accepted one request, not that a real Authorization Server was integrated. Local OAuth metadata never promotes external conformance.
+These statuses must not be read as hosted interoperability claims. In particular, `http = VERIFIED` proves local dispatch through the production boundary, not DNS/TLS reachability or a remote client. `stdio = VERIFIED` proves a real local JSON-RPC request/response crossed the stdio transport and was correlated without ambiguity; it does not prove interoperability with an external hosted client. `bearerAuth = VERIFIED` proves the configured local verifier accepted one request, not that a real Authorization Server was integrated. Local OAuth metadata never promotes external conformance.
 
 If `ControlRoomRuntimeOptions.mcp` is supplied explicitly, that source-bound host evidence remains authoritative and is not silently overwritten by runtime-derived observations.
 
@@ -235,6 +237,36 @@ The parser reconstructs only the bounded fields above. Logs, workflow URLs, arbi
 
 This module is a pure evidence adapter. It does not call GitHub, read credentials, query Actions or modify repository settings. A trusted CI/host process must collect the actual terminal conclusions for the exact source SHA and then pass that bounded evidence to FuryPipe. The resulting `snapshot.security` can be supplied to the existing source-bound Control Room host evidence/runtime path.
 
+
+### Automated Security CI evidence export
+
+The CI-facing exporter is deliberately separate from the Node runtime. The workflow `Control Room Security Evidence` collects GitHub Actions metadata for one exact source SHA and produces the existing `furypipe-control-room-security-ci-evidence/v1` document consumed by the Node loader.
+
+Trust boundaries and collection rules:
+
+- GitHub is queried only from the dedicated CI/operator script; the Node runtime still has no GitHub token or GitHub API client.
+- The API origin is fixed to `https://api.github.com`; no configurable base URL is accepted.
+- The workflow grants only `contents: read` and `actions: read`.
+- Pull-request execution is restricted to same-repository heads so untrusted fork code is not run with the Actions-read token.
+- Workflow runs are filtered by the exact lowercase 40-character `head_sha`.
+- For each required workflow (`CodeQL`, `Secret Scan`, `License Compliance`, `Supply Chain`), the newest run for that SHA is selected; an older green run can never replace a newer failure or cancellation.
+- Only terminal `success`, `failure`, `cancelled` and `skipped` conclusions are representable. Non-terminal runs/jobs remain waiting; unsupported terminal conclusions fail closed instead of being relabelled.
+- Supply Chain jobs are fetched from the selected Supply Chain run and mapped independently. Missing, duplicate or wrong-run mapped jobs are never inferred from the parent workflow.
+- GitHub responses are bounded to 1 MiB per request, pagination is bounded to the API's 1,000-result search ceiling, redirects are rejected, each request has an explicit 15-second timeout, and there is no hidden network retry.
+- CI waiting is explicit and bounded to 20 minutes with a 15-second poll interval. Timeout is a failure, never success.
+- A final freshness pass re-collects the exact-source runs/jobs before writing the artifact so a concurrent rerun cannot silently leave stale evidence.
+- The final candidate is revalidated through the canonical Security CI parser from the existing contract before serialization.
+- Canonical JSON bytes are deterministic for identical evidence input, and a SHA-256 checksum is written beside the JSON.
+- GitHub response bodies, logs, URLs, arbitrary messages, authorization headers and tokens are not copied into the evidence document.
+
+The workflow uploads exactly:
+
+```text
+control-room-security-ci-evidence.json
+control-room-security-ci-evidence.json.sha256
+```
+
+The exporter creates no tag, release, package publication, deployment, issue/PR mutation or repository-setting change. Its artifact is source-bound CI evidence only; it does not prove provider/network availability, hosted MCP conformance or release authorization.
 
 ### Node ingestion of Security CI evidence
 

@@ -17,12 +17,25 @@ async function runRecoveryWorker(request: Record<string, unknown>): Promise<{ co
   const child = spawn(process.execPath, [tsx, worker, JSON.stringify(request)], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
   let stderr = '';
+  let timedOut = false;
   child.stdout.setEncoding('utf8');
   child.stderr.setEncoding('utf8');
   child.stdout.on('data', (chunk: string) => { stdout += chunk; });
   child.stderr.on('data', (chunk: string) => { stderr += chunk; });
-  const [result] = await once(child, 'close') as [number | null, string];
-  return { code: result ?? -1, stdout: stdout.trim(), stderr: stderr.trim() };
+  const closed = once(child, 'close');
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    child.kill('SIGKILL');
+  }, 30_000);
+  timeout.unref();
+  let result: number | null;
+  try {
+    [result] = await closed as [number | null, string];
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (timedOut) stderr += `${stderr ? '\n' : ''}recovery worker exceeded its 30-second test bound`;
+  return { code: timedOut ? -1 : result ?? -1, stdout: stdout.trim(), stderr: stderr.trim() };
 }
 
 afterEach(async () => {
@@ -59,6 +72,104 @@ describe('Recovery Store', () => {
     expect(matches?.[0]).toMatchObject({ metadata: { source: 'agent-runtime', runId: 'run-1', stage: 'research' } });
     expect((matches?.[0] as Record<string, unknown>)['payload']).toBeUndefined();
     await expect(store.list?.({ limit: 0 })).rejects.toThrow('list limit');
+  });
+
+  it('atomically bounds unique objects by metadata while preserving idempotent puts', async () => {
+    const { store } = await createStoreFixture();
+    expect(typeof store.putBounded).toBe('function');
+    const bound = { metadata: { source: 'bounded-claims' }, maxMatches: 1 };
+
+    const first = await store.putBounded!(
+      new TextEncoder().encode('claim-one'),
+      { source: 'bounded-claims', token: 'first' },
+      bound,
+    );
+    const duplicate = await store.putBounded!(
+      new TextEncoder().encode('claim-one'),
+      { source: 'bounded-claims', token: 'second' },
+      bound,
+    );
+    expect(duplicate.digest).toBe(first.digest);
+    expect(duplicate.metadata?.token).toBe('first');
+
+    await expect(store.putBounded!(
+      new TextEncoder().encode('wrong-domain'),
+      { source: 'other-domain' },
+      bound,
+    )).rejects.toThrow(/must satisfy every capacity filter/);
+
+    const crossDomainBytes = new TextEncoder().encode('cross-domain-existing');
+    await store.put(crossDomainBytes, { source: 'other-domain' });
+    await expect(store.putBounded!(
+      crossDomainBytes,
+      { source: 'bounded-claims' },
+      bound,
+    )).rejects.toThrow(/existing object is outside one of its capacity filters/);
+
+    await expect(store.putBounded!(
+      new TextEncoder().encode('claim-two'),
+      { source: 'bounded-claims', token: 'third' },
+      bound,
+    )).rejects.toThrow(/matching-object limit/);
+
+    await expect(store.putBounded!(
+      new TextEncoder().encode('malformed-additional'),
+      { source: 'bounded-claims' },
+      {
+        metadata: { source: 'bounded-claims' },
+        maxMatches: 2,
+        additionalBounds: {} as never,
+      },
+    )).rejects.toThrow(/additionalBounds/);
+
+    expect(await store.list?.({ metadata: { source: 'bounded-claims' } })).toHaveLength(1);
+  });
+
+  it('enforces broad quota and narrow uniqueness constraints under one Recovery lock', async () => {
+    const { root, store } = await createStoreFixture();
+    const peer = createRecoveryStore(root, { namespace: 'test-tenant' });
+    const bound = (sequence: number) => ({
+      metadata: { source: 'sequenced', runId: 'run-1' },
+      maxMatches: 3,
+      additionalBounds: [{
+        metadata: { source: 'sequenced', runId: 'run-1', sequence },
+        maxMatches: 1,
+      }],
+    });
+
+    const [a, b] = await Promise.allSettled([
+      store.putBounded!(
+        new TextEncoder().encode('writer-a'),
+        { source: 'sequenced', runId: 'run-1', sequence: 0 },
+        bound(0),
+      ),
+      peer.putBounded!(
+        new TextEncoder().encode('writer-b'),
+        { source: 'sequenced', runId: 'run-1', sequence: 0 },
+        bound(0),
+      ),
+    ]);
+
+    expect([a.status, b.status].sort()).toEqual(['fulfilled', 'rejected']);
+    const rejected = a.status === 'rejected' ? a.reason : b.status === 'rejected' ? b.reason : undefined;
+    expect(String(rejected)).toMatch(/matching-object limit exceeded/);
+    expect(await store.list?.({ metadata: { source: 'sequenced', runId: 'run-1', sequence: 0 } })).toHaveLength(1);
+
+    await store.putBounded!(
+      new TextEncoder().encode('writer-c'),
+      { source: 'sequenced', runId: 'run-1', sequence: 1 },
+      bound(1),
+    );
+    await store.putBounded!(
+      new TextEncoder().encode('writer-d'),
+      { source: 'sequenced', runId: 'run-1', sequence: 2 },
+      bound(2),
+    );
+    await expect(store.putBounded!(
+      new TextEncoder().encode('writer-e'),
+      { source: 'sequenced', runId: 'run-1', sequence: 3 },
+      bound(3),
+    )).rejects.toThrow(/matching-object limit exceeded/);
   });
 
   it('keeps a collision-free immutable object and rejects malformed handles', async () => {
@@ -192,6 +303,26 @@ describe('Recovery Store', () => {
       encryption: { activeKeyId: 'key-v2', keys: { 'key-v2': keyTwo } },
     });
     expect(new TextDecoder().decode(await strictRotated.get(handle))).toBe('secret at rest');
+  });
+
+  it('keeps namespace and global quotas when rekey would grow stored bytes beyond the limit', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-recovery-rekey-quota-'));
+    roots.push(root);
+    const key = new Uint8Array(32).fill(7);
+    const plaintext = new TextEncoder().encode('1234');
+    const unencrypted = createRecoveryStore(root, {
+      namespace: 'rekey-quota', maxTotalBytes: 39, maxGlobalBytes: 39,
+    });
+    const handle = await unencrypted.put(plaintext);
+    const encrypted = createRecoveryStore(root, {
+      namespace: 'rekey-quota', maxTotalBytes: 39, maxGlobalBytes: 39,
+      encryption: { activeKeyId: 'key-v2', keys: { 'key-v2': key }, allowLegacyPlaintext: true },
+    });
+
+    await expect(encrypted.rekey()).rejects.toThrow(/quota during rekey/);
+    expect(await unencrypted.get(handle)).toEqual(plaintext);
+    expect(await readdir(join(root, 'namespaces', 'rekey-quota', 'objects', handle.digest.slice(0, 2))))
+      .toEqual([handle.digest]);
   });
 
   it('fails closed on missing keys, tampered ciphertext and legacy plaintext until rekey', async () => {

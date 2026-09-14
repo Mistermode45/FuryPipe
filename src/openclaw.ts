@@ -85,6 +85,25 @@ export interface OpenClawGatewayProbeOptions {
 
 const SECRET_KEY = /(?:token|password|secret|apikey|api_key|privatekey|private_key|credential|accesskey|access_key)/i;
 const WORKSPACE_FILES = ['AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md', 'USER.md', 'HEARTBEAT.md', 'MEMORY.md'] as const;
+const MAX_OPENCLAW_CONFIG_BYTES = 1_048_576;
+const MAX_OPENCLAW_HEALTH_RESPONSE_BYTES = 64 * 1024;
+
+function readBoundedUtf8File(filePath: string, maxBytes: number): string {
+  const fd = fs.openSync(filePath, 'r');
+  const buffer = Buffer.allocUnsafe(maxBytes + 1);
+  let bytesRead = 0;
+  try {
+    while (bytesRead < buffer.length) {
+      const count = fs.readSync(fd, buffer, bytesRead, buffer.length - bytesRead, bytesRead);
+      if (count === 0) break;
+      bytesRead += count;
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  if (bytesRead > maxBytes) throw new RangeError('OpenClaw config exceeds the 1 MiB inspection bound');
+  return buffer.subarray(0, bytesRead).toString('utf8');
+}
 
 function clean(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -176,7 +195,7 @@ function readConfig(paths: OpenClawPaths): OpenClawConfigSummary {
   }
   if (!stat.isFile()) return emptyConfigSummary('unreadable', paths.configPath, false);
   try {
-    const parsed = JSON5.parse(fs.readFileSync(paths.configPath, 'utf8')) as unknown;
+    const parsed = JSON5.parse(readBoundedUtf8File(paths.configPath, MAX_OPENCLAW_CONFIG_BYTES)) as unknown;
     const entries = objectAt(parsed, ['agents', 'entries']);
     return {
       status: 'valid', path: paths.configPath, regularFile: true,
@@ -259,6 +278,41 @@ function objectPayload(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+function isJsonContentType(value: string | null): boolean {
+  if (value === null) return false;
+  const mediaType = value.split(';', 1)[0]?.trim().toLowerCase();
+  return mediaType === 'application/json'
+    || (mediaType?.startsWith('application/') === true && mediaType.endsWith('+json'));
+}
+
+async function readBoundedJson(response: Response): Promise<unknown> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('OpenClaw health response has no body');
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_OPENCLAW_HEALTH_RESPONSE_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new RangeError('OpenClaw health response exceeds the 64 KiB limit');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown;
+}
+
 function probeContractVerdict(
   endpoint: OpenClawProbeEndpointResult['endpoint'],
   payload: unknown,
@@ -300,9 +354,17 @@ async function probeOpenClawEndpoint(
       redirect: 'error',
       signal: controller.signal,
     });
+    if (!isJsonContentType(response.headers.get('content-type'))) {
+      return {
+        endpoint,
+        verdict: 'invalid_contract',
+        httpStatus: response.status,
+        durationMs: Math.max(0, Math.round(validProbeClock(now()) - start)),
+      };
+    }
     let payload: unknown;
     try {
-      payload = await response.json();
+      payload = await readBoundedJson(response);
     } catch {
       return {
         endpoint,
@@ -311,7 +373,10 @@ async function probeOpenClawEndpoint(
         durationMs: Math.max(0, Math.round(validProbeClock(now()) - start)),
       };
     }
-    const verdict = probeContractVerdict(endpoint, payload);
+    const contractVerdict = probeContractVerdict(endpoint, payload);
+    const verdict = response.ok || contractVerdict === 'invalid_contract'
+      ? contractVerdict
+      : 'not_ready';
     return {
       endpoint,
       verdict,
@@ -384,7 +449,7 @@ export function discoverOpenClaw(options: OpenClawDiscoveryOptions = {}): OpenCl
   const nonLoopbackWithoutAuth = nonLoopback && config.gatewayAuthMode === undefined;
   const warnings = [
     ...(config.status === 'symlink' ? ['config path is a symlink; OpenClaw requires a regular file'] : []),
-    ...(config.status === 'invalid' ? ['config is not valid JSON5'] : []),
+    ...(config.status === 'invalid' ? ['config is not valid JSON5 or exceeds the 1 MiB inspection bound'] : []),
     ...(config.secretBearingPaths.length > 0 ? ['config contains secret-bearing fields; values were not read into the report'] : []),
     ...(nonLoopbackWithoutAuth ? ['non-loopback gateway bind has no declared local auth mode'] : []),
   ];

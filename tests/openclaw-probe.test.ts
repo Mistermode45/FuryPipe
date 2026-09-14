@@ -10,11 +10,11 @@ function jsonResponse(payload: unknown, status = 200): Response {
 
 describe('OpenClaw Gateway health probe', () => {
   it('validates the documented health/startup/readiness JSON contracts without credentials or model calls', async () => {
-    const calls: Array<{ url: string; auth: string | null }> = [];
+    const calls: Array<{ url: string; auth: string | null; redirect: RequestRedirect | undefined }> = [];
     const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       const headers = new Headers(init?.headers);
-      calls.push({ url, auth: headers.get('authorization') });
+      calls.push({ url, auth: headers.get('authorization'), redirect: init?.redirect });
       if (url.endsWith('/healthz')) return jsonResponse({ ok: true, status: 'live' });
       if (url.endsWith('/startupz')) return jsonResponse({ ok: true, status: 'started' });
       if (url.endsWith('/readyz')) return jsonResponse({ ready: true, failing: [] });
@@ -39,6 +39,7 @@ describe('OpenClaw Gateway health probe', () => {
     });
     expect(calls.map((call) => new URL(call.url).pathname).sort()).toEqual(['/healthz', '/readyz', '/startupz']);
     expect(calls.every((call) => call.auth === null)).toBe(true);
+    expect(calls.every((call) => call.redirect === 'error')).toBe(true);
     expect(calls.some((call) => call.url.includes('/v1/'))).toBe(false);
   });
 
@@ -63,6 +64,24 @@ describe('OpenClaw Gateway health probe', () => {
     expect(JSON.stringify(result)).not.toContain('telegram');
   });
 
+  it('does not treat a healthy payload on a non-success HTTP status as a healthy endpoint', async () => {
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/healthz') return jsonResponse({ ok: true, status: 'live' }, 503);
+      if (path === '/startupz') return jsonResponse({ ok: true, status: 'started' });
+      return jsonResponse({ ready: true, failing: [] });
+    }) as typeof fetch;
+
+    const result = await probeOpenClawGateway({
+      baseUrl: 'http://127.0.0.1:18789',
+      fetchImpl,
+      now: () => 1,
+    });
+
+    expect(result.liveness).toMatchObject({ verdict: 'not_ready', httpStatus: 503 });
+    expect(result.overall).toBe('unavailable');
+  });
+
   it('rejects catch-all HTML/incorrect JSON even when the HTTP status is 200', async () => {
     const fetchImpl = (async (input: string | URL | Request) => {
       const path = new URL(String(input)).pathname;
@@ -81,6 +100,51 @@ describe('OpenClaw Gateway health probe', () => {
     expect(result.startup.verdict).toBe('invalid_contract');
     expect(result.readiness.verdict).toBe('invalid_contract');
     expect(result.overall).toBe('unavailable');
+  });
+
+  it('rejects JSON-shaped health bodies served with a non-JSON content type', async () => {
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const path = new URL(String(input)).pathname;
+      const payload = path === '/healthz' ? { ok: true, status: 'live' }
+        : path === '/startupz' ? { ok: true, status: 'started' }
+          : { ready: true };
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      });
+    }) as typeof fetch;
+
+    const result = await probeOpenClawGateway({
+      baseUrl: 'http://127.0.0.1:18789',
+      fetchImpl,
+      now: () => 1,
+    });
+    expect(result.liveness.verdict).toBe('invalid_contract');
+    expect(result.startup.verdict).toBe('invalid_contract');
+    expect(result.readiness.verdict).toBe('invalid_contract');
+    expect(result.overall).toBe('unavailable');
+  });
+
+  it('rejects and cancels a health response that exceeds the 64 KiB body bound', async () => {
+    const fetchImpl = (async (input: string | URL | Request) => {
+      const path = new URL(String(input)).pathname;
+      const payload = path === '/healthz' ? JSON.stringify({ ok: true, status: 'live' })
+        : path === '/startupz' ? JSON.stringify({ ok: true, status: 'started' })
+          : JSON.stringify({ ready: true });
+      return new Response(`${payload}${' '.repeat(64 * 1024)}`, {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    const result = await probeOpenClawGateway({
+      baseUrl: 'http://127.0.0.1:18789',
+      fetchImpl,
+      now: () => 1,
+    });
+    expect(result.liveness.verdict).toBe('invalid_contract');
+    expect(result.startup.verdict).toBe('invalid_contract');
+    expect(result.readiness.verdict).toBe('invalid_contract');
   });
 
   it('reports unreachable endpoints without throwing or leaking error details', async () => {

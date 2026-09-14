@@ -89,10 +89,29 @@ un `Host` réel. Pour un déploiement non loopback, l’allowlist et
 constitue pas un fournisseur OAuth de production.
 
 Le module public `furypipe/mcp-modern` expose également
-`getProductionMcpRuntimeEvidence(handler)`. Cette fonction ne fonctionne que
-sur l'identité exacte d'un handler produit dans le processus courant et renvoie
-uniquement des compteurs/configurations bornés. Une copie par spread,
-sérialisation ou reconstruction manuelle retourne `undefined`.
+`getProductionMcpRuntimeEvidence(handler)` pour HTTP et
+`getProductionMcpStdioRuntimeEvidence(handle)` pour stdio. Ces fonctions ne
+fonctionnent que sur l'identité exacte d'un objet produit dans le processus
+courant ; une copie par spread, sérialisation ou reconstruction manuelle
+retourne `undefined`.
+
+L'évidence stdio est collectée sous le transport officiel plutôt qu'en lisant
+ou recopiant les messages applicatifs. Elle contient seulement des compteurs
+bornés : messages entrants, requêtes entrantes, messages sortants, échanges
+requête/réponse corrélés et pertes de corrélation. Les IDs de requête, méthodes,
+arguments, résultats et plaintext ne sont pas exposés. Une écriture qui échoue
+sur le transport ne compte pas comme échange terminé. Un ID dupliqué, non
+borné ou une table de corrélation saturée incrémente `trackingOverflows` et
+empêche le Control Room de promouvoir stdio à `VERIFIED`.
+
+Le statut runtime suit donc une séparation stricte :
+
+- handle stdio authentique construit, aucun échange corrélé : `PARTIAL` ;
+- au moins un échange requête/réponse écrit avec succès et aucune ambiguïté de
+  corrélation : `VERIFIED` pour le chemin stdio **local** ;
+- preuve perdue/forgée : rejet fail-closed ;
+- `externalConformance` reste indépendant et n'est jamais promu par cette
+  observation locale.
 
 Les preuves runtime MCP restent volontairement étroites :
 
@@ -111,3 +130,27 @@ pas une certification client hébergée, un test réseau multi-processus, ni une
 intégration à un Authorization Server réel. Les limites de taille et de
 validation restent celles de la surface legacy, en plus des validations de
 schéma du SDK moderne.
+
+
+## Hosted external conformance
+
+La validation hébergée est volontairement séparée des tests loopback et stdio.
+Le runbook exécutable est dans `docs/MCP_HOSTED_CONFORMANCE.md`.
+
+Le track hosted utilise un client MCP externe officiel (MCP Inspector), force
+séparément les ères `2026-07-28` et `2025-11-25`, vérifie auth négative,
+reconnexion, appel read-only, timeout streaming et annulation/reconnexion, et
+lie la réponse du listener Node au SHA exact via l'en-tête optionnel
+`X-FuryPipe-Source-Commit`.
+
+Le budget `timeoutMs` du handler de production couvre désormais la lecture du
+body, la vérification Bearer et le dispatch SDK dans un même deadline. Le signal
+d'annulation client est également propagé/racé sur ces trois phases et produit
+un verdict `499` sans attendre le deadline. Un body HTTP volontairement
+incomplet ne peut donc pas contourner ce budget en restant bloqué avant le
+dispatch.
+
+Aucune de ces surfaces ne transforme le Bearer statique du fixture en preuve
+OAuth. `externalConformance` ne devient `VERIFIED` qu'après une vraie
+exécution cross-host HTTPS source-bound ; le simple câblage du harness reste
+`PARTIAL` / `NOT_EXECUTED`.

@@ -4,7 +4,7 @@
 
 `KERNEL_PLUS_LOCAL_RUNTIME_IMPLEMENTED`
 
-This document defines the architecture and gates for M14. It does not claim a working Figma integration, website generator, deployment engine, or Playwright suite.
+This document defines the architecture and gates for M14. A deterministic static-page generator and pinned Playwright cross-browser QA harness exist; neither implies a working Figma integration or deployment engine.
 
 ## Product flow
 

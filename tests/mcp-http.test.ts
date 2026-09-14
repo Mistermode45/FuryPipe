@@ -199,7 +199,7 @@ describe('production MCP HTTP boundary', () => {
         }
         throw new Error('body was read past the configured limit');
       },
-    });
+    }, { highWaterMark: 0 });
     const response = await mcp.fetch(new Request('https://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -212,6 +212,145 @@ describe('production MCP HTTP boundary', () => {
     } as RequestInit & { duplex: 'half' }));
     expect(response.status).toBe(413);
     expect(pulls).toBe(1);
+  });
+
+  it('enforces the configured timeout while the request body is still streaming', async () => {
+    const mcp = await handler({
+      allowedHostnames: ['localhost'],
+      allowUnauthenticatedLoopback: true,
+      timeoutMs: 25,
+    });
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        return new Promise<void>(() => undefined);
+      },
+    });
+    const response = await mcp.fetch(new Request('https://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        host: 'localhost',
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-protocol-version': '2026-07-28',
+        'mcp-method': 'tools/list',
+      },
+      body,
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' }));
+    expect(response.status).toBe(504);
+    expect((await json(response)).error).toMatchObject({ code: -32603, message: 'MCP request timed out' });
+  });
+
+  it('includes Bearer verification in the same request deadline budget', async () => {
+    const verifier: OAuthTokenVerifier = {
+      async verifyAccessToken(): Promise<AuthInfo> {
+        return new Promise<AuthInfo>(() => undefined);
+      },
+    };
+    const mcp = await handler({
+      allowedHostnames: ['localhost'],
+      bearerAuth: { verifier, requiredScopes: ['mcp'] },
+      timeoutMs: 25,
+    });
+    const request = modernRequest('tools/list', {});
+    request.headers.set('authorization', 'Bearer opaque-test-token');
+    const response = await mcp.fetch(request);
+    expect(response.status).toBe(504);
+    expect((await json(response)).error).toMatchObject({ code: -32603, message: 'MCP request timed out' });
+    expect(getProductionMcpRuntimeEvidence(mcp)).toMatchObject({
+      requests: 1,
+      dispatchedRequests: 0,
+      bearerAuthConfigured: true,
+      bearerAuthSuccesses: 0,
+    });
+  });
+
+  it('returns 499 when the client aborts during Bearer verification', async () => {
+    let authStartedResolve!: () => void;
+    let releaseAuthResolve!: () => void;
+    const authStarted = new Promise<void>((resolve) => {
+      authStartedResolve = resolve;
+    });
+    const releaseAuth = new Promise<void>((resolve) => {
+      releaseAuthResolve = resolve;
+    });
+    const verifier: OAuthTokenVerifier = {
+      async verifyAccessToken(token): Promise<AuthInfo> {
+        authStartedResolve();
+        await releaseAuth;
+        return {
+          token,
+          clientId: 'cancel-test-client',
+          scopes: ['mcp'],
+          expiresAt: Math.floor(Date.now() / 1000) + 60,
+        };
+      },
+    };
+    const mcp = await handler({
+      allowedHostnames: ['localhost'],
+      bearerAuth: { verifier, requiredScopes: ['mcp'] },
+      timeoutMs: 1_000,
+    });
+    const request = modernRequest('tools/list', {});
+    request.headers.set('authorization', 'Bearer opaque-test-token');
+    const controller = new AbortController();
+    const responsePromise = mcp.fetch(new Request(request, { signal: controller.signal }));
+    await authStarted;
+    controller.abort(new DOMException('test cancellation', 'AbortError'));
+    const response = await responsePromise;
+    expect(response.status).toBe(499);
+    expect((await json(response)).error).toMatchObject({ code: -32603, message: 'request cancelled' });
+    expect(getProductionMcpRuntimeEvidence(mcp)).toMatchObject({
+      requests: 1,
+      dispatchedRequests: 0,
+      bearerAuthConfigured: true,
+      bearerAuthSuccesses: 0,
+    });
+    releaseAuthResolve();
+  });
+
+  it('returns 499 when the client aborts during an in-flight SDK tool dispatch', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-http-cancel-dispatch-'));
+    roots.push(root);
+    const store = createRecoveryStore(root);
+    let verifyStartedResolve!: () => void;
+    let releaseVerifyResolve!: () => void;
+    const verifyStarted = new Promise<void>((resolve) => {
+      verifyStartedResolve = resolve;
+    });
+    const releaseVerify = new Promise<void>((resolve) => {
+      releaseVerifyResolve = resolve;
+    });
+    const blockedStore = {
+      ...store,
+      async verify(handle: Parameters<typeof store.verify>[0]) {
+        verifyStartedResolve();
+        await releaseVerify;
+        return store.verify(handle);
+      },
+    };
+    const mcp = createProductionMcpHandler(blockedStore, {
+      allowedHostnames: ['localhost'],
+      allowUnauthenticatedLoopback: true,
+      timeoutMs: 1_000,
+    });
+    handlers.push(mcp);
+    const request = modernRequest('tools/call', {
+      name: 'verify_handle',
+      arguments: { handle: `furypipe-recovery/v1/sha256/${'0'.repeat(64)}` },
+    });
+    const controller = new AbortController();
+    const responsePromise = mcp.fetch(new Request(request, { signal: controller.signal }));
+    await verifyStarted;
+    controller.abort(new DOMException('test cancellation', 'AbortError'));
+    const response = await responsePromise;
+    expect(response.status).toBe(499);
+    expect((await json(response)).error).toMatchObject({ code: -32603, message: 'request cancelled' });
+    expect(getProductionMcpRuntimeEvidence(mcp)).toMatchObject({
+      requests: 1,
+      dispatchedRequests: 1,
+    });
+    releaseVerifyResolve();
   });
 
   it('keeps the 2025 stateless fallback available through the secured boundary', async () => {

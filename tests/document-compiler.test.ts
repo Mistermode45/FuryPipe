@@ -46,4 +46,12 @@ describe('document compiler', () => {
       sourceProviderShape: 'test', provenance: 'fixture', logicalTurn: 1, chunkChars: 1,
     })).toThrow('chunkChars');
   });
+
+  it('rejects a document exceeding the fixed UTF-8 byte bound before chunking', () => {
+    const oversized = 'x'.repeat(16 * 1024 * 1024 + 1);
+    expect(() => compileDocument({
+      requestId: 'req-doc-oversized', text: oversized, source: 'large.txt', sourceRole: 'user',
+      sourceProviderShape: 'test', provenance: 'fixture:oversized', logicalTurn: 1,
+    })).toThrow(/16 MiB limit/);
+  });
 });

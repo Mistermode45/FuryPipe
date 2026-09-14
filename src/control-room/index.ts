@@ -1,3 +1,9 @@
+import {
+  getV5RequiredReleaseGateIds,
+  isAllowedV5ReleaseGateOrigin,
+  isExactReleaseAuthorization,
+  V5_RELEASE_GATE_REQUIREDNESS,
+} from '../release-readiness/index.js';
 import type { ReleaseReadinessReport } from '../release-readiness/index.js';
 
 export type ControlRoomEvidenceStatus =
@@ -169,6 +175,8 @@ export interface ControlRoomSnapshot {
 }
 
 const SHA40 = /^[0-9a-f]{40}$/u;
+const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
+const RELEASE_GATE_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/u;
 const MAX_COUNT = 1_000_000_000;
 const MAX_TOKENS = 10_000_000_000;
 
@@ -309,18 +317,97 @@ function validateInput(input: ControlRoomInput): void {
 
   if (input.releaseReadiness !== undefined) {
     const release = input.releaseReadiness;
-    if (release.format !== 'furypipe-release-readiness/v1') {
+    if (release.format !== 'furypipe-release-readiness/v2') {
       throw new Error('release readiness report format is invalid');
     }
     if (release.sourceCommit !== input.sourceCommit) {
       throw new Error('release readiness source commit must match Control Room source commit');
     }
+    if (!Number.isSafeInteger(release.generatedAt) || release.generatedAt < 0 || release.generatedAt > input.generatedAt) {
+      throw new Error('release readiness report timestamp must not be later than Control Room evidence');
+    }
+    if (!SEMVER.test(release.packageVersion) || (release.channel !== 'rc' && release.channel !== 'stable')) {
+      throw new Error('release readiness package identity is invalid');
+    }
+    if (typeof release.performanceClaims !== 'boolean') {
+      throw new Error('release readiness performanceClaims is invalid');
+    }
+    if (release.status !== 'BLOCKED' && release.status !== 'READY_FOR_RELEASE_DECISION') {
+      throw new Error('release readiness status is invalid');
+    }
+    if (!Array.isArray(release.blockers) || release.blockers.length > 128
+      || release.blockers.some((blocker) => !blocker || !RELEASE_GATE_ID.test(blocker.gateId)
+        || !Object.hasOwn(V5_RELEASE_GATE_REQUIREDNESS, blocker.gateId)
+        || typeof blocker.title !== 'string' || blocker.title.length === 0 || blocker.title.length > 160
+        || !['VERIFIED', 'PARTIAL', 'NOT_EXECUTED', 'BLOCKED', 'BLOCKED_BY_REPO_SETTING', 'NOT_APPLICABLE'].includes(blocker.state)
+        || typeof blocker.reason !== 'string' || blocker.reason.length === 0 || blocker.reason.length > 1024)) {
+      throw new Error('release readiness blockers are invalid');
+    }
+    const blockerIds = new Set<string>();
+    for (const blocker of release.blockers) {
+      if (blockerIds.has(blocker.gateId)) throw new Error('release readiness blockers contain duplicate gate IDs');
+      blockerIds.add(blocker.gateId);
+    }
+    if (!Array.isArray(release.warnings) || release.warnings.length > 128
+      || release.warnings.some((warning) => typeof warning !== 'string' || warning.length === 0 || warning.length > 1024)) {
+      throw new Error('release readiness warnings are invalid');
+    }
+    const authorization = release.authorization;
+    if (!isExactReleaseAuthorization(authorization)) {
+      throw new Error('release readiness authorization is invalid or contains unexpected fields');
+    }
     safeCount(release.blockers.length, 'release.blockers');
     safeCount(release.warnings.length, 'release.warnings');
-    safeCount(release.verifiedRequiredGates, 'release.verifiedRequiredGates');
-    safeCount(release.requiredGates, 'release.requiredGates');
+    safeCount(release.verifiedRequiredGates, 'release.verifiedRequiredGates', 128);
+    safeCount(release.requiredGates, 'release.requiredGates', 128);
     if (release.verifiedRequiredGates > release.requiredGates) {
       throw new Error('release verified gate count cannot exceed required gate count');
+    }
+    const expectedRequiredGateCount = 17 + (release.performanceClaims ? 1 : 0);
+    const requiredGateIds = release.requiredGates === expectedRequiredGateCount
+      ? getV5RequiredReleaseGateIds(release.requiredGates)
+      : undefined;
+    if (!requiredGateIds) throw new Error('release required gate count does not match performanceClaims and the canonical V5 gate set');
+    const requiredGateIdSet = new Set(requiredGateIds);
+    if (!Array.isArray(release.verifiedGateEvidence) || release.verifiedGateEvidence.length > 128) {
+      throw new Error('release verified gate evidence is invalid');
+    }
+    safeCount(release.verifiedGateEvidence.length, 'release.verifiedGateEvidence', 128);
+    if (release.verifiedGateEvidence.length < release.verifiedRequiredGates) {
+      throw new Error('release verified gates require source-bound evidence references');
+    }
+    const evidenceIds = new Set<string>();
+    for (const evidence of release.verifiedGateEvidence) {
+      if (!evidence || typeof evidence.gateId !== 'string' || !RELEASE_GATE_ID.test(evidence.gateId)
+        || !Object.hasOwn(V5_RELEASE_GATE_REQUIREDNESS, evidence.gateId)
+        || evidenceIds.has(evidence.gateId)
+        || evidence.sourceCommit !== release.sourceCommit
+        || !Number.isSafeInteger(evidence.observedAt) || evidence.observedAt < 0
+        || evidence.observedAt > release.generatedAt
+        || !['local', 'github-actions', 'github', 'hosted', 'provider'].includes(evidence.origin)
+        || !isAllowedV5ReleaseGateOrigin(evidence.gateId, evidence.origin)
+        || typeof evidence.reference !== 'string' || evidence.reference.length === 0
+        || evidence.reference.length > 512 || evidence.reference.includes('\0')) {
+        throw new Error('release gate provenance is invalid for Control Room');
+      }
+      evidenceIds.add(evidence.gateId);
+    }
+    const verifiedRequiredIds = new Set(requiredGateIds.filter((gateId) => evidenceIds.has(gateId)));
+    if (release.blockers.some((blocker) => !requiredGateIdSet.has(blocker.gateId))
+      || [...blockerIds].some((gateId) => evidenceIds.has(gateId))
+      || !requiredGateIds.every((gateId) => evidenceIds.has(gateId) !== blockerIds.has(gateId))) {
+      throw new Error('release readiness required gates are omitted or contradictory');
+    }
+    if (verifiedRequiredIds.size !== release.verifiedRequiredGates) {
+      throw new Error('release verified gate count does not match source-bound canonical evidence');
+    }
+    if (release.status === 'READY_FOR_RELEASE_DECISION'
+      && (release.blockers.length !== 0 || release.verifiedRequiredGates !== release.requiredGates
+        || !requiredGateIds.every((gateId) => evidenceIds.has(gateId)))) {
+      throw new Error('release readiness status contradicts its blockers or gate counts');
+    }
+    if (release.status === 'BLOCKED' && release.blockers.length === 0) {
+      throw new Error('blocked release readiness has no blocker or incomplete required gate');
     }
     if (release.releaseActionsExecuted !== false) {
       throw new Error('Control Room accepts evidence-only release reports');

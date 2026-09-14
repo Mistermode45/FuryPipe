@@ -208,7 +208,7 @@ function validateCustomRules(rules: readonly ExactGuardRule[]): void {
     if (!rule.id || rule.id.length > 64 || rule.pattern.source.length > MAX_RULE_SOURCE_LENGTH) {
       throw new RangeError('ExactGuard rule id/pattern is too large');
     }
-    if (rule.pattern.flags.includes('g') === false && rule.pattern.flags.includes('y')) {
+    if (rule.pattern.flags.includes('y')) {
       throw new RangeError('ExactGuard sticky rules are not supported');
     }
   }

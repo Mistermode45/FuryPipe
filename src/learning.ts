@@ -337,7 +337,9 @@ export function createHumanLearningPath(input: HumanLearningPathInput): HumanLea
 
 export function recordHumanLearningAttempt(path: HumanLearningPath, attempt: HumanLearningAttempt): HumanLearningPath {
   requireText(attempt.topicId, 'attempt.topicId', 128);
-  if (!path.mastery || !(attempt.topicId in path.mastery)) throw new Error(`unknown learning topic: ${attempt.topicId}`);
+  if (!path.mastery || !Object.prototype.hasOwnProperty.call(path.mastery, attempt.topicId)) {
+    throw new Error(`unknown learning topic: ${attempt.topicId}`);
+  }
   if (typeof attempt.theoryCompleted !== 'boolean' || typeof attempt.practiceCompleted !== 'boolean') throw new Error('completion flags must be boolean');
   requireFiniteScore(attempt.exerciseScore, 'exerciseScore');
   requireFiniteScore(attempt.quizScore, 'quizScore');

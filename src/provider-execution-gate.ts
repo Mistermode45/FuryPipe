@@ -226,7 +226,7 @@ export function consumeProviderExecutionPermit(
     || permit.model !== request.model
     || permit.workloadId !== request.workloadId
   ) fail('permit-request-mismatch');
-  if (now > permit.expiresAt) fail('permit-expired');
+  if (now >= permit.expiresAt) fail('permit-expired');
   if (state.consumed) fail('permit-already-consumed');
   // This write is synchronous and precedes every await and transport callback.
   state.consumed = true;

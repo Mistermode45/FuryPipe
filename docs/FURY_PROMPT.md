@@ -47,7 +47,12 @@ n’est pas présente.
 
 Les valeurs sont bornées avant rendu : 256 valeurs maximum par section, 1 MiB
 par valeur et 8 MiB d’inputs cumulés. Les sections vides et les valeurs non
-textuelles sont refusées.
+textuelles sont refusées. Les niveaux structurés sérialisent chaque valeur en
+chaîne JSON ; les retours à la ligne ne peuvent donc pas forger une nouvelle
+section et les chevrons sont échappés. Cela préserve les valeurs comme données,
+mais ne prétend pas empêcher une injection sémantique dans le contenu. Le niveau
+`TRIVIAL` reste exactement le texte compact fourni, sans structure générée à
+usurper.
 
 ## Preuve et limite
 

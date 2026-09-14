@@ -195,6 +195,13 @@ function canonicalSource(sections: readonly FuryPromptRenderedSection[]): string
   return JSON.stringify(sections.map((section) => ({ id: section.id, values: section.values })));
 }
 
+function renderDataValue(value: string): string {
+  return JSON.stringify(value)
+    .replaceAll('<', '\\u003c')
+    .replaceAll('>', '\\u003e')
+    .replaceAll('&', '\\u0026');
+}
+
 function renderPrompt(level: FuryPromptLevel, sections: readonly FuryPromptRenderedSection[]): string {
   if (level === 'TRIVIAL') return sections.flatMap((section) => section.values).join('\n');
 
@@ -208,8 +215,8 @@ function renderPrompt(level: FuryPromptLevel, sections: readonly FuryPromptRende
   for (let index = 0; index < sections.length; index += 1) {
     const section = sections[index]!;
     lines.push(`## ${SECTION_LABELS[section.id]}`);
-    if (section.values.length === 1) lines.push(section.values[0]!);
-    else for (const value of section.values) lines.push(`- ${value}`);
+    if (section.values.length === 1) lines.push(renderDataValue(section.values[0]!));
+    else for (const value of section.values) lines.push(`- ${renderDataValue(value)}`);
     if (index < sections.length - 1) lines.push('');
   }
   return lines.join('\n');

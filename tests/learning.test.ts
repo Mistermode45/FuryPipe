@@ -52,6 +52,14 @@ describe('FuryPipe learning layers', () => {
     expect(updated.nextReviews[0]).toMatchObject({ intervalDays: 1, nextReviewAt: 172_800_000 });
   });
 
+  it('does not treat inherited object properties as learning topics', () => {
+    const path = createHumanLearningPath({ learnerId: 'learner-prototype', topics, now: 0 });
+    expect(() => recordHumanLearningAttempt(path, {
+      topicId: 'constructor', theoryCompleted: true, practiceCompleted: true,
+      exerciseScore: 1, quizScore: 1, explainBackScore: 1, at: 1,
+    })).toThrow('unknown learning topic: constructor');
+  });
+
   it('rejects cyclic prerequisite graphs', () => {
     expect(() => createHumanLearningPath({ learnerId: 'learner-1', topics: [
       { ...topics[0]!, id: 'a', prerequisites: ['b'] },

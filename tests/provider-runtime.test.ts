@@ -31,6 +31,10 @@ describe('provider runtime evidence and cost oracle', () => {
       fresh: true,
       latencyMs: 42,
     });
+    expect(runtime.health('anthropic', 2000)).toMatchObject({
+      availability: 'unknown',
+      fresh: false,
+    });
     expect(runtime.health('anthropic', 2001)).toMatchObject({
       availability: 'unknown',
       fresh: false,
@@ -91,6 +95,21 @@ describe('provider runtime evidence and cost oracle', () => {
       outputTokens: 1,
     });
     expect(unknown.status).toBe(COST_UNKNOWN);
+  });
+
+  it('caps dynamic provider/model price registrations without blocking exact-key updates', () => {
+    const runtime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
+    const price = (model: string) => ({
+      providerId: 'openai',
+      model,
+      inputUsdPerMillionTokens: 1,
+      outputUsdPerMillionTokens: 2,
+      observedAt: 1,
+      source: 'bounded-test-catalog',
+    });
+    for (let index = 0; index < 10_000; index += 1) runtime.registerPrice(price(`model-${index}`));
+    runtime.registerPrice(price('model-0'));
+    expect(() => runtime.registerPrice(price('model-overflow'))).toThrow(/limited to 10000 entries/);
   });
 
   it('fails closed when cache usage has no registered cache rate', () => {

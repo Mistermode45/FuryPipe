@@ -102,11 +102,15 @@ export interface AgentMemoryRecord {
   readonly stage: AgentFabricStageId;
   readonly resultDigest: string;
   readonly status: 'completed' | 'handoff_required';
+  /** Cumulative budget validation for trustworthy cross-process resume. */
+  readonly consumedTokens?: number;
 }
 
 export interface AgentMemoryStore {
   append(record: AgentMemoryRecord): Promise<void>;
   list(runId: string): Promise<readonly AgentMemoryRecord[]>;
+  /** Atomically claims a one-time run/resume identity across callers. */
+  claimExecution?(runId: string, claimId: string): Promise<boolean>;
 }
 
 export interface AgentStageExecutionContext {
@@ -260,6 +264,10 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
   if (!request || typeof request !== 'object' || typeof request.objective !== 'string' || !request.objective.trim()) {
     return { code: 'INVALID_REQUEST', reason: 'agent objective must not be empty' };
   }
+  if (request.runId !== undefined && (typeof request.runId !== 'string' || request.runId.length === 0
+    || request.runId.length > MAX_AGENT_MEMORY_RUN_ID || request.runId.includes('\0'))) {
+    return { code: 'INVALID_REQUEST', reason: 'agent run ID is invalid or exceeds its bound' };
+  }
   const budget = request.contextBudgetTokens ?? DEFAULT_CONTEXT_BUDGET;
   if (!Number.isSafeInteger(budget) || budget < MIN_CONTEXT_BUDGET || budget > MAX_CONTEXT_BUDGET) {
     return { code: 'INVALID_REQUEST', reason: `agent context budget must be between ${MIN_CONTEXT_BUDGET} and ${MAX_CONTEXT_BUDGET}` };
@@ -369,25 +377,52 @@ function snapshotFor(
 
 export function createInMemoryAgentMemoryStore(): AgentMemoryStore {
   const records = new Map<string, AgentMemoryRecord[]>();
+  const claims = new Set<string>();
+  let recordCount = 0;
   return {
     async append(record) {
+      if (!validatePersistedRecord(record)) throw new Error('agent memory record is invalid');
       const existing = records.get(record.runId) ?? [];
-      existing.push({ ...record });
+      if (existing.length >= MAX_AGENT_MEMORY_RECORDS || recordCount >= MAX_IN_MEMORY_AGENT_RECORDS) {
+        throw new Error('agent memory record limit exceeded');
+      }
+      existing.push(Object.freeze({ ...record }));
       records.set(record.runId, existing);
+      recordCount += 1;
     },
     async list(runId) {
+      validateMemoryRunId(runId);
       return [...(records.get(runId) ?? [])];
+    },
+    async claimExecution(runId, claimId) {
+      validateMemoryRunId(runId);
+      if (typeof claimId !== 'string' || claimId.length === 0 || claimId.length > 256 || claimId.includes('\0')) {
+        throw new Error('agent memory execution claim is invalid');
+      }
+      const key = `${runId}\0${claimId}`;
+      if (claims.has(key)) return false;
+      if (claims.size >= MAX_AGENT_MEMORY_CLAIMS) throw new Error('agent memory execution claim limit exceeded');
+      claims.add(key);
+      return true;
     },
   };
 }
 
 const AGENT_MEMORY_SOURCE = 'agent-runtime';
 const AGENT_MEMORY_CONTENT_TYPE = 'application/vnd.furypipe.agent-memory-record+json';
+const AGENT_MEMORY_CLAIM_SOURCE = 'agent-runtime-claim';
+const AGENT_MEMORY_CLAIM_CONTENT_TYPE = 'application/vnd.furypipe.agent-memory-claim+json';
 const MAX_AGENT_MEMORY_RUN_ID = 256;
 const MAX_AGENT_MEMORY_DIGEST = 256;
+const MAX_AGENT_MEMORY_RECORDS = 10_000;
+const MAX_AGENT_MEMORY_WRITABLE_RECORDS = MAX_AGENT_MEMORY_RECORDS - 1;
+const MAX_IN_MEMORY_AGENT_RECORDS = 10_000;
+const MAX_AGENT_MEMORY_CLAIMS = 10_000;
+const MAX_AGENT_APPEND_ATTEMPTS = 8;
 
 interface AgentMemoryEnvelope {
   readonly format: 'furypipe-agent-memory-envelope/v1';
+  readonly sequence?: number;
   readonly record: AgentMemoryRecord;
 }
 
@@ -398,6 +433,7 @@ function validatePersistedRecord(value: unknown): value is AgentMemoryRecord {
     && typeof record.runId === 'string' && record.runId.length > 0 && record.runId.length <= MAX_AGENT_MEMORY_RUN_ID && !record.runId.includes('\0')
     && AGENT_FABRIC_STAGE_ORDER.includes(record.stage as AgentFabricStageId)
     && typeof record.resultDigest === 'string' && record.resultDigest.length > 0 && record.resultDigest.length <= MAX_AGENT_MEMORY_DIGEST && !record.resultDigest.includes('\0')
+    && (record.consumedTokens === undefined || validSafeInteger(record.consumedTokens))
     && (record.status === 'completed' || record.status === 'handoff_required');
 }
 
@@ -414,24 +450,87 @@ function validateMemoryRunId(runId: string): void {
  */
 export function createRecoveryAgentMemoryStore(store: RecoveryStore): AgentMemoryStore {
   if (typeof store.list !== 'function') throw new Error('Recovery store does not support bounded manifest listing');
+  if (typeof store.putBounded !== 'function') throw new Error('Recovery store does not support atomic bounded writes');
   const listManifests = store.list.bind(store);
+  const putBounded = store.putBounded.bind(store);
   return {
     async append(record) {
       validateMemoryRunId(record.runId);
       if (!validatePersistedRecord(record)) throw new Error('agent memory record is invalid');
-      const envelope: AgentMemoryEnvelope = { format: 'furypipe-agent-memory-envelope/v1', record: { ...record } };
-      await store.put(new TextEncoder().encode(JSON.stringify(envelope)), {
-        source: AGENT_MEMORY_SOURCE,
-        contentType: AGENT_MEMORY_CONTENT_TYPE,
-        runId: record.runId,
-        stage: record.stage,
-      });
+
+      for (let attempt = 0; attempt < MAX_AGENT_APPEND_ATTEMPTS; attempt += 1) {
+        const existing = [...await listManifests({
+          limit: MAX_AGENT_MEMORY_RECORDS,
+          metadata: { source: AGENT_MEMORY_SOURCE, contentType: AGENT_MEMORY_CONTENT_TYPE, runId: record.runId },
+        })];
+        if (existing.length >= MAX_AGENT_MEMORY_WRITABLE_RECORDS) throw new Error('agent memory record limit exceeded');
+        existing.sort((left, right) => Number(left.metadata?.sequence) - Number(right.metadata?.sequence));
+        if (existing.some((handle, index) => handle.metadata?.sequence !== index)) {
+          throw new Error('agent memory record ordering is invalid');
+        }
+
+        const sequence = existing.length;
+        const metadata = {
+          source: AGENT_MEMORY_SOURCE,
+          contentType: AGENT_MEMORY_CONTENT_TYPE,
+          runId: record.runId,
+          stage: record.stage,
+          sequence,
+        } as const;
+        const envelope: AgentMemoryEnvelope = {
+          format: 'furypipe-agent-memory-envelope/v1',
+          sequence,
+          record: { ...record },
+        };
+
+        try {
+          await putBounded(
+            new TextEncoder().encode(JSON.stringify(envelope)),
+            metadata,
+            {
+              metadata: {
+                source: AGENT_MEMORY_SOURCE,
+                contentType: AGENT_MEMORY_CONTENT_TYPE,
+                runId: record.runId,
+              },
+              maxMatches: MAX_AGENT_MEMORY_WRITABLE_RECORDS,
+              additionalBounds: [{
+                metadata: {
+                  source: AGENT_MEMORY_SOURCE,
+                  contentType: AGENT_MEMORY_CONTENT_TYPE,
+                  runId: record.runId,
+                  sequence,
+                },
+                maxMatches: 1,
+              }],
+            },
+          );
+          return;
+        } catch (caught) {
+          const message = caught instanceof Error ? caught.message : '';
+          if (message.includes('matching-object limit exceeded') && attempt + 1 < MAX_AGENT_APPEND_ATTEMPTS) {
+            continue;
+          }
+          throw caught;
+        }
+      }
+
+      throw new Error('agent memory append contention exceeded its bounded retry limit');
     },
     async list(runId) {
       validateMemoryRunId(runId);
-      const handles = await listManifests({
-        limit: 10_000,
+      const handles = [...await listManifests({
+        limit: MAX_AGENT_MEMORY_RECORDS,
         metadata: { source: AGENT_MEMORY_SOURCE, contentType: AGENT_MEMORY_CONTENT_TYPE, runId },
+      })];
+      if (handles.length >= MAX_AGENT_MEMORY_RECORDS) throw new Error('agent memory record listing reached its safety limit');
+      handles.sort((left, right) => {
+        const a = left.metadata?.sequence;
+        const b = right.metadata?.sequence;
+        if (typeof a === 'number' && typeof b === 'number') return a - b;
+        if (typeof a === 'number') return -1;
+        if (typeof b === 'number') return 1;
+        return left.digest.localeCompare(right.digest);
       });
       const records: AgentMemoryRecord[] = [];
       for (const handle of handles) {
@@ -446,11 +545,80 @@ export function createRecoveryAgentMemoryStore(store: RecoveryStore): AgentMemor
           || (envelope as AgentMemoryEnvelope).record.runId !== runId) {
           throw new Error('agent memory record is invalid');
         }
+        const sequence = (envelope as Partial<AgentMemoryEnvelope>).sequence;
+        if (sequence !== undefined && (!Number.isSafeInteger(sequence) || sequence !== records.length
+          || handle.metadata?.sequence !== sequence)) {
+          throw new Error('agent memory record ordering is invalid');
+        }
         records.push({ ...(envelope as AgentMemoryEnvelope).record });
       }
       return records;
     },
+    async claimExecution(runId, claimId) {
+      validateMemoryRunId(runId);
+      if (typeof claimId !== 'string' || claimId.length === 0 || claimId.length > 256 || claimId.includes('\0')) {
+        throw new Error('agent memory execution claim is invalid');
+      }
+      const identity = createHash('sha256').update(`${runId}\0${claimId}`, 'utf8').digest('hex');
+      const claimToken = randomUUID();
+      const bytes = new TextEncoder().encode(`furypipe-agent-memory-claim/v1\0${identity}`);
+      const handle = await putBounded(bytes, {
+        source: AGENT_MEMORY_CLAIM_SOURCE,
+        contentType: AGENT_MEMORY_CLAIM_CONTENT_TYPE,
+        runId,
+        claimDigest: identity,
+        claimToken,
+      }, {
+        metadata: {
+          source: AGENT_MEMORY_CLAIM_SOURCE,
+          contentType: AGENT_MEMORY_CLAIM_CONTENT_TYPE,
+          runId,
+        },
+        maxMatches: MAX_AGENT_MEMORY_CLAIMS,
+      });
+      return handle.metadata?.claimToken === claimToken;
+    },
   };
+}
+
+function historyMatchesSnapshot(records: readonly AgentMemoryRecord[], runId: string, snapshot: AgentRunSnapshot): boolean {
+  if (!Array.isArray(records) || records.length === 0 || records.length >= MAX_AGENT_MEMORY_RECORDS) return false;
+  let nextStageIndex = 0;
+  let contextUsedTokens = 0;
+  for (const record of records) {
+    if (!validatePersistedRecord(record) || record.runId !== runId || record.consumedTokens === undefined
+      || AGENT_FABRIC_STAGE_ORDER[nextStageIndex] !== record.stage) return false;
+    if (contextUsedTokens + record.consumedTokens > Number.MAX_SAFE_INTEGER) return false;
+    contextUsedTokens += record.consumedTokens;
+    if (record.status === 'completed') nextStageIndex += 1;
+  }
+  const last = records.at(-1);
+  return last?.status === 'handoff_required'
+    && snapshot.nextStageIndex === nextStageIndex
+    && snapshot.contextUsedTokens === contextUsedTokens
+    && snapshot.completedStages.length === nextStageIndex
+    && snapshot.completedStages.every((stage, index) => stage === AGENT_FABRIC_STAGE_ORDER[index]);
+}
+
+function snapshotHasExactShape(snapshot: AgentRunSnapshot): boolean {
+  const keys = Object.keys(snapshot).sort();
+  const expected = [
+    'format', 'runId', 'objectiveDigest', 'nextStageIndex', 'completedStages', 'contextUsedTokens',
+    ...(snapshot.furyPromptDigest === undefined ? [] : ['furyPromptDigest']),
+  ].sort();
+  return keys.length === expected.length && keys.every((key, index) => key === expected[index]);
+}
+
+function snapshotClaimDigest(snapshot: AgentRunSnapshot): string {
+  return createHash('sha256').update(JSON.stringify({
+    format: snapshot.format,
+    runId: snapshot.runId,
+    objectiveDigest: snapshot.objectiveDigest,
+    nextStageIndex: snapshot.nextStageIndex,
+    completedStages: snapshot.completedStages,
+    contextUsedTokens: snapshot.contextUsedTokens,
+    ...(snapshot.furyPromptDigest === undefined ? {} : { furyPromptDigest: snapshot.furyPromptDigest }),
+  }), 'utf8').digest('hex');
 }
 
 /**
@@ -519,8 +687,9 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   let contextUsedTokens = 0;
   if (resumeFrom !== undefined) {
     if (!resumeFrom || typeof resumeFrom !== 'object'
+      || !snapshotHasExactShape(resumeFrom)
       || resumeFrom.format !== 'furypipe-agent-run-snapshot/v1'
-      || (request.runId !== undefined && request.runId !== resumeFrom.runId)
+      || typeof resumeFrom.runId !== 'string' || resumeFrom.runId !== runId
       || resumeFrom.objectiveDigest !== objectiveDigest
       || !Number.isSafeInteger(resumeFrom.nextStageIndex)
       || resumeFrom.nextStageIndex < 0
@@ -543,13 +712,58 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   }
 
   const memory = request.memory ?? createInMemoryAgentMemoryStore();
+  let memoryRecords: readonly AgentMemoryRecord[];
   try {
-    await memory.list(runId);
+    memoryRecords = await memory.list(runId);
+    if (!Array.isArray(memoryRecords) || memoryRecords.length >= MAX_AGENT_MEMORY_RECORDS) {
+      throw new Error('agent memory listing is invalid or exceeds its safety limit');
+    }
   } catch {
     return {
       format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
       completedStages, contextUsedTokens, skillHealth,
       failure: { code: 'MEMORY_FAILED', reason: 'agent memory could not be opened' },
+    };
+  }
+  if (resumeFrom === undefined && memoryRecords.length > 0) {
+    return {
+      format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
+      completedStages: [], contextUsedTokens: 0, skillHealth,
+      failure: { code: 'INVALID_REQUEST', reason: 'agent run ID already has stage history; a valid handoff snapshot is required' },
+    };
+  }
+  if (resumeFrom !== undefined && !historyMatchesSnapshot(memoryRecords, runId, resumeFrom)) {
+    return {
+      format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
+      completedStages: [], contextUsedTokens: 0, skillHealth,
+      failure: { code: 'INVALID_SNAPSHOT', reason: 'agent handoff snapshot does not match persisted stage history or budget' },
+    };
+  }
+  if (typeof memory.claimExecution !== 'function') {
+    return {
+      format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
+      completedStages, contextUsedTokens, skillHealth,
+      failure: { code: 'MEMORY_FAILED', reason: 'agent memory does not support atomic one-time execution claims' },
+    };
+  }
+  let claimed: boolean;
+  try {
+    const claimId = resumeFrom === undefined ? 'start' : `resume:${snapshotClaimDigest(resumeFrom)}`;
+    claimed = await memory.claimExecution(runId, claimId);
+    if (typeof claimed !== 'boolean') throw new Error('agent execution claim result is invalid');
+  } catch {
+    return {
+      format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
+      completedStages, contextUsedTokens, skillHealth,
+      failure: { code: 'MEMORY_FAILED', reason: 'agent execution claim could not be recorded' },
+    };
+  }
+  if (!claimed) {
+    return {
+      format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
+      completedStages: [], contextUsedTokens: 0, skillHealth,
+      failure: { code: resumeFrom === undefined ? 'INVALID_REQUEST' : 'INVALID_SNAPSHOT',
+        reason: 'agent run or handoff snapshot has already been claimed' },
     };
   }
 
@@ -616,7 +830,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     let result: AgentStageResult;
     try {
       const stageSkillCache = new Map<string, AgentSkillExecution>();
-      const stageMcpCache = new Map<string, unknown>();
+      const stageMcpCache = new Map<string, Promise<unknown>>();
       const invokeSkillForStage = async (skillId: string): Promise<AgentSkillExecution> => {
         const cached = stageSkillCache.get(skillId);
         if (cached) return cached;
@@ -629,10 +843,16 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
         const call: AgentMcpPlannedCall = { serverId, method, ...(params === undefined ? {} : { params }) };
         if (!validatePlannedMcpCall(call)) throw new Error('MCP planned call is invalid');
         const key = mcpCallKey(call);
-        if (stageMcpCache.has(key)) return stageMcpCache.get(key);
-        const mcpResult = await invokeMcp(stage, serverId, method, params);
-        stageMcpCache.set(key, mcpResult);
-        return mcpResult;
+        const cached = stageMcpCache.get(key);
+        if (cached) return cached;
+        const pending = invokeMcp(stage, serverId, method, params);
+        stageMcpCache.set(key, pending);
+        try {
+          return await pending;
+        } catch (caught) {
+          if (stageMcpCache.get(key) === pending) stageMcpCache.delete(key);
+          throw caught;
+        }
       };
       const invokeSubagentForStage = async (subagentId: string): Promise<AgentSubagentExecution> => {
         const subagentResult = await invokeSubagent(stage, subagentId);
@@ -722,6 +942,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     const memoryRecord: AgentMemoryRecord = {
       format: 'furypipe-agent-memory-record/v1', runId, stage, resultDigest,
       status: result.status === 'handoff_required' ? 'handoff_required' : 'completed',
+      consumedTokens,
     };
     try {
       await memory.append(memoryRecord);

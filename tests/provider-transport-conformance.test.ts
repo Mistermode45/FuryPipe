@@ -11,7 +11,7 @@ const at = 10_000;
 
 async function executeOpenAI(fetchImpl: typeof fetch) {
   const request = makeRequest({ providerId: 'openai', model: 'gpt-5.6-sol', task: 'CONFORMANCE_OPENAI' });
-  const runtime = makeRuntime({ providerId: 'openai' });
+  const runtime = makeRuntime({ providerId: 'openai', expiresAt: at + 1 });
   const gate = createProviderExecutionGate({ providerRuntime: runtime, now: () => at });
   const permit = gate.authorize(request, makePolicy(request));
   const transport = createOpenAIProviderTransport({
@@ -29,7 +29,7 @@ async function executeOpenAI(fetchImpl: typeof fetch) {
 
 async function executeAnthropic(fetchImpl: typeof fetch) {
   const request = makeRequest({ providerId: 'anthropic', model: 'claude-opus-5', task: 'CONFORMANCE_ANTHROPIC' });
-  const runtime = makeRuntime({ providerId: 'anthropic' });
+  const runtime = makeRuntime({ providerId: 'anthropic', expiresAt: at + 1 });
   const gate = createProviderExecutionGate({ providerRuntime: runtime, now: () => at });
   const permit = gate.authorize(request, makePolicy(request));
   const transport = createAnthropicProviderTransport({
@@ -47,7 +47,7 @@ async function executeAnthropic(fetchImpl: typeof fetch) {
 
 async function executeGoogle(fetchImpl: typeof fetch) {
   const request = makeRequest({ providerId: 'google', model: 'gemini-3.8-flash', task: 'CONFORMANCE_GOOGLE' });
-  const runtime = makeRuntime({ providerId: 'google' });
+  const runtime = makeRuntime({ providerId: 'google', expiresAt: at + 1 });
   const gate = createProviderExecutionGate({ providerRuntime: runtime, now: () => at });
   const permit = gate.authorize(request, makePolicy(request));
   const transport = createGoogleProviderTransport({
