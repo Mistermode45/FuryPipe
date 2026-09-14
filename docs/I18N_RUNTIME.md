@@ -97,8 +97,8 @@ The English locale remains the default, preserving existing CLI/dashboard behavi
 
 Machine values remain untranslated: model IDs, HTTP statuses, paths, environment variable names, token counts, pricing figures, request IDs, hashes, protocol values and raw technical error strings.
 
-The remaining PARTIAL status is not a claim that dashboard human-copy or Chromium
-RTL/responsive validation is unwired. It reflects the deliberately narrower browser
-claim: Firefox/WebKit equivalence is still unexecuted, while protocol/machine payloads
-remain intentionally untranslated. English remains the default and pseudo-locales remain
-QA-only.
+The remaining PARTIAL status is not a claim that dashboard human-copy or browser
+RTL/responsive validation is unwired. Real Chromium, Firefox and WebKit runs now cover
+the declared Dashboard locale/viewport matrix locally; the source-bound hosted workflow
+must still complete on the exact candidate SHA. Protocol/machine payloads remain
+intentionally untranslated. English remains the default and pseudo-locales remain QA-only.

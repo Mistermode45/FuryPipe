@@ -41,10 +41,12 @@ The RC evidence snapshot remains `BLOCKED` until all required preparation eviden
 - CodeQL completed successfully;
 - Secret Scan completed successfully;
 - Supply Chain / SBOM completed successfully;
+- Supply Chain sub-jobs are inspected individually; GitHub Dependency Review `SKIPPED` is not a verified review;
 - License Compliance completed successfully;
 - Benchmark Contract completed successfully;
 - Dashboard Browser QA completed successfully for its declared Chromium scope;
 - Web Studio Browser QA completed successfully for its declared Chromium scope when Web Studio is in release scope;
+- Cross-Browser QA completed successfully for its declared Chromium/Firefox/WebKit scope when browser parity is in release scope;
 - repository integration/release branch policy verified from GitHub-origin evidence;
 - package smoke verified;
 - installation smoke verified from the packed artifact;
