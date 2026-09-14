@@ -1,0 +1,99 @@
+name: Hosted Web Studio Conformance
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact 40-character FuryPipe candidate commit SHA
+        required: true
+        type: string
+      target_url:
+        description: Public HTTPS hosted Web Studio QA URL, exact /studio-qa path
+        required: true
+        default: https://mcp.furycraft.fr/studio-qa
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-web-studio-conformance-${{ inputs.source_sha }}
+  cancel-in-progress: false
+
+jobs:
+  conformance:
+    name: External hosted Web Studio matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      FURYPIPE_SOURCE_COMMIT: ${{ inputs.source_sha }}
+      FURYPIPE_HOSTED_WEB_STUDIO_URL: ${{ inputs.target_url }}
+      FURYPIPE_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
+      FURYPIPE_HOSTED_WEB_STUDIO_OUTPUT_DIR: ${{ github.workspace }}/artifacts/hosted-web-studio-conformance
+      FURYPIPE_VALIDATOR_COMMIT: ${{ github.sha }}
+
+    steps:
+      - name: Checkout validator source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: validator
+
+      - name: Validate requested source SHA
+        shell: bash
+        run: |
+          if [[ ! "$FURYPIPE_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::source_sha must be an exact lowercase 40-character commit SHA"
+            exit 1
+          fi
+
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+          path: candidate
+
+      - name: Verify exact candidate checkout
+        shell: bash
+        run: |
+          test "$(git -C candidate rev-parse HEAD)" = "$FURYPIPE_SOURCE_COMMIT"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 10.21.0
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+
+      - name: Build exact candidate
+        shell: bash
+        working-directory: candidate
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm run typecheck
+          pnpm run build
+
+      - name: Install pinned Playwright browsers
+        shell: bash
+        working-directory: candidate
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+
+      - name: Run external hosted Web Studio conformance
+        env:
+          FURYPIPE_GITHUB_RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: node validator/scripts/hosted-web-studio-conformance.mjs
+
+      - name: Upload source-bound hosted Web Studio evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: furypipe-hosted-web-studio-conformance-${{ inputs.source_sha }}
+          path: |
+            artifacts/hosted-web-studio-conformance/hosted-web-studio-conformance.json
+            artifacts/hosted-web-studio-conformance/hosted-web-studio-conformance.json.sha256
+          if-no-files-found: warn
+          retention-days: 30
