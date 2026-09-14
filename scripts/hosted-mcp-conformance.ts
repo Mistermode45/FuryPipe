@@ -459,10 +459,12 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
 
   let requested = false;
   try {
-    const targetUsesIpLiteral = isIP(targetUrl.hostname) !== 0;
+    const normalizedTargetHostname = targetUrl.hostname.replace(/^\[|\]$/gu, '');
+    const targetIpFamily = isIP(normalizedTargetHostname);
+    const targetUsesIpLiteral = targetIpFamily !== 0;
     const resolvedAddresses = targetUsesIpLiteral
-      ? [{ address: targetUrl.hostname.replace(/^\[|\]$/gu, ''), family: isIP(targetUrl.hostname) }]
-      : await lookup(targetUrl.hostname, { all: true });
+      ? [{ address: normalizedTargetHostname, family: targetIpFamily }]
+      : await lookup(normalizedTargetHostname, { all: true });
     if (resolvedAddresses.length === 0) throw new Error('hosted MCP target resolved to no addresses');
     if (resolvedAddresses.some((answer) => isForbiddenHostedMcpResolvedAddress(answer.address))) {
       throw new Error('hosted MCP target must resolve only to public-routable addresses');
