@@ -83,6 +83,7 @@ function artifacts(overrides: Partial<RcArtifactEvidence> = {}): RcArtifactEvide
     sourceCommit: SHA, observedAt: 1, origin, reference,
   });
   return {
+    publicationBaseline: { state: 'PREVIOUS_VERSION_VERIFIED', previousVersion: '0.13.1' },
     packageSmoke: 'VERIFIED',
     installationSmoke: 'VERIFIED',
     upgradeSmoke: 'VERIFIED',
@@ -94,6 +95,7 @@ function artifacts(overrides: Partial<RcArtifactEvidence> = {}): RcArtifactEvide
     releaseNotes: 'VERIFIED',
     packageSha256: 'b'.repeat(64),
     proofs: {
+      publicationBaseline: proof('public-npm-publication-baseline', 'github-actions'),
       packageSmoke: proof('package-smoke', 'local'),
       installationSmoke: proof('installation-smoke', 'local'),
       upgradeSmoke: proof('upgrade-smoke', 'local'),
@@ -218,7 +220,7 @@ describe('RC evidence snapshot', () => {
     });
 
     expect(snapshot.preparationStatus).toBe('BLOCKED');
-    expect(snapshot.blockers.filter((blocker) => blocker.id.startsWith('artifact.'))).toHaveLength(10);
+    expect(snapshot.blockers.filter((blocker) => blocker.id.startsWith('artifact.'))).toHaveLength(11);
   });
 
   it('fails closed on a future readiness report or duplicate gate provenance', () => {
@@ -486,6 +488,84 @@ describe('RC evidence snapshot', () => {
       publishNpm: false,
       deployProduction: false,
     });
+  });
+
+  it('accepts a verified first-publication baseline without fabricating upgrade or rollback evidence', () => {
+    const baseArtifacts = artifacts();
+    const {
+      upgradeSmoke: _upgradeSmokeProof,
+      rollbackEvidence: _rollbackEvidenceProof,
+      ...firstPublicationProofs
+    } = baseArtifacts.proofs!;
+
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: 1_725_000_000_100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: readiness(),
+      workflowRuns: workflows(),
+      artifacts: artifacts({
+        publicationBaseline: { state: 'FIRST_PUBLICATION_VERIFIED' },
+        upgradeSmoke: 'NOT_EXECUTED',
+        rollbackEvidence: 'NOT_EXECUTED',
+        proofs: firstPublicationProofs,
+      }),
+    });
+
+    expect(snapshot.preparationStatus).toBe('READY_FOR_RELEASE_DECISION');
+    expect(snapshot.blockers).toEqual([]);
+    expect(snapshot.artifacts.upgradeSmoke).toBe('NOT_EXECUTED');
+    expect(snapshot.artifacts.rollbackEvidence).toBe('NOT_EXECUTED');
+  });
+
+  it('does not treat an unavailable npm lookup as proof of first publication', () => {
+    const baseArtifacts = artifacts();
+    const {
+      publicationBaseline: _publicationBaselineProof,
+      upgradeSmoke: _upgradeSmokeProof,
+      rollbackEvidence: _rollbackEvidenceProof,
+      ...unverifiedProofs
+    } = baseArtifacts.proofs!;
+
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: 1_725_000_000_100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: readiness(),
+      workflowRuns: workflows(),
+      artifacts: artifacts({
+        publicationBaseline: { state: 'NOT_EXECUTED' },
+        upgradeSmoke: 'NOT_EXECUTED',
+        rollbackEvidence: 'NOT_EXECUTED',
+        proofs: unverifiedProofs,
+      }),
+    });
+
+    expect(snapshot.preparationStatus).toBe('BLOCKED');
+    expect(snapshot.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'artifact.publicationBaseline', state: 'NOT_EXECUTED' }),
+      expect.objectContaining({ id: 'artifact.upgradeSmoke', state: 'NOT_EXECUTED' }),
+      expect.objectContaining({ id: 'artifact.rollbackEvidence', state: 'NOT_EXECUTED' }),
+    ]));
+  });
+
+  it('rejects fabricated upgrade or rollback verification on a first public publication', () => {
+    const snapshot = createRcEvidenceSnapshot({
+      generatedAt: 1_725_000_000_100,
+      sourceCommit: SHA,
+      packageVersion: VERSION,
+      readiness: readiness(),
+      workflowRuns: workflows(),
+      artifacts: artifacts({
+        publicationBaseline: { state: 'FIRST_PUBLICATION_VERIFIED' },
+      }),
+    });
+
+    expect(snapshot.preparationStatus).toBe('BLOCKED');
+    expect(snapshot.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'artifact.upgradeSmoke', state: 'MISMATCH' }),
+      expect.objectContaining({ id: 'artifact.rollbackEvidence', state: 'MISMATCH' }),
+    ]));
   });
 
   it('requires every RC preparation artifact and a package SHA-256 digest', () => {

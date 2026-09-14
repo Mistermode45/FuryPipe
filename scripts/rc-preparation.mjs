@@ -12,6 +12,7 @@ const SOURCE_COMMIT = process.env.FURYPIPE_SOURCE_COMMIT || '';
 const RUN_ID = process.env.GITHUB_RUN_ID || 'local';
 const SHA40 = /^[0-9a-f]{40}$/u;
 const SHA256 = /^[0-9a-f]{64}$/u;
+const PUBLIC_NPM_REGISTRY = 'https://registry.npmjs.org/';
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -113,36 +114,109 @@ async function freshInstallSmoke(npm, tarball, name, version) {
 }
 
 async function findPreviousPublishedVersion(npm, name, currentVersion, expectedRepository) {
+  let response;
   try {
-    const response = await run(npm, ['view', name, 'versions', '--json'], ROOT, {
+    response = await run(npm, ['view', name, 'versions', '--json', '--registry=' + PUBLIC_NPM_REGISTRY], ROOT, {
       env: { ...process.env, npm_config_loglevel: 'silent' },
     });
-    const parsed = JSON.parse(response.stdout || '[]');
-    const versions = (Array.isArray(parsed) ? parsed : [parsed])
-      .filter((value) => typeof value === 'string' && parseStableSemver(value))
-      .filter((value) => compareSemver(value, currentVersion) < 0)
-      .sort(compareSemver);
-    const candidate = versions.at(-1);
-    if (!candidate) return { state: 'NOT_EXECUTED', reason: 'no earlier stable public version exists' };
-
-    const metadataResponse = await run(npm, ['view', name + '@' + candidate, 'repository', '--json'], ROOT, {
-      env: { ...process.env, npm_config_loglevel: 'silent' },
-    });
-    const repository = normalizeRepositoryUrl(JSON.parse(metadataResponse.stdout || 'null'));
-    if (!repository || repository !== expectedRepository) {
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    if (/\bE404\b/u.test(detail) && /(not found|is not in this registry)/iu.test(detail)) {
       return {
-        state: 'BLOCKED',
-        reason: 'previous public package repository mismatch: ' + (repository || 'missing'),
-        version: candidate,
+        state: 'NOT_EXECUTED',
+        reason: 'public npm registry reports that FuryPipe has no published version',
+        publicationBaseline: 'FIRST_PUBLICATION_VERIFIED',
       };
     }
-    return { state: 'VERIFIED', version: candidate, repository };
+    return {
+      state: 'NOT_EXECUTED',
+      reason: 'npm registry lookup unavailable: ' + detail.slice(0, 300),
+      publicationBaseline: 'NOT_EXECUTED',
+    };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(response.stdout || '[]');
   } catch (error) {
     return {
       state: 'NOT_EXECUTED',
-      reason: 'npm registry lookup unavailable: ' + (error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300)),
+      reason: 'npm registry returned invalid version metadata: '
+        + (error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200)),
+      publicationBaseline: 'NOT_EXECUTED',
     };
   }
+
+  const stableVersions = (Array.isArray(parsed) ? parsed : [parsed])
+    .filter((value) => typeof value === 'string' && parseStableSemver(value));
+
+  if (stableVersions.includes(currentVersion)) {
+    return {
+      state: 'BLOCKED',
+      reason: 'candidate package version is already published on the public npm registry',
+      version: currentVersion,
+      publicationBaseline: 'BLOCKED',
+    };
+  }
+
+  const candidate = stableVersions
+    .filter((value) => compareSemver(value, currentVersion) < 0)
+    .sort(compareSemver)
+    .at(-1);
+
+  if (!candidate) {
+    return {
+      state: 'NOT_EXECUTED',
+      reason: 'no earlier stable public version exists',
+      publicationBaseline: 'FIRST_PUBLICATION_VERIFIED',
+    };
+  }
+
+  let metadataResponse;
+  try {
+    metadataResponse = await run(npm, [
+      'view', name + '@' + candidate, 'repository', '--json', '--registry=' + PUBLIC_NPM_REGISTRY,
+    ], ROOT, {
+      env: { ...process.env, npm_config_loglevel: 'silent' },
+    });
+  } catch (error) {
+    return {
+      state: 'NOT_EXECUTED',
+      reason: 'previous public package metadata lookup unavailable: '
+        + (error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300)),
+      version: candidate,
+      publicationBaseline: 'NOT_EXECUTED',
+    };
+  }
+
+  let repository;
+  try {
+    repository = normalizeRepositoryUrl(JSON.parse(metadataResponse.stdout || 'null'));
+  } catch (error) {
+    return {
+      state: 'NOT_EXECUTED',
+      reason: 'previous public package repository metadata is invalid: '
+        + (error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200)),
+      version: candidate,
+      publicationBaseline: 'NOT_EXECUTED',
+    };
+  }
+
+  if (!repository || repository !== expectedRepository) {
+    return {
+      state: 'BLOCKED',
+      reason: 'previous public package repository mismatch: ' + (repository || 'missing'),
+      version: candidate,
+      publicationBaseline: 'BLOCKED',
+    };
+  }
+
+  return {
+    state: 'VERIFIED',
+    version: candidate,
+    repository,
+    publicationBaseline: 'PREVIOUS_VERSION_VERIFIED',
+  };
 }
 
 async function upgradeRollbackSmoke(npm, tarball, name, currentVersion, previous) {
@@ -237,6 +311,12 @@ async function main() {
   assert(freshInstall.repository === expectedRepository, 'fresh-installed package repository metadata mismatch');
 
   const previous = await findPreviousPublishedVersion(npm, pkg.name, pkg.version, expectedRepository);
+  const publicationBaseline = {
+    state: previous.publicationBaseline ?? 'NOT_EXECUTED',
+    ...(previous.publicationBaseline === 'PREVIOUS_VERSION_VERIFIED' && previous.version
+      ? { previousVersion: previous.version }
+      : {}),
+  };
   const upgradeRollback = await upgradeRollbackSmoke(npm, tarball, pkg.name, pkg.version, previous);
   const sbom = await generateSbom();
 
@@ -262,6 +342,7 @@ async function main() {
     '- exact npm tarball built from the candidate;',
     '- fresh install from that tarball;',
     '- CLI version/help and core package exports;',
+    '- public npm publication baseline: ' + publicationBaseline.state + ';',
     '- upgrade smoke: ' + upgradeRollback.upgradeSmoke + (upgradeRollback.previousVersion ? ' from ' + upgradeRollback.previousVersion : '') + ';',
     '- package-level rollback smoke: ' + upgradeRollback.rollbackEvidence + ';',
     '- SPDX 2.3 SBOM generated from the frozen dependency graph;',
@@ -286,6 +367,7 @@ async function main() {
   const observedAt = Date.now();
   const localRef = (name) => 'github-actions:' + RUN_ID + ':rc-preparation:' + name;
   const artifacts = {
+    publicationBaseline,
     packageSmoke: 'VERIFIED',
     installationSmoke: 'VERIFIED',
     upgradeSmoke: upgradeRollback.upgradeSmoke,
@@ -297,6 +379,14 @@ async function main() {
     releaseNotes: 'VERIFIED',
     packageSha256,
     proofs: {
+      ...(['FIRST_PUBLICATION_VERIFIED', 'PREVIOUS_VERSION_VERIFIED'].includes(publicationBaseline.state) ? {
+        publicationBaseline: {
+          sourceCommit: SOURCE_COMMIT,
+          observedAt,
+          origin: 'github-actions',
+          reference: localRef('public-npm-publication-baseline'),
+        },
+      } : {}),
       packageSmoke: { sourceCommit: SOURCE_COMMIT, observedAt, origin: 'local', reference: localRef('package-smoke') },
       installationSmoke: { sourceCommit: SOURCE_COMMIT, observedAt, origin: 'local', reference: localRef('fresh-install') },
       ...(upgradeRollback.upgradeSmoke === 'VERIFIED' ? {
@@ -354,6 +444,7 @@ async function main() {
   console.log('RC preparation package: ' + pkg.name + '@' + pkg.version);
   console.log('RC package SHA-256: ' + packageSha256);
   console.log('fresh install: VERIFIED');
+  console.log('public npm publication baseline: ' + publicationBaseline.state);
   console.log('upgrade smoke: ' + upgradeRollback.upgradeSmoke);
   console.log('package rollback smoke: ' + upgradeRollback.rollbackEvidence);
   console.log('release actions executed: false');
