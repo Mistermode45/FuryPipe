@@ -68,6 +68,17 @@ function canonicalLocale(locale) {
   return value;
 }
 
+function isKnownFirefoxFaviconCspNoise(project, message) {
+  if (!project.includes('firefox') || message.type() !== 'error') return false;
+  const location = message.location();
+  const text = message.text();
+  return location.url.startsWith('resource:')
+    && location.url.endsWith('/FaviconLoader.sys.mjs')
+    && text.includes('Content-Security-Policy')
+    && text.includes('/favicon.ico')
+    && text.includes("default-src 'none'");
+}
+
 const sourceCommit = requiredEnv('FURYPIPE_SOURCE_COMMIT');
 assert(SHA40.test(sourceCommit), 'FURYPIPE_SOURCE_COMMIT must be an exact lowercase 40-character SHA');
 const target = safeTarget(requiredEnv('FURYPIPE_HOSTED_WEB_STUDIO_URL'));
@@ -116,6 +127,7 @@ const browserForProject = {
 const launched = new Map();
 const failures = [];
 let totalCases = 0;
+let ignoredKnownFirefoxFaviconCspNoise = 0;
 
 try {
   for (const project of REQUIRED_QA_PROJECTS) {
@@ -136,8 +148,20 @@ try {
         });
         const page = await context.newPage();
         let consoleErrors = 0;
-        page.on('console', (message) => { if (message.type() === 'error') consoleErrors += 1; });
-        page.on('pageerror', () => { consoleErrors += 1; });
+        const consoleErrorDetails = [];
+        page.on('console', (message) => {
+          if (message.type() !== 'error') return;
+          if (isKnownFirefoxFaviconCspNoise(project, message)) {
+            ignoredKnownFirefoxFaviconCspNoise += 1;
+            return;
+          }
+          consoleErrors += 1;
+          consoleErrorDetails.push(`console: ${message.text().slice(0, 500)}`);
+        });
+        page.on('pageerror', (error) => {
+          consoleErrors += 1;
+          consoleErrorDetails.push(`pageerror: ${error.message.slice(0, 500)}`);
+        });
 
         const reasons = [];
         try {
@@ -199,7 +223,9 @@ try {
           if (!observation.hasTitle || !observation.hasMetaDescription || !observation.hasCanonical) reasons.push('SEO structure incomplete');
           if (observation.brokenLinks !== 0) reasons.push('broken links observed');
           if (observation.externalScriptOrigins.length !== 0) reasons.push('external script origin observed');
-          if (consoleErrors !== 0) reasons.push('console/page errors observed');
+          if (consoleErrors !== 0) {
+            reasons.push(`console/page errors observed: ${consoleErrorDetails.slice(0, 3).join(' | ')}`);
+          }
         } catch (error) {
           reasons.push(error instanceof Error ? error.message : String(error));
         } finally {
@@ -230,6 +256,9 @@ const evidence = {
   },
   matrix: {
     totalCases,
+    ignoredKnownBrowserNoise: {
+      firefoxFaviconCsp: ignoredKnownFirefoxFaviconCspNoise,
+    },
     browserProjects: [...REQUIRED_QA_PROJECTS],
     viewports: REQUIRED_VIEWPORTS.map((viewport) => ({ id: viewport.id, width: viewport.width, height: viewport.height })),
     locales: [...REQUIRED_TEST_LOCALES],
