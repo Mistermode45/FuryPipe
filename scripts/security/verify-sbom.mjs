@@ -22,14 +22,37 @@ for (const item of sbom.packages) {
   idsByName.set(item.name, bucket);
 }
 
-const rootIds = idsByName.get(pkg.name) || [];
+const rootNameIds = idsByName.get(pkg.name) || [];
+const rootIds = rootNameIds.filter((id) =>
+  sbom.packages.find((item) => item.SPDXID === id)?.versionInfo === pkg.version
+);
+if (rootNameIds.length > 0 && rootIds.length === 0) {
+  throw new Error('SBOM root package version does not match package.json');
+}
 if (rootIds.length !== 1) throw new Error('SBOM must contain exactly one root package: ' + pkg.name);
 const rootId = rootIds[0];
 
+const sourceCommit = process.env.FURYPIPE_SOURCE_COMMIT || process.env.GITHUB_SHA || '';
+if (sourceCommit && !/^[0-9a-f]{40}$/u.test(sourceCommit)) {
+  throw new Error('FURYPIPE_SOURCE_COMMIT/GITHUB_SHA must be an exact lowercase 40-character commit SHA');
+}
+if (sourceCommit && sbom.documentNamespace !== `https://github.com/Mistermode45/FuryPipe/sbom/${sourceCommit}`) {
+  throw new Error('SBOM document namespace does not match the exact source commit');
+}
+
+function packageNameFromAlias(name, spec) {
+  if (typeof spec !== 'string' || !spec.startsWith('npm:')) return name;
+  const reference = spec.slice(4);
+  const match = reference.startsWith('@')
+    ? /^(@[^\/]+\/[^@\/]+)(?:@.*)?$/u.exec(reference)
+    : /^([^@/]+)(?:@.*)?$/u.exec(reference);
+  return match?.[1] || name;
+}
+
 const directNames = new Set([
-  ...Object.keys(pkg.dependencies || {}),
-  ...Object.keys(pkg.devDependencies || {}),
-  ...Object.keys(pkg.optionalDependencies || {}),
+  ...Object.entries(pkg.dependencies || {}).map(([name, spec]) => packageNameFromAlias(name, spec)),
+  ...Object.entries(pkg.devDependencies || {}).map(([name, spec]) => packageNameFromAlias(name, spec)),
+  ...Object.entries(pkg.optionalDependencies || {}).map(([name, spec]) => packageNameFromAlias(name, spec)),
 ]);
 
 for (const name of directNames) {
@@ -51,6 +74,21 @@ for (const relationship of sbom.relationships) {
   if (!ids.has(relationship.spdxElementId) || !ids.has(relationship.relatedSpdxElement)) {
     throw new Error('SBOM relationship references an unknown SPDXID');
   }
+}
+
+const reachable = new Set([rootId]);
+let expanded = true;
+while (expanded) {
+  expanded = false;
+  for (const relationship of sbom.relationships) {
+    if (reachable.has(relationship.spdxElementId) && !reachable.has(relationship.relatedSpdxElement)) {
+      reachable.add(relationship.relatedSpdxElement);
+      expanded = true;
+    }
+  }
+}
+if (reachable.size !== sbom.packages.length) {
+  throw new Error('SBOM contains packages unreachable from its root dependency graph');
 }
 
 if (sbom.packages.length < directNames.size + 1) {

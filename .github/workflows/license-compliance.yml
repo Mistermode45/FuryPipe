@@ -4,7 +4,7 @@ on:
   push:
     branches: [v5-chatgpt-compliance, v5-production-hardening]
   pull_request:
-    branches: [v5-production-hardening]
+    branches: [v5-production-hardening, v5-chatgpt-post-codex-integrity-final-validation]
   schedule:
     - cron: '11 6 * * 1'
   workflow_dispatch:

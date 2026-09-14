@@ -593,6 +593,85 @@ describe('long-term memory', () => {
     expect(history.map((record) => record.version)).toEqual([2, 1]);
   });
 
+  it('fails visibly when UPDATE races logical DELETE across independent Recovery adapters', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-ltm-update-delete-race-'));
+    roots.push(root);
+    const initial = createLongTermMemoryStore(createRecoveryStore(root, { namespace: 'ltm' }));
+    await initial.apply({
+      operation: 'ADD',
+      memoryId: 'update-delete-race',
+      scope,
+      now: 10,
+      reason: 'initial',
+      memoryClass: 'Project',
+      contentHandle: 'opaque://race/base',
+      contentDigest: 'base-digest',
+      source: 'test',
+      terms: ['race'],
+    });
+
+    let waiting = 0;
+    let releaseBarrier!: () => void;
+    const barrier = new Promise<void>((resolve) => { releaseBarrier = resolve; });
+    const withSnapshotBarrier = (store: RecoveryStore): RecoveryStore => {
+      let armed = true;
+      return {
+        ...store,
+        async list(options: RecoveryListOptions = {}) {
+          const handles = await store.list!(options);
+          if (armed && typeof options.metadata?.memoryKey === 'string') {
+            armed = false;
+            waiting += 1;
+            if (waiting === 2) releaseBarrier();
+            await barrier;
+          }
+          return handles;
+        },
+      };
+    };
+    const updater = createLongTermMemoryStore(withSnapshotBarrier(createRecoveryStore(root, { namespace: 'ltm' })));
+    const deleter = createLongTermMemoryStore(withSnapshotBarrier(createRecoveryStore(root, { namespace: 'ltm' })));
+
+    const outcomes = await Promise.allSettled([
+      updater.apply({
+        operation: 'UPDATE',
+        memoryId: 'update-delete-race',
+        scope,
+        now: 20,
+        reason: 'concurrent-update',
+        memoryClass: 'Project',
+        contentHandle: 'opaque://race/updated',
+        contentDigest: 'updated-digest',
+        source: 'test-update',
+        terms: ['race'],
+      }),
+      deleter.apply({
+        operation: 'DELETE',
+        memoryId: 'update-delete-race',
+        scope,
+        now: 21,
+        reason: 'concurrent-delete',
+        source: 'test-delete',
+      }),
+    ]);
+
+    expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === 'rejected')).toHaveLength(1);
+    const rejected = outcomes.find((outcome) => outcome.status === 'rejected');
+    expect(rejected?.status).toBe('rejected');
+    if (rejected?.status === 'rejected') {
+      expect(String(rejected.reason)).toMatch(/matching-object limit exceeded/u);
+    }
+
+    const reopened = createLongTermMemoryStore(createRecoveryStore(root, { namespace: 'ltm' }));
+    const latest = await reopened.latest('update-delete-race', scope);
+    expect(latest?.version).toBe(2);
+    expect(['active', 'tombstone']).toContain(latest?.state);
+    if (latest?.state === 'active') expect(latest.contentDigest).toBe('updated-digest');
+    if (latest?.state === 'tombstone') expect(latest.supersedesVersion).toBe(1);
+    expect(await reopened.history({ memoryId: 'update-delete-race', scope, limit: 10 })).toHaveLength(2);
+  });
+
   it('rejects malformed temporal windows and illegal mutation transitions', async () => {
     const { memory } = await memoryStore();
 

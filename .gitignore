@@ -49,6 +49,10 @@ eval/corpus/
 # Bench artifacts (events.jsonl, PNG dumps, workspaces) — one dir per run
 bench/runs/
 
+# Local cross-browser screenshots and JSON evidence (CI uploads its own artifact)
+artifacts/cross-browser-qa/
+artifacts/dashboard-browser-qa/
+
 # eval run artifacts (outputs, not sources)
 eval/verbatim-15/out_*/
 eval/verbatim-15/retest_rep*/

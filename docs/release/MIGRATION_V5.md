@@ -35,7 +35,7 @@ Agent, FuryPrompt and Learning kernels are executable locally and persist select
 
 ## Dashboard and i18n
 
-The i18n core supports bounded BCP-47 resolution, FR/EN, RTL direction and QA pseudo-locales. Dashboard human-copy is wired through the primary shell and fragments while exact machine values remain outside translation. The dedicated Dashboard Browser QA workflow executes real Chromium against French LTR and `ar-XB` RTL at desktop/mobile reference widths and at every declared CSS breakpoint boundary. Firefox/WebKit equivalence remains separate evidence and is not inferred from Chromium.
+The i18n core supports bounded BCP-47 resolution, FR/EN, RTL direction and QA pseudo-locales. Dashboard human-copy is wired through the primary shell and fragments while exact machine values remain outside translation. The dedicated cross-browser harness executes real Chromium, Firefox and WebKit against French LTR and `ar-XB` RTL at desktop/mobile reference widths and every declared CSS breakpoint boundary. Hosted evidence is source-bound to the exact candidate SHA; a local run is not promoted to GitHub CI evidence.
 
 ## Upgrade rule
 
