@@ -132,8 +132,13 @@ do not independently authenticate it. Every
 `VERIFIED` preparation artifact, including package/install/upgrade/rollback
 smokes, SBOM, provenance, compatibility, migration notes, release notes and
 the exact package SHA-256, requires a source-bound evidence reference and an
-origin appropriate to that artifact. These references are validated metadata,
-not cryptographic authentication of the referenced system.
+origin appropriate to that artifact. The only upgrade/rollback exception is a
+source-bound `FIRST_PUBLICATION_VERIFIED` baseline produced from the canonical
+public npm registry: in that case package upgrade and package-level rollback
+must remain `NOT_EXECUTED`, because no prior public package exists to exercise.
+An unavailable registry lookup is not equivalent to first-publication proof and
+remains blocking. These references are validated metadata, not cryptographic
+authentication of the referenced system.
 
 The RC snapshot can return `READY_FOR_RELEASE_DECISION`, but it copies authorization separately and always returns `releaseActionsExecuted: false`.
 Validated workflow/artifact evidence is canonicalized to known schema fields
