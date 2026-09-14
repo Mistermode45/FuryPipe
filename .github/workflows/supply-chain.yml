@@ -2,7 +2,7 @@ name: Supply Chain
 
 on:
   pull_request:
-    branches: [v5-production-hardening]
+    branches: [v5-production-hardening, v5-chatgpt-post-codex-integrity-final-validation]
   push:
     branches: [v5-chatgpt-security, v5-production-hardening]
   schedule:
