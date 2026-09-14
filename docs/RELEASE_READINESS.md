@@ -68,7 +68,7 @@ The default V5 policy requires verified evidence for:
 
 ## Conditional / advisory gates
 
-GitHub Dependency Review is reported separately because FuryPipe already requires frozen dependency audit and SBOM evidence. A repository-setting blocker stays visible and should be removed before stable release when the GitHub plan/settings allow it.
+GitHub Dependency Review is reported separately because FuryPipe already requires frozen dependency audit and SBOM evidence. Dependency Graph is currently enabled and Dependency Review has completed successfully on the audited candidate; future candidates must still provide their own exact-SHA result.
 
 Provider benchmarks are advisory when release notes make no performance claims. If `performanceClaims=true`, provider benchmark evidence becomes a required gate automatically.
 
@@ -106,10 +106,14 @@ Its output contract is `furypipe-rc-preparation-evidence/v1`. It deliberately ke
 provenance `PARTIAL` on pull requests and distinguishes package-level rollback from
 production deployment rollback.
 
-Repository policy remains a separate GitHub-origin required gate. At the current observed
-repository state, `v5-production-hardening` reports `protected: false` and no repository
-ruleset is exposed. That state must remain a release blocker until a maintainer enables and
-re-verifies the required policy; local CI cannot convert it to `VERIFIED`.
+Repository policy remains a separate GitHub-origin required gate. Post-audit maintainer
+configuration now exposes an active repository ruleset, `FuryPipe Production Hardening`,
+targeting `v5-production-hardening`; the branch reports `protected: true`. The ruleset
+requires pull requests, exact GitHub Actions status checks, up-to-date branches and resolved
+conversations, while blocking deletions and non-fast-forward/force pushes. This removes the
+previous repository-setting blocker, but Release Readiness must still re-read and bind
+GitHub-origin policy evidence at the actual release-decision time; local CI alone cannot
+manufacture that evidence.
 
 ## RC evidence snapshot
 
