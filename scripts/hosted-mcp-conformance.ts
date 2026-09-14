@@ -129,7 +129,12 @@ export function isForbiddenHostedMcpResolvedAddress(address: string): boolean {
   const family = isIP(value);
   if (family === 4) {
     const octets = value.split('.').map(Number);
-    const [a, b, c] = octets;
+    if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+      return true;
+    }
+    const a = octets[0]!;
+    const b = octets[1]!;
+    const c = octets[2]!;
     return a === 0
       || a === 10
       || a === 127
