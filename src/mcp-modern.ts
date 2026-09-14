@@ -284,7 +284,35 @@ function validateModernRoutingHeaders(value: Record<string, unknown>, request: R
   return undefined;
 }
 
-async function readAndValidateBody(request: Request, maxBytes: number): Promise<{ bytes: Uint8Array; value: Record<string, unknown> } | Response> {
+type DeadlineOutcome<T> =
+  | { readonly kind: 'value'; readonly value: T }
+  | { readonly kind: 'error' }
+  | { readonly kind: 'timeout' };
+
+async function settleBeforeDeadline<T>(promise: Promise<T>, deadlineAt: number): Promise<DeadlineOutcome<T>> {
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) return { kind: 'timeout' };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise.then(
+        (value) => ({ kind: 'value' as const, value }),
+        () => ({ kind: 'error' as const }),
+      ),
+      new Promise<{ readonly kind: 'timeout' }>((resolve) => {
+        timer = setTimeout(() => resolve({ kind: 'timeout' }), remainingMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+async function readAndValidateBody(
+  request: Request,
+  maxBytes: number,
+  deadlineAt: number,
+): Promise<{ bytes: Uint8Array; value: Record<string, unknown> } | Response> {
   const contentLength = request.headers.get('content-length');
   if (contentLength !== null) {
     if (!/^\d+$/u.test(contentLength)) return jsonRpcHttpError(400, -32600, 'invalid Content-Length');
@@ -303,7 +331,17 @@ async function readAndValidateBody(request: Request, maxBytes: number): Promise<
       let total = 0;
       try {
         while (true) {
-          const { value, done } = await reader.read();
+          const outcome = await settleBeforeDeadline(reader.read(), deadlineAt);
+          if (outcome.kind === 'timeout') {
+            void reader.cancel().catch(() => undefined);
+            return jsonRpcHttpError(504, -32603, 'MCP request timed out');
+          }
+          if (outcome.kind === 'error') {
+            return request.signal.aborted
+              ? jsonRpcHttpError(499, -32603, 'request cancelled')
+              : jsonRpcHttpError(400, -32700, 'unable to read request body');
+          }
+          const { value, done } = outcome.value;
           if (done) break;
           if (value === undefined) continue;
           if (value.byteLength > maxBytes - total) {
@@ -314,7 +352,11 @@ async function readAndValidateBody(request: Request, maxBytes: number): Promise<
           total += value.byteLength;
         }
       } finally {
-        reader.releaseLock();
+        try {
+          reader.releaseLock();
+        } catch {
+          // A timed-out read may still be settling while cancellation propagates.
+        }
       }
       bytes = new Uint8Array(total);
       let offset = 0;
@@ -324,8 +366,11 @@ async function readAndValidateBody(request: Request, maxBytes: number): Promise<
       }
     }
   } catch {
-    return jsonRpcHttpError(400, -32700, 'unable to read request body');
+    return request.signal.aborted
+      ? jsonRpcHttpError(499, -32603, 'request cancelled')
+      : jsonRpcHttpError(400, -32700, 'unable to read request body');
   }
+  if (Date.now() >= deadlineAt) return jsonRpcHttpError(504, -32603, 'MCP request timed out');
   let value: unknown;
   try {
     value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)) as unknown;
@@ -342,10 +387,12 @@ async function runWithDeadline(
   handler: McpHttpHandler,
   request: Request,
   body: Uint8Array,
-  timeoutMs: number,
+  deadlineAt: number,
   authInfo?: AuthInfo,
 ): Promise<Response> {
   if (request.signal.aborted) return jsonRpcHttpError(499, -32603, 'request cancelled');
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) return jsonRpcHttpError(504, -32603, 'MCP request timed out');
   const controller = new AbortController();
   let timedOut = false;
   const onAbort = () => controller.abort(request.signal.reason);
@@ -358,7 +405,7 @@ async function runWithDeadline(
     timedOut = true;
     controller.abort(new DOMException('MCP request timed out', 'TimeoutError'));
     resolveTimeout?.({ kind: 'timeout' });
-  }, timeoutMs);
+  }, remainingMs);
   // TypeScript 7 models Uint8Array<ArrayBufferLike> more narrowly than the
   // web Request constructor, while the runtime accepts this exact byte body.
   const downstream = new Request(request, { body: body as unknown as BodyInit, signal: controller.signal });
@@ -451,19 +498,27 @@ export function createProductionMcpHandler(
       if (!acceptsMcpResponse(request.headers.get('accept'))) {
         return withHttpResponseHeaders(jsonRpcHttpError(406, -32600, 'Accept must include application/json or text/event-stream'), request);
       }
-      const checked = await readAndValidateBody(request, maxBytes);
+      const deadlineAt = Date.now() + timeoutMs;
+      const checked = await readAndValidateBody(request, maxBytes, deadlineAt);
       if (checked instanceof Response) return withHttpResponseHeaders(checked, request);
       const routingRejection = validateModernRoutingHeaders(checked.value, request);
       if (routingRejection) return withHttpResponseHeaders(routingRejection, request);
       if (authenticate) {
-        const auth = await authenticate(request);
+        const authOutcome = await settleBeforeDeadline(authenticate(request), deadlineAt);
+        if (authOutcome.kind === 'timeout') {
+          return withHttpResponseHeaders(jsonRpcHttpError(504, -32603, 'MCP request timed out'), request);
+        }
+        if (authOutcome.kind === 'error') {
+          return withHttpResponseHeaders(jsonRpcHttpError(500, -32603, 'MCP authentication failed'), request);
+        }
+        const auth = authOutcome.value;
         if (auth instanceof Response) return withHttpResponseHeaders(auth, request);
         runtimeEvidence.bearerAuthSuccesses = incrementRuntimeCounter(runtimeEvidence.bearerAuthSuccesses);
         runtimeEvidence.dispatchedRequests = incrementRuntimeCounter(runtimeEvidence.dispatchedRequests);
-        return withHttpResponseHeaders(await runWithDeadline(handler, request, checked.bytes, timeoutMs, auth), request);
+        return withHttpResponseHeaders(await runWithDeadline(handler, request, checked.bytes, deadlineAt, auth), request);
       }
       runtimeEvidence.dispatchedRequests = incrementRuntimeCounter(runtimeEvidence.dispatchedRequests);
-      return withHttpResponseHeaders(await runWithDeadline(handler, request, checked.bytes, timeoutMs, requestOptions?.authInfo), request);
+      return withHttpResponseHeaders(await runWithDeadline(handler, request, checked.bytes, deadlineAt, requestOptions?.authInfo), request);
     },
     close: handler.close,
     notify: handler.notify,
