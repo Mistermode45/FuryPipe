@@ -130,3 +130,11 @@ pas une certification client hébergée, un test réseau multi-processus, ni une
 intégration à un Authorization Server réel. Les limites de taille et de
 validation restent celles de la surface legacy, en plus des validations de
 schéma du SDK moderne.
+
+## Hosted conformance
+
+Le harness hosted est documente dans docs/MCP_HOSTED_CONFORMANCE.md. La presence du harness et du workflow manuel ne constitue aucune preuve hosted par elle-meme.
+
+La promotion de externalConformance exige une execution depuis un client externe GitHub-hosted vers un endpoint non-loopback, avec DNS, TLS autorise, auth positive et negative, protocole MCP moderne 2026-07-28, fallback 2025-11-25, reconnexion, timeout, annulation/recovery et liaison au SHA source exact.
+
+Le token statique du target de conformance est uniquement un fixture d'interoperabilite Bearer. Il ne doit jamais etre promu comme preuve d'un Authorization Server OAuth reel.
