@@ -1,0 +1,105 @@
+name: Provenance Attestation
+
+on:
+  pull_request:
+    branches: [v5-production-hardening, v5-chatgpt-post-codex-integrity-final-validation]
+  push:
+    branches: [v5-production-hardening]
+  workflow_dispatch:
+
+concurrency:
+  group: provenance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-package:
+    name: Validate package provenance input
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install frozen dependency graph
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Validate source and package
+        run: |
+          pnpm run typecheck
+          pnpm run build
+          pnpm run package:smoke
+          npm pack --json --ignore-scripts --quiet > npm-pack.json
+          node -e "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync('npm-pack.json','utf8'));if(!Array.isArray(p)||p.length!==1||!p[0].filename)process.exit(1);if(!fs.existsSync(p[0].filename))process.exit(1)"
+
+  attest-package:
+    name: Attest packed npm artifact
+    if: github.event_name != 'pull_request'
+    needs: validate-package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install frozen dependency graph
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build exact artifact
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm run typecheck
+          pnpm run build
+          npm pack --json --ignore-scripts --quiet > npm-pack.json
+          TARBALL="$(node -e "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync('npm-pack.json','utf8'));if(!Array.isArray(p)||p.length!==1||!p[0].filename)process.exit(1);process.stdout.write(p[0].filename)")"
+          test -f "$TARBALL"
+          sha256sum "$TARBALL" > "$TARBALL.sha256"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "checksum=$TARBALL.sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub build provenance attestation
+        id: attest
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-path: ${{ steps.pack.outputs.tarball }}
+
+      - name: Upload attested package and checksum
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: furypipe-attested-package-${{ github.sha }}
+          path: |
+            ${{ steps.pack.outputs.tarball }}
+            ${{ steps.pack.outputs.checksum }}
+          if-no-files-found: error
+          retention-days: 30
