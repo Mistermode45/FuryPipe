@@ -214,6 +214,57 @@ describe('production MCP HTTP boundary', () => {
     expect(pulls).toBe(1);
   });
 
+  it('enforces the configured timeout while the request body is still streaming', async () => {
+    const mcp = await handler({
+      allowedHostnames: ['localhost'],
+      allowUnauthenticatedLoopback: true,
+      timeoutMs: 25,
+    });
+    const body = new ReadableStream<Uint8Array>({
+      pull() {
+        return new Promise<void>(() => undefined);
+      },
+    });
+    const response = await mcp.fetch(new Request('https://localhost/mcp', {
+      method: 'POST',
+      headers: {
+        host: 'localhost',
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-protocol-version': '2026-07-28',
+        'mcp-method': 'tools/list',
+      },
+      body,
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' }));
+    expect(response.status).toBe(504);
+    expect((await json(response)).error).toMatchObject({ code: -32603, message: 'MCP request timed out' });
+  });
+
+  it('includes Bearer verification in the same request deadline budget', async () => {
+    const verifier: OAuthTokenVerifier = {
+      async verifyAccessToken(): Promise<AuthInfo> {
+        return new Promise<AuthInfo>(() => undefined);
+      },
+    };
+    const mcp = await handler({
+      allowedHostnames: ['localhost'],
+      bearerAuth: { verifier, requiredScopes: ['mcp'] },
+      timeoutMs: 25,
+    });
+    const request = modernRequest('tools/list', {});
+    request.headers.set('authorization', 'Bearer opaque-test-token');
+    const response = await mcp.fetch(request);
+    expect(response.status).toBe(504);
+    expect((await json(response)).error).toMatchObject({ code: -32603, message: 'MCP request timed out' });
+    expect(getProductionMcpRuntimeEvidence(mcp)).toMatchObject({
+      requests: 1,
+      dispatchedRequests: 0,
+      bearerAuthConfigured: true,
+      bearerAuthSuccesses: 0,
+    });
+  });
+
   it('keeps the 2025 stateless fallback available through the secured boundary', async () => {
     const mcp = await handler();
     const response = await mcp.fetch(new Request('https://localhost/mcp', {
