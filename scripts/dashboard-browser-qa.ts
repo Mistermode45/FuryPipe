@@ -442,6 +442,7 @@ async function runCase(browser, dashboard, testCase) {
       pageUrl,
       fragmentRequestCount: fragmentRequests.length,
       base,
+      tooltipOverflow,
       expanded,
       screenshot: screenshotPath.replace(process.cwd() + '/', ''),
       runtimeExceptions: [...cdp.exceptions],

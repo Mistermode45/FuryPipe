@@ -1116,6 +1116,10 @@ const CSS = `
     pointer-events: none; opacity: 0; visibility: hidden; display: none; transition: opacity .12s, visibility .12s; }
   .tile:nth-child(3) .q::after, .tile:nth-child(4) .q::after { left: auto; right: 0; }
   .tile:nth-child(3) .q::before, .tile:nth-child(4) .q::before { left: auto; right: 2px; }
+  @media (min-width: 1001px) {
+    [dir="rtl"] .tile:nth-child(3) .q::after, [dir="rtl"] .tile:nth-child(4) .q::after { left: 0; right: auto; }
+    [dir="rtl"] .tile:nth-child(3) .q::before, [dir="rtl"] .tile:nth-child(4) .q::before { left: 2px; right: auto; }
+  }
   .q:hover::after, .q:focus-visible::after { display: block; opacity: 1; visibility: visible; transform: translateY(0); }
   .q:hover::before, .q:focus-visible::before { display: block; opacity: 1; visibility: visible; }
   @media (max-width: 1000px) {
@@ -1123,6 +1127,10 @@ const CSS = `
     .tile:nth-child(odd) .q::before { left: 2px; right: auto; }
     .tile:nth-child(even) .q::after { left: auto; right: 0; }
     .tile:nth-child(even) .q::before { left: auto; right: 2px; }
+    [dir="rtl"] .tile:nth-child(odd) .q::after { left: auto; right: 0; }
+    [dir="rtl"] .tile:nth-child(odd) .q::before { left: auto; right: 2px; }
+    [dir="rtl"] .tile:nth-child(even) .q::after { left: 0; right: auto; }
+    [dir="rtl"] .tile:nth-child(even) .q::before { left: 2px; right: auto; }
   }
   @media (max-width: 560px) {
     .tile .q::after { left: 0; right: auto; }
