@@ -1,6 +1,8 @@
 name: Hosted MCP Conformance
 
 on:
+  pull_request:
+    types: [labeled]
   workflow_dispatch:
     inputs:
       target_url:
@@ -23,13 +25,21 @@ concurrency:
 jobs:
   conformance:
     name: External Inspector conformance
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        github.event.action == 'labeled' &&
+        github.event.label.name == 'hosted-mcp-conformance' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      FURYPIPE_SOURCE_COMMIT: ${{ github.sha }}
+      FURYPIPE_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
       FURYPIPE_ALLOW_HOSTED_MCP_CONFORMANCE: '1'
-      FURYPIPE_HOSTED_MCP_URL: ${{ inputs.target_url }}
-      FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS: ${{ inputs.server_timeout_ms }}
+      FURYPIPE_HOSTED_MCP_URL: ${{ inputs.target_url || vars.FURYPIPE_HOSTED_MCP_TARGET_URL }}
+      FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS: ${{ inputs.server_timeout_ms || vars.FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS || '1500' }}
       FURYPIPE_HOSTED_MCP_CLIENT_BOUNDARY: github-hosted-runner
       FURYPIPE_HOSTED_MCP_OUTPUT_DIR: artifacts/hosted-mcp-conformance
 
@@ -37,7 +47,7 @@ jobs:
       - name: Checkout exact source revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Setup pnpm
@@ -57,10 +67,14 @@ jobs:
           pnpm run typecheck
           pnpm run build
 
-      - name: Require hosted conformance secret
+      - name: Require hosted target and secret
         env:
           FURYPIPE_HOSTED_MCP_BEARER_TOKEN: ${{ secrets.FURYPIPE_HOSTED_MCP_BEARER_TOKEN }}
         run: |
+          if [ -z "$FURYPIPE_HOSTED_MCP_URL" ]; then
+            echo "::error::Set repository variable FURYPIPE_HOSTED_MCP_TARGET_URL for label-triggered runs, or use the workflow_dispatch target_url input."
+            exit 1
+          fi
           if [ -z "$FURYPIPE_HOSTED_MCP_BEARER_TOKEN" ]; then
             echo "::error::Repository secret FURYPIPE_HOSTED_MCP_BEARER_TOKEN is required."
             exit 1
@@ -75,7 +89,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: furypipe-hosted-mcp-conformance-${{ github.sha }}
+          name: furypipe-hosted-mcp-conformance-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             artifacts/hosted-mcp-conformance/hosted-mcp-conformance.json
             artifacts/hosted-mcp-conformance/hosted-mcp-conformance.json.sha256
