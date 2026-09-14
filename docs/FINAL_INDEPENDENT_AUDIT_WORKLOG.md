@@ -45,9 +45,11 @@ mutable workflow name. Before handoff, inspect each run and child job for:
 - Dashboard Browser QA, Web Studio Browser QA and Cross-Browser QA;
 - RC Preparation Evidence.
 
-Supply Chain's Dependency Review sub-job must remain exactly `SKIPPED` while
-the repository variable condition is unmet. On a pull request, provenance input
-validation does not equal an emitted signed npm attestation.
+Inspect Supply Chain child jobs individually. On the observed PR #129 run,
+Dependency Review ran and passed because the read-only repository variable
+`FURYPIPE_DEPENDENCY_GRAPH_ENABLED` was `true`; do not call it `SKIPPED` for
+that run. On a pull request, provenance input validation does not equal an
+emitted signed npm attestation; the separate attestation job was skipped.
 
 ## Read-only external/repository checks
 

@@ -20,11 +20,11 @@ fixture cases across Chromium, Firefox and WebKit. This is not a live Figma or
 arbitrary customer-site audit, and it is not a substitute for the exact-head
 GitHub workflow results recorded on the audit Draft PR.
 
-This candidate is **not release-ready**. GitHub Dependency Review remains
-`SKIPPED`; repository branch protections/rulesets are absent; signed npm
-attestation is not produced on a pull request; provider/OAuth/hosted MCP/Figma
-validation has no supplied external environment; and no public earlier FuryPipe
-npm version exists for package upgrade/rollback.
+This candidate is **not release-ready**. Repository branch protections/rulesets
+are absent; signed npm attestation is not produced on a pull request;
+provider/OAuth/hosted MCP/Figma validation has no supplied external
+environment; and no public earlier FuryPipe npm version exists for package
+upgrade/rollback.
 
 ## Exact source identity
 
@@ -60,7 +60,7 @@ Release-Readiness/RC evidence; GitHub workflow triggers and test/report hygiene.
 | Long-Term Memory | `PARTIAL` | Version/history, saturation and concurrent UPDATE writers are covered; a deterministic independent-adapter UPDATE/DELETE conflict case was added. Physical multi-process race and storage crash claims remain unverified. |
 | Provider, policy, cache and retrieval | `PARTIAL` | Local registry/TTL/unknown-cost/bounds and governed fallback tests cover BASE reconstruction, allowlisted statuses, Retry-After and ambiguous-stop behavior. No real provider account, billing, model availability or business result was tested. |
 | External harness readiness | `PARTIAL` | A fail-closed opt-in live OpenClaw health probe is available. Provider live, Authorization Server, hosted MCP and Figma harnesses/evidence remain unavailable or unexecuted. |
-| Supply chain and SBOM | `PARTIAL` | Frozen install, `pnpm audit`, 53 pinned action references, and SBOM generator/verifier tests pass locally. GitHub Dependency Review is exactly `SKIPPED`; PR provenance input validation is not a signed artifact attestation. |
+| Supply chain and SBOM | `VERIFIED` | On final PR #129 head, Workflow action pinning, SPDX SBOM, Frozen dependency audit, and GitHub dependency review child jobs all completed successfully. The repository variable condition was true for this run. Local frozen install/audit and adversarial SBOM tests also pass. Signed npm artifact attestation is a separate provenance job and was `SKIPPED`. |
 | GitHub branch/release policy | `BLOCKED_BY_REPO_SETTING` | GitHub API returned `Branch not protected` for `v5-production-hardening`; repository ruleset query returned no rulesets. No setting was changed. |
 | RC/release readiness | `BLOCKED` | Exact-source evidence and explicit maintainer authorization are still required. npm package upgrade/rollback is `NOT_EXECUTED` because the registry has no prior public FuryPipe version. |
 | Documentation/status hygiene | `PARTIAL` | Durable task, Web Studio, i18n, migration and RC docs were updated. Old WORKLOG entries dated 2026-09-12 are retained as historical records, not current state. |
@@ -237,9 +237,11 @@ sent. This section is intentionally `PARTIAL`, not “external-ready”.
   13 workflows.
 - Local license inventory: 82 package entries; Apache-2.0 count is 9, including
   `playwright` and `playwright-core`. This is not legal advice.
-- GitHub Dependency Review: **`SKIPPED`** because its job condition requires
-  `vars.FURYPIPE_DEPENDENCY_GRAPH_ENABLED == 'true'`, which was not satisfied.
-  It is not `VERIFIED`.
+- On PR #129, Workflow action pinning, SPDX SBOM, Frozen dependency audit and
+  GitHub dependency review child jobs each completed with `success`. The
+  read-only repository variable `FURYPIPE_DEPENDENCY_GRAPH_ENABLED` was `true`,
+  so Dependency Review ran rather than being skipped. Recheck these job-level
+  conclusions on the exact final head after the audit report update.
 - Provenance input validation and an emitted signed npm attestation are
   different evidence. The attestation step is conditional on an eligible
   non-PR event and is not claimed from a PR run.
