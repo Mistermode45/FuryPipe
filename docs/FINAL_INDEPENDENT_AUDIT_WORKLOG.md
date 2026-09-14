@@ -73,3 +73,17 @@ attestation; the separate attestation job was skipped.
 - npm registry lookup for `furypipe`: HTTP 404; package upgrade/rollback against
   a prior public version remains `NOT_EXECUTED`.
 - No merge, tag, npm publish, GitHub Release or production deployment occurred.
+
+
+## Post-audit maintainer configuration
+
+After the Codex audit handoff, the maintainer changed repository configuration outside the audit branch:
+
+- enabled GitHub Dependency Graph;
+- set repository Actions variable `FURYPIPE_DEPENDENCY_GRAPH_ENABLED=true`;
+- reran Supply Chain on the candidate and observed Workflow action pinning, Frozen dependency audit, GitHub dependency review and SPDX SBOM all complete with `success`;
+- created active ruleset `FuryPipe Production Hardening` targeting `v5-production-hardening`;
+- the branch now reports `protected: true`;
+- the ruleset requires pull requests, strict required GitHub Actions checks, up-to-date branches and resolved review conversations, and blocks deletion/non-fast-forward updates.
+
+These actions resolve the original repository-setting blocker recorded above. The earlier 404/empty-ruleset observations remain historical evidence of the audit-time state and are not rewritten as if they had never occurred. Repository policy is mutable external state and must be re-read at release-decision time.
