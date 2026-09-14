@@ -305,11 +305,11 @@ async function partialBodyRequest(
   token: string,
   mode: 'wait-for-response' | 'abort',
   timeoutMs: number,
-): Promise<{ status?: number; aborted: boolean }> {
+): Promise<{ status?: number; aborted: boolean; sourceCommit?: string }> {
   return await new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
     let outerTimer: ReturnType<typeof setTimeout> | undefined;
-    const settle = (value: { status?: number; aborted: boolean }) => {
+    const settle = (value: { status?: number; aborted: boolean; sourceCommit?: string }) => {
       if (settled) return;
       settled = true;
       if (outerTimer !== undefined) clearTimeout(outerTimer);
@@ -330,10 +330,16 @@ async function partialBodyRequest(
     };
     const onResponse = (res: import('node:http').IncomingMessage) => {
       const status = res.statusCode;
+      const sourceHeader = res.headers['x-furypipe-source-commit'];
+      const responseSourceCommit = Array.isArray(sourceHeader) ? sourceHeader[0] : sourceHeader;
       res.resume();
       res.once('end', () => {
         req.destroy();
-        settle({ status, aborted: false });
+        settle({
+          status,
+          aborted: false,
+          ...(typeof responseSourceCommit === 'string' ? { sourceCommit: responseSourceCommit } : {}),
+        });
       });
     };
     const req = url.protocol === 'https:'
@@ -409,14 +415,16 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
     await sourceResponse.body?.cancel();
 
     const missingAuthResponse = await rawModern(targetUrl);
-    const missingAuthOk = missingAuthResponse.status === 401;
+    const missingAuthSource = missingAuthResponse.headers.get('x-furypipe-source-commit');
+    const missingAuthOk = missingAuthResponse.status === 401 && missingAuthSource === source;
     await missingAuthResponse.body?.cancel();
 
     const invalidToken = token === 'furypipe-invalid-hosted-token'
       ? 'furypipe-invalid-hosted-token-2'
       : 'furypipe-invalid-hosted-token';
     const invalidAuthResponse = await rawModern(targetUrl, invalidToken);
-    const invalidAuthOk = invalidAuthResponse.status === 401;
+    const invalidAuthSource = invalidAuthResponse.headers.get('x-furypipe-source-commit');
+    const invalidAuthOk = invalidAuthResponse.status === 401 && invalidAuthSource === source;
     await invalidAuthResponse.body?.cancel();
 
     const modernInitialize = await runInspector(modernConfigPath, 'initialize');
@@ -453,7 +461,7 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
       'wait-for-response',
       serverTimeoutMs + 10_000,
     );
-    const slowBodyOk = slowBody.status === 504;
+    const slowBodyOk = slowBody.status === 504 && slowBody.sourceCommit === source;
 
     const cancelled = await partialBodyRequest(targetUrl, token, 'abort', 5_000);
     const postCancelReconnect = await runInspector(modernConfigPath, 'initialize');
@@ -509,15 +517,25 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
       },
       missingAuth: {
         status: missingAuthOk ? 'VERIFIED' : 'PARTIAL',
-        details: { httpStatus: missingAuthResponse.status },
+        details: {
+          httpStatus: missingAuthResponse.status,
+          wireSourceMatchesCheckout: missingAuthSource === source,
+        },
       },
       invalidAuth: {
         status: invalidAuthOk ? 'VERIFIED' : 'PARTIAL',
-        details: { httpStatus: invalidAuthResponse.status },
+        details: {
+          httpStatus: invalidAuthResponse.status,
+          wireSourceMatchesCheckout: invalidAuthSource === source,
+        },
       },
       slowBodyTimeout: {
         status: slowBodyOk ? 'VERIFIED' : 'PARTIAL',
-        details: { httpStatus: slowBody.status ?? 0, configuredServerTimeoutMs: serverTimeoutMs },
+        details: {
+          httpStatus: slowBody.status ?? 0,
+          configuredServerTimeoutMs: serverTimeoutMs,
+          wireSourceMatchesCheckout: slowBody.sourceCommit === source,
+        },
       },
       cancelReconnect: {
         status: cancelReconnectOk ? 'VERIFIED' : 'PARTIAL',
