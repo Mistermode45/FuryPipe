@@ -130,3 +130,25 @@ pas une certification client hébergée, un test réseau multi-processus, ni une
 intégration à un Authorization Server réel. Les limites de taille et de
 validation restent celles de la surface legacy, en plus des validations de
 schéma du SDK moderne.
+
+
+## Hosted external conformance
+
+La validation hébergée est volontairement séparée des tests loopback et stdio.
+Le runbook exécutable est dans `docs/MCP_HOSTED_CONFORMANCE.md`.
+
+Le track hosted utilise un client MCP externe officiel (MCP Inspector), force
+séparément les ères `2026-07-28` et `2025-11-25`, vérifie auth négative,
+reconnexion, appel read-only, timeout streaming et annulation/reconnexion, et
+lie la réponse du listener Node au SHA exact via l'en-tête optionnel
+`X-FuryPipe-Source-Commit`.
+
+Le budget `timeoutMs` du handler de production couvre désormais la lecture du
+body, la vérification Bearer et le dispatch SDK dans un même deadline. Un body
+HTTP volontairement incomplet ne peut donc pas contourner ce budget en restant
+bloqué avant le dispatch.
+
+Aucune de ces surfaces ne transforme le Bearer statique du fixture en preuve
+OAuth. `externalConformance` ne devient `VERIFIED` qu'après une vraie
+exécution cross-host HTTPS source-bound ; le simple câblage du harness reste
+`PARTIAL` / `NOT_EXECUTED`.
