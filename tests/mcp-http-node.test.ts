@@ -23,6 +23,7 @@ async function listener(): Promise<{ value: NodeMcpHttpServer; url: string }> {
     port: 0,
     allowedHostnames: ['127.0.0.1', 'localhost'],
     allowUnauthenticatedLoopback: true,
+    sourceCommit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   });
   listeners.push(value);
   const address = value.address() as AddressInfo;
@@ -42,6 +43,18 @@ const modernBody = JSON.stringify({
 });
 
 describe('Node MCP HTTP listener', () => {
+  it('rejects malformed source binding metadata before listening', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-http-node-source-'));
+    roots.push(root);
+    await expect(listenMcpHttpNode(createRecoveryStore(root), {
+      host: '127.0.0.1',
+      port: 0,
+      allowedHostnames: ['127.0.0.1'],
+      allowUnauthenticatedLoopback: true,
+      sourceCommit: 'not-a-sha',
+    })).rejects.toThrow('sourceCommit');
+  });
+
   it('refuses an unauthenticated listener bound to a non-loopback interface', async () => {
     const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-http-node-bind-'));
     roots.push(root);
@@ -67,6 +80,7 @@ describe('Node MCP HTTP listener', () => {
     });
     expect(response.status).toBe(200);
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('x-furypipe-source-commit')).toBe('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     const payload = await response.json() as { result: { tools: unknown[] } };
     expect(payload.result.tools).toHaveLength(11);
     expect(getProductionMcpRuntimeEvidence(value.handler)).toMatchObject({
