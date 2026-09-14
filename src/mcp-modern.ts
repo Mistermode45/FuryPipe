@@ -287,12 +287,24 @@ function validateModernRoutingHeaders(value: Record<string, unknown>, request: R
 type DeadlineOutcome<T> =
   | { readonly kind: 'value'; readonly value: T }
   | { readonly kind: 'error' }
-  | { readonly kind: 'timeout' };
+  | { readonly kind: 'timeout' }
+  | { readonly kind: 'aborted' };
 
-async function settleBeforeDeadline<T>(promise: Promise<T>, deadlineAt: number): Promise<DeadlineOutcome<T>> {
+async function settleBeforeDeadline<T>(
+  promise: Promise<T>,
+  deadlineAt: number,
+  signal?: AbortSignal,
+): Promise<DeadlineOutcome<T>> {
+  if (signal?.aborted) return { kind: 'aborted' };
   const remainingMs = deadlineAt - Date.now();
   if (remainingMs <= 0) return { kind: 'timeout' };
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const abortPromise = new Promise<{ readonly kind: 'aborted' }>((resolve) => {
+    if (signal === undefined) return;
+    onAbort = () => resolve({ kind: 'aborted' });
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
   try {
     return await Promise.race([
       promise.then(
@@ -302,9 +314,11 @@ async function settleBeforeDeadline<T>(promise: Promise<T>, deadlineAt: number):
       new Promise<{ readonly kind: 'timeout' }>((resolve) => {
         timer = setTimeout(() => resolve({ kind: 'timeout' }), remainingMs);
       }),
+      abortPromise,
     ]);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
+    if (signal !== undefined && onAbort !== undefined) signal.removeEventListener('abort', onAbort);
   }
 }
 
@@ -331,10 +345,14 @@ async function readAndValidateBody(
       let total = 0;
       try {
         while (true) {
-          const outcome = await settleBeforeDeadline(reader.read(), deadlineAt);
+          const outcome = await settleBeforeDeadline(reader.read(), deadlineAt, request.signal);
           if (outcome.kind === 'timeout') {
             void reader.cancel().catch(() => undefined);
             return jsonRpcHttpError(504, -32603, 'MCP request timed out');
+          }
+          if (outcome.kind === 'aborted') {
+            void reader.cancel().catch(() => undefined);
+            return jsonRpcHttpError(499, -32603, 'request cancelled');
           }
           if (outcome.kind === 'error') {
             return request.signal.aborted
@@ -391,38 +409,29 @@ async function runWithDeadline(
   authInfo?: AuthInfo,
 ): Promise<Response> {
   if (request.signal.aborted) return jsonRpcHttpError(499, -32603, 'request cancelled');
-  const remainingMs = deadlineAt - Date.now();
-  if (remainingMs <= 0) return jsonRpcHttpError(504, -32603, 'MCP request timed out');
+  if (deadlineAt <= Date.now()) return jsonRpcHttpError(504, -32603, 'MCP request timed out');
   const controller = new AbortController();
-  let timedOut = false;
   const onAbort = () => controller.abort(request.signal.reason);
   request.signal.addEventListener('abort', onAbort, { once: true });
-  let resolveTimeout: ((value: { kind: 'timeout' }) => void) | undefined;
-  const timeoutPromise = new Promise<{ kind: 'timeout' }>((resolve) => {
-    resolveTimeout = resolve;
-  });
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort(new DOMException('MCP request timed out', 'TimeoutError'));
-    resolveTimeout?.({ kind: 'timeout' });
-  }, remainingMs);
   // TypeScript 7 models Uint8Array<ArrayBufferLike> more narrowly than the
   // web Request constructor, while the runtime accepts this exact byte body.
   const downstream = new Request(request, { body: body as unknown as BodyInit, signal: controller.signal });
-  const responsePromise = handler.fetch(downstream, authInfo === undefined ? undefined : { authInfo });
+  const responsePromise = Promise.resolve().then(
+    () => handler.fetch(downstream, authInfo === undefined ? undefined : { authInfo }),
+  );
   try {
-    const outcome = await Promise.race([
-      responsePromise.then((response) => ({ kind: 'response' as const, response }), () => ({ kind: 'error' as const })),
-      timeoutPromise,
-    ]);
-    if (outcome.kind === 'timeout') return jsonRpcHttpError(504, -32603, 'MCP request timed out');
-    if (outcome.kind === 'error') {
-      if (timedOut || request.signal.aborted) return jsonRpcHttpError(request.signal.aborted ? 499 : 504, -32603, request.signal.aborted ? 'request cancelled' : 'MCP request timed out');
-      return jsonRpcHttpError(500, -32603, 'MCP request failed');
+    const outcome = await settleBeforeDeadline(responsePromise, deadlineAt, request.signal);
+    if (outcome.kind === 'timeout') {
+      controller.abort(new DOMException('MCP request timed out', 'TimeoutError'));
+      return jsonRpcHttpError(504, -32603, 'MCP request timed out');
     }
-    return outcome.response;
+    if (outcome.kind === 'aborted') {
+      controller.abort(request.signal.reason);
+      return jsonRpcHttpError(499, -32603, 'request cancelled');
+    }
+    if (outcome.kind === 'error') return jsonRpcHttpError(500, -32603, 'MCP request failed');
+    return outcome.value;
   } finally {
-    clearTimeout(timer);
     request.signal.removeEventListener('abort', onAbort);
   }
 }
@@ -507,9 +516,13 @@ export function createProductionMcpHandler(
         const authOutcome = await settleBeforeDeadline(
           Promise.resolve().then(() => authenticate(request)),
           deadlineAt,
+          request.signal,
         );
         if (authOutcome.kind === 'timeout') {
           return withHttpResponseHeaders(jsonRpcHttpError(504, -32603, 'MCP request timed out'), request);
+        }
+        if (authOutcome.kind === 'aborted') {
+          return withHttpResponseHeaders(jsonRpcHttpError(499, -32603, 'request cancelled'), request);
         }
         if (authOutcome.kind === 'error') {
           return withHttpResponseHeaders(jsonRpcHttpError(500, -32603, 'MCP authentication failed'), request);
