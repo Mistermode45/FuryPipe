@@ -504,7 +504,10 @@ export function createProductionMcpHandler(
       const routingRejection = validateModernRoutingHeaders(checked.value, request);
       if (routingRejection) return withHttpResponseHeaders(routingRejection, request);
       if (authenticate) {
-        const authOutcome = await settleBeforeDeadline(authenticate(request), deadlineAt);
+        const authOutcome = await settleBeforeDeadline(
+          Promise.resolve().then(() => authenticate(request)),
+          deadlineAt,
+        );
         if (authOutcome.kind === 'timeout') {
           return withHttpResponseHeaders(jsonRpcHttpError(504, -32603, 'MCP request timed out'), request);
         }
