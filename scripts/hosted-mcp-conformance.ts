@@ -394,7 +394,9 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
   const boundary = process.env.FURYPIPE_HOSTED_MCP_CLIENT_BOUNDARY?.trim() || 'unknown';
   const githubActionsBound = process.env.GITHUB_ACTIONS === 'true'
     && process.env.GITHUB_REPOSITORY === 'Mistermode45/FuryPipe'
-    && process.env.GITHUB_SHA === source;
+    && (process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' || process.env.GITHUB_EVENT_NAME === 'pull_request')
+    && process.env.FURYPIPE_GITHUB_RUNNER_ENVIRONMENT === 'github-hosted'
+    && process.env.FURYPIPE_SOURCE_COMMIT === source;
   const serverTimeoutMs = Number(process.env.FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS?.trim() || '1500');
   if (!Number.isSafeInteger(serverTimeoutMs) || serverTimeoutMs < 100 || serverTimeoutMs > 30_000) {
     throw new Error('FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS must be an integer from 100 to 30000');
