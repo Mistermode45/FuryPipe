@@ -25,6 +25,7 @@ A run is `VERIFIED` only when all checks below succeed on the same exact source
 SHA:
 
 - remote non-loopback network boundary;
+- every resolved target address is public-routable; private, loopback, link-local, CGNAT, benchmark, documentation and multicast/reserved ranges fail closed;
 - HTTPS request succeeds with normal certificate verification;
 - server response carries `X-FuryPipe-Source-Commit` equal to checkout HEAD;
 - modern MCP `2026-07-28` negotiation;
@@ -39,8 +40,10 @@ SHA:
 - client abort followed by a successful fresh Inspector reconnect.
 
 The evidence format is `furypipe-hosted-mcp-conformance/v1`. The workflow also
-writes a SHA-256 checksum. Tokens, response bodies, tool payloads and AuthInfo
-are not written to the evidence file.
+writes a SHA-256 checksum. Hosted promotion is additionally bound to GitHub
+Actions repository identity, numeric run ID, run attempt, the exact tested
+source SHA and a `github-hosted` runner environment. Tokens, response bodies,
+tool payloads and AuthInfo are not written to the evidence file.
 
 ## Conformance-only auth boundary
 
@@ -212,8 +215,8 @@ sourceCommit = exact tested SHA
 ```
 
 Every individual check must also be `VERIFIED`. A green workflow from another
-SHA, an HTTP-only endpoint, a loopback client, a missing source header or a
-partial protocol matrix does not close the gate.
+SHA/run, an HTTP-only endpoint, a loopback/private/reserved network target, a
+missing source header or a partial protocol matrix does not close the gate.
 
 ## 7. Cleanup
 

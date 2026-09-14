@@ -55,6 +55,13 @@ interface HostedMcpEvidence {
     readonly runtimeHost: string;
     readonly boundary: string;
   };
+  readonly execution: {
+    readonly githubActions: boolean;
+    readonly repository: string;
+    readonly runId: string;
+    readonly runAttempt: string;
+    readonly runnerEnvironment: string;
+  };
   readonly checks: {
     readonly network: CheckEvidence;
     readonly sourceBinding: CheckEvidence;
@@ -115,6 +122,42 @@ function safeTarget(raw: string): URL {
 function isLoopbackHost(host: string): boolean {
   const value = host.toLowerCase().replace(/^\[|\]$/gu, '');
   return value === 'localhost' || value === '::1' || value.startsWith('127.');
+}
+
+export function isForbiddenHostedMcpResolvedAddress(address: string): boolean {
+  const value = address.trim().toLowerCase().replace(/^\[|\]$/gu, '');
+  const family = isIP(value);
+  if (family === 4) {
+    const octets = value.split('.').map(Number);
+    if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+      return true;
+    }
+    const a = octets[0]!;
+    const b = octets[1]!;
+    const c = octets[2]!;
+    return a === 0
+      || a === 10
+      || a === 127
+      || (a === 100 && b >= 64 && b <= 127)
+      || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && b === 0 && (c === 0 || c === 2))
+      || (a === 192 && b === 168)
+      || (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100)))
+      || (a === 203 && b === 0 && c === 113)
+      || a >= 224;
+  }
+  if (family === 6) {
+    return value === '::'
+      || value === '::1'
+      || value.startsWith('::ffff:')
+      || value.startsWith('fc')
+      || value.startsWith('fd')
+      || /^fe[89ab]/u.test(value)
+      || value.startsWith('ff')
+      || value.startsWith('2001:db8:');
+  }
+  return true;
 }
 
 function inspectorConfig(url: URL, token: string, protocolEra: 'modern' | 'legacy'): string {
@@ -392,10 +435,16 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
     throw new Error('hosted MCP conformance refuses NODE_TLS_REJECT_UNAUTHORIZED=0');
   }
   const boundary = process.env.FURYPIPE_HOSTED_MCP_CLIENT_BOUNDARY?.trim() || 'unknown';
+  const githubRepository = process.env.GITHUB_REPOSITORY?.trim() || 'unknown';
+  const githubRunId = process.env.GITHUB_RUN_ID?.trim() || 'unknown';
+  const githubRunAttempt = process.env.GITHUB_RUN_ATTEMPT?.trim() || 'unknown';
+  const runnerEnvironment = process.env.FURYPIPE_GITHUB_RUNNER_ENVIRONMENT?.trim() || 'unknown';
   const githubActionsBound = process.env.GITHUB_ACTIONS === 'true'
-    && process.env.GITHUB_REPOSITORY === 'Mistermode45/FuryPipe'
+    && githubRepository === 'Mistermode45/FuryPipe'
     && (process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' || process.env.GITHUB_EVENT_NAME === 'pull_request')
-    && process.env.FURYPIPE_GITHUB_RUNNER_ENVIRONMENT === 'github-hosted'
+    && runnerEnvironment === 'github-hosted'
+    && /^\d+$/u.test(githubRunId)
+    && /^\d+$/u.test(githubRunAttempt)
     && process.env.FURYPIPE_SOURCE_COMMIT === source;
   const serverTimeoutMs = Number(process.env.FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS?.trim() || '1500');
   if (!Number.isSafeInteger(serverTimeoutMs) || serverTimeoutMs < 100 || serverTimeoutMs > 30_000) {
@@ -410,10 +459,20 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
 
   let requested = false;
   try {
-    const dns = isIP(targetUrl.hostname)
-      ? []
-      : await lookup(targetUrl.hostname, { all: true });
+    const normalizedTargetHostname = targetUrl.hostname.replace(/^\[|\]$/gu, '');
+    const targetIpFamily = isIP(normalizedTargetHostname);
+    const targetUsesIpLiteral = targetIpFamily !== 0;
+    const resolvedAddresses = targetUsesIpLiteral
+      ? [{ address: normalizedTargetHostname, family: targetIpFamily }]
+      : await lookup(normalizedTargetHostname, { all: true });
+    if (resolvedAddresses.length === 0) throw new Error('hosted MCP target resolved to no addresses');
+    if (resolvedAddresses.some((answer) => isForbiddenHostedMcpResolvedAddress(answer.address))) {
+      throw new Error('hosted MCP target must resolve only to public-routable addresses');
+    }
     const remoteBoundary = !isLoopbackHost(targetUrl.hostname);
+    const publicRoutableBoundary = resolvedAddresses.every(
+      (answer) => !isForbiddenHostedMcpResolvedAddress(answer.address),
+    );
     const tlsVerified = targetUrl.protocol === 'https:';
 
     requested = true;
@@ -477,10 +536,10 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
       && protocolVersion(postCancelReconnect) === MODERN_PROTOCOL;
 
     const networkVerified = remoteBoundary
+      && publicRoutableBoundary
       && tlsVerified
       && boundary === 'github-hosted-runner'
-      && githubActionsBound
-      && (isIP(targetUrl.hostname) !== 0 || dns.length > 0);
+      && githubActionsBound;
 
     const checks = {
       network: {
@@ -488,8 +547,10 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
         details: {
           remoteBoundary,
           tlsVerified,
-          dnsResolutionCount: dns.length,
-          targetUsesIpLiteral: isIP(targetUrl.hostname) !== 0,
+          dnsApplicable: !targetUsesIpLiteral,
+          resolvedAddressCount: resolvedAddresses.length,
+          publicRoutableBoundary,
+          targetUsesIpLiteral,
           githubHostedRunner: boundary === 'github-hosted-runner',
           githubActionsSourceBound: githubActionsBound,
         },
@@ -577,6 +638,13 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
         processBoundary: true,
         runtimeHost: hostname(),
         boundary,
+      },
+      execution: {
+        githubActions: process.env.GITHUB_ACTIONS === 'true',
+        repository: githubRepository,
+        runId: githubRunId,
+        runAttempt: githubRunAttempt,
+        runnerEnvironment,
       },
       checks,
       oauthAuthorizationServer: 'NOT_EXECUTED',
