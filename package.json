@@ -366,6 +366,8 @@
     "deploy:worker": "wrangler deploy",
     "browser:qa": "tsx scripts/cross-browser-qa.ts",
     "openclaw:probe": "tsx scripts/openclaw-live-probe.ts",
+    "hosted-mcp:fixture": "tsx scripts/hosted-mcp-fixture.ts",
+    "hosted-mcp:conformance": "tsx scripts/hosted-mcp-conformance.ts",
     "restart": "node scripts/restart.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
