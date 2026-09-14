@@ -375,7 +375,9 @@
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
     "vendor:ui": "node scripts/vendor-ui.mjs",
     "mcp:hosted:conformance": "node scripts/hosted-mcp-conformance.mjs",
-    "mcp:hosted:target": "node scripts/hosted-mcp-conformance-target.mjs"
+    "mcp:hosted:target": "node scripts/hosted-mcp-conformance-target.mjs",
+    "mcp:hosted:server": "tsx scripts/hosted-mcp-conformance-server.ts",
+    "mcp:hosted:probe": "tsx scripts/hosted-mcp-conformance.ts"
   },
   "keywords": [
     "furypipe",
