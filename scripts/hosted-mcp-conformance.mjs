@@ -443,6 +443,21 @@ async function main() {
       ],
     };
     evidence.status = evaluateHostedMcpEvidence(evidence);
+    evidence.releaseGate = {
+      gateId: 'runtime.mcp',
+      state: evidence.status,
+      required: true,
+      ...(evidence.status === 'VERIFIED' ? {
+        provenance: {
+          sourceCommit,
+          observedAt: evidence.generatedAt,
+          origin: 'hosted',
+          reference: process.env.GITHUB_RUN_ID
+            ? 'github-actions:run/' + process.env.GITHUB_RUN_ID + '/attempt/' + (process.env.GITHUB_RUN_ATTEMPT || '1') + '#hosted-mcp-conformance.json'
+            : 'hosted-mcp-conformance.json',
+        },
+      } : {}),
+    };
     cleanup = {
       sourceHandleDeleted: await deleteHandle(url, token, sourceHandle, 'cleanup-source'),
       slowHandleDeleted: await deleteHandle(url, token, slowHandle, 'cleanup-slow'),
