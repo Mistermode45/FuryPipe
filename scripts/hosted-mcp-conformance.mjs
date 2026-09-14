@@ -400,6 +400,7 @@ async function main() {
         githubActions: process.env.GITHUB_ACTIONS === 'true',
         githubHostedBoundary: process.env.GITHUB_ACTIONS === 'true'
           && process.env.GITHUB_REPOSITORY === 'Mistermode45/FuryPipe'
+          && process.env.RUNNER_ENVIRONMENT === 'github-hosted'
           && Boolean(process.env.RUNNER_OS),
         runId: process.env.GITHUB_RUN_ID || undefined,
         runAttempt: process.env.GITHUB_RUN_ATTEMPT || undefined,
