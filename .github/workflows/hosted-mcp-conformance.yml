@@ -45,7 +45,6 @@ jobs:
       FURYPIPE_HOSTED_MCP_URL: ${{ inputs.target_url || vars.FURYPIPE_HOSTED_MCP_TARGET_URL }}
       FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS: ${{ inputs.server_timeout_ms || vars.FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS || '1500' }}
       FURYPIPE_HOSTED_MCP_CLIENT_BOUNDARY: github-hosted-runner
-      FURYPIPE_GITHUB_RUNNER_ENVIRONMENT: ${{ runner.environment }}
       FURYPIPE_HOSTED_MCP_OUTPUT_DIR: artifacts/hosted-mcp-conformance
 
     steps:
@@ -88,6 +87,7 @@ jobs:
       - name: Run external hosted MCP conformance
         env:
           FURYPIPE_HOSTED_MCP_BEARER_TOKEN: ${{ secrets.FURYPIPE_HOSTED_MCP_BEARER_TOKEN }}
+          FURYPIPE_GITHUB_RUNNER_ENVIRONMENT: ${{ runner.environment }}
         run: pnpm run hosted-mcp:conformance
 
       - name: Upload source-bound hosted MCP evidence
