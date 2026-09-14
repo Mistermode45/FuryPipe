@@ -243,6 +243,29 @@ function fixtureHandle(): string {
   return `furypipe-recovery/v1/sha256/${digest}`;
 }
 
+function verifiedReadOnlyHandleCall(value: Record<string, unknown>, expectedHandle: string): boolean {
+  const result = resultObject(value);
+  if (result.isError === true || !Array.isArray(result.content) || result.content.length !== 1) return false;
+  const item = result.content[0];
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+  const content = item as Record<string, unknown>;
+  if (content.type !== 'text' || typeof content.text !== 'string') return false;
+  try {
+    const verification = JSON.parse(content.text) as unknown;
+    if (!verification || typeof verification !== 'object' || Array.isArray(verification)) return false;
+    const record = verification as Record<string, unknown>;
+    return record.ok === true
+      && record.exists === true
+      && record.digestMatches === true
+      && record.handle === expectedHandle
+      && typeof record.bytes === 'number'
+      && Number.isSafeInteger(record.bytes)
+      && record.bytes === Buffer.byteLength(HOSTED_MCP_READ_ONLY_FIXTURE_TEXT, 'utf8');
+  } catch {
+    return false;
+  }
+}
+
 function modernHeaders(token?: string): Record<string, string> {
   return {
     accept: 'application/json, text/event-stream',
@@ -404,16 +427,14 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
     const modernNames = toolNames(modernList);
     const modernToolsOk = exactToolSet(modernNames);
 
+    const expectedFixtureHandle = fixtureHandle();
     const readOnly = await runInspector(modernConfigPath, 'tools/call', [
       '--tool-name',
       'verify_handle',
       '--tool-args-json',
-      JSON.stringify({ handle: fixtureHandle() }),
+      JSON.stringify({ handle: expectedFixtureHandle }),
     ]);
-    const readOnlyResult = resultObject(readOnly);
-    const readOnlyCallOk = Array.isArray(readOnlyResult.content)
-      && readOnlyResult.content.length > 0
-      && readOnlyResult.isError !== true;
+    const readOnlyCallOk = verifiedReadOnlyHandleCall(readOnly, expectedFixtureHandle);
 
     const reconnectInitialize = await runInspector(modernConfigPath, 'initialize');
     const reconnectOk = protocolVersion(reconnectInitialize) === MODERN_PROTOCOL;
@@ -472,7 +493,7 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
       },
       readOnlyCall: {
         status: readOnlyCallOk ? 'VERIFIED' : 'PARTIAL',
-        details: { tool: 'verify_handle', mutationRequested: false },
+        details: { tool: 'verify_handle', mutationRequested: false, integrityVerified: readOnlyCallOk },
       },
       reconnect: {
         status: reconnectOk ? 'VERIFIED' : 'PARTIAL',
