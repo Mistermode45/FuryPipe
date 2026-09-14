@@ -6,14 +6,14 @@ Audit branch: `v5-codex-final-independent-audit`
 
 ## Executive summary
 
-The independent pass found and corrected four concrete integrity issues: an
-RTL Dashboard tooltip could overflow at desktop widths; a successful Web Studio
+The independent pass found and corrected several concrete issues: an RTL
+Dashboard tooltip could overflow at desktop widths; a successful Web Studio
 subset could be reported as `VERIFIED`; the SPDX verifier did not bind the root
 version/source namespace or reject disconnected package records; and required
 security workflows would not trigger for a Draft PR whose base is the current
-PR #128 head branch. The Recovery child-process test helper also lacked a
-timeout, and an explicit Long-Term Memory `UPDATE`/`DELETE` race now has a
-regression test.
+PR #128 head branch. Recovery child-process tests now have a timeout, LTM has
+an explicit `UPDATE`/`DELETE` race regression test, and SBOM subprocess fixtures
+now isolate their source SHA from CI environment variables.
 
 Real local browser execution passed 48 Dashboard cases and all 120 Web Studio
 fixture cases across Chromium, Firefox and WebKit. This is not a live Figma or
@@ -116,6 +116,43 @@ Release-Readiness/RC evidence; GitHub workflow triggers and test/report hygiene.
   cycles represented as finite JSON trees, and full-length IDs. The SBOM
   remains an inventory, not a signature or legal license opinion.
 
+### AUDIT-05 — Concurrency and test-harness gaps
+
+- Severity: **P2**.
+- Root cause: Recovery worker child processes had no test timeout, and the
+  LTM UPDATE/DELETE conflict was not explicitly exercised.
+- Fix: terminate a Recovery test worker after 30 seconds and add a barrier-based
+  independent-adapter UPDATE-versus-DELETE race asserting one visible conflict,
+  one version-2 winner and two intact history entries.
+- Proof: `tests/recovery-store.test.ts`, `tests/long-term-memory.test.ts`; full
+  suite result in the worklog.
+
+### AUDIT-08 — SBOM orphan test inherited the CI source SHA
+
+- Severity: **P2** (a valid orphan rejection was obscured by a fixture
+  provenance mismatch on hosted Node matrix jobs).
+- Root cause: GitHub Actions provides `GITHUB_SHA`; the final verifier
+  subprocess in the SBOM orphan test inherited the checkout SHA while its
+  generated fixture was intentionally bound to a test SHA.
+- Failure scenario: provenance validation correctly rejected the fixture
+  namespace before the test reached its intended disconnected-package check.
+- Fix: explicitly set the fixture source SHA for every verifier child process,
+  including the orphan-package case; no production check or test expectation
+  was weakened.
+- Proof: the complete local suite passes with `GITHUB_SHA` set to simulate the
+  hosted environment. The final hosted CI matrix must be rechecked on the
+  post-fix PR head.
+
+### AUDIT-06 — Repository policy is not configured
+
+- Severity: **P1 release blocker**; no local code fix is authorized or claimed.
+- Evidence: GitHub branch-protection API returned 404 `Branch not protected`;
+  rulesets API returned an empty list.
+- Impact: required PR/check/force-push/deletion/conversation-resolution policy
+  cannot be verified as enforced.
+- Disposition: `BLOCKED_BY_REPO_SETTING`; report to maintainer without changing
+  repository settings.
+
 ### AUDIT-07 — SBOM alias, optional-dependency and identity edge coverage
 
 - Severity: **P2** (package identity could be mislabeled for npm aliases; edge
@@ -142,26 +179,20 @@ Release-Readiness/RC evidence; GitHub workflow triggers and test/report hygiene.
   `pnpm list --json --depth Infinity`; this verifier does not independently
   reconstruct the lockfile.
 
-### AUDIT-05 — Concurrency and test-harness gaps
+### AUDIT-08 — SBOM orphan test inherited the CI source SHA
 
-- Severity: **P2**.
-- Root cause: Recovery worker child processes had no test timeout, and the
-  LTM UPDATE/DELETE conflict was not explicitly exercised.
-- Fix: terminate a Recovery test worker after 30 seconds and add a barrier-based
-  independent-adapter UPDATE-versus-DELETE race asserting one visible conflict,
-  one version-2 winner and two intact history entries.
-- Proof: `tests/recovery-store.test.ts`, `tests/long-term-memory.test.ts`; full
-  suite result in the worklog.
-
-### AUDIT-06 — Repository policy is not configured
-
-- Severity: **P1 release blocker**; no local code fix is authorized or claimed.
-- Evidence: GitHub branch-protection API returned 404 `Branch not protected`;
-  rulesets API returned an empty list.
-- Impact: required PR/check/force-push/deletion/conversation-resolution policy
-  cannot be verified as enforced.
-- Disposition: `BLOCKED_BY_REPO_SETTING`; report to maintainer without changing
-  repository settings.
+- Severity: **P2** (a valid orphan rejection was obscured by a fixture
+  provenance mismatch on hosted Node matrix jobs).
+- Root cause: the CI workflow injects `FURYPIPE_SOURCE_COMMIT`; the final
+  verifier subprocess in the SBOM orphan test inherited that SHA while its
+  generated fixture was intentionally bound to a test SHA.
+- Failure scenario: provenance validation correctly rejected the fixture
+  namespace before the test reached its intended disconnected-package check.
+- Fix: explicitly set the fixture source SHA for every verifier child process,
+  including the orphan-package case; no production check or test expectation
+  was weakened.
+- Proof: the complete local suite passes with `FURYPIPE_SOURCE_COMMIT` set. The
+  final hosted CI matrix must be rechecked on the post-fix PR head.
 
 ## Cross-browser evidence
 

@@ -125,7 +125,7 @@ describe('SPDX SBOM generator', () => {
       'scripts/security/verify-sbom.mjs', packageJson, output,
     ], {
       cwd: process.cwd(),
-      env: { ...process.env, ...(sha ? { FURYPIPE_SOURCE_COMMIT: sha } : {}) },
+      env: { ...process.env, FURYPIPE_SOURCE_COMMIT: sha ?? sourceCommit },
     });
     await expect(verify(sourceCommit)).resolves.toBeDefined();
     await expect(verify('c'.repeat(40))).rejects.toThrow(/namespace does not match/u);
@@ -157,6 +157,9 @@ describe('SPDX SBOM generator', () => {
     await writeFile(orphanPath, JSON.stringify(withOrphan), 'utf8');
     await expect(execFileAsync(process.execPath, [
       'scripts/security/verify-sbom.mjs', packageJson, orphanPath,
-    ], { cwd: process.cwd() })).rejects.toThrow(/unreachable from its root/u);
+    ], {
+      cwd: process.cwd(),
+      env: { ...process.env, FURYPIPE_SOURCE_COMMIT: sourceCommit },
+    })).rejects.toThrow(/unreachable from its root/u);
   });
 });

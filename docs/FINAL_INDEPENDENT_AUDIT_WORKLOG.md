@@ -32,6 +32,13 @@ intentionally mismatched package version. The fixture was restored before the
 orphan-graph assertion; targeted SBOM test and the subsequent full suite passed.
 No production validation was weakened to obtain a pass.
 
+The first hosted Node-matrix run on the report-update head exposed a separate
+test-isolation issue: the orphan fixture inherited GitHub Actions' `GITHUB_SHA`
+and failed provenance validation before reaching its graph assertion. The test
+now explicitly binds all child verifiers to the fixture SHA. The full local
+suite passed again with `GITHUB_SHA` pre-set; only post-fix hosted runs on the
+exact final head count as final CI evidence.
+
 ## Exact-head GitHub evidence
 
 Hosted workflows are valid only when their run head matches the current remote
