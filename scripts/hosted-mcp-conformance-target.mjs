@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -26,8 +27,9 @@ function exactSourceCommit() {
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim().toLowerCase();
   if (!SHA40.test(commit)) throw new Error('git rev-parse HEAD did not return a lowercase 40-character SHA');
-  const expected = process.env.FURYPIPE_SOURCE_COMMIT;
-  if (expected !== undefined && expected !== commit) throw new Error(`FURYPIPE_SOURCE_COMMIT mismatch: checkout is ${commit}`);
+  const expected = required('FURYPIPE_SOURCE_COMMIT').toLowerCase();
+  if (!SHA40.test(expected)) throw new Error('FURYPIPE_SOURCE_COMMIT must be a lowercase 40-character SHA');
+  if (expected !== commit) throw new Error(`FURYPIPE_SOURCE_COMMIT mismatch: checkout is ${commit}`);
   return commit;
 }
 function hostnames() {
@@ -38,6 +40,11 @@ function hostnames() {
   const configured = (process.env.FURYPIPE_HOSTED_MCP_ALLOWED_HOSTNAMES ?? publicHostname).split(',').map((v) => v.trim().toLowerCase()).filter(Boolean);
   if (configured.length === 0 || configured.length > 16 || configured.some((v) => !HOSTNAME.test(v))) throw new Error('FURYPIPE_HOSTED_MCP_ALLOWED_HOSTNAMES is invalid');
   return { publicHostname, allowedHostnames: [...new Set(configured)] };
+}
+function sameToken(left, right) {
+  const a = createHash('sha256').update(left).digest();
+  const b = createHash('sha256').update(right).digest();
+  return timingSafeEqual(a, b);
 }
 function conformanceStore(base, sourceCommit, slowDelayMs) {
   return new Proxy(base, {
@@ -67,7 +74,7 @@ async function main() {
   const store = conformanceStore(createRecoveryStore(recoveryRoot, { namespace: 'hosted-mcp-conformance' }), sourceCommit, slowDelayMs);
   const verifier = {
     async verifyAccessToken(candidate) {
-      if (candidate !== token) throw new OAuthError(OAuthErrorCode.InvalidToken, 'invalid hosted conformance token');
+      if (!sameToken(candidate, token)) throw new OAuthError(OAuthErrorCode.InvalidToken, 'invalid hosted conformance token');
       return { token: candidate, clientId: 'furypipe-hosted-conformance-client', scopes: ['mcp'], expiresAt: Math.floor(Date.now() / 1000) + 300 };
     },
   };
