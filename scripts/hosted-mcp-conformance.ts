@@ -283,7 +283,6 @@ async function partialBodyRequest(
   mode: 'wait-for-response' | 'abort',
   timeoutMs: number,
 ): Promise<{ status?: number; aborted: boolean }> {
-  const requestImpl = url.protocol === 'https:' ? httpsRequest : httpRequest;
   return await new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
     let outerTimer: ReturnType<typeof setTimeout> | undefined;
@@ -299,20 +298,24 @@ async function partialBodyRequest(
       if (outerTimer !== undefined) clearTimeout(outerTimer);
       rejectPromise(error);
     };
-    const req = requestImpl(url, {
+    const requestOptions = {
       method: 'POST',
       headers: {
         ...modernHeaders(token),
         'transfer-encoding': 'chunked',
       },
-    }, (res) => {
+    };
+    const onResponse = (res: import('node:http').IncomingMessage) => {
       const status = res.statusCode;
       res.resume();
       res.once('end', () => {
         req.destroy();
         settle({ status, aborted: false });
       });
-    });
+    };
+    const req = url.protocol === 'https:'
+      ? httpsRequest(url, requestOptions, onResponse)
+      : httpRequest(url, requestOptions, onResponse);
     req.once('error', (error) => {
       if (mode === 'abort') {
         settle({ aborted: true });
