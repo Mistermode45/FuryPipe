@@ -1,0 +1,66 @@
+name: Hosted MCP Conformance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-mcp-conformance-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  external-conformance:
+    name: External MCP client conformance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      FURYPIPE_SOURCE_COMMIT: ${{ github.sha }}
+      FURYPIPE_HOSTED_MCP_URL: ${{ secrets.FURYPIPE_HOSTED_MCP_URL }}
+      FURYPIPE_HOSTED_MCP_BEARER_TOKEN: ${{ secrets.FURYPIPE_HOSTED_MCP_BEARER_TOKEN }}
+      FURYPIPE_HOSTED_MCP_OUTPUT_DIR: artifacts/hosted-mcp-conformance
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Install frozen dependency graph
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build exact source
+        run: pnpm run build
+
+      - name: Validate conformance harness promotion rules
+        run: pnpm exec vitest run tests/hosted-mcp-conformance.test.mjs
+
+      - name: Require external target configuration
+        shell: bash
+        run: |
+          test -n "$FURYPIPE_HOSTED_MCP_URL" || { echo "::error::FURYPIPE_HOSTED_MCP_URL secret is required"; exit 1; }
+          test -n "$FURYPIPE_HOSTED_MCP_BEARER_TOKEN" || { echo "::error::FURYPIPE_HOSTED_MCP_BEARER_TOKEN secret is required"; exit 1; }
+
+      - name: Execute hosted MCP conformance
+        run: pnpm run mcp:hosted:conformance
+
+      - name: Upload source-bound conformance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: furypipe-hosted-mcp-conformance-${{ github.sha }}
+          path: |
+            artifacts/hosted-mcp-conformance/hosted-mcp-conformance.json
+            artifacts/hosted-mcp-conformance/hosted-mcp-conformance.json.sha256
+          if-no-files-found: warn
+          retention-days: 30
