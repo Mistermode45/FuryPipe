@@ -308,7 +308,7 @@ async function startStudioServer() {
       response.end(artifact.html);
     } catch (error) {
       response.statusCode = 500;
-      response.end(error instanceof Error ? error.message : String(error));
+      response.end('internal server error');
     }
   });
   await new Promise<void>((resolve, reject) => {

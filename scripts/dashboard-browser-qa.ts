@@ -82,7 +82,7 @@ async function startDashboardServer() {
       await writeWebResponse(response, result);
     } catch (error) {
       response.statusCode = 500;
-      response.end(error instanceof Error ? error.message : String(error));
+      response.end('internal server error');
     }
   });
   await new Promise((resolve, reject) => {

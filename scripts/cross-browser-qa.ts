@@ -78,7 +78,7 @@ async function startDashboardServer() {
       await writeResponse(response, result);
     } catch (error) {
       response.statusCode = 500;
-      response.end(error instanceof Error ? error.message : String(error));
+      response.end('internal server error');
     }
   });
   const port = await listen(server);
@@ -159,7 +159,7 @@ async function startStudioServer() {
       response.end(page.html);
     } catch (error) {
       response.statusCode = 500;
-      response.end(error instanceof Error ? error.message : String(error));
+      response.end('internal server error');
     }
   });
   const port = await listen(server);
