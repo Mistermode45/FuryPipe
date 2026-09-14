@@ -36,10 +36,14 @@ function exactTokenMatch(actual: string, expected: string): boolean {
 }
 
 function checkoutSha(): string {
+  const actual = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  if (!SHA40.test(actual)) throw new Error('git HEAD must be a lowercase 40-character SHA');
   const configured = process.env.FURYPIPE_SOURCE_COMMIT?.trim();
-  const value = configured || execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  if (!SHA40.test(value)) throw new Error('FURYPIPE_SOURCE_COMMIT / git HEAD must be a lowercase 40-character SHA');
-  return value;
+  if (configured !== undefined && configured !== '') {
+    if (!SHA40.test(configured)) throw new Error('FURYPIPE_SOURCE_COMMIT must be a lowercase 40-character SHA');
+    if (configured !== actual) throw new Error('FURYPIPE_SOURCE_COMMIT does not match checkout HEAD');
+  }
+  return actual;
 }
 
 if (process.env.FURYPIPE_ALLOW_HOSTED_MCP_FIXTURE !== '1') {
