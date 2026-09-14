@@ -33,6 +33,29 @@ export function isForbiddenHostedMcpHostname(hostname) {
   if (isIP(value) === 6) return value === '::1' || value.startsWith('fe80:');
   return false;
 }
+export function isForbiddenResolvedAddress(address) {
+  const family = isIP(address);
+  if (family === 4) {
+    const p = address.split('.').map(Number);
+    return p[0] === 0
+      || p[0] === 10
+      || p[0] === 127
+      || (p[0] === 100 && p[1] >= 64 && p[1] <= 127)
+      || (p[0] === 169 && p[1] === 254)
+      || (p[0] === 172 && p[1] >= 16 && p[1] <= 31)
+      || (p[0] === 192 && p[1] === 168)
+      || (p[0] === 198 && (p[1] === 18 || p[1] === 19))
+      || p[0] >= 224;
+  }
+  if (family === 6) {
+    const value = address.toLowerCase();
+    return value === '::' || value === '::1'
+      || value.startsWith('fc') || value.startsWith('fd')
+      || /^fe[89ab]/u.test(value)
+      || value.startsWith('ff');
+  }
+  return true;
+}
 export function parseHostedMcpTarget(raw, options = {}) {
   let url;
   try { url = new URL(raw); } catch { throw new Error('FURYPIPE_HOSTED_MCP_URL must be an absolute URL'); }
@@ -247,10 +270,22 @@ async function deleteHandle(url, token, handle, id) {
   } catch { return false; }
 }
 async function dnsProbe(url) {
-  if (isIP(url.hostname)) return { applicable: false, resolved: true, answerCount: 1 };
+  if (isIP(url.hostname)) {
+    if (isForbiddenResolvedAddress(url.hostname)) throw new Error('hosted MCP target address is not public-routable');
+    return { applicable: false, resolved: true, answerCount: 1, publicRoutable: true };
+  }
   const answers = await lookup(url.hostname, { all: true, verbatim: true });
   if (!answers.length) throw new Error('DNS returned no answers');
-  return { applicable: true, resolved: true, answerCount: answers.length, families: [...new Set(answers.map((v) => v.family))].sort() };
+  if (answers.some((answer) => isForbiddenResolvedAddress(answer.address))) {
+    throw new Error('hosted MCP DNS resolved to a private, loopback, link-local, CGNAT, benchmark, multicast or reserved address');
+  }
+  return {
+    applicable: true,
+    resolved: true,
+    publicRoutable: true,
+    answerCount: answers.length,
+    families: [...new Set(answers.map((v) => v.family))].sort(),
+  };
 }
 async function tlsProbe(url) {
   if (url.protocol !== 'https:') return { applicable: false, authorized: false };
