@@ -144,9 +144,11 @@ lie la réponse du listener Node au SHA exact via l'en-tête optionnel
 `X-FuryPipe-Source-Commit`.
 
 Le budget `timeoutMs` du handler de production couvre désormais la lecture du
-body, la vérification Bearer et le dispatch SDK dans un même deadline. Un body
-HTTP volontairement incomplet ne peut donc pas contourner ce budget en restant
-bloqué avant le dispatch.
+body, la vérification Bearer et le dispatch SDK dans un même deadline. Le signal
+d'annulation client est également propagé/racé sur ces trois phases et produit
+un verdict `499` sans attendre le deadline. Un body HTTP volontairement
+incomplet ne peut donc pas contourner ce budget en restant bloqué avant le
+dispatch.
 
 Aucune de ces surfaces ne transforme le Bearer statique du fixture en preuve
 OAuth. `externalConformance` ne devient `VERIFIED` qu'après une vraie
