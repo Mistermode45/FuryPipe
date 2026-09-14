@@ -267,13 +267,23 @@ describe('production MCP HTTP boundary', () => {
 
   it('returns 499 when the client aborts during Bearer verification', async () => {
     let authStartedResolve!: () => void;
+    let releaseAuthResolve!: () => void;
     const authStarted = new Promise<void>((resolve) => {
       authStartedResolve = resolve;
     });
+    const releaseAuth = new Promise<void>((resolve) => {
+      releaseAuthResolve = resolve;
+    });
     const verifier: OAuthTokenVerifier = {
-      async verifyAccessToken(): Promise<AuthInfo> {
+      async verifyAccessToken(token): Promise<AuthInfo> {
         authStartedResolve();
-        return new Promise<AuthInfo>(() => undefined);
+        await releaseAuth;
+        return {
+          token,
+          clientId: 'cancel-test-client',
+          scopes: ['mcp'],
+          expiresAt: Math.floor(Date.now() / 1000) + 60,
+        };
       },
     };
     const mcp = await handler({
@@ -296,6 +306,7 @@ describe('production MCP HTTP boundary', () => {
       bearerAuthConfigured: true,
       bearerAuthSuccesses: 0,
     });
+    releaseAuthResolve();
   });
 
   it('returns 499 when the client aborts during an in-flight SDK tool dispatch', async () => {
@@ -303,14 +314,19 @@ describe('production MCP HTTP boundary', () => {
     roots.push(root);
     const store = createRecoveryStore(root);
     let verifyStartedResolve!: () => void;
+    let releaseVerifyResolve!: () => void;
     const verifyStarted = new Promise<void>((resolve) => {
       verifyStartedResolve = resolve;
     });
+    const releaseVerify = new Promise<void>((resolve) => {
+      releaseVerifyResolve = resolve;
+    });
     const blockedStore = {
       ...store,
-      async verify() {
+      async verify(handle: Parameters<typeof store.verify>[0]) {
         verifyStartedResolve();
-        return new Promise<never>(() => undefined);
+        await releaseVerify;
+        return store.verify(handle);
       },
     };
     const mcp = createProductionMcpHandler(blockedStore, {
@@ -334,6 +350,7 @@ describe('production MCP HTTP boundary', () => {
       requests: 1,
       dispatchedRequests: 1,
     });
+    releaseVerifyResolve();
   });
 
   it('keeps the 2025 stateless fallback available through the secured boundary', async () => {
