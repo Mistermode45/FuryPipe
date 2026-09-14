@@ -199,7 +199,7 @@ describe('production MCP HTTP boundary', () => {
         }
         throw new Error('body was read past the configured limit');
       },
-    });
+    }, { highWaterMark: 0 });
     const response = await mcp.fetch(new Request('https://localhost/mcp', {
       method: 'POST',
       headers: {
