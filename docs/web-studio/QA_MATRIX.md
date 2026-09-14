@@ -2,9 +2,11 @@
 
 ## Status
 
-`SPECIFIED_NOT_IMPLEMENTED`
+`LOCAL_AND_CI_HARNESS_IMPLEMENTED`
 
-Playwright projects are the intended orchestration mechanism because they can run the same suite across browsers, devices, locales and configurations.
+Playwright 1.63.0 runs the same declared cases across real Chromium, Firefox and WebKit engines, desktop/mobile projects, locales and viewports. The CI workflow installs only the browsers pinned to that exact Playwright version and emits source-bound evidence; local success does not replace exact-SHA hosted evidence.
+
+The current 120 cases are `5 browser projects × 6 viewports × 4 locales` over the deterministic static-page QA fixture. They validate rendering/structure, responsive overflow, language/direction, links and runtime errors; they do not claim every interaction in the broader contract below, a live Figma project, or manual accessibility review.
 
 ## Browser matrix
 

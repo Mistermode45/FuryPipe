@@ -2,9 +2,9 @@
 
 ## Status
 
-`LOCAL_GENERATOR_AND_QA_HARNESS_IMPLEMENTED_REAL_CHROMIUM_WIRED`
+`LOCAL_GENERATOR_AND_QA_HARNESS_IMPLEMENTED_REAL_CROSS_BROWSER_WIRED`
 
-The Web/Figma Studio now has an executable domain kernel plus a deterministic static-page generator and a browser-QA harness under `src/web-studio/**`. The harness executes a host-supplied pinned browser adapter. FuryPipe now also ships a CI host adapter in `scripts/web-studio-browser-qa.ts` that drives the Chromium/Chrome binary already present on the GitHub Ubuntu runner over the native Chrome DevTools Protocol. No Playwright package is added to the dependency graph, and no live Figma/deployment integration is claimed.
+The Web/Figma Studio now has an executable domain kernel plus a deterministic static-page generator and a browser-QA harness under `src/web-studio/**`. The harness executes a host-supplied pinned browser adapter. CI retains the Chromium/Chrome DevTools Protocol adapter in `scripts/web-studio-browser-qa.ts` and adds a separate Playwright 1.63.0 cross-engine harness in `scripts/cross-browser-qa.ts`. The complete 120-case matrix can report `VERIFIED`; a passing subset is only `PARTIAL`. No live Figma/deployment integration is claimed.
 
 Implemented and tested:
 
@@ -17,7 +17,8 @@ Implemented and tested:
 - `BACKUP_EXISTS` versus `RESTORE_VERIFIED` distinction;
 - 2026 QA browser/device/locale contract;
 - real Chromium execution for the 48 `desktop-chromium` + `mobile-chromium` cases (6 declared viewports × 4 QA locales × 2 Chromium projects);
-- source-bound browser QA JSON evidence emitted by `.github/workflows/web-studio-browser-qa.yml`;
+- pinned Playwright 1.63.0 cross-engine execution for the full 120-case matrix and Dashboard Chromium/Firefox/WebKit LTR/RTL responsive checks;
+- source-bound Chromium evidence from `.github/workflows/web-studio-browser-qa.yml` and source-bound multi-engine evidence from `.github/workflows/cross-browser-qa.yml`;
 - current Core Web Vitals thresholds;
 - fail-visible missing field data;
 - Figma adapter version pin contract.
@@ -27,8 +28,8 @@ Still deliberately not claimed:
 - live Figma connectivity;
 - asset download;
 - framework/project code generation beyond the deterministic static-page artifact;
-- Firefox/WebKit runtime execution for the remaining 72 matrix cases; Chromium evidence is not relabelled as Firefox/WebKit evidence;
-- bundled Playwright itself; the current CI adapter deliberately uses Chromium CDP instead;
+- branch-specific hosted Firefox/WebKit results until the cross-browser workflow completes on the exact final source SHA; local engine runs are not promoted to hosted evidence;
+- Playwright in the published runtime package; it is a development-only QA dependency;
 - WCAG manual audit completion;
 - OWASP ASVS verification;
 - SEO verification;
@@ -69,6 +70,6 @@ The generator rejects unapproved projects, malformed page paths, invalid locale 
 - title/description/canonical presence;
 - external script origins.
 
-The CI adapter is pinned as `chromium-cdp@1.0.0` and executes only cases whose declared browser project is Chromium. The full contract still contains Firefox/WebKit cases, which remain explicit and unexecuted rather than being simulated with Chromium.
+The CDP adapter is pinned as `chromium-cdp@1.0.0` and executes only Chromium cases. The separate Playwright adapter is pinned to package version 1.63.0 (Apache-2.0) and runs Chromium, Firefox, and WebKit binaries installed by that exact Playwright version. Its report is bound to the exact source SHA. A partial case list cannot yield `VERIFIED` from `runStudioBrowserQa()`.
 
 This report is deliberately marked `promotionEvidenceCompatible: false`. Passing structural/browser checks does not prove a complete WCAG manual audit, OWASP ASVS review, field Core Web Vitals or production deployment.

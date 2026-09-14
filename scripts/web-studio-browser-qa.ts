@@ -428,10 +428,10 @@ async function main(): Promise<void> {
     };
     const report = await runStudioBrowserQa(adapter, `http://${HOST}:${server.port}`, chromiumCases);
     assert(report.totalCases === 48, 'unexpected Web Studio QA case count');
-    assert(report.browserQa === 'VERIFIED', 'Web Studio browser QA failed');
-    assert(report.structuralAccessibility === 'VERIFIED', 'Web Studio structural accessibility QA failed');
-    assert(report.structuralSeo === 'VERIFIED', 'Web Studio structural SEO QA failed');
-    assert(report.thirdPartyScriptSurface === 'VERIFIED', 'Web Studio third-party script QA failed');
+    assert(report.browserQa === 'PARTIAL', 'a Chromium-only subset must remain partial');
+    assert(report.structuralAccessibility === 'PARTIAL', 'a Chromium-only subset must remain partial');
+    assert(report.structuralSeo === 'PARTIAL', 'a Chromium-only subset must remain partial');
+    assert(report.thirdPartyScriptSurface === 'PARTIAL', 'a Chromium-only subset must remain partial');
     assert(report.productionPerformance === 'NOT_RUN', 'production performance must remain NOT_RUN');
     assert(report.deployment === 'NOT_RUN', 'deployment must remain NOT_RUN');
     assert(report.promotionEvidenceCompatible === false, 'browser QA must not auto-promote release evidence');
@@ -447,8 +447,8 @@ async function main(): Promise<void> {
       report,
     };
     await writeFile(join(REPORT_DIR, 'report.json'), JSON.stringify(evidence, null, 2) + '\n');
-    console.log('web-studio browser QA passed: 48/48 real Chromium cases');
-    console.log('Firefox/WebKit projects remain explicitly NOT_EXECUTED');
+    console.log('web-studio Chromium subset passed: 48/48 real Chromium cases; overall matrix remains PARTIAL');
+    console.log('This Chromium-only run omits Firefox/WebKit; the separate Cross-Browser QA workflow owns those engines');
   } finally {
     await browser.close();
     await server.close();
