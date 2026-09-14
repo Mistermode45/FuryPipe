@@ -45,6 +45,8 @@ The workflow requires repository secrets FURYPIPE_HOSTED_MCP_URL and FURYPIPE_HO
 
 The evidence artifact is named furypipe-hosted-mcp-conformance-<sha> and contains hosted-mcp-conformance.json plus hosted-mcp-conformance.json.sha256.
 
+When and only when the matrix is VERIFIED, the JSON also carries canonical release-gate provenance for runtime.mcp with origin hosted and the exact sourceCommit. PARTIAL evidence carries no VERIFIED provenance.
+
 ## Non-claims
 
 Hosted MCP conformance does not by itself prove a real OAuth issuer/JWKS/token lifecycle, provider or billing truth, Figma integration, physical durability, signed npm provenance, production rollback, or release authorization.
