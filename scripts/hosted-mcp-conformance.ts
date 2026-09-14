@@ -388,7 +388,13 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
   }
   const source = sourceCommit();
   const targetUrl = safeTarget(requiredEnv('FURYPIPE_HOSTED_MCP_URL'));
+  if (targetUrl.protocol === 'https:' && process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0') {
+    throw new Error('hosted MCP conformance refuses NODE_TLS_REJECT_UNAUTHORIZED=0');
+  }
   const boundary = process.env.FURYPIPE_HOSTED_MCP_CLIENT_BOUNDARY?.trim() || 'unknown';
+  const githubActionsBound = process.env.GITHUB_ACTIONS === 'true'
+    && process.env.GITHUB_REPOSITORY === 'Mistermode45/FuryPipe'
+    && process.env.GITHUB_SHA === source;
   const serverTimeoutMs = Number(process.env.FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS?.trim() || '1500');
   if (!Number.isSafeInteger(serverTimeoutMs) || serverTimeoutMs < 100 || serverTimeoutMs > 30_000) {
     throw new Error('FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS must be an integer from 100 to 30000');
@@ -471,6 +477,7 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
     const networkVerified = remoteBoundary
       && tlsVerified
       && boundary === 'github-hosted-runner'
+      && githubActionsBound
       && (isIP(targetUrl.hostname) !== 0 || dns.length > 0);
 
     const checks = {
@@ -482,6 +489,7 @@ export async function runHostedMcpConformance(): Promise<HostedMcpEvidence> {
           dnsResolutionCount: dns.length,
           targetUsesIpLiteral: isIP(targetUrl.hostname) !== 0,
           githubHostedRunner: boundary === 'github-hosted-runner',
+          githubActionsSourceBound: githubActionsBound,
         },
       },
       sourceBinding: {
