@@ -7,7 +7,7 @@ Hosted MCP evidence is deliberately separate from local stdio and loopback HTTP 
 The manual GitHub Actions workflow .github/workflows/hosted-mcp-conformance.yml runs an external client process from a GitHub-hosted runner against a separately hosted FuryPipe MCP endpoint. VERIFIED requires all of the following on the exact workflow SHA:
 
 - public-style non-loopback target URL;
-- successful DNS resolution;
+- successful DNS resolution to public-routable addresses only;
 - HTTPS with an authorized TLS chain (TLS 1.2 minimum);
 - missing and invalid Bearer credentials rejected with HTTP 401 and a Bearer challenge;
 - a valid Bearer accepted;
@@ -32,6 +32,7 @@ The target expects TLS termination at the hosting reverse proxy and an ephemeral
 Required target environment:
 
 - FURYPIPE_ALLOW_HOSTED_MCP_CONFORMANCE_TARGET=1
+- FURYPIPE_SOURCE_COMMIT (must equal the target checkout git HEAD)
 - FURYPIPE_HOSTED_MCP_BEARER_TOKEN
 - FURYPIPE_HOSTED_MCP_RECOVERY_ROOT
 - FURYPIPE_HOSTED_MCP_PUBLIC_HOSTNAME
