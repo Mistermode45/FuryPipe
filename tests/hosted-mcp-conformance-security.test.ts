@@ -8,6 +8,7 @@ describe('hosted MCP public network boundary', () => {
       '8.8.8.8',
       '93.184.216.34',
       '2606:4700:4700::1111',
+      '[2606:4700:4700::1111]',
       '2001:4860:4860::8888',
     ]) {
       expect(isForbiddenHostedMcpResolvedAddress(address), address).toBe(false);
@@ -40,6 +41,7 @@ describe('hosted MCP public network boundary', () => {
     for (const address of [
       '::',
       '::1',
+      '[::1]',
       '::ffff:192.0.2.1',
       'fc00::1',
       'fd12:3456:789a::1',
