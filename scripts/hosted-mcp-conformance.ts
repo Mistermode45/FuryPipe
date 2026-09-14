@@ -286,11 +286,18 @@ async function partialBodyRequest(
   const requestImpl = url.protocol === 'https:' ? httpsRequest : httpRequest;
   return await new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
+    let outerTimer: ReturnType<typeof setTimeout> | undefined;
     const settle = (value: { status?: number; aborted: boolean }) => {
       if (settled) return;
       settled = true;
-      clearTimeout(outerTimer);
+      if (outerTimer !== undefined) clearTimeout(outerTimer);
       resolvePromise(value);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      if (outerTimer !== undefined) clearTimeout(outerTimer);
+      rejectPromise(error);
     };
     const req = requestImpl(url, {
       method: 'POST',
@@ -311,7 +318,7 @@ async function partialBodyRequest(
         settle({ aborted: true });
         return;
       }
-      rejectPromise(new Error(`partial body request failed: ${error instanceof Error ? error.name : 'network error'}`));
+      fail(new Error(`partial body request failed: ${error instanceof Error ? error.name : 'network error'}`));
     });
     req.write('{"jsonrpc":"2.0","id":9,"method":"tools/list","params":{"_meta":{');
     if (mode === 'abort') {
@@ -320,9 +327,9 @@ async function partialBodyRequest(
         settle({ aborted: true });
       }, 100);
     }
-    const outerTimer = setTimeout(() => {
+    outerTimer = setTimeout(() => {
       req.destroy();
-      rejectPromise(new Error('partial body request exceeded outer conformance timeout'));
+      fail(new Error('partial body request exceeded outer conformance timeout'));
     }, timeoutMs);
   });
 }
