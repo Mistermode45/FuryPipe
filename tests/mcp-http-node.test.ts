@@ -9,6 +9,7 @@ import { getProductionMcpRuntimeEvidence } from '../src/mcp-modern.js';
 
 const roots: string[] = [];
 const listeners: NodeMcpHttpServer[] = [];
+const sourceCommit = 'a'.repeat(40);
 
 afterEach(async () => {
   await Promise.all(listeners.splice(0).map((listener) => listener.close()));
@@ -23,6 +24,7 @@ async function listener(): Promise<{ value: NodeMcpHttpServer; url: string }> {
     port: 0,
     allowedHostnames: ['127.0.0.1', 'localhost'],
     allowUnauthenticatedLoopback: true,
+    sourceCommit,
   });
   listeners.push(value);
   const address = value.address() as AddressInfo;
@@ -67,6 +69,7 @@ describe('Node MCP HTTP listener', () => {
     });
     expect(response.status).toBe(200);
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('x-furypipe-source-commit')).toBe(sourceCommit);
     const payload = await response.json() as { result: { tools: unknown[] } };
     expect(payload.result.tools).toHaveLength(11);
     expect(getProductionMcpRuntimeEvidence(value.handler)).toMatchObject({
@@ -75,6 +78,18 @@ describe('Node MCP HTTP listener', () => {
       bearerAuthConfigured: false,
       bearerAuthSuccesses: 0,
     });
+  });
+
+  it('rejects malformed source provenance before opening the listener', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-http-node-source-'));
+    roots.push(root);
+    await expect(listenMcpHttpNode(createRecoveryStore(root), {
+      host: '127.0.0.1',
+      port: 0,
+      allowedHostnames: ['127.0.0.1'],
+      allowUnauthenticatedLoopback: true,
+      sourceCommit: 'not-a-sha',
+    })).rejects.toThrow('sourceCommit');
   });
 
   it('keeps the listener path isolated and rejects unsupported methods', async () => {
