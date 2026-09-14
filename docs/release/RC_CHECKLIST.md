@@ -25,9 +25,12 @@ also performs a package-level upgrade to the candidate and a package-level rollb
 previous version. This proves package-manager reversibility only. It is never promoted to
 production deployment rollback evidence.
 
-If no matching prior public version exists, or the public package provenance does not match
-this repository, upgrade/rollback remains `NOT_EXECUTED` or `BLOCKED` rather than being
-fabricated.
+If the canonical public npm registry is reachable and proves that FuryPipe has no earlier
+stable public version, the preparation evidence records
+`FIRST_PUBLICATION_VERIFIED`. In that specific case, package upgrade and package-level
+rollback stay `NOT_EXECUTED` by design and do not block the release decision. A registry
+lookup failure remains `NOT_EXECUTED` and blocking; it must never be reinterpreted as proof
+of first publication. A repository-provenance mismatch remains `BLOCKED`.
 
 The pull-request preparation workflow deliberately leaves release provenance `PARTIAL`:
 the separate Provenance Attestation workflow validates the pack path on PRs, while signed
@@ -50,8 +53,10 @@ The RC evidence snapshot remains `BLOCKED` until all required preparation eviden
 - repository integration/release branch policy verified from GitHub-origin evidence;
 - package smoke verified;
 - installation smoke verified from the packed artifact;
-- upgrade smoke verified when an earlier supported install exists;
-- rollback procedure evidenced;
+- public npm publication baseline verified from the canonical registry;
+- upgrade smoke verified when an earlier supported install exists, otherwise left `NOT_EXECUTED` only with `FIRST_PUBLICATION_VERIFIED`;
+- package-level rollback verified when an earlier supported install exists, otherwise left `NOT_EXECUTED` only with `FIRST_PUBLICATION_VERIFIED`;
+- rollback procedure documented for operational recovery;
 - SBOM produced;
 - provenance path verified;
 - compatibility matrix current;
