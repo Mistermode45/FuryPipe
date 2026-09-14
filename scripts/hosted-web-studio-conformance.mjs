@@ -72,7 +72,8 @@ function isKnownFirefoxFaviconCspNoise(project, message) {
   if (!project.includes('firefox') || message.type() !== 'error') return false;
   const location = message.location();
   const text = message.text();
-  return location.url === 'resource://gre/modules/FaviconLoader.sys.mjs'
+  return location.url.startsWith('resource:')
+    && location.url.endsWith('/FaviconLoader.sys.mjs')
     && text.includes('Content-Security-Policy')
     && text.includes('/favicon.ico')
     && text.includes("default-src 'none'");
