@@ -8,6 +8,7 @@ import {
 } from '@modelcontextprotocol/server';
 import { createRecoveryStore } from '../src/core/recovery-store.js';
 import { listenMcpHttpNode } from '../src/mcp-http-node.js';
+import { HOSTED_MCP_READ_ONLY_FIXTURE_TEXT } from './hosted-mcp-fixture-constants.js';
 
 const SHA40 = /^[0-9a-f]{40}$/u;
 
@@ -79,7 +80,14 @@ const verifier: OAuthTokenVerifier = {
   },
 };
 
-const listener = await listenMcpHttpNode(createRecoveryStore(root, { namespace }), {
+const store = createRecoveryStore(root, { namespace });
+const readOnlyFixture = await store.put(
+  new TextEncoder().encode(HOSTED_MCP_READ_ONLY_FIXTURE_TEXT),
+  { purpose: 'hosted-mcp-conformance', immutableFixture: true },
+);
+const readOnlyFixtureHandle = `furypipe-recovery/v1/sha256/${readOnlyFixture.digest}`;
+
+const listener = await listenMcpHttpNode(store, {
   host,
   port,
   allowedHostnames,
@@ -101,6 +109,10 @@ process.stdout.write(`${JSON.stringify({
     : { address: host, port, path: '/mcp' },
   allowedHostnames,
   timeoutMs,
+  readOnlyFixture: {
+    tool: 'verify_handle',
+    handle: readOnlyFixtureHandle,
+  },
   auth: {
     mode: 'static-conformance-bearer',
     oauthAuthorizationServer: false,
