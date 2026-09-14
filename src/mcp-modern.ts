@@ -345,7 +345,7 @@ async function readAndValidateBody(
           if (done) break;
           if (value === undefined) continue;
           if (value.byteLength > maxBytes - total) {
-            await reader.cancel();
+            await reader.cancel().catch(() => undefined);
             return jsonRpcHttpError(413, -32600, 'request body exceeds limit');
           }
           chunks.push(value);
