@@ -127,7 +127,7 @@ https://mcp.example.com/mcp
 Do not expose the conformance listener itself directly to the Internet when a
 reverse proxy can keep it loopback-only.
 
-## 4. Configure the GitHub secret
+## 4. Configure GitHub target metadata and secret
 
 Add the same ephemeral Bearer value as repository secret:
 
@@ -135,23 +135,48 @@ Add the same ephemeral Bearer value as repository secret:
 FURYPIPE_HOSTED_MCP_BEARER_TOKEN
 ```
 
-The manual workflow does not run on pull requests or pushes, so forks and normal
-CI cannot consume this secret.
+For the pre-merge PR-label path, also configure repository variables:
+
+```text
+FURYPIPE_HOSTED_MCP_TARGET_URL=https://mcp.example.com/mcp
+FURYPIPE_HOSTED_MCP_SERVER_TIMEOUT_MS=1500
+```
+
+The workflow is guarded fail-closed. A pull-request run can consume the secret
+only when all of these conditions are true:
+
+- event action is `labeled`;
+- label is exactly `hosted-mcp-conformance`;
+- the PR is same-repository, not a fork;
+- both PR author and labeling actor are the repository owner;
+- the runner reports `github-hosted`.
+
+Normal pushes, synchronizations and fork PRs cannot execute the secret-bearing
+conformance job.
 
 ## 5. Run the external client from GitHub-hosted Actions
 
-Dispatch:
+### Before this workflow exists on the default branch
+
+On PR #134, after the hosted fixture and HTTPS route are ready, add the label:
 
 ```text
-Hosted MCP Conformance
+hosted-mcp-conformance
 ```
 
-Inputs:
+That `pull_request:labeled` event is the pre-merge execution path. If the
+source SHA changes afterwards, update the hosted checkout first, then remove and
+re-add the label so the new exact HEAD is tested.
+
+### After the workflow exists on the default branch
+
+`workflow_dispatch` remains available with inputs:
 
 - `target_url`: the public HTTPS `/mcp` endpoint;
 - `server_timeout_ms`: the exact fixture timeout, normally `1500`.
 
-The workflow checks out its exact `github.sha`, performs frozen install,
+The workflow checks out the exact PR head SHA for label-triggered runs, or the
+selected `github.sha` for manual dispatch. It performs frozen install,
 typecheck and build, then executes:
 
 ```bash
