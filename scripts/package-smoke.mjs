@@ -79,7 +79,10 @@ try {
   const metadata = JSON.parse(packed.stdout)[0];
   assert(metadata?.filename, 'npm pack returned no tarball');
   const packedFiles = new Set((metadata.files ?? []).map((entry) => entry.path));
-  assert(!packedFiles.has('docs/PXPIPE_GAP_ANALYSIS.md'), 'historical gap analysis leaked into the public package');
+  const legacyNameForChecks = ['p', 'x', 'p', 'i', 'p', 'e'].join('');
+  const legacyEnvForChecks = legacyNameForChecks.toUpperCase() + '_';
+  const formerPortForChecks = ['478', '21'].join('');
+  assert(!packedFiles.has(`docs/${legacyEnvForChecks}GAP_ANALYSIS.md`), 'historical gap analysis leaked into the public package');
   assert(packedFiles.has('docs/CLI.md'), 'FuryPipe CLI documentation is missing from the public package');
   assert(packedFiles.has('docs/MODEL_ADAPTERS.md'), 'Model Adapter documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_CATALOG.md'), 'Capability Catalog documentation is missing from the public package');
@@ -99,8 +102,8 @@ try {
 
   const packageRoot = path.join(installDir, 'node_modules', 'furypipe');
 
-  const legacyName = ['p', 'x', 'p', 'i', 'p', 'e'].join('');
-  const legacyEnv = legacyName.toUpperCase() + '_';
+  const legacyName = legacyNameForChecks;
+  const legacyEnv = legacyEnvForChecks;
   const textExtensions = new Set(['.js', '.mjs', '.cjs', '.ts', '.md', '.json', '.txt']);
   const identityLeaks = [];
   for (const entry of metadata.files ?? []) {
@@ -110,20 +113,20 @@ try {
     const text = await readFile(installedPath, 'utf8');
     if (text.toLowerCase().includes(legacyName)) identityLeaks.push(entry.path + ': legacy product name');
     if (text.includes(legacyEnv)) identityLeaks.push(entry.path + ': legacy environment namespace');
-    if (text.includes('47821')) identityLeaks.push(entry.path + ': former default port');
+    if (text.includes(formerPortForChecks)) identityLeaks.push(entry.path + ': former default port');
   }
   assert(identityLeaks.length === 0, 'published package leaked historical runtime identity:\n' + identityLeaks.join('\n'));
 
   const installedPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
   assert(installedPackage.bin?.furypipe === 'bin/cli.js', 'furypipe executable is missing from the installed package');
-  assert(!Object.prototype.hasOwnProperty.call(installedPackage.bin ?? {}, 'pxpipe'), 'legacy pxpipe executable alias leaked into the installed package');
+  assert(!Object.prototype.hasOwnProperty.call(installedPackage.bin ?? {}, legacyNameForChecks), 'legacy executable alias leaked into the installed package');
   const cli = path.join(packageRoot, 'bin', 'cli.js');
   const mcp = path.join(packageRoot, 'bin', 'mcp.js');
   const version = await run(process.execPath, [cli, '--version'], installDir);
   assert(version.stdout.trim() === metadata.version, `CLI version mismatch: ${version.stdout}`);
   const help = await run(process.execPath, [cli, '--help'], installDir);
   assert(/FuryPipe/u.test(help.stdout), 'FuryPipe CLI help is missing FuryPipe branding');
-  assert(!/pxpipe|PXPIPE_/iu.test(help.stdout), 'FuryPipe CLI help exposed legacy product branding');
+  assert(!help.stdout.toLowerCase().includes(legacyNameForChecks) && !help.stdout.includes(legacyEnvForChecks), 'FuryPipe CLI help exposed legacy product branding');
 
   const setupHelp = await run(process.execPath, [cli, 'setup', '--help'], installDir);
   assert(/FuryPipe setup/u.test(setupHelp.stdout), 'setup help is missing FuryPipe branding');
