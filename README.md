@@ -370,11 +370,11 @@ Release details belong in [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASE_SECURIT
 
 ---
 
-## Compatibility and upstream history
+## Runtime identity and upstream history
 
-**FuryPipe is the product name. `furypipe` and `FURYPIPE_*` are the public interfaces for new integrations.**
+**FuryPipe is operationally independent. `furypipe` and `FURYPIPE_*` are the only supported runtime identity for new and existing integrations.**
 
-A small number of historical aliases remain for backward compatibility with the upstream codebase. They are not the recommended public identity and must not be used for new FuryPipe APIs or documentation.
+The current runtime does not consult legacy command aliases, legacy environment namespaces, legacy config paths or the former default listener port. Historical upstream references are retained only where needed for provenance, licensing and benchmark traceability; they do not participate in runtime behavior.
 
 See [COMPATIBILITY.md](COMPATIBILITY.md), [UPSTREAM.md](UPSTREAM.md), [SOURCE_LEDGER.md](SOURCE_LEDGER.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance and migration details.
 
@@ -760,11 +760,11 @@ Les détails de release sont documentés dans [CHANGELOG.md](CHANGELOG.md) et [d
 
 ---
 
-### Compatibilité et historique upstream
+### Identité runtime et historique upstream
 
-**FuryPipe est le nom du produit. `furypipe` et `FURYPIPE_*` sont les interfaces publiques à utiliser pour toute nouvelle intégration.**
+**FuryPipe est opérationnellement indépendant. `furypipe` et `FURYPIPE_*` sont la seule identité runtime prise en charge pour les intégrations nouvelles comme existantes.**
 
-Quelques alias historiques sont conservés pour la compatibilité avec la base upstream. Ils ne constituent pas l’identité publique recommandée et ne doivent pas être utilisés pour de nouvelles API ou de nouveaux documents FuryPipe.
+Le runtime actuel ne consulte plus d’alias de commande legacy, d’espace de variables d’environnement legacy, d’anciens chemins de configuration ni l’ancien port d’écoute par défaut. Les références upstream historiques sont conservées uniquement lorsqu’elles sont nécessaires à la provenance, aux licences ou à la traçabilité des benchmarks ; elles ne participent pas au comportement runtime.
 
 Consultez [COMPATIBILITY.md](COMPATIBILITY.md), [UPSTREAM.md](UPSTREAM.md), [SOURCE_LEDGER.md](SOURCE_LEDGER.md) et [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) pour la provenance et la migration.
 
