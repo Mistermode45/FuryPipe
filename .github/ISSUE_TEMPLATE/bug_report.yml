@@ -1,0 +1,88 @@
+name: Bug report
+description: Report a reproducible FuryPipe defect
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a FuryPipe bug. Do not include credentials, private prompts, session files, production request bodies or undisclosed security vulnerabilities.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is broken?
+      placeholder: Describe the observed behavior in one or two sentences.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Provide the smallest synthetic reproduction you can.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: FuryPipe version
+      placeholder: "0.13.2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, package manager, runtime surface and relevant provider/MCP mode. Redact machine identifiers.
+      placeholder: |
+        OS: Windows 11
+        Node: 24.21.0
+        pnpm: 10.21.0
+        Surface: Node / Worker / MCP / provider runtime
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Tests, exact errors, receipts or sanitized logs.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: state
+    attributes:
+      label: Observed lifecycle state
+      description: Choose the strongest state directly evidenced.
+      options:
+        - Unknown
+        - Configured / wired
+        - Executed
+        - Verified
+        - Not applicable
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Sensitive-data check
+      options:
+        - label: I removed API keys, credentials, private prompts, session data and personal machine identifiers.
+          required: true
+        - label: This is not an undisclosed security vulnerability. If it is, I will use private vulnerability reporting instead.
+          required: true
