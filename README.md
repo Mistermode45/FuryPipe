@@ -76,12 +76,15 @@ The project does **not** claim that every optional integration is automatically 
 
 ```bash
 npm install --global furypipe
+furypipe setup
 ```
 
-Or run directly:
+The guided setup opens FuryPipe's custom terminal onboarding. It remains an explicit command so npm installation never blocks on an interactive lifecycle script.
+
+Or run directly without a global install:
 
 ```bash
-npx furypipe doctor
+npx furypipe setup
 ```
 
 ### Verify your environment
@@ -262,6 +265,7 @@ Report vulnerabilities through GitHub private vulnerability reporting, **not** a
 Common entry points:
 
 ```text
+furypipe setup [--lang=fr|en] [--plain] [--no-color] [--yes]
 furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
 furypipe stats [--json] [--file <path>]
@@ -462,12 +466,15 @@ Le projet **ne prétend pas** que chaque intégration optionnelle est automatiqu
 
 ```bash
 npm install --global furypipe
+furypipe setup
 ```
+
+Le setup guidé ouvre l'onboarding terminal custom de FuryPipe. Il reste volontairement explicite afin que l'installation npm ne puisse jamais rester bloquée sur un script interactif.
 
 Ou sans installation globale :
 
 ```bash
-npx furypipe doctor
+npx furypipe setup
 ```
 
 #### Vérifier l’environnement
@@ -648,6 +655,7 @@ Les vulnérabilités doivent être signalées via le système privé de GitHub, 
 Commandes principales :
 
 ```text
+furypipe setup [--lang=fr|en] [--plain] [--no-color] [--yes]
 furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
 furypipe stats [--json] [--file <path>]
