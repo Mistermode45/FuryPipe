@@ -2,7 +2,7 @@
  * END-TO-END design-behaviour contract through the REAL proxy.
  *
  * After "don't bust the cache" (cache-stability-e2e) and "don't overclaim"
- * (savings-honesty / savings-math), this asserts the three things pxpipe is
+ * (savings-honesty / savings-math), this asserts the three things FuryPipe is
  * actually FOR behave per design, end to end:
  *
  *   1. SYSTEM PROMPT  — the bulky system/slab is imaged out of the request
@@ -14,7 +14,7 @@
  *                              from its tool_use across the image boundary.
  *
  *   fake api  = upstream output (canned response + count_tokens)
- *   our input = pxpipe's transform of the request
+ *   our input = FuryPipe's transform of the request
  *
  * Run just this file:  pnpm vitest run tests/design-behavior-e2e.test.ts
  */
@@ -22,14 +22,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createProxy } from '../src/core/proxy.js';
 
 // Pin the model scope so these proxy-contract tests stay independent of the developer shell.
-let ambientPxpipeModels: string | undefined;
+let ambientFuryPipeModels: string | undefined;
 beforeAll(() => {
-  ambientPxpipeModels = process.env.PXPIPE_MODELS;
-  process.env.PXPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol';
+  ambientFuryPipeModels = process.env.FURYPIPE_MODELS;
+  process.env.FURYPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol';
 });
 afterAll(() => {
-  if (ambientPxpipeModels === undefined) delete process.env.PXPIPE_MODELS;
-  else process.env.PXPIPE_MODELS = ambientPxpipeModels;
+  if (ambientFuryPipeModels === undefined) delete process.env.FURYPIPE_MODELS;
+  else process.env.FURYPIPE_MODELS = ambientFuryPipeModels;
 });
 
 function fakeUpstream() {
