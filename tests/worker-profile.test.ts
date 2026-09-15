@@ -5,7 +5,7 @@ import { setAllowedModelBases } from '../src/core/applicability.js';
 afterEach(() => setAllowedModelBases(null));
 
 describe('Cloudflare Worker model profiles', () => {
-  it('uses PXPIPE_MODELS and the built-in Opus profile', async () => {
+  it('uses FURYPIPE_MODELS and the built-in Opus profile', async () => {
     const originalFetch = globalThis.fetch;
     let forwarded = '';
     globalThis.fetch = (async (input: Request | string | URL, init?: RequestInit) => {
@@ -31,12 +31,12 @@ describe('Cloudflare Worker model profiles', () => {
         messages: [{ role: 'user', content: 'continue' }],
       });
       const response = await worker.fetch(
-        new Request('https://pxpipe.test/v1/messages', {
+        new Request('https://furypipe.test/v1/messages', {
           method: 'POST', headers: { 'content-type': 'application/json' }, body,
         }),
         {
           ANTHROPIC_UPSTREAM: 'https://anthropic.test',
-          PXPIPE_MODELS: 'claude-fable-5,claude-opus-5',
+          FURYPIPE_MODELS: 'claude-fable-5,claude-opus-5',
           COMPRESS: '1',
           MIN_COMPRESS_CHARS: '1',
         } satisfies Env,
@@ -79,10 +79,10 @@ describe('Cloudflare Worker model profiles', () => {
           }), { headers: { 'content-type': 'application/json' } });
         }) as typeof fetch;
         await worker.fetch(
-          new Request('https://pxpipe.test/v1/messages', {
+          new Request('https://furypipe.test/v1/messages', {
             method: 'POST', headers: { 'content-type': 'application/json' }, body,
           }),
-          { ANTHROPIC_UPSTREAM: 'https://anthropic.test', PXPIPE_MODELS: configured, MIN_COMPRESS_CHARS: '1' },
+          { ANTHROPIC_UPSTREAM: 'https://anthropic.test', FURYPIPE_MODELS: configured, MIN_COMPRESS_CHARS: '1' },
           {} as ExecutionContext,
         );
         expect(forwarded.includes('image/png')).toBe(shouldImage);
