@@ -1,10 +1,10 @@
 ## Summary
 
-<!-- What changes for users or maintainers? Keep this short and concrete. -->
+<!-- What changes for users, contributors or maintainers? Keep this concrete. -->
 
 ## Problem / root cause
 
-<!-- What is wrong today, and why? -->
+<!-- What is wrong or missing today, and what causes it? -->
 
 ## Change
 
@@ -12,25 +12,32 @@
 
 ## Evidence
 
+<!-- Exact commands, tests, workflow runs, fixtures or external checks. -->
+
 ```text
-# Exact commands, targeted tests, workflow runs, or reproducible evidence.
+# Example:
+# pnpm test -- <target>
+# pnpm run typecheck
+# GitHub Actions run: <id/url>
 ```
 
 ## Risk / compatibility
 
-- [ ] No public API or configuration impact
-- [ ] Public API/configuration impact documented
-- [ ] Legacy `pxpipe` / `PXPIPE_*` compatibility considered
-- [ ] Security boundary impact reviewed
-- [ ] Migration/release-note impact documented when applicable
+- [ ] No public API/configuration impact
+- [ ] Public API/configuration impact is documented
+- [ ] Compatibility/migration impact was reviewed where applicable
+- [ ] Security-boundary impact was reviewed
+- [ ] Persistence/data migration impact was reviewed
+- [ ] Release-note impact is documented where applicable
 
 ## Truth-state check
 
-<!-- For providers/MCP/agents/releases: do not promote configured/wired to executed/verified. -->
+<!-- Do not promote configured/wired/present state into executed/verified state. -->
 
-- [ ] Claims match the evidence actually executed
-- [ ] `NOT_EXECUTED`, `UNKNOWN`, `PARTIAL` or `BLOCKED` states are preserved where appropriate
-- [ ] No release/deployment claim is inferred from unrelated green CI
+- [ ] Claims match evidence that was actually executed
+- [ ] `UNKNOWN`, `NOT_EXECUTED`, `PARTIAL` or `BLOCKED` are preserved when appropriate
+- [ ] `wired != executed != verified`
+- [ ] Package publication is not presented as production deployment
 
 ## Verification checklist
 
@@ -38,10 +45,20 @@
 - [ ] `pnpm run typecheck`
 - [ ] `pnpm test`
 - [ ] `pnpm run build`
-- [ ] Relevant targeted tests/workflows
-- [ ] No raw prompts, credentials, session files or private machine identifiers
+- [ ] Relevant targeted tests/workflows executed
 - [ ] Documentation updated for public behavior changes
+- [ ] No unrelated cleanup or drive-by refactor
+- [ ] No credentials, private prompts, session files or personal machine identifiers
 
 ## Security
 
-<!-- If this changes credentials, routing, MCP auth, persistence, logs, dependencies or release workflows, summarize the security review. -->
+<!-- Required when touching credentials, routing, MCP auth, persistence, logs, dependencies, provider execution, agent permissions or release workflows. -->
+
+Security impact: `none / reviewed / requires follow-up`
+
+## Release / deployment impact
+
+<!-- Keep these separate. Use NOT_EXECUTED when applicable. -->
+
+- Package/release impact: `none / ...`
+- Production deployment impact: `none / NOT_EXECUTED / ...`
