@@ -195,6 +195,7 @@ export function renderSetupScreen(options: SetupRenderOptions): string {
 
   const header = [
     ...LOGO.map((line) => paint(color, A.cyan + A.bold, line)),
+    paint(color, A.cyan + A.bold, 'FURYPIPE // SETUP EXPERIENCE'),
     '',
     paint(color, A.white + A.bold, 'GOVERNED AI WORKFLOWS') +
       paint(color, A.muted, '  ·  context  ·  agents  ·  skills  ·  MCP  ·  providers  ·  memory'),
