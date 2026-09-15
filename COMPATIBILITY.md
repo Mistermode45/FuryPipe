@@ -3,7 +3,7 @@
 | Surface | État |
 |---|---|
 | Node.js | production `24.21.0` ; CI `22.23.2`, `24.21.0`, `26.8.2` ; package `>=22.14` |
-| npm | `furypipe@0.13.2` publié ; workflow Release épingle `npm@12.0.2` et Trusted Publishing est configuré pour les publications automatisées suivantes |
+| npm | `furypipe@0.14.0` publié ; workflow Release épingle `npm@12.0.2` ; Trusted Publishing/OIDC a publié `0.14.0` avec provenance depuis GitHub Actions |
 | pnpm | 10.21.0 imposé par `packageManager` |
 | OS local | Windows 11 x64 |
 | MCP | SDK officiel `@modelcontextprotocol/server@2.0.0`, stdio moderne `2026-07-28` + fallback legacy `2025-11-25` |
@@ -14,8 +14,10 @@
 | Dashboard navigateur | QA réelle Chromium/Firefox/WebKit : 48 cas source-bound (3 moteurs × LTR/RTL × 8 largeurs incluant les seuils CSS) ; audit WCAG manuel et terrain restent distincts |
 | Web Studio navigateur | 120 cas réels source-bound via Playwright 1.63.0 : desktop Chromium/Firefox/WebKit + mobile Chromium/WebKit × 6 viewports × 4 locales ; Figma réel, performance terrain et déploiement restent non validés |
 | Policy GitHub | le candidat `v0.13.2` a été validé via le ruleset actif `FuryPipe Production Hardening` sur `v5-production-hardening` ; cette preuve est historique au candidat et doit être revalidée pour toute future release |
-| Release publique | `v0.13.2` / `furypipe@0.13.2` publiés le 2026-09-15 ; tag lié au candidat exact ; publication ≠ déploiement production |
+| Release publique | `v0.14.0` / `furypipe@0.14.0` publiés le 2026-09-15 ; publication automatisée via Trusted Publishing ; publication ≠ déploiement production |
 | CI multi-OS | matrice GitHub Actions Ubuntu 24.04 / macOS 14 / Windows 2025 × Node 22.23.2 / 24.21.0 / 26.8.2 ; chaque futur candidat doit être revalidé sur son SHA exact |
+| Identité runtime | FuryPipe-only : commandes `furypipe*`, variables `FURYPIPE_*`, chemins FuryPipe, `FURYPIPE_HOST=127.0.0.1`, `FURYPIPE_PORT=48721` par défaut ; aucun fallback runtime historique |
+| Setup | `furypipe setup` reste offline et ne bind aucun port ; package-smoke valide ce contrat même lorsqu’un listener est déjà occupé |
 
 La matrice V5 considère Node 24 comme runtime de production. Node 22 reste
 une compatibilité LTS supplémentaire et Node 26 la branche Current

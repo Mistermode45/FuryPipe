@@ -51,7 +51,7 @@ The gate performs no provider call and grants no execution authority.
 That is necessary but not sufficient for a performance claim.
 
 A suite can contain fully scored quality evidence while FuryPipe's quality is
-lower than RAW or pxpipe. An efficiency-only statement based on that suite can
+lower than RAW or upstream. An efficiency-only statement based on that suite can
 therefore hide a regression.
 
 The Anti-Regression Gate closes that gap.
@@ -68,7 +68,7 @@ requires all of the following:
 - repetitions meet the suite's declared minimum;
 - every variant has complete quality observations;
 - FuryPipe median quality is not below RAW;
-- FuryPipe median quality is not below pxpipe;
+- FuryPipe median quality is not below upstream;
 - every comparable run has passing exactness;
 - exactness mismatch count is zero;
 - benchmark error count is zero.
@@ -87,7 +87,7 @@ provided exact-scope suite satisfies this local non-regression contract.
 
 `evaluateBenchmarkClaim()` requires the caller to specify:
 
-- baseline: `raw` or `pxpipe`;
+- baseline: `raw` or `upstream`;
 - exact metric;
 - explicit direction: `LOWER_IS_BETTER` or `HIGHER_IS_BETTER`;
 - optional minimum absolute improvement;

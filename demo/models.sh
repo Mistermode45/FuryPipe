@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared model selection for the pxpipe demos (cost-ab + effective-context).
+# Shared model selection for the FuryPipe demos (cost-ab + effective-context).
 # Sourced by setup.sh / a.sh / b.sh in both demos so they never disagree.
 #
 # WHY THIS FILE CONTAINS NO MODEL NAMES
@@ -20,7 +20,7 @@
 #
 # SELECTION (first non-empty wins)
 #   1. CLI arg            bash b.sh <full-model-id>  (or a unique shorthand: `opus`)
-#   2. $PXPIPE_DEMO_MODEL
+#   2. $FURYPIPE_DEMO_MODEL
 #   3. whatever setup.sh recorded for this demo (so a.sh/b.sh inherit it)
 #   4. the product's own first default base
 #
@@ -46,18 +46,18 @@ _demo_find_root() {
   return 1
 }
 DEMO_REPO_ROOT="$(_demo_find_root "$(dirname "${BASH_SOURCE[0]:-${0:-.}}")" "$PWD")" || {
-  echo "demo/models.sh: cannot locate the pxpipe repo root (no src/core/applicability.ts above" >&2
+  echo "demo/models.sh: cannot locate the FuryPipe repo root (no src/core/applicability.ts above" >&2
   echo "  $(dirname "${BASH_SOURCE[0]:-${0:-.}}") or $PWD)" >&2
   return 1 2>/dev/null || exit 1
 }
 
-DEMO_PORT_ON="${PXPIPE_DEMO_PORT_ON:-47824}"    # pxpipe      -> b.sh (right)
-DEMO_PORT_OFF="${PXPIPE_DEMO_PORT_OFF:-47823}"  # passthrough -> a.sh (left)
-DEMO_STATE_DIR="${PXPIPE_DEMO_STATE_DIR:-/tmp/pxpipe-demo}"
+DEMO_PORT_ON="${FURYPIPE_DEMO_PORT_ON:-48724}"    # FuryPipe      -> b.sh (right)
+DEMO_PORT_OFF="${FURYPIPE_DEMO_PORT_OFF:-48723}"  # passthrough -> a.sh (left)
+DEMO_STATE_DIR="${FURYPIPE_DEMO_STATE_DIR:-/tmp/furypipe-demo}"
 
 # The product's current default compress scope, one base per line.
 #
-# `env -u PXPIPE_MODELS` matters: getConfiguredModelBases() honours that env var
+# `env -u FURYPIPE_MODELS` matters: getConfiguredModelBases() honours that env var
 # over the built-in default, and it is very easy to still have one exported from an
 # earlier demo/eval run in the same shell. Without the -u we would report a stale
 # leftover as "the default" and pin the demo to the wrong model — the exact class of
@@ -65,7 +65,7 @@ DEMO_STATE_DIR="${PXPIPE_DEMO_STATE_DIR:-/tmp/pxpipe-demo}"
 demo_known_bases() {
   local out
   if [ -f "$DEMO_REPO_ROOT/dist/core/index.js" ]; then
-    out=$(cd "$DEMO_REPO_ROOT" && env -u PXPIPE_MODELS node -e \
+    out=$(cd "$DEMO_REPO_ROOT" && env -u FURYPIPE_MODELS node -e \
       "import('./dist/core/index.js').then(m=>console.log(m.getConfiguredModelBases().join('\n')))" \
       2>/dev/null)
     if [ -n "$out" ]; then printf '%s\n' "$out"; return 0; fi
@@ -80,7 +80,7 @@ demo_known_bases() {
 # DEMO_MODEL_ID (what --model receives, variant included).
 demo_resolve_model() {
   local want="${1:-}" bases stripped variant matches n
-  [ -n "$want" ] || want="${PXPIPE_DEMO_MODEL:-}"
+  [ -n "$want" ] || want="${FURYPIPE_DEMO_MODEL:-}"
 
   bases="$(demo_known_bases)"
   if [ -z "$bases" ]; then
@@ -89,12 +89,12 @@ demo_resolve_model() {
     return 1
   fi
 
-  [ -n "$want" ] || want="${PXPIPE_DEMO_DEFAULT:-$(printf '%s\n' "$bases" | head -1)}"
+  [ -n "$want" ] || want="${FURYPIPE_DEMO_DEFAULT:-$(printf '%s\n' "$bases" | head -1)}"
 
   # Split a trailing [variant] tag (e.g. [1m]); scope matching uses the bare base.
   case "$want" in
     *\[*) stripped="${want%%\[*}"; variant="[${want#*\[}" ;;
-    *)    stripped="$want";        variant="${PXPIPE_DEMO_VARIANT:-}" ;;
+    *)    stripped="$want";        variant="${FURYPIPE_DEMO_VARIANT:-}" ;;
   esac
 
   if printf '%s\n' "$bases" | grep -qxF "$stripped"; then
@@ -127,7 +127,7 @@ demo_resolve_model() {
 # Compress scope = the product's own defaults ∪ the chosen model, deduped.
 # Entries are BASES: the proxy strips [variant] tags before matching (see
 # src/core/applicability.ts), so a base covers its [1m] form. Never add [1m] here —
-# the stripped incoming base would stop equalling the entry and pxpipe would
+# the stripped incoming base would stop equalling the entry and FuryPipe would
 # silently stop compressing.
 demo_scope_for() {
   { demo_known_bases; printf '%s\n' "$1"; } | awk 'NF && !seen[$0]++' | paste -sd, -
@@ -159,13 +159,13 @@ demo_load_state() {
 demo_resolve_column_model() {
   local demo="$1" arg="${2:-}"
   demo_load_state "$demo" 2>/dev/null || true
-  [ -n "$arg" ] || arg="${PXPIPE_DEMO_MODEL:-}"
+  [ -n "$arg" ] || arg="${FURYPIPE_DEMO_MODEL:-}"
   [ -n "$arg" ] || arg="${DEMO_STATE_MODEL_ID:-}"
   demo_resolve_model "$arg"
 }
 
 # b.sh gate: refuse to run a model this proxy would pass through UNCOMPRESSED, which
-# would look like a pxpipe result while measuring nothing.
+# would look like a FuryPipe result while measuring nothing.
 demo_require_scope() {
   local demo="$1" base="$2"
   demo_load_state "$demo" 2>/dev/null || return 0     # no setup.sh yet — nothing to check
@@ -179,8 +179,8 @@ REFUSING TO RUN — model not in the proxy's compress scope.
   this column wants : $base
   setup.sh armed    : ${DEMO_STATE_SCOPE:-<none>}
 
-pxpipe would pass this model through UNCOMPRESSED, so the run would look like a
-pxpipe result while measuring nothing. Re-arm the proxies for this model:
+FuryPipe would pass this model through UNCOMPRESSED, so the run would look like a
+FuryPipe result while measuring nothing. Re-arm the proxies for this model:
 
   bash demo/$demo/setup.sh $base
 

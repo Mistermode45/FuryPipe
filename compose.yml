@@ -1,5 +1,5 @@
 services:
-  pxpipe:
+  furypipe:
     build:
       context: .
     restart: unless-stopped
@@ -10,11 +10,11 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "127.0.0.1:${PXPIPE_PORT:-47821}:47821"
+      - "127.0.0.1:${FURYPIPE_PORT:-48721}:48721"
     environment:
-      - PXPIPE_MODELS
-      - PXPIPE_DISABLE
-      - PXPIPE_UPSTREAM
+      - FURYPIPE_MODELS
+      - FURYPIPE_DISABLE
+      - FURYPIPE_UPSTREAM
       - ANTHROPIC_UPSTREAM
       - OPENAI_UPSTREAM
       - OPENAI_API_KEY
@@ -22,14 +22,14 @@ services:
       - CLOUDFLARE_MODELS
       - CLOUDFLARE_ACCOUNT_ID
       - CLOUDFLARE_API_TOKEN
-      - PXPIPE_PROVIDER
-      - PXPIPE_GATEWAY_BASE_URL
-      - PXPIPE_GATEWAY_HEADERS
-      - PXPIPE_GPT_PROFILES
-      - PXPIPE_DUMP_DIR
-      - PXPIPE_DEBUG_CAPTURE_4XX
+      - FURYPIPE_PROVIDER
+      - FURYPIPE_GATEWAY_BASE_URL
+      - FURYPIPE_GATEWAY_HEADERS
+      - FURYPIPE_GPT_PROFILES
+      - FURYPIPE_DUMP_DIR
+      - FURYPIPE_DEBUG_CAPTURE_4XX
     volumes:
-      - pxpipe-data:/data
+      - furypipe-data:/data
 
 volumes:
-  pxpipe-data:
+  furypipe-data:

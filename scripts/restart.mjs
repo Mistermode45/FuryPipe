@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Restart the local pxpipe proxy. Runs on Windows, macOS and Linux.
+// Restart the local FuryPipe proxy. Runs on Windows, macOS and Linux.
 //
 // What this does, in order:
-//   1. Discover every running pxpipe proxy by scanning the process table for
+//   1. Discover every running FuryPipe proxy by scanning the process table for
 //      a node process whose command line references `bin/cli.js`, and list
 //      them. If multiple are running (orphans from a prior crashed session),
 //      kill all of them — there's no "right" oldest in a graceful restart, we
@@ -44,7 +44,7 @@
 // Examples:
 //   pnpm run restart
 //   pnpm run restart -- --no-build
-//   PORT=47899 pnpm run restart
+//   FURYPIPE_PORT=48799 pnpm run restart
 
 import { spawn, spawnSync } from 'node:child_process';
 import net from 'node:net';
@@ -61,7 +61,7 @@ const CLI_ENTRY = path.join(REPO_ROOT, 'bin', 'cli.js');
 // and this is exactly what the `build` script in package.json expands to.
 const BUILD_SCRIPT = path.join(REPO_ROOT, 'scripts', 'build.mjs');
 
-const DEFAULT_PORT = 47821;
+const DEFAULT_PORT = 48721;
 const DEFAULT_HOST = '127.0.0.1';
 const GRACE_MS = 5000;
 const POLL_MS = 100;
@@ -76,7 +76,7 @@ export class RestartError extends Error {
 }
 
 // --- Flags ----------------------------------------------------------------
-// --no-build only — pxpipe itself takes none.
+// --no-build only — FuryPipe itself takes none.
 export function parseArgs(argv) {
   let doBuild = true;
   for (const arg of argv) {
@@ -86,7 +86,7 @@ export function parseArgs(argv) {
     }
     throw new RestartError(
       `unknown argument: ${arg}\n` +
-        '[restart] this script only accepts --no-build (pxpipe takes no flags)',
+        '[restart] this script only accepts --no-build (FuryPipe takes no flags)',
       2,
     );
   }
@@ -97,15 +97,15 @@ export function parseArgs(argv) {
 // Mirrors the defaults in src/node.ts so the port probe checks the address the
 // proxy will actually bind.
 export function resolveTarget(env = process.env) {
-  const raw = env.PORT?.trim();
+  const raw = env.FURYPIPE_PORT?.trim();
   let port = DEFAULT_PORT;
   if (raw) {
     port = Number(raw);
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      throw new RestartError(`invalid PORT: ${raw} (expected an integer 1-65535)`, 2);
+      throw new RestartError(`invalid FURYPIPE_PORT: ${raw} (expected an integer 1-65535)`, 2);
     }
   }
-  return { port, host: env.HOST?.trim() || DEFAULT_HOST };
+  return { port, host: env.FURYPIPE_HOST?.trim() || DEFAULT_HOST };
 }
 
 // --- 1. Process discovery -------------------------------------------------
@@ -339,7 +339,7 @@ export async function runRestart({
   // --- 1. Discover running proxies ---
   const pids = findPids();
   if (pids.length > 0) {
-    log(`[restart] found running pxpipe proxy PID(s): ${pids.join(' ')}`);
+    log(`[restart] found running FuryPipe proxy PID(s): ${pids.join(' ')}`);
 
     // --- 2. Ask all of them to terminate ---
     const asked = [];
@@ -388,7 +388,7 @@ export async function runRestart({
     const holder = portHolder(port);
     logError(`[restart] ERROR: port ${port} on ${host} is still in use.`);
     if (holder) logError(`    ${holder.split('\n').join('\n    ')}`);
-    logError("  Hint: if that's a pxpipe proxy our shutdown should have cleared,");
+    logError("  Hint: if that's a FuryPipe proxy our shutdown should have cleared,");
     logError('  it may have been started outside this repo. Free the port and rerun.');
     return 1;
   }
