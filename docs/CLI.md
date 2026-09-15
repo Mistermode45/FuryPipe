@@ -20,6 +20,7 @@ npx furypipe doctor
 ## Commands
 
 ```text
+furypipe setup [--lang=fr|en] [--plain] [--no-color] [--yes]
 furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
 furypipe stats [--json] [--file <path>]
@@ -28,6 +29,44 @@ furypipe warp [...] -- <agent>
 ```
 
 Use `furypipe --help` and command-specific help as the runtime source of truth for options available in the installed version.
+
+## Setup
+
+`furypipe setup` launches the FuryPipe first-run terminal experience.
+
+The rich TUI is dependency-free and uses the terminal directly. It provides FuryPipe branding, a step rail, bilingual language selection, keyboard navigation and a completion screen.
+
+```bash
+furypipe setup
+furypipe setup --lang=fr
+furypipe setup --lang=en --yes
+```
+
+Interactive controls:
+
+```text
+← / → or ↑ / ↓   select language
+1 / F             Français
+2 / E             English
+Enter             confirm
+Esc / Q           cancel
+```
+
+Options:
+
+```text
+--lang=fr|en   preselect a language
+-y, --yes      apply without interaction
+--plain        force the text fallback
+--no-color     disable ANSI colors
+-h, --help     show setup help
+```
+
+In CI, pipes, non-TTY sessions, or `TERM=dumb`, FuryPipe automatically uses the plain-text fallback instead of attempting a full-screen TUI.
+
+Setup writes only FuryPipe-owned preference metadata to the configured JSON file and preserves unrelated existing keys. An invalid existing config is never overwritten.
+
+The setup command is explicit by design: installing an npm package must not unexpectedly block on an interactive lifecycle script. After installation, run `furypipe setup` when you want the guided experience.
 
 ## Start
 
