@@ -275,7 +275,7 @@ export function renderSetupScreen(options: SetupRenderOptions): string {
       : [
           paint(color, A.green + A.bold, '✓ FuryPipe setup saved'),
           '',
-          'Language: ' + paint(color, A.white + A.bold, selected === 'fr' ? 'Français' : 'English'),
+          'Language: ' + paint(color, A.white + A.bold, 'English'),
           'Config: ' + paint(color, A.muted, fit(compact, rightWidth - 14)),
           '',
           paint(color, A.white + A.bold, 'Next step'),
