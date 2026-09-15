@@ -12,7 +12,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/Node-%3E%3D22.14-339933?logo=node.js&logoColor=white)](package.json)
 
-[Quick start](#quick-start) · [Why FuryPipe](#why-furypipe) · [Architecture](#architecture) · [Security](#security-model) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md) · [Français](#français)
+[Quick start](#quick-start) · [Why FuryPipe](#why-furypipe) · [Architecture](#architecture) · [Security](#security-model) · [Documentation](#documentation) · [Contributing](CONTRIBUTING.md) · [Français](#french-version)
 
 </div>
 
@@ -98,9 +98,9 @@ furypipe start
 
 The Node runtime is loopback-oriented by default. Read [SECURITY.md](SECURITY.md) before exposing FuryPipe beyond the local machine.
 
-### Offline context export
+## Offline export (no proxy)
 
-FuryPipe can prepare context artifacts without starting the proxy:
+FuryPipe can prepare context artifacts without running the proxy:
 
 ```bash
 furypipe export --stdin < prompt.txt
@@ -108,6 +108,12 @@ furypipe export --git
 ```
 
 Depending on the input, export can produce artifacts such as `page-*.png`, `factsheet.txt` and `prompt.txt` for inspection or handoff.
+
+### Default model scope
+
+Default model scope: `FURYPIPE_MODELS=claude-fable-5,gemini`
+
+The default is a runtime contract, not a benchmark claim. Override it explicitly when a workflow needs a different provider/model scope.
 
 ---
 
@@ -386,7 +392,9 @@ Security vulnerabilities must follow [SECURITY.md](SECURITY.md).
 
 ---
 
-## Français
+## French version
+
+### Français
 
 **FuryPipe est un runtime et une boîte à outils pour construire des workflows IA gouvernés, composables et vérifiables.**
 
