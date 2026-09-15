@@ -1,7 +1,7 @@
 /**
  * Verbatim fact-sheet for imaged content.
  *
- * When pxpipe renders a block (system slab, history, tool_result, reminder) to a PNG,
+ * When FuryPipe renders a block (system slab, history, tool_result, reminder) to a PNG,
  * the precision-critical, hard-to-OCR strings inside it — file paths, URLs, SHAs/UUIDs,
  * version numbers, CLI flags, large numbers, CONST_IDS — are exactly what a model is
  * most likely to misread off the image yet most likely to need quoted verbatim. This
