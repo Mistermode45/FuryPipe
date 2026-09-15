@@ -2,7 +2,7 @@
  * warp's local certificate authority.
  *
  * On first use it generates a self-signed P-256 root, persists it under
- * ~/.pxpipe, and mints leaf certs per SNI host on demand so the CONNECT proxy
+ * ~/.furypipe, and mints leaf certs per SNI host on demand so the CONNECT proxy
  * can terminate (and therefore route) the agent's TLS. Only the child process
  * trusts it: warp points the child's NODE_EXTRA_CA_CERTS at the root, so
  * nothing is installed in the system keychain and no other process on the
@@ -50,8 +50,8 @@ const OID_EXT_KEY_USAGE = '2.5.29.37';
 const OID_SUBJECT_ALT_NAME = '2.5.29.17';
 const OID_SERVER_AUTH = '1.3.6.1.5.5.7.3.1';
 
-const CA_COMMON_NAME = 'pxpipe warp local CA';
-const CA_ORGANIZATION = 'pxpipe';
+const CA_COMMON_NAME = 'FuryPipe warp local CA';
+const CA_ORGANIZATION = 'FuryPipe';
 
 /** ecdsa-with-SHA256 takes no parameters, so the AlgorithmIdentifier is bare. */
 const SIG_ALGORITHM = seq(oid(OID_ECDSA_SHA256));
@@ -163,7 +163,7 @@ function privateKeyPem(key: KeyObject): string {
 /**
  * Where the OS keeps its public root bundle. `SSL_CERT_FILE`,
  * `CURL_CA_BUNDLE` and `REQUESTS_CA_BUNDLE` REPLACE the trust store rather
- * than extend it, so a file holding only our CA would make every non-pxpipe
+ * than extend it, so a file holding only our CA would make every non-FuryPipe
  * HTTPS call in the child fail verification (gcloud, gws, pip: #245). The
  * first path that exists wins; none found means the bundle is CA-only and the
  * caller is told so.
