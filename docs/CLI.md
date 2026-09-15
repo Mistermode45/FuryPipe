@@ -117,44 +117,37 @@ Depending on the input and runtime path, exports can include context pages, fact
 
 Warp does not grant permissions, credentials or capabilities that the target process did not already have through the configured host environment.
 
-## Legacy `pxpipe` command
+## Runtime identity
 
-The npm package currently retains:
-
-```text
-pxpipe -> bin/cli.js
-```
-
-This is a **legacy compatibility alias**.
-
-New documentation, scripts and integrations should invoke:
+FuryPipe exposes a single CLI identity:
 
 ```text
 furypipe
 ```
 
-Do not introduce new public workflows that depend on the legacy command name.
+Runtime configuration is FuryPipe-native only. Public environment variables use the `FURYPIPE_*` prefix; no legacy runtime environment fallback is consulted.
 
-## Environment naming
+The Node runtime listens on loopback by default:
 
-FuryPipe-native environment variables use the `FURYPIPE_*` prefix.
+```text
+FURYPIPE_HOST=127.0.0.1
+FURYPIPE_PORT=48721
+```
 
-Selected `PXPIPE_*` values remain accepted as fallbacks. When both forms are present, the FuryPipe-native value is authoritative.
-
-See [../COMPATIBILITY.md](../COMPATIBILITY.md).
+`furypipe setup`, `furypipe doctor`, `furypipe export` and `furypipe stats` are offline commands and do not bind the runtime port.
 
 ## Distribution and release status
 
 Current public package:
 
 ```text
-furypipe@0.13.2
+furypipe@0.14.0
 ```
 
 Current GitHub release:
 
 ```text
-v0.13.2
+v0.14.0
 ```
 
 Package publication, GitHub release and production deployment are distinct lifecycle states.
