@@ -1,5 +1,9 @@
 # FuryPipe V5 — matrice centrale des exigences
 
+> [!NOTE]
+> **Historical V5 execution ledger.** Task states below are checkpoint evidence from the hardening program and must not be read as the current public-release lifecycle. See [docs/RELEASE_SECURITY.md](docs/RELEASE_SECURITY.md) for the released state.
+
+
 Les statuts utilisés ici sont ceux du master V5. Une primitive présente mais
 non atteignable n’est pas marquée DONE.
 
