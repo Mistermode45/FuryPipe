@@ -1,5 +1,9 @@
 # FuryPipe V5 — audit de hardening
 
+> [!NOTE]
+> **Historical hardening audit.** Findings below describe the repository at specific earlier checkpoints and may be superseded by later implementation/evidence. Current release state is tracked in [docs/RELEASE_SECURITY.md](docs/RELEASE_SECURITY.md).
+
+
 ## P0 traités sur cette branche
 
 | Point | Correction | Preuve |
