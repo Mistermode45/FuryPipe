@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildCountTokensBodies,
   getAllowedModelBases,
-  isPxpipeSupportedGptModel,
-  isPxpipeSupportedModel,
+  isFuryPipeSupportedGptModel,
+  isFuryPipeSupportedModel,
   setAllowedModelBases,
   shouldTransformAnthropicMessages,
   transformAnthropicMessages,
@@ -13,76 +13,76 @@ import {
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-// Tests below assert DEFAULT model-scope behavior, which assumes PXPIPE_MODELS is unset.
-// Snapshot and clear any ambient value (e.g. a dev shell that still exports PXPIPE_MODELS)
+// Tests below assert DEFAULT model-scope behavior, which assumes FURYPIPE_MODELS is unset.
+// Snapshot and clear any ambient value (e.g. a dev shell that still exports FURYPIPE_MODELS)
 // before each test so the suite is deterministic regardless of the environment it runs in,
 // then restore the original afterward. The per-test override cases still work: they see an
 // unset var, set their own value, and clean up.
-let ambientPxpipeModels: string | undefined;
+let ambientFuryPipeModels: string | undefined;
 beforeEach(() => {
-  ambientPxpipeModels = process.env.PXPIPE_MODELS;
-  delete process.env.PXPIPE_MODELS;
+  ambientFuryPipeModels = process.env.FURYPIPE_MODELS;
+  delete process.env.FURYPIPE_MODELS;
 });
 afterEach(() => {
-  if (ambientPxpipeModels === undefined) delete process.env.PXPIPE_MODELS;
-  else process.env.PXPIPE_MODELS = ambientPxpipeModels;
+  if (ambientFuryPipeModels === undefined) delete process.env.FURYPIPE_MODELS;
+  else process.env.FURYPIPE_MODELS = ambientFuryPipeModels;
 });
 
 describe('public library API', () => {
   it('recognizes the default scope (Fable 5 + Gemini 3.6 Flash + Gemini 3.7 Flash); Opus is OFF by default', () => {
-    expect(isPxpipeSupportedModel('claude-fable-5')).toBe(true);
-    expect(isPxpipeSupportedModel('claude-fable-5-high')).toBe(true);
-    expect(isPxpipeSupportedModel('google/gemini-3.6-flash')).toBe(true);
-    expect(isPxpipeSupportedModel('google/gemini-3.7-flash')).toBe(true);
-    expect(isPxpipeSupportedModel('gemini-3.6-flash-preview')).toBe(false);
-    expect(isPxpipeSupportedModel('gemini-3.7-flash-preview')).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-fable-5-high')).toBe(true);
+    expect(isFuryPipeSupportedModel('google/gemini-3.6-flash')).toBe(true);
+    expect(isFuryPipeSupportedModel('google/gemini-3.7-flash')).toBe(true);
+    expect(isFuryPipeSupportedModel('gemini-3.6-flash-preview')).toBe(false);
+    expect(isFuryPipeSupportedModel('gemini-3.7-flash-preview')).toBe(false);
     // Any prefix depth is stripped to the last segment, because real gateway
     // ids nest more than one level (`workers-ai/@cf/moonshotai/kimi-k3`). The
     // vendor segments pick an upstream, not a geometry, so they do not gate
     // scope — an unrecognized prefix in front of a known id still matches.
-    expect(isPxpipeSupportedModel('untrusted/google/gemini-3.6-flash')).toBe(true);
-    expect(isPxpipeSupportedModel('untrusted/google/gemini-3.7-flash')).toBe(true);
+    expect(isFuryPipeSupportedModel('untrusted/google/gemini-3.6-flash')).toBe(true);
+    expect(isFuryPipeSupportedModel('untrusted/google/gemini-3.7-flash')).toBe(true);
     // Opus 5 is OPT-IN, not in the default scope: it reads imaged context at
     // 2/15 exact recall vs Fable's 13/15, so compressing it by default hands
     // the operator's main driver a silent-misread failure mode.
-    expect(isPxpipeSupportedModel('claude-opus-5')).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(false);
     // Opus 4.8 is OPT-IN, not in the default scope — same pipeline/render as
     // Fable, but it reads imaged content at a tax (FINDINGS.md 2026-06-16), so
     // the default doesn't silently compress the operator's main driver. Enable
-    // it via PXPIPE_MODELS or the dashboard "compress models" chips.
-    expect(isPxpipeSupportedModel('claude-opus-4-8')).toBe(false);
+    // it via FURYPIPE_MODELS or the dashboard "compress models" chips.
+    expect(isFuryPipeSupportedModel('claude-opus-4-8')).toBe(false);
     // older Opus + other families are not in the default scope
-    expect(isPxpipeSupportedModel('claude-opus-4-7')).toBe(false);
-    expect(isPxpipeSupportedModel('claude-opus-4-6')).toBe(false);
-    expect(isPxpipeSupportedModel('claude-mythos-5')).toBe(false);
-    expect(isPxpipeSupportedModel('claude-fable-50')).toBe(false);
-    expect(isPxpipeSupportedModel('claude-sonnet-4-7')).toBe(false);
-    expect(isPxpipeSupportedModel(null)).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-opus-4-7')).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-opus-4-6')).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-mythos-5')).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-fable-50')).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-sonnet-4-7')).toBe(false);
+    expect(isFuryPipeSupportedModel(null)).toBe(false);
   });
 
   it('strips bracketed variant tags like [1m] before matching', () => {
-    expect(isPxpipeSupportedModel('claude-fable-5[1m]')).toBe(true);
-    expect(isPxpipeSupportedModel('claude-fable-5-high[1m]')).toBe(true);
-    expect(isPxpipeSupportedModel('claude-opus-5[1m]')).toBe(false);   // Opus 5 opt-in, off by default
-    expect(isPxpipeSupportedModel('claude-opus-4-8[1m]')).toBe(false); // legacy Opus opt-in, off by default
+    expect(isFuryPipeSupportedModel('claude-fable-5[1m]')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-fable-5-high[1m]')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-opus-5[1m]')).toBe(false);   // Opus 5 opt-in, off by default
+    expect(isFuryPipeSupportedModel('claude-opus-4-8[1m]')).toBe(false); // legacy Opus opt-in, off by default
     // a non-scoped base is still rejected even with a variant tag
-    expect(isPxpipeSupportedModel('claude-opus-4-7[1m]')).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-opus-4-7[1m]')).toBe(false);
   });
 
-  it('honors PXPIPE_MODELS to override the default scope', () => {
-    const prev = process.env.PXPIPE_MODELS;
+  it('honors FURYPIPE_MODELS to override the default scope', () => {
+    const prev = process.env.FURYPIPE_MODELS;
     try {
       // narrow to Fable only
-      process.env.PXPIPE_MODELS = 'claude-fable-5';
-      expect(isPxpipeSupportedModel('claude-fable-5')).toBe(true);
-      expect(isPxpipeSupportedModel('claude-opus-4-8')).toBe(false);
+      process.env.FURYPIPE_MODELS = 'claude-fable-5';
+      expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(true);
+      expect(isFuryPipeSupportedModel('claude-opus-4-8')).toBe(false);
       // re-point to a different set
-      process.env.PXPIPE_MODELS = 'claude-fable-5,claude-opus-4-7';
-      expect(isPxpipeSupportedModel('claude-opus-4-7')).toBe(true);
-      expect(isPxpipeSupportedModel('claude-opus-4-8')).toBe(false); // not in this set
+      process.env.FURYPIPE_MODELS = 'claude-fable-5,claude-opus-4-7';
+      expect(isFuryPipeSupportedModel('claude-opus-4-7')).toBe(true);
+      expect(isFuryPipeSupportedModel('claude-opus-4-8')).toBe(false); // not in this set
     } finally {
-      if (prev === undefined) delete process.env.PXPIPE_MODELS;
-      else process.env.PXPIPE_MODELS = prev;
+      if (prev === undefined) delete process.env.FURYPIPE_MODELS;
+      else process.env.FURYPIPE_MODELS = prev;
     }
   });
 
@@ -91,87 +91,87 @@ describe('public library API', () => {
       // override takes precedence over the env/default scope
       setAllowedModelBases(['claude-fable-5', 'claude-opus-4-8']);
       expect(getAllowedModelBases()).toEqual(['claude-fable-5', 'claude-opus-4-8']);
-      expect(isPxpipeSupportedModel('claude-opus-4-8')).toBe(true); // opted in at runtime
+      expect(isFuryPipeSupportedModel('claude-opus-4-8')).toBe(true); // opted in at runtime
       // empty list = compress nothing
       setAllowedModelBases([]);
-      expect(isPxpipeSupportedModel('claude-fable-5')).toBe(false);
+      expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(false);
       // null clears the override → back to the default scope (Fable 5 + Gemini)
       setAllowedModelBases(null);
-      expect(isPxpipeSupportedModel('claude-fable-5')).toBe(true);
-      expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
-      expect(isPxpipeSupportedGptModel('grok-4.5')).toBe(false);
-      expect(isPxpipeSupportedModel('claude-opus-4-8')).toBe(false);
+      expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(true);
+      expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
+      expect(isFuryPipeSupportedGptModel('grok-4.5')).toBe(false);
+      expect(isFuryPipeSupportedModel('claude-opus-4-8')).toBe(false);
     } finally {
       setAllowedModelBases(null); // never leak the override into other tests
     }
   });
 
   it('keeps GPT 5.6 Sol aliases opt-in by default', () => {
-    expect(isPxpipeSupportedGptModel('gpt-5')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.5')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.5-codex')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol-codex')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5-mini')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-4o')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.5')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.5-codex')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol-codex')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5-mini')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-4o')).toBe(false);
 
-    process.env.PXPIPE_MODELS = 'gpt-5.6-sol';
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol-codex')).toBe(true);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol[1m]')).toBe(true);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol-codex[1m]')).toBe(true);
-    expect(isPxpipeSupportedGptModel('gpt-5.6')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
+    process.env.FURYPIPE_MODELS = 'gpt-5.6-sol';
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol-codex')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol[1m]')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol-codex[1m]')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
   });
 
   it('keeps Grok and Sol opt-in by default', () => {
     // Grok remains opt-in because its arithmetic, gist, and state results are
     // below the Fable bar.
-    const prev = process.env.PXPIPE_MODELS;
+    const prev = process.env.FURYPIPE_MODELS;
     try {
-      delete process.env.PXPIPE_MODELS;
-      expect(isPxpipeSupportedGptModel('grok-4.5')).toBe(false);
-      expect(isPxpipeSupportedGptModel('grok-4.6')).toBe(false);
-      expect(isPxpipeSupportedGptModel('grok-4')).toBe(false);
-      expect(isPxpipeSupportedGptModel('grok-4.20')).toBe(false);
+      delete process.env.FURYPIPE_MODELS;
+      expect(isFuryPipeSupportedGptModel('grok-4.5')).toBe(false);
+      expect(isFuryPipeSupportedGptModel('grok-4.6')).toBe(false);
+      expect(isFuryPipeSupportedGptModel('grok-4')).toBe(false);
+      expect(isFuryPipeSupportedGptModel('grok-4.20')).toBe(false);
       expect(getAllowedModelBases()).not.toContain('grok-4.5');
       expect(getAllowedModelBases()).not.toContain('grok-4.6');
       expect(getAllowedModelBases()).toEqual(['claude-fable-5', 'gemini']);
 
-      process.env.PXPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol,grok-4.6';
-      expect(isPxpipeSupportedGptModel('grok-4.6')).toBe(true);
-      expect(isPxpipeSupportedGptModel('grok-4.6-fast')).toBe(true); // -suffix alias
-      expect(isPxpipeSupportedGptModel('grok-4.5')).toBe(false);
-      expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
+      process.env.FURYPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol,grok-4.6';
+      expect(isFuryPipeSupportedGptModel('grok-4.6')).toBe(true);
+      expect(isFuryPipeSupportedGptModel('grok-4.6-fast')).toBe(true); // -suffix alias
+      expect(isFuryPipeSupportedGptModel('grok-4.5')).toBe(false);
+      expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
     } finally {
-      if (prev === undefined) delete process.env.PXPIPE_MODELS;
-      else process.env.PXPIPE_MODELS = prev;
+      if (prev === undefined) delete process.env.FURYPIPE_MODELS;
+      else process.env.FURYPIPE_MODELS = prev;
     }
   });
 
-  it('honors the single PXPIPE_MODELS scope for GPT families', () => {
-    const prev = process.env.PXPIPE_MODELS;
+  it('honors the single FURYPIPE_MODELS scope for GPT families', () => {
+    const prev = process.env.FURYPIPE_MODELS;
     try {
       // Explicit Claude-only scope disables GPT imaging.
-      process.env.PXPIPE_MODELS = 'claude-fable-5';
-      expect(isPxpipeSupportedGptModel('gpt-5.5')).toBe(false);
-      expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
+      process.env.FURYPIPE_MODELS = 'claude-fable-5';
+      expect(isFuryPipeSupportedGptModel('gpt-5.5')).toBe(false);
+      expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
 
       // Mixed CSV selects exactly those bases across families.
-      process.env.PXPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol';
-      expect(isPxpipeSupportedGptModel('gpt-5.5')).toBe(false);
-      expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
-      expect(isPxpipeSupportedModel('claude-fable-5')).toBe(true);
+      process.env.FURYPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol';
+      expect(isFuryPipeSupportedGptModel('gpt-5.5')).toBe(false);
+      expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
+      expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(true);
 
       // `off` disables everything.
-      process.env.PXPIPE_MODELS = 'off';
-      expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
-      expect(isPxpipeSupportedModel('claude-fable-5')).toBe(false);
+      process.env.FURYPIPE_MODELS = 'off';
+      expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
+      expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(false);
     } finally {
-      if (prev === undefined) delete process.env.PXPIPE_MODELS;
-      else process.env.PXPIPE_MODELS = prev;
+      if (prev === undefined) delete process.env.FURYPIPE_MODELS;
+      else process.env.FURYPIPE_MODELS = prev;
     }
   });
 
@@ -320,14 +320,14 @@ describe('public library API', () => {
     expect(transformed.reason).toBe('applied');
     expect(transformed.info.compressedChars).toBeGreaterThan(0);
     expect(transformed.info.imageCount).toBeGreaterThan(0);
-    // Task #21: pxpipe never adds its own cache_control markers.
+    // Task #21: FuryPipe never adds its own cache_control markers.
     // The caller sent zero markers, so the rewritten body also has zero.
     expect(transformed.cache.ownsCacheControl).toBe(false);
     expect(transformed.cache.markerCount).toBe(0);
   });
 
   it('applies the Claude profile to direct Anthropic Messages rendering', async () => {
-    process.env.PXPIPE_MODELS = 'claude-fable-5,claude-opus-4-8';
+    process.env.FURYPIPE_MODELS = 'claude-fable-5,claude-opus-4-8';
     const body = enc.encode(JSON.stringify({
       model: 'claude-opus-4-8',
       system: Array.from({ length: 1800 }, (_, i) => `setting_${i}=value_${i * 7919}`).join('\n'),
