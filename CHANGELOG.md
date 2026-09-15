@@ -11,6 +11,14 @@ behavioral changes, patch = fixes).
 
 ## Unreleased
 
+### Added
+- **Custom `furypipe setup` terminal onboarding.** FuryPipe now includes a
+  dependency-free, bilingual FR/EN setup TUI with FuryPipe branding, keyboard
+  navigation, persisted locale preference, safe atomic config writes and a
+  plain-text fallback for CI, pipes, narrow terminals and other non-interactive
+  environments. The command remains explicit rather than running from an npm
+  lifecycle hook, so package installation never blocks waiting for input.
+
 ### Changed
 - **Gemini is on by default for every version, and opt-out works again.** The
   built-in scope is now `FURYPIPE_MODELS=claude-fable-5,gemini`; the `gemini`
