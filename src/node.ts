@@ -37,6 +37,7 @@ import {
 } from './dashboard.js';
 import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
+import { runSetupWizard } from './setup-tui.js';
 import { createControlRoomRuntime } from './control-room/runtime.js';
 import { loadControlRoomHostEvidence, type ControlRoomHostEvidence } from './control-room/evidence-file.js';
 import {
@@ -286,6 +287,8 @@ function printHelp(): void {
 
 Usage:
   furypipe              run the proxy (no flags)
+  furypipe setup [options]
+                        launch the interactive FuryPipe first-run setup
   furypipe doctor [--json]
                         inspect the local runtime and available tools
   furypipe export [...] render files/diff to PNG pages + cost report (see furypipe export --help)
@@ -375,9 +378,13 @@ Use with OpenAI-compatible GPT clients:
 // undefined (or reflects the *consumer's* package), never this tool's version.
 declare const __PXPIPE_VERSION__: string | undefined;
 
-function printVersion(): void {
+function currentVersion(): string {
   const injected = typeof __PXPIPE_VERSION__ === 'string' ? __PXPIPE_VERSION__ : undefined;
-  console.log(injected ?? 'unknown');
+  return injected ?? 'unknown';
+}
+
+function printVersion(): void {
+  console.log(currentVersion());
 }
 
 // ---- node:http <-> Web Request/Response bridge ---------------------------
@@ -1145,6 +1152,11 @@ async function runExport(argv: string[]): Promise<void> {
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
+  if (argv[0] === 'setup') {
+    const code = await runSetupWizard({ argv: argv.slice(1), version: currentVersion() });
+    process.exitCode = code;
+    return;
+  }
   if (argv[0] === 'doctor') {
     const extra = argv.slice(1);
     const localeArg = extra.find((arg) => arg.startsWith('--locale='));
