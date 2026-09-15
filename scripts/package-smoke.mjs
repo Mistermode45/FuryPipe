@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,12 +11,12 @@ const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const npmCli = process.platform === 'win32'
   ? path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')
   : undefined;
-async function run(file, args, cwd) {
+async function run(file, args, cwd, env = process.env) {
   if (process.platform === 'win32' && file.endsWith('.cmd')) {
     if (!npmCli || !existsSync(npmCli)) throw new Error(`bundled npm CLI not found: ${npmCli ?? '<none>'}`);
     return execFileAsync(process.execPath, [npmCli, ...args], {
       cwd,
-      env: process.env,
+      env,
       encoding: 'utf8',
       maxBuffer: 2 * 1024 * 1024,
       shell: false,
@@ -24,7 +24,7 @@ async function run(file, args, cwd) {
   }
   return execFileAsync(file, args, {
     cwd,
-    env: process.env,
+    env,
     encoding: 'utf8',
     maxBuffer: 2 * 1024 * 1024,
     shell: false,
@@ -104,6 +104,23 @@ try {
   const help = await run(process.execPath, [cli, '--help'], installDir);
   assert(/FuryPipe/u.test(help.stdout), 'FuryPipe CLI help is missing FuryPipe branding');
   assert(!/pxpipe export|PXPIPE_PROVIDER|PXPIPE_GATEWAY_BASE_URL|PXPIPE_MODELS/u.test(help.stdout), 'FuryPipe CLI help exposed legacy product branding');
+
+  const setupHelp = await run(process.execPath, [cli, 'setup', '--help'], installDir);
+  assert(/FuryPipe setup/u.test(setupHelp.stdout), 'setup help is missing FuryPipe branding');
+  assert(/--lang=fr\|en/u.test(setupHelp.stdout), 'setup help is missing bilingual language selection');
+
+  const setupConfig = path.join(installDir, 'furypipe-setup-smoke.json');
+  const setup = await run(
+    process.execPath,
+    [cli, 'setup', '--lang=fr', '--yes', '--no-color'],
+    installDir,
+    { ...process.env, FURYPIPE_CONFIG: setupConfig, CI: '1', NO_COLOR: '1' },
+  );
+  assert(/status:\s+ready/u.test(setup.stdout), 'non-interactive setup did not finish ready');
+  const setupState = JSON.parse(await readFile(setupConfig, 'utf8'));
+  assert(setupState.locale === 'fr', 'setup did not persist the selected locale');
+  assert(setupState.setup?.completed === true, 'setup did not persist completion state');
+  assert(setupState.setup?.version === metadata.version, 'setup persisted the wrong package version');
 
   const doctor = await run(process.execPath, [cli, 'doctor', '--json'], installDir);
   const report = JSON.parse(doctor.stdout);
