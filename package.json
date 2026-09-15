@@ -5,7 +5,6 @@
   "type": "module",
   "bin": {
     "furypipe": "bin/cli.js",
-    "pxpipe": "bin/cli.js",
     "furypipe-mcp": "bin/mcp.js",
     "furypipe-mcp-http": "bin/mcp-http.js"
   },
