@@ -396,29 +396,393 @@ Security vulnerabilities must follow [SECURITY.md](SECURITY.md).
 
 ### Français
 
-**FuryPipe est un runtime et une boîte à outils pour construire des workflows IA gouvernés, composables et vérifiables.**
+# FuryPipe — version française
 
-Il orchestre le contexte, les instructions, les agents, les skills, MCP, la mémoire et les providers avec des états de vérité explicites et des preuves d'exécution.
+### Orchestration IA gouvernée pour le contexte, les agents, les skills, MCP, la mémoire et les providers.
 
-### Installation
+**Construisez des workflows IA qui distinguent clairement ce qui est disponible, ce qui est autorisé, ce qui a réellement été exécuté et ce qui a été vérifié.**
+
+**Version publique actuelle :** [`v0.13.2`](https://github.com/Mistermode45/FuryPipe/releases/tag/v0.13.2) · [`furypipe@0.13.2`](https://www.npmjs.com/package/furypipe)
+
+FuryPipe est encore en pré-1.0. Les API publiques peuvent évoluer. La publication du package reste également distincte d’un déploiement en production et de la vérification des intégrations externes optionnelles.
+
+---
+
+### Qu’est-ce que FuryPipe ?
+
+FuryPipe est un **runtime et une boîte à outils orientés production pour construire des workflows IA gouvernés**.
+
+Il réunit la préparation du contexte, la sélection des capacités selon la tâche, les instructions, les agents, MCP, l’exécution provider, la mémoire, les politiques et les preuves dans un système composable unique, au lieu de traiter chacune de ces couches comme un composant isolé.
+
+FuryPipe repose sur une règle simple :
+
+> **La configuration n’est pas l’exécution, et l’exécution n’est pas la vérification.**
+
+Cette distinction est appliquée dans tout le projet grâce à des états de cycle de vie explicites, des receipts, des preuves liées à la source et un comportement fail-closed.
+
+---
+
+### Pourquoi FuryPipe ?
+
+Les projets IA modernes accumulent souvent des générateurs de prompts, des compresseurs de contexte, des frameworks d’agents, des clients MCP, des mémoires et des adapters providers séparés. L’ensemble peut être puissant mais devient difficile à auditer : une capacité peut être installée mais indisponible, connectée mais non autorisée, ou câblée sans avoir jamais été réellement exécutée.
+
+FuryPipe fournit un modèle de gouvernance commun à toutes ces frontières.
+
+| Problème | Approche FuryPipe |
+|---|---|
+| Trop de contexte | Sélectionner la représentation minimale suffisante au lieu de tout charger |
+| Trop de tools / skills | Router uniquement les capacités utiles à la tâche courante |
+| Trop d’instructions dans le prompt | Composer des instructions tâche/domaine bornées via Instruction Fabric |
+| Perte de valeurs exactes pendant l’optimisation | Protéger les spans exacts sensibles via ExactGuard et Recovery |
+| Fallback provider opaque | Garder explicites les tentatives, l’autorisation, la santé et les receipts |
+| Actions d’agents difficiles à auditer | Utiliser des permissions, budgets et preuves d’exécution bornés |
+| La mémoire devient silencieusement une instruction | Traiter la mémoire rappelée comme une donnée non fiable, pas comme une instruction privilégiée |
+| « Configuré » devient « fonctionnel » | Préserver les états de vérité jusqu’à la vérification |
+
+#### Conçu pour des workflows réels
+
+FuryPipe fournit des familles de tâches et des primitives utiles pour :
+
+- l’ingénierie logicielle et la génération de code ;
+- les sites web et applications web ;
+- la recherche et les workflows orientés preuves ;
+- les opérations business et l’automatisation ;
+- l’analytics et les tâches de données structurées ;
+- les plugins/mods Minecraft et extensions de serveurs de jeu ;
+- les ressources FiveM ;
+- l’orchestration agentique et multi-provider.
+
+Le projet **ne prétend pas** que chaque intégration optionnelle est automatiquement installée, connectée ou vérifiée. Chaque capacité reste soumise à son état runtime réel et à ses preuves disponibles.
+
+---
+
+### Démarrage rapide
+
+#### Installation
 
 ```bash
 npm install --global furypipe
+```
+
+Ou sans installation globale :
+
+```bash
+npx furypipe doctor
+```
+
+#### Vérifier l’environnement
+
+```bash
 furypipe doctor
 ```
 
-Version publique actuelle : **v0.13.2**.
+#### Démarrer le runtime Node
+
+```bash
+furypipe start
+```
+
+Le runtime Node est orienté loopback par défaut. Consultez [SECURITY.md](SECURITY.md) avant d’exposer FuryPipe au-delà de la machine locale.
+
+### Export hors ligne sans proxy
+
+FuryPipe peut préparer des artefacts de contexte **sans exécuter le proxy** :
+
+```bash
+furypipe export --stdin < prompt.txt
+furypipe export --git
+```
+
+Selon l’entrée, l’export peut produire des artefacts comme `page-*.png`, `factsheet.txt` et `prompt.txt` pour inspection ou handoff.
+
+#### Portée des modèles par défaut
+
+La portée runtime par défaut est `FURYPIPE_MODELS=claude-fable-5,gemini`.
+
+Cette valeur est un contrat runtime, pas une revendication de benchmark. Elle doit être surchargée explicitement lorsqu’un workflow nécessite une autre portée provider/modèle.
+
+---
+
+### Architecture
+
+```text
+                         ┌──────────────────────┐
+                         │  Objectif utilisateur│
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │  Capability Router   │
+                         │ skills · MCP · packs │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Instruction Fabric   │
+                         │ règles · budgets     │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │  Context Optimizer   │
+                         │ metadata → executable│
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │      FuryPrompt      │
+                         └──────────┬───────────┘
+                                    │
+                  ┌─────────────────┴─────────────────┐
+                  ▼                                   ▼
+       ┌─────────────────────┐             ┌─────────────────────┐
+       │    Agent Runtime    │             │  Provider Runtime   │
+       │ permissions/budgets │             │ routing/exécution   │
+       └──────────┬──────────┘             └──────────┬──────────┘
+                  └─────────────────┬─────────────────┘
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Preuves & Receipts   │
+                         │ vérifier le réel     │
+                         └──────────────────────┘
+```
+
+Les systèmes de support incluent Continuous Memory, Recovery, Policy Runtime, FuryTrust, les runtimes MCP, les transports providers, Control Room et Web Studio.
+
+Pour le modèle détaillé des composants et leurs frontières, consultez [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
+### Capacités principales
+
+#### Capability Router
+
+Sélectionne les capacités pertinentes pour la tâche au lieu de supposer que chaque skill, plugin ou intégration MCP enregistrée doit être chargée ou exécutée.
+
+#### Instruction Fabric
+
+Compose les instructions domaine/tâche sous un budget d’instructions explicite. Les règles demandées explicitement restent prioritaires ; le guidage automatique peut être omis si nécessaire pour respecter le budget.
+
+#### Context Optimizer
+
+Utilise une échelle de représentation bornée :
+
+```text
+metadata → summary → full → executable
+```
+
+Les valeurs exactes ne sont pas silencieusement dégradées, les secrets sont bloqués par défaut, et les budgets globaux / par type restent indépendants.
+
+#### ExactGuard + Recovery
+
+ExactGuard protège les identifiants et spans exacts sensibles contre des transformations lossless/lossy inadaptées. Recovery fournit des chemins de restauration explicites sans transformer un état caché en vérité implicite.
+
+#### Agent Runtime
+
+Fournit des étapes d’exécution gouvernées avec permissions, budgets et frontières d’effets de bord explicites. L’accès réseau ou l’écriture n’est pas accordé simplement parce qu’un agent existe.
+
+#### MCP
+
+FuryPipe inclut des surfaces MCP modernes, un transport HTTP Node et des primitives de compatibilité. Le support protocolaire local et l’interopérabilité hosted restent suivis comme des états de preuve distincts.
+
+#### Exécution provider
+
+Provider Fabric, Provider Runtime, OmniRoute, les transports providers, les governed executors et l’orchestration retry/fallback séparent la sélection du provider, l’autorisation, la santé et l’exécution.
+
+#### Continuous Memory
+
+Prend en charge un rappel borné et un apprentissage gouverné avec révisions, persistance scopée et distinction entre oubli logique et purge physique. La mémoire rappelée reste une donnée et ne gagne jamais une priorité d’instruction supérieure.
+
+#### Control Room + Web Studio
+
+Exposent les surfaces opérationnelles et les preuves sans transformer une preuve absente en succès.
+
+---
+
+### Modèle des états de vérité
+
+FuryPipe préserve volontairement les distinctions de cycle de vie :
+
+```text
+recommended != installed != connected != approved
+approved != executable != executed != verified
+wired != executed != verified
+verified != released
+released != deployed
+```
+
+Lorsque la preuve manque, l’état correct reste `UNKNOWN`, `NOT_EXECUTED`, `PARTIAL` ou `BLOCKED` — jamais un succès déduit.
+
+Cette séparation fait partie du contrat produit FuryPipe.
+
+---
+
+### Modèle de sécurité
+
+FuryPipe est conçu autour de frontières de confiance explicites et de valeurs par défaut fail-closed.
 
 Principes principaux :
 
-- sélectionner uniquement les capacités utiles à la tâche ;
-- réduire le contexte sans dégrader silencieusement les valeurs exactes ;
-- séparer disponibilité, autorisation, exécution et vérification ;
-- gouverner les agents avec permissions et budgets ;
-- rappeler/apprendre via Continuous Memory sans transformer la mémoire en instruction privilégiée ;
-- rester fail-closed lorsque la preuve manque.
+- runtime Node loopback-first ;
+- permissions lecture/écriture/réseau bornées pour l’exécution des agents ;
+- aucune installation implicite de plugin tiers ;
+- aucun serveur MCP arbitraire considéré comme fiable par défaut ;
+- contenu externe, mémoire et sortie des tools traités comme données non fiables ;
+- contexte secret bloqué sur les chemins non sûrs ;
+- preuves de release liées à leur source ;
+- installations figées dans les workflows privilégiés de release ;
+- npm Trusted Publishing pour les publications automatisées après le bootstrap initial.
 
-Pour contribuer : [CONTRIBUTING.md](CONTRIBUTING.md). Pour la sécurité : [SECURITY.md](SECURITY.md).
+Documentation sécurité :
+
+- [Politique de sécurité](SECURITY.md)
+- [Threat model / modèle de sécurité](docs/SECURITY_MODEL.md)
+- [Sécurité des releases](docs/RELEASE_SECURITY.md)
+
+Les vulnérabilités doivent être signalées via le système privé de GitHub, **pas** dans une issue publique.
+
+---
+
+### CLI
+
+Commandes principales :
+
+```text
+furypipe start
+furypipe doctor [--json] [--locale=<BCP-47>]
+furypipe stats [--json] [--file <path>]
+furypipe export [...]
+furypipe warp [...] -- <agent>
+```
+
+Consultez [docs/CLI.md](docs/CLI.md) pour le contrat CLI public de référence.
+
+---
+
+### Points d’entrée du package
+
+FuryPipe expose des modules ciblés pour permettre la composition au lieu d’imposer une API monolithique.
+
+Exemples :
+
+```text
+furypipe/capability-router
+furypipe/instruction-fabric
+furypipe/context-optimizer
+furypipe/task-orchestrator
+furypipe/continuous-memory
+furypipe/agent-runtime
+furypipe/skill-registry
+furypipe/fury-prompt
+furypipe/provider-runtime
+furypipe/provider-transports
+furypipe/provider-stream-transports
+furypipe/governed-provider-executor
+furypipe/omniroute
+furypipe/mcp-modern
+furypipe/mcp-http-node
+furypipe/context-fabric
+furypipe/exact-guard
+```
+
+La liste de référence est définie dans [`package.json#exports`](package.json).
+
+---
+
+### Environnement de développement
+
+Prérequis :
+
+- Node.js **>= 22.14**
+- pnpm **10.21.0**
+
+```bash
+git clone https://github.com/Mistermode45/FuryPipe.git
+cd FuryPipe
+pnpm install --frozen-lockfile
+pnpm run typecheck
+pnpm test
+pnpm run build
+pnpm run package:smoke
+```
+
+Les gates supplémentaires du dépôt couvrent la sécurité, la supply chain, les licences, l’analyse statique, la QA navigateur, la provenance et les preuves de release-readiness.
+
+Un build local vert ne remplace pas les checks GitHub Actions requis.
+
+---
+
+### État de la release
+
+| Surface | Statut |
+|---|---|
+| Package npm | **Publié — `furypipe@0.13.2`** |
+| GitHub Release | **Publiée — `v0.13.2`** |
+| Gates principales de release | **Vérifiées pour le release candidate** |
+| Conformance Hosted MCP | **Vérifiée pour le release candidate** |
+| Conformance Hosted Web Studio | **Vérifiée pour le release candidate** |
+| Flux OAuth Authorization Server | **NOT_EXECUTED** |
+| Connectivité Figma externe | **NOT_EXECUTED** |
+| Revendications de performance provider | **NOT_EXECUTED / aucune revendication de performance pour la release** |
+| Déploiement production | **État de cycle de vie séparé ; non déduit de la publication** |
+
+Les détails de release sont documentés dans [CHANGELOG.md](CHANGELOG.md) et [docs/RELEASE_SECURITY.md](docs/RELEASE_SECURITY.md).
+
+---
+
+### Documentation
+
+#### Commencer ici
+
+| Sujet | Document |
+|---|---|
+| Architecture | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| CLI | [docs/CLI.md](docs/CLI.md) |
+| Sécurité | [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) |
+| Routage des capacités | [docs/CAPABILITY_ROUTER.md](docs/CAPABILITY_ROUTER.md) |
+| Composition des instructions | [docs/INSTRUCTION_FABRIC.md](docs/INSTRUCTION_FABRIC.md) |
+| Optimisation du contexte | [docs/CONTEXT_OPTIMIZER.md](docs/CONTEXT_OPTIMIZER.md) |
+| Orchestration des tâches | [docs/TASK_ORCHESTRATOR.md](docs/TASK_ORCHESTRATOR.md) |
+| Continuous Memory | [docs/CONTINUOUS_MEMORY.md](docs/CONTINUOUS_MEMORY.md) |
+| Agents | [docs/AGENT_FABRIC.md](docs/AGENT_FABRIC.md) |
+| Providers | [docs/PROVIDER_FABRIC.md](docs/PROVIDER_FABRIC.md) |
+| MCP | [docs/MCP.md](docs/MCP.md) |
+| FuryTrust | [docs/FURYTRUST.md](docs/FURYTRUST.md) |
+| Compatibilité | [COMPATIBILITY.md](COMPATIBILITY.md) |
+
+---
+
+### Compatibilité et historique upstream
+
+**FuryPipe est le nom du produit. `furypipe` et `FURYPIPE_*` sont les interfaces publiques à utiliser pour toute nouvelle intégration.**
+
+Quelques alias historiques sont conservés pour la compatibilité avec la base upstream. Ils ne constituent pas l’identité publique recommandée et ne doivent pas être utilisés pour de nouvelles API ou de nouveaux documents FuryPipe.
+
+Consultez [COMPATIBILITY.md](COMPATIBILITY.md), [UPSTREAM.md](UPSTREAM.md), [SOURCE_LEDGER.md](SOURCE_LEDGER.md) et [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) pour la provenance et la migration.
+
+---
+
+### Contribuer
+
+Les contributions sont bienvenues lorsqu’elles préservent les sémantiques evidence-first et fail-closed de FuryPipe.
+
+Avant d’ouvrir une PR :
+
+1. lire [CONTRIBUTING.md](CONTRIBUTING.md) ;
+2. garder une cause racine ou une feature cohérente par PR ;
+3. fournir des preuves reproductibles ;
+4. préserver les états de vérité du lifecycle ;
+5. ne jamais inclure de credentials, prompts privés ou logs sensibles.
+
+Les vulnérabilités doivent suivre [SECURITY.md](SECURITY.md).
+
+---
+
+### Licence et provenance
+
+FuryPipe est distribué sous [licence MIT](LICENSE).
+
+Les attributions tierces et la provenance upstream sont suivies séparément dans [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), [UPSTREAM.md](UPSTREAM.md) et [SOURCE_LEDGER.md](SOURCE_LEDGER.md).
 
 ---
 
