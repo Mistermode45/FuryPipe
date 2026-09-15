@@ -88,7 +88,7 @@ async function startNode(extraEnv: Record<string, string> = {}): Promise<{
   configFile: string;
   output: () => string;
 }> {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxpipe-node-security-'));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'furypipe-node-security-'));
   const port = await freePort();
   const upstreamPort = await freePort();
   upstream = createServer((req, res) => {
@@ -114,11 +114,11 @@ async function startNode(extraEnv: Record<string, string> = {}): Promise<{
     cwd: repoRoot,
     env: {
       ...process.env,
-      PORT: String(port),
-      HOST: '127.0.0.1',
-      PXPIPE_LOG: eventsFile,
-      PXPIPE_CONFIG: configFile,
-      PXPIPE_MODELS: 'claude-fable-5',
+      FURYPIPE_PORT: String(port),
+      FURYPIPE_HOST: '127.0.0.1',
+      FURYPIPE_LOG: eventsFile,
+      FURYPIPE_CONFIG: configFile,
+      FURYPIPE_MODELS: 'claude-fable-5',
       ANTHROPIC_UPSTREAM: `http://127.0.0.1:${upstreamPort}`,
       ...extraEnv,
     },
@@ -366,8 +366,8 @@ describe('Node dashboard security', () => {
   });
 
   it('creates rendered PNG dumps with private permissions', async () => {
-    const dumpDir = path.join(os.tmpdir(), `pxpipe-dumps-${process.pid}-${Date.now()}`);
-    const { base, output } = await startNode({ PXPIPE_DUMP_DIR: dumpDir });
+    const dumpDir = path.join(os.tmpdir(), `furypipe-dumps-${process.pid}-${Date.now()}`);
+    const { base, output } = await startNode({ FURYPIPE_DUMP_DIR: dumpDir });
     const response = await fetch(`${base}/v1/messages`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': 'test' },

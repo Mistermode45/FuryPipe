@@ -20,6 +20,7 @@ behavioral changes, patch = fixes).
   lifecycle hook, so package installation never blocks waiting for input.
 
 ### Changed
+- **FuryPipe runtime identity is now fully independent.** The runtime no longer exposes the historical CLI alias, consumes no historical environment-variable namespace, does not fall back to historical config/event paths, uses the FuryPipe-specific default port `48721`, and keeps `furypipe setup` offline even when another process owns a listener port. Historical upstream names remain only in provenance and immutable historical records.
 - **Gemini is on by default for every version, and opt-out works again.** The
   built-in scope is now `FURYPIPE_MODELS=claude-fable-5,gemini`; the `gemini`
   family base matches `gemini-3.6-flash`, `gemini-4`, `gemini-pro`, and future

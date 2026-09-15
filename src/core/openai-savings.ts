@@ -26,7 +26,7 @@ import { resolveGptProfile } from './gpt-model-profiles.js';
 
 /** Cached-input ÷ uncached-input list-price ratio for the model serving this
  *  request. The ratio is a PROFILE field (`cacheReadRate`), so a new family is
- *  a profile entry or a PXPIPE_GPT_PROFILES override — not a regex added here,
+ *  a profile entry or a FURYPIPE_GPT_PROFILES override — not a regex added here,
  *  which is how the gate and the savings math previously drifted apart. */
 export function openAICacheReadRate(model: string | undefined): number {
   return resolveGptProfile(model).cacheReadRate;

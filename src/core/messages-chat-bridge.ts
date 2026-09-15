@@ -328,7 +328,7 @@ export function openAIChatToAnthropicMessage(response: unknown, fallbackModel: s
   }
   if (content.length === 0) content.push({ type: 'text', text: '' });
 
-  const id = typeof r.id === 'string' ? r.id.replace(/^chatcmpl[-_]/, 'msg_') : 'msg_pxpipe';
+  const id = typeof r.id === 'string' ? r.id.replace(/^chatcmpl[-_]/, 'msg_') : 'msg_furypipe';
   return {
     id,
     type: 'message',
@@ -482,7 +482,7 @@ export function openAIChatStreamToAnthropic(
   let pendingCR = false;
   let done = false;
   const state: StreamState = {
-    started: false, terminated: false, id: 'msg_pxpipe', model: fallbackModel,
+    started: false, terminated: false, id: 'msg_furypipe', model: fallbackModel,
     nextIndex: 0, textOpen: false, sawTool: false, calls: new Map(),
   };
   const process = (chunk: string, controller: TransformStreamDefaultController<Uint8Array>, final = false): void => {

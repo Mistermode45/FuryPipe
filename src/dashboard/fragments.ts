@@ -132,9 +132,9 @@ export function renderModelsFragment(
   const labelOf = new Map(
     [...MODEL_CATALOG, ...GPT_MODEL_CATALOG, ...GROK_MODEL_CATALOG, ...GEMINI_MODEL_CATALOG].map((m) => [m.id, m.label]),
   );
-  // Union the catalog with env-configured + active ids so PXPIPE_MODELS-enabled
+  // Union the catalog with env-configured + active ids so FURYPIPE_MODELS-enabled
   // families always show as toggles, then split into chip rows (Claude /
-  // OpenAI Responses / Gemini) plus the PXPIPE_MODELS CSV textbox that mirrors the scope.
+  // OpenAI Responses / Gemini) plus the FURYPIPE_MODELS CSV textbox that mirrors the scope.
   const ids: string[] = [];
   const seen = new Set<string>();
   for (const id of [
@@ -190,7 +190,7 @@ export function renderModelsFragment(
     `<span class="hint">${escapeHtml(t('dashboard.models.openaiHint'))}</span>` +
     `</div>` +
     `<div class="models">` +
-    `<span class="models-label">PXPIPE_MODELS</span>` +
+    `<span class="models-label">FURYPIPE_MODELS</span>` +
     `<input class="models-csv" id="models-csv" type="text" name="list" ` +
     `value="${escapeHtml(active.join(','))}" spellcheck="false" autocomplete="off" ` +
     `hx-post="/fragments/models" hx-target="#frag-models" hx-trigger="change">` +
@@ -208,7 +208,7 @@ void INPUT_USD_PER_MTOK; // suppress unused-var; renderHeaderFragment uses the s
 // Lifetime hero. Reads the SAME cumulative weighted totals as the header strip
 // (serveStats), so the headline and the "$ saved" tiles can never disagree, and
 // the number stops swinging on tiny per-session samples. Cache-weighted on
-// purpose ("lifeweight"): it answers "did pxpipe move my real, cache-discounted
+// purpose ("lifeweight"): it answers "did FuryPipe move my real, cache-discounted
 // bill since this proxy started", not a raw token count.
 export function renderSessionSummaryFragment(s: StatsPayload, locale = 'en'): string {
   const t = (
@@ -229,7 +229,7 @@ export function renderSessionSummaryFragment(s: StatsPayload, locale = 'en'): st
   // Raw count_tokens would over-claim: most of the text baseline would have been
   // cheap cache-reads (~0.1×), not full-price tokens. Weighting both sides at their
   // real cache rate is the only comparison that can't contradict the Saved column.
-  // Input-only: pxpipe never touches output, so lumping it in just dampened the %.
+  // Input-only: FuryPipe never touches output, so lumping it in just dampened the %.
   const baselineW = s.baseline_input_weighted ?? 0; // same context as text, cache-aware
   const actualW = s.actual_input_weighted ?? 0; // what we actually sent, cache-aware
   const outMult = s.pricing_assumptions?.output_multiplier || 5;
@@ -299,7 +299,7 @@ export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en
 
   // Compare the same imaged requests on both sides. Passthrough requests are
   // generally smaller because the profitability gate selected them, so their
-  // average is not a valid "without pxpipe" counterfactual.
+  // average is not a valid "without FuryPipe" counterfactual.
   const cAvg = s.compressed_avg_usd_per_request ?? 0;
   const paidImaged = s.compressed_paid_requests ?? 0;
   const withoutAvg = paidImaged > 0 ? cAvg + (s.saved_usd ?? 0) / paidImaged : 0;
@@ -380,12 +380,12 @@ export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en
     `<span class="src">${escapeHtml(t('dashboard.math.source'))}: ${escapeHtml(pa.source || 'docs.anthropic.com pricing')}</span>`;
 
   const costPerRequestMath =
-    `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">without_pxpipe = actual_imaged + measured_savings</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">without_furypipe = actual_imaged + measured_savings</span></div>` +
     `<div><span class="k">${escapeHtml(t('dashboard.math.why'))}:</span> <span class="v">${escapeHtml(t('dashboard.math.samePopulation'))}</span></div>` +
     `<div class="sp"></div>` +
     mathRow(`actual imaged (n=${paidImaged})`, `$${(s.compressed_actual_usd || 0).toFixed(4)}`, t('dashboard.math.totalAvg', { value: `$${cAvg.toFixed(4)}` })) +
     mathRow(t('dashboard.math.measuredSavings'), `$${(s.saved_usd || 0).toFixed(4)}`, escapeHtml(t('dashboard.math.cacheAwareTotal'))) +
-    mathRow(t('dashboard.math.withoutPxpipe'), `$${withoutAvg.toFixed(4)}/req`, '<span class="op">=</span> (actual imaged + measured savings) / n') +
+    mathRow(t('dashboard.math.withoutFuryPipe'), `$${withoutAvg.toFixed(4)}/req`, '<span class="op">=</span> (actual imaged + measured savings) / n') +
     `<span class="src">${escapeHtml(t('dashboard.math.unmeasuredZero'))}</span>`;
 
   const pctMath =
@@ -1422,7 +1422,7 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
     <span class="flame-dot"></span>
     <div>
       <div class="wordmark-row">
-        <div class="wordmark">pxpipe</div>
+        <div class="wordmark">FuryPipe</div>
         ${host ? `<span class="hostchip" title="${escapeHtml(t('dashboard.page.proxyHost'))}">${host}</span>` : ''}
       </div>
       <div class="tagline">${escapeHtml(dashboardT(activeLocale, 'dashboard.tagline'))}</div>
@@ -1443,14 +1443,14 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
 <details class="models-collapse">
   <summary class="models-summary">${escapeHtml(t('dashboard.page.connectAgent'))} <span class="hint">${escapeHtml(t('dashboard.page.connectHint'))}</span></summary>
   <p>${escapeHtml(t('dashboard.page.warpIntro'))}</p>
-  <pre>pxpipe warp -- claude
-pxpipe warp -- codex
-pxpipe warp -- cursor-agent</pre>
-  <p>${escapeHtml(t('dashboard.page.aliasHelp'))}<br><code>pxpipe warp -- pp</code> · <code>--route PATTERN=http://host:port</code> · <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code></p>
+  <pre>furypipe warp -- claude
+furypipe warp -- codex
+furypipe warp -- cursor-agent</pre>
+  <p>${escapeHtml(t('dashboard.page.aliasHelp'))}<br><code>furypipe warp -- pp</code> · <code>--route PATTERN=http://host:port</code> · <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code></p>
   <p>${escapeHtml(t('dashboard.page.pinIntro'))}</p>
-  <pre>@pxpipe pin be concise, no walls of text
-@pxpipe unpin 2
-@pxpipe unpin all</pre>
+  <pre>@furypipe pin be concise, no walls of text
+@furypipe unpin 2
+@furypipe unpin all</pre>
   <p>${escapeHtml(t('dashboard.page.pinList'))}</p>
   <p>${escapeHtml(t('dashboard.page.pinFileHelp'))} <code>CLAUDE.md</code> / <code>AGENTS.md</code></p>
 </details>
@@ -1476,9 +1476,9 @@ OPENAI_MODELS=gpt-5.6-sol \\
 CLOUDFLARE_ACCOUNT_ID=your-account-id \\
 CLOUDFLARE_API_TOKEN=your-cloudflare-token \\
 CLOUDFLARE_MODELS=moonshotai/kimi-k3 \\
-npx pxpipe-proxy</pre>
+npx furypipe</pre>
   <p>${escapeHtml(t('dashboard.page.routingPrefix'))} ${escapeHtml(t('dashboard.page.routingSwitch'))}</p>
-  <p><code>PXPIPE_MODELS</code> — ${escapeHtml(t('dashboard.page.scopeSeparate'))} ${escapeHtml(t('dashboard.page.routingEvidence'))}</p>
+  <p><code>FURYPIPE_MODELS</code> — ${escapeHtml(t('dashboard.page.scopeSeparate'))} ${escapeHtml(t('dashboard.page.routingEvidence'))}</p>
   <button class="mini-btn" type="button" onclick="this.closest('dialog').close()">${escapeHtml(t('dashboard.page.close'))}</button>
 </dialog>
 

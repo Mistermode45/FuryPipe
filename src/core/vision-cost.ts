@@ -102,7 +102,7 @@ function resizedSize(w: number, h: number, maxLongEdge: number, maxVisualTokens:
  * the visual-token budget, found by binary search exactly as Anthropic's
  * reference `count_image_tokens`), then the 28-px patch count.
  *
- * Note: pxpipe's own pages are always ≤ 1568×728, so the resize never fires for
+ * Note: FuryPipe's own pages are always ≤ 1568×728, so the resize never fires for
  * proxy output (both tiers charge the raw patch count). The resize path is for
  * correctness as a general-purpose estimator (e.g. arbitrary export input).
  */

@@ -47,10 +47,10 @@ function summary(median: number, repetitions = 5) {
   };
 }
 
-function metric(raw: number, pxpipe: number, furypipe: number, repetitions = 5) {
+function metric(raw: number, upstream: number, furypipe: number, repetitions = 5) {
   return {
     raw: summary(raw, repetitions),
-    pxpipe: summary(pxpipe, repetitions),
+    upstream: summary(upstream, repetitions),
     furypipe: summary(furypipe, repetitions),
   };
 }
@@ -87,7 +87,7 @@ function benchmarkSuite(provider: string, model: string) {
     },
     quality: {
       raw: summary(0.90),
-      pxpipe: summary(0.92),
+      upstream: summary(0.92),
       furypipe: summary(0.95),
     },
     exactness: {

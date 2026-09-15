@@ -20,8 +20,8 @@ import { transformAnthropicMessages } from '../src/core/library.js';
  * stay byte-identical.
  */
 
-const ENV = 'PXPIPE_GPT_PROFILES';
-const MODELS = 'PXPIPE_MODELS';
+const ENV = 'FURYPIPE_GPT_PROFILES';
+const MODELS = 'FURYPIPE_MODELS';
 
 // The transform's model gate is orthogonal to what is being tested here; pin it
 // so the assertions read `applied` rather than `unsupported_model`.
@@ -65,7 +65,7 @@ describe('per-content-class render geometry', () => {
     }
   });
 
-  it('accepts historyStripCols and historyStyle from PXPIPE_GPT_PROFILES', () => {
+  it('accepts historyStripCols and historyStyle from FURYPIPE_GPT_PROFILES', () => {
     process.env[ENV] = JSON.stringify({
       'claude-fable-5': { historyStripCols: 172, historyStyle: { font: 'jetbrains-mono-14' } },
     });

@@ -35,23 +35,19 @@ FuryPipe extends the historical base with substantial FuryPipe-specific systems,
 
 The authoritative current implementation is the FuryPipe repository, not the upstream pxpipe repository.
 
-## Legacy compatibility
+## Runtime independence
 
-FuryPipe intentionally retains limited compatibility with historical pxpipe interfaces.
+FuryPipe no longer consumes historical upstream runtime interfaces.
 
-Current compatibility includes:
+The current runtime:
 
-- the `pxpipe` CLI alias;
-- selected `PXPIPE_*` environment variables;
-- selected legacy filesystem locations when no FuryPipe-native location exists.
+- exposes only the `furypipe` CLI identity;
+- consumes only `FURYPIPE_*` environment variables;
+- uses FuryPipe-owned filesystem locations;
+- uses the FuryPipe-specific default listener port;
+- does not reuse an upstream process or runtime configuration.
 
-These are migration surfaces, not preferred public interfaces.
-
-New integrations should use:
-
-- `furypipe`;
-- `FURYPIPE_*`;
-- FuryPipe documentation and package exports.
+Historical upstream names remain in provenance, licensing and immutable historical records only. They are not runtime compatibility paths.
 
 See [COMPATIBILITY.md](COMPATIBILITY.md).
 
@@ -73,9 +69,9 @@ The earlier V5 hardening branch and PR history are retained in repository histor
 
 Current public release status:
 
-- FuryPipe `v0.13.2`: released **2026-09-15**
-- npm `furypipe@0.13.2`: published
-- GitHub Release `v0.13.2`: published
+- FuryPipe `v0.14.0`: released **2026-09-15**
+- npm `furypipe@0.14.0`: published
+- GitHub Release `v0.14.0`: published
 - production deployment: separate lifecycle state
 
 Exact release details are recorded in [docs/RELEASE_SECURITY.md](docs/RELEASE_SECURITY.md).

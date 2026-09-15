@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -97,34 +98,92 @@ try {
   await run(npm, ['install', tarball, '--ignore-scripts', '--no-audit', '--no-fund'], installDir);
 
   const packageRoot = path.join(installDir, 'node_modules', 'furypipe');
+  const installedPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
+  assert(installedPackage.bin?.furypipe === 'bin/cli.js', 'furypipe executable is missing from the installed package');
+  assert(!Object.prototype.hasOwnProperty.call(installedPackage.bin ?? {}, 'pxpipe'), 'legacy pxpipe executable alias leaked into the installed package');
   const cli = path.join(packageRoot, 'bin', 'cli.js');
   const mcp = path.join(packageRoot, 'bin', 'mcp.js');
   const version = await run(process.execPath, [cli, '--version'], installDir);
   assert(version.stdout.trim() === metadata.version, `CLI version mismatch: ${version.stdout}`);
   const help = await run(process.execPath, [cli, '--help'], installDir);
   assert(/FuryPipe/u.test(help.stdout), 'FuryPipe CLI help is missing FuryPipe branding');
-  assert(!/pxpipe export|PXPIPE_PROVIDER|PXPIPE_GATEWAY_BASE_URL|PXPIPE_MODELS/u.test(help.stdout), 'FuryPipe CLI help exposed legacy product branding');
+  assert(!/pxpipe|PXPIPE_/iu.test(help.stdout), 'FuryPipe CLI help exposed legacy product branding');
 
   const setupHelp = await run(process.execPath, [cli, 'setup', '--help'], installDir);
   assert(/FuryPipe setup/u.test(setupHelp.stdout), 'setup help is missing FuryPipe branding');
   assert(/--lang=fr\|en/u.test(setupHelp.stdout), 'setup help is missing bilingual language selection');
 
   const setupConfig = path.join(installDir, 'furypipe-setup-smoke.json');
-  const setup = await run(
-    process.execPath,
-    [cli, 'setup', '--lang=fr', '--yes', '--no-color'],
-    installDir,
-    { ...process.env, FURYPIPE_CONFIG: setupConfig, CI: '1', NO_COLOR: '1' },
-  );
+  const occupied = createServer();
+  await new Promise((resolve, reject) => {
+    occupied.once('error', reject);
+    occupied.listen(0, '127.0.0.1', resolve);
+  });
+  const occupiedAddress = occupied.address();
+  assert(occupiedAddress && typeof occupiedAddress === 'object', 'could not allocate occupied-port setup fixture');
+  let setup;
+  try {
+    setup = await run(
+      process.execPath,
+      [cli, 'setup', '--lang=fr', '--yes', '--no-color'],
+      installDir,
+      {
+        ...process.env,
+        FURYPIPE_CONFIG: setupConfig,
+        FURYPIPE_PORT: String(occupiedAddress.port),
+        CI: '1',
+        NO_COLOR: '1',
+      },
+    );
+  } finally {
+    await new Promise((resolve) => occupied.close(resolve));
+  }
   assert(/status:\s+ready/u.test(setup.stdout), 'non-interactive setup did not finish ready');
+  assert(!/listening on|EADDRINUSE/u.test(setup.stdout + setup.stderr), 'setup attempted to start the FuryPipe server');
   const setupState = JSON.parse(await readFile(setupConfig, 'utf8'));
   assert(setupState.locale === 'fr', 'setup did not persist the selected locale');
   assert(setupState.setup?.completed === true, 'setup did not persist completion state');
   assert(setupState.setup?.version === metadata.version, 'setup persisted the wrong package version');
 
-  const doctor = await run(process.execPath, [cli, 'doctor', '--json'], installDir);
+  const occupiedRuntime = createServer();
+  await new Promise((resolve, reject) => {
+    occupiedRuntime.once('error', reject);
+    occupiedRuntime.listen(0, '127.0.0.1', resolve);
+  });
+  const occupiedRuntimeAddress = occupiedRuntime.address();
+  assert(occupiedRuntimeAddress && typeof occupiedRuntimeAddress === 'object', 'could not allocate runtime port-conflict fixture');
+  let conflictError;
+  try {
+    await run(
+      process.execPath,
+      [cli, 'start'],
+      installDir,
+      {
+        ...process.env,
+        FURYPIPE_HOST: '127.0.0.1',
+        FURYPIPE_PORT: String(occupiedRuntimeAddress.port),
+        CI: '1',
+        NO_COLOR: '1',
+      },
+    );
+  } catch (error) {
+    conflictError = error;
+  } finally {
+    await new Promise((resolve) => occupiedRuntime.close(resolve));
+  }
+  assert(conflictError, 'furypipe start unexpectedly succeeded on an occupied port');
+  const conflictOutput = String(conflictError.stdout ?? '') + String(conflictError.stderr ?? '');
+  assert(conflictOutput.includes('[furypipe] cannot start:'), 'occupied-port start did not emit the FuryPipe conflict message');
+  assert(conflictOutput.includes('Set FURYPIPE_PORT to a free port'), 'occupied-port start did not explain the FuryPipe port override');
+  assert(!conflictOutput.includes('node:events:'), 'occupied-port start leaked a Node internal stack');
+
+  const doctorEnv = { ...process.env };
+  delete doctorEnv.FURYPIPE_PORT;
+  delete doctorEnv.FURYPIPE_HOST;
+  const doctor = await run(process.execPath, [cli, 'doctor', '--json'], installDir, doctorEnv);
   const report = JSON.parse(doctor.stdout);
   assert(report.runtime?.node, 'doctor smoke returned no Node runtime');
+  assert(report.network?.port === 48721, `doctor reported unexpected default FuryPipe port: ${report.network?.port}`);
   const httpExport = await run(process.execPath, [
     '--input-type=module',
     '-e',

@@ -3,7 +3,7 @@ import { resolveGptProfile, isMisresolvedModelId } from '../src/core/gpt-model-p
 import { visionTokens, patchTokensForTier } from '../src/core/vision-cost.js';
 import { visionTokensForModel } from '../src/core/openai.js';
 import { openAICacheReadRate, openAIOutputRate } from '../src/core/openai-savings.js';
-import { isPxpipeSupportedModel } from '../src/core/applicability.js';
+import { isFuryPipeSupportedModel } from '../src/core/applicability.js';
 
 /**
  * The image-cost path must be DATA-driven: every provider difference is a
@@ -71,15 +71,15 @@ describe('vision cost is resolved from the profile, not from the model id', () =
   });
 });
 
-describe('PXPIPE_GPT_PROFILES can retune any regime without a code change', () => {
-  const prev = process.env.PXPIPE_GPT_PROFILES;
+describe('FURYPIPE_GPT_PROFILES can retune any regime without a code change', () => {
+  const prev = process.env.FURYPIPE_GPT_PROFILES;
   afterEach(() => {
-    if (prev === undefined) delete process.env.PXPIPE_GPT_PROFILES;
-    else process.env.PXPIPE_GPT_PROFILES = prev;
+    if (prev === undefined) delete process.env.FURYPIPE_GPT_PROFILES;
+    else process.env.FURYPIPE_GPT_PROFILES = prev;
   });
 
   it('accepts the pixel, flat, and Anthropic-patch regimes', () => {
-    process.env.PXPIPE_GPT_PROFILES = JSON.stringify({
+    process.env.FURYPIPE_GPT_PROFILES = JSON.stringify({
       'gpt-5.6-sol': { vision: { regime: 'mpix', tokensPerMegapixel: 500 } },
       'gpt-5.5': { vision: { regime: 'flat', tokens: 900 }, cacheReadRate: 0.2, outputRate: 6 },
       'gpt-5.4': { vision: { regime: 'patch28' }, visionTier: 'high-res' },
@@ -92,7 +92,7 @@ describe('PXPIPE_GPT_PROFILES can retune any regime without a code change', () =
   });
 
   it('ignores malformed regimes and rates, keeping the built-in profile', () => {
-    process.env.PXPIPE_GPT_PROFILES = JSON.stringify({
+    process.env.FURYPIPE_GPT_PROFILES = JSON.stringify({
       'gpt-5.6-sol': { vision: { regime: 'mpix', tokensPerMegapixel: -5 }, cacheReadRate: 0, outputRate: 'free' },
     });
     expect(resolveGptProfile('gpt-5.6-sol').vision).toEqual({ regime: 'patch', multiplier: 1 });
@@ -102,10 +102,10 @@ describe('PXPIPE_GPT_PROFILES can retune any regime without a code change', () =
 });
 
 describe('ids that would be priced with the wrong provider formula are refused', () => {
-  const prev = process.env.PXPIPE_MODELS;
+  const prev = process.env.FURYPIPE_MODELS;
   afterEach(() => {
-    if (prev === undefined) delete process.env.PXPIPE_MODELS;
-    else process.env.PXPIPE_MODELS = prev;
+    if (prev === undefined) delete process.env.FURYPIPE_MODELS;
+    else process.env.FURYPIPE_MODELS = prev;
   });
 
   it('flags family ids that do not resolve to that family profile', () => {
@@ -123,11 +123,11 @@ describe('ids that would be priced with the wrong provider formula are refused',
   });
 
   it('holds even when the scope is configured broadly', () => {
-    process.env.PXPIPE_MODELS = 'gemini,grok';
-    expect(isPxpipeSupportedModel('gemini-3.6-pro')).toBe(false);
-    expect(isPxpipeSupportedModel('gemini-3.7-pro')).toBe(false);
-    expect(isPxpipeSupportedModel('gemini-3.6-flash')).toBe(true);
-    expect(isPxpipeSupportedModel('gemini-3.7-flash')).toBe(true);
-    expect(isPxpipeSupportedModel('grok-4.5')).toBe(true);
+    process.env.FURYPIPE_MODELS = 'gemini,grok';
+    expect(isFuryPipeSupportedModel('gemini-3.6-pro')).toBe(false);
+    expect(isFuryPipeSupportedModel('gemini-3.7-pro')).toBe(false);
+    expect(isFuryPipeSupportedModel('gemini-3.6-flash')).toBe(true);
+    expect(isFuryPipeSupportedModel('gemini-3.7-flash')).toBe(true);
+    expect(isFuryPipeSupportedModel('grok-4.5')).toBe(true);
   });
 });

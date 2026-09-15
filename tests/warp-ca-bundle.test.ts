@@ -1,7 +1,7 @@
 /**
  * SSL_CERT_FILE / CURL_CA_BUNDLE / REQUESTS_CA_BUNDLE replace the trust store
  * rather than extend it. A warp CA file holding only our root made every
- * non-pxpipe HTTPS client in the child fail verification (#245). The bundle
+ * non-FuryPipe HTTPS client in the child fail verification (#245). The bundle
  * handed to those variables must carry the system roots after our CA.
  *
  * Run just this file:  pnpm vitest run tests/warp-ca-bundle.test.ts
@@ -24,7 +24,7 @@ describe('warp CA bundle (#245)', () => {
     else process.env.SSL_CERT_FILE = savedEnv;
   });
   const tmp = (): string => {
-    const d = mkdtempSync(join(tmpdir(), 'pxpipe-warp-ca-'));
+    const d = mkdtempSync(join(tmpdir(), 'FuryPipe-warp-ca-'));
     dirs.push(d);
     return d;
   };

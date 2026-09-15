@@ -11,7 +11,7 @@ import type { GptHistoryProfile, GptRenderStyle } from './gpt-model-profiles.js'
  * cycle would be a load-time TDZ crash rather than a lint warning.
  */
 /**
- * Conservative list-price ratios for families pxpipe has not priced explicitly.
+ * Conservative list-price ratios for families FuryPipe has not priced explicitly.
  * Deliberately mid-range: an unknown model must not be reported at the most
  * favourable (gpt-5) cache discount, and must not be priced at Anthropic's.
  */

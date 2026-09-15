@@ -17,13 +17,10 @@ import type { TransformOptions } from './core/transform.js';
 import { toTrackEvent, JsonLogTracker, noopTracker, type Tracker } from './core/tracker.js';
 import { setAllowedModelBases } from './core/applicability.js';
 import { setRenderCacheMaxBytes } from './core/render.js';
-import { furyEnvValue } from './core/env-compat.js';
 
 export interface Env {
   /** Optional single upstream base for every API family. Family-specific env vars override it. */
   FURYPIPE_UPSTREAM?: string;
-  /** @deprecated compatibility fallback */
-  PXPIPE_UPSTREAM?: string;
   ANTHROPIC_UPSTREAM?: string;
   /** Optional override — if set, replaces whatever x-api-key the client sent. */
   ANTHROPIC_API_KEY?: string;
@@ -42,21 +39,15 @@ export interface Env {
   COLS?: string;
   /** Comma-separated model bases eligible for compression. */
   FURYPIPE_MODELS?: string;
-  /** @deprecated compatibility fallback */
-  PXPIPE_MODELS?: string;
   /** Ceiling on a buffered inbound request body, in bytes. A Worker is publicly
    *  reachable by default, so this is the setting that keeps one caller from
    *  choosing the isolate's memory ceiling. Unset uses the core 16 MiB default;
    *  a non-numeric or non-positive value is ignored rather than obeyed. */
   FURYPIPE_MAX_REQUEST_BYTES?: string;
-  /** @deprecated compatibility fallback */
-  PXPIPE_MAX_REQUEST_BYTES?: string;
   /** When "0" / "false", disable per-request event JSON logs. Default-on.
    *  Cloudflare ingests console.log as Workers Logs; pipe via Logpush to
    *  R2/S3 for the same JSONL shape Node writes to disk. */
   FURYPIPE_TRACK?: string;
-  /** @deprecated compatibility fallback */
-  PXPIPE_TRACK?: string;
   /** Max bytes of rendered pages held in memory, or "0" to disable the cache.
    *  Unset uses the core edge default (8 MiB), which is deliberately far below
    *  the Node default: a Worker isolate has ~128 MiB for the request body, the
@@ -65,15 +56,10 @@ export interface Env {
    *  `setRenderCacheMaxBytes`. A negative or non-numeric value is ignored rather
    *  than obeyed; `0` is a real setting and must not be read as "unset". */
   FURYPIPE_RENDER_CACHE_BYTES?: string;
-  /** @deprecated compatibility fallback */
-  PXPIPE_RENDER_CACHE_BYTES?: string;
   /** Shared secret callers should present via the `x-furypipe-secret` header
-   *  whenever an API-key override is configured. The legacy header and variable
-   *  remain accepted only as compatibility fallbacks. Set with:
+   *  whenever an API-key override is configured. Set with:
    *    npx wrangler secret put FURYPIPE_WORKER_SECRET */
   FURYPIPE_WORKER_SECRET?: string;
-  /** @deprecated compatibility fallback */
-  PXPIPE_WORKER_SECRET?: string;
 }
 
 /** Compare SHA-256 digests instead of the raw strings so the comparison
@@ -114,7 +100,7 @@ const nonNegativeInt = (v: string | undefined): number | undefined => {
 
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
-    const configuredModels = furyEnvValue(env.FURYPIPE_MODELS, env.PXPIPE_MODELS)?.trim();
+    const configuredModels = env.FURYPIPE_MODELS?.trim();
     setAllowedModelBases(
       configuredModels === undefined || configuredModels === ''
         ? null
@@ -125,14 +111,14 @@ export default {
     // Bindings only exist inside `fetch`, so the render cache budget is applied here
     // rather than at module init the way the Node host does it. Cheap and idempotent:
     // assigning the same value evicts nothing. Left unset, core keeps its edge default.
-    const renderCacheBytes = nonNegativeInt(furyEnvValue(env.FURYPIPE_RENDER_CACHE_BYTES, env.PXPIPE_RENDER_CACHE_BYTES));
+    const renderCacheBytes = nonNegativeInt(env.FURYPIPE_RENDER_CACHE_BYTES);
     if (renderCacheBytes !== undefined) setRenderCacheMaxBytes(renderCacheBytes);
     // ── Caller auth ────────────────────────────────────────────────────
     // If this deployment injects API keys, never serve anonymous callers:
     // workers.dev URLs are discoverable, and without this gate anyone who
     // finds the URL spends this deployment's API credits.
     if (env.ANTHROPIC_API_KEY || env.OPENAI_API_KEY || env.CLOUDFLARE_API_TOKEN) {
-      const workerSecret = furyEnvValue(env.FURYPIPE_WORKER_SECRET, env.PXPIPE_WORKER_SECRET);
+      const workerSecret = env.FURYPIPE_WORKER_SECRET;
       if (!workerSecret) {
         return new Response(
           JSON.stringify({
@@ -144,19 +130,16 @@ export default {
           { status: 503, headers: { 'content-type': 'application/json' } },
         );
       }
-      const presented = req.headers.get('x-furypipe-secret')
-        ?? req.headers.get('x-pxpipe-secret')
-        ?? '';
+      const presented = req.headers.get('x-furypipe-secret') ?? '';
       if (!(await secretsMatch(presented, workerSecret))) {
         return new Response(
           JSON.stringify({ error: 'missing or invalid x-furypipe-secret header' }),
           { status: 401, headers: { 'content-type': 'application/json' } },
         );
       }
-      // Don't forward either the current or legacy shared secret header upstream.
+      // Never forward the FuryPipe shared secret header upstream.
       req = new Request(req);
       req.headers.delete('x-furypipe-secret');
-      req.headers.delete('x-pxpipe-secret');
     }
 
     const transform: TransformOptions = {
@@ -173,13 +156,13 @@ export default {
       // COLS remains an explicit operator override for every family.
       ...(env.COLS ? { cols: Number(env.COLS) } : {}),
     };
-    const trackingOn = truthy(furyEnvValue(env.FURYPIPE_TRACK, env.PXPIPE_TRACK), true);
+    const trackingOn = truthy(env.FURYPIPE_TRACK, true);
     // Workers Logs ingests stdout as separate log lines. Emit one JSON line
     // per event so downstream (Logpush → R2/S3) reads the same JSONL shape
     // the Node host writes to disk.
     const tracker: Tracker = trackingOn ? new JsonLogTracker((s) => console.log(s)) : noopTracker;
 
-    const sharedUpstream = furyEnvValue(env.FURYPIPE_UPSTREAM, env.PXPIPE_UPSTREAM);
+    const sharedUpstream = env.FURYPIPE_UPSTREAM;
     const parseModels = (value: string | undefined): string[] | undefined =>
       value === undefined ? undefined : value.split(',').map((model) => model.trim()).filter(Boolean);
     const cfAccount = env.CLOUDFLARE_ACCOUNT_ID?.trim();
@@ -198,8 +181,8 @@ export default {
       cloudflareModels: parseModels(env.CLOUDFLARE_MODELS),
       // A Worker cannot exit on bad config the way the Node host does, so an
       // unparseable value is dropped here and the core default applies.
-      ...(positiveInt(furyEnvValue(env.FURYPIPE_MAX_REQUEST_BYTES, env.PXPIPE_MAX_REQUEST_BYTES)) !== undefined
-        ? { maxRequestBytes: positiveInt(furyEnvValue(env.FURYPIPE_MAX_REQUEST_BYTES, env.PXPIPE_MAX_REQUEST_BYTES)) }
+      ...(positiveInt(env.FURYPIPE_MAX_REQUEST_BYTES) !== undefined
+        ? { maxRequestBytes: positiveInt(env.FURYPIPE_MAX_REQUEST_BYTES) }
         : {}),
       transform,
       onRequest: (e) => {

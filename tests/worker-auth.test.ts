@@ -8,7 +8,7 @@ function request(secret?: string): Request {
     'content-type': 'application/json',
     'x-api-key': 'client-key',
   };
-  if (secret !== undefined) headers['x-pxpipe-secret'] = secret;
+  if (secret !== undefined) headers['x-furypipe-secret'] = secret;
   return new Request('https://proxy.example/v1/messages', {
     method: 'POST',
     headers,
@@ -35,12 +35,12 @@ describe('Worker caller authentication', () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 
-  it('rejects a missing or incorrect Worker secret before contacting upstream', async () => {
+  it('rejects a missing or incorrect FuryPipe Worker secret before contacting upstream', async () => {
     const upstream = vi.fn();
     vi.stubGlobal('fetch', upstream);
     const env: Env = {
       ANTHROPIC_API_KEY: 'provider-key',
-      PXPIPE_WORKER_SECRET: 'correct-secret',
+      FURYPIPE_WORKER_SECRET: 'correct-secret',
     };
 
     expect((await worker.fetch(request(), env, ctx)).status).toBe(401);
@@ -48,7 +48,7 @@ describe('Worker caller authentication', () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 
-  it('strips the Worker secret and applies the provider key upstream', async () => {
+  it('strips the FuryPipe Worker secret and applies the provider key upstream', async () => {
     let forwarded: Request | undefined;
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       forwarded = new Request(input, init);
@@ -59,71 +59,14 @@ describe('Worker caller authentication', () => {
     }));
     const env: Env = {
       ANTHROPIC_API_KEY: 'provider-key',
-      PXPIPE_WORKER_SECRET: 'correct-secret',
-      PXPIPE_TRACK: '0',
+      FURYPIPE_WORKER_SECRET: 'correct-secret',
+      FURYPIPE_TRACK: '0',
     };
 
     const res = await worker.fetch(request('correct-secret'), env, ctx);
 
     expect(res.status).toBe(200);
-    expect(forwarded?.headers.get('x-pxpipe-secret')).toBeNull();
-    expect(forwarded?.headers.get('x-api-key')).toBe('provider-key');
-  });
-  it('prefers the FuryPipe Worker secret and x-furypipe-secret header when both generations are configured', async () => {
-    let forwarded: Request | undefined;
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      forwarded = new Request(input, init);
-      return new Response(JSON.stringify({ content: [], usage: { input_tokens: 1, output_tokens: 1 } }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }));
-    const env: Env = {
-      ANTHROPIC_API_KEY: 'provider-key',
-      FURYPIPE_WORKER_SECRET: 'current-secret',
-      PXPIPE_WORKER_SECRET: 'legacy-secret',
-      FURYPIPE_TRACK: '0',
-      PXPIPE_TRACK: '1',
-    };
-
-    const headers = {
-      'content-type': 'application/json',
-      'x-api-key': 'client-key',
-      'x-furypipe-secret': 'current-secret',
-      'x-pxpipe-secret': 'legacy-secret',
-    };
-    const req = new Request('https://proxy.example/v1/messages', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: 'unsupported-test-model',
-        max_tokens: 1,
-        messages: [{ role: 'user', content: 'hello' }],
-      }),
-    });
-
-    const res = await worker.fetch(req, env, ctx);
-
-    expect(res.status).toBe(200);
     expect(forwarded?.headers.get('x-furypipe-secret')).toBeNull();
-    expect(forwarded?.headers.get('x-pxpipe-secret')).toBeNull();
     expect(forwarded?.headers.get('x-api-key')).toBe('provider-key');
   });
-
-  it('keeps the legacy Worker secret and header as a compatibility fallback', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () =>
-      new Response(JSON.stringify({ content: [], usage: { input_tokens: 1, output_tokens: 1 } }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    ));
-    const env: Env = {
-      ANTHROPIC_API_KEY: 'provider-key',
-      PXPIPE_WORKER_SECRET: 'legacy-secret',
-      PXPIPE_TRACK: '0',
-    };
-
-    expect((await worker.fetch(request('legacy-secret'), env, ctx)).status).toBe(200);
-  });
-
 });

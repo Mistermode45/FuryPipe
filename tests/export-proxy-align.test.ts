@@ -1,7 +1,7 @@
 // Export ⇄ proxy render alignment.
 //
-// Goal (the whole point of routing `pxpipe export` through the SDK): a given text must
-// render to the SAME PNG bytes whether it goes through the `pxpipe export` CLI or the
+// Goal (the whole point of routing `furypipe export` through the SDK): a given text must
+// render to the SAME PNG bytes whether it goes through the `furypipe export` CLI or the
 // live proxy's history-image compression. Both now share one renderer:
 //
 //   export  → renderTextToImages(text, { cols, shrink })   [library.ts, public SDK]
@@ -13,7 +13,7 @@
 // function (not a replica), so any future drift in either path fails CI.
 //
 // Alignment is guaranteed at the proxy's operating width, DENSE_CONTENT_COLS (384) — the
-// export CLI's default and the proxy's hardcoded dense cap. `pxpipe export --cols N` with
+// export CLI's default and the proxy's hardcoded dense cap. `furypipe export --cols N` with
 // N≠384 is an intentionally-wider export and is out of scope for proxy parity.
 import { describe, expect, it } from 'vitest';
 import { renderTextToImages } from '../src/core/library.js';
