@@ -1,6 +1,8 @@
 name: Hosted Web Studio Conformance
 
 on:
+  pull_request:
+    types: [labeled]
   workflow_dispatch:
     inputs:
       source_sha:
@@ -17,25 +19,38 @@ permissions:
   contents: read
 
 concurrency:
-  group: hosted-web-studio-conformance-${{ inputs.source_sha }}
+  group: hosted-web-studio-conformance-${{ github.event.pull_request.head.sha || inputs.source_sha || github.sha }}
   cancel-in-progress: false
 
 jobs:
   conformance:
     name: External hosted Web Studio matrix
+    if: >-
+      github.actor == github.repository_owner &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'pull_request' &&
+          github.event.action == 'labeled' &&
+          github.event.label.name == 'hosted-web-studio-conformance' &&
+          github.event.pull_request.user.login == github.repository_owner &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        )
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      FURYPIPE_SOURCE_COMMIT: ${{ inputs.source_sha }}
-      FURYPIPE_HOSTED_WEB_STUDIO_URL: ${{ inputs.target_url }}
+      FURYPIPE_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || inputs.source_sha }}
+      FURYPIPE_HOSTED_WEB_STUDIO_URL: ${{ inputs.target_url || vars.FURYPIPE_HOSTED_WEB_STUDIO_TARGET_URL || 'https://mcp.furycraft.fr/studio-qa' }}
       FURYPIPE_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
       FURYPIPE_HOSTED_WEB_STUDIO_OUTPUT_DIR: ${{ github.workspace }}/artifacts/hosted-web-studio-conformance
-      FURYPIPE_VALIDATOR_COMMIT: ${{ github.sha }}
+      FURYPIPE_VALIDATOR_COMMIT: ${{ github.event.pull_request.base.sha || github.sha }}
 
     steps:
       - name: Checkout validator source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
           persist-credentials: false
           path: validator
 
@@ -50,7 +65,7 @@ jobs:
       - name: Checkout exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ github.event.pull_request.head.sha || inputs.source_sha }}
           persist-credentials: false
           path: candidate
 
@@ -91,7 +106,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: furypipe-hosted-web-studio-conformance-${{ inputs.source_sha }}
+          name: furypipe-hosted-web-studio-conformance-${{ github.event.pull_request.head.sha || inputs.source_sha }}
           path: |
             artifacts/hosted-web-studio-conformance/hosted-web-studio-conformance.json
             artifacts/hosted-web-studio-conformance/hosted-web-studio-conformance.json.sha256
