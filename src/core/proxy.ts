@@ -1,12 +1,12 @@
 /**
- * pxpipe proxy as a single Web-standard fetch handler.
+ * FuryPipe proxy as a single Web-standard fetch handler.
  * Adapted by src/node.ts and src/worker.ts; uses only Request/Response/URL/fetch.
  */
 
 import { markCacheDead, noteCacheOutcome, responseLeftNoCache } from './session-state.js';
 import { transformRequest, type TransformOptions, type TransformInfo } from './transform.js';
 import { isClaudeModel, transformOpenAIChatCompletions, transformOpenAIResponses } from './openai.js';
-import { isAnthropicMessagesPath, isPxpipeSupportedGptModel, isPxpipeSupportedModel } from './applicability.js';
+import { isAnthropicMessagesPath, isFuryPipeSupportedGptModel, isFuryPipeSupportedModel } from './applicability.js';
 import {
   buildBaselineCountTokensBody,
   buildCacheablePrefixCountTokensBody,
@@ -81,12 +81,12 @@ export interface ProxyConfig {
    *  fails open. Prevents one stalled request from permanently 409-ing its retries.
    *  0 disables dedupe entirely. */
   duplicateHoldMs?: number;
-  /** Hard ceiling, in bytes, on an inbound request body pxpipe will hold in
+  /** Hard ceiling, in bytes, on an inbound request body FuryPipe will hold in
    *  memory. Transformable routes have to read the whole body, so without a
    *  ceiling one client decides how much the proxy allocates: a Worker or a Node
    *  instance bound to anything other than loopback is then one long request away
    *  from memory exhaustion. Over-limit bodies get a provider-shaped 413 before
-   *  any upstream call. Routes pxpipe only labels are never rejected by this -
+   *  any upstream call. Routes FuryPipe only labels are never rejected by this -
    *  they carry uploads and audio - but their model sniff is bounded too.
    *
    *  Defaults to {@link DEFAULT_MAX_REQUEST_BYTES}. A non-integer, zero or
@@ -192,7 +192,7 @@ function withIdleTimeout(
       timer = undefined;
       onIdle();
       try {
-        ctl?.error(new Error(`pxpipe: upstream stalled for ${budget}ms`));
+        ctl?.error(new Error(`FuryPipe: upstream stalled for ${budget}ms`));
       } catch {
         /* already errored or closed */
       }
@@ -255,7 +255,7 @@ function withClientDisconnect(
   });
 }
 
-/** Cap on bodies buffered only to sniff a model name, on paths pxpipe does not
+/** Cap on bodies buffered only to sniff a model name, on paths FuryPipe does not
  *  transform. Chat requests naming a model are far below this; uploads that blow
  *  past it stream through unbuffered. */
 const MODEL_SNIFF_MAX_BYTES = 1 << 20;
@@ -344,7 +344,7 @@ async function readBodyBounded(req: Request, limit: number): Promise<BoundedBody
  * Read at most `maxPrefix` bytes for inspection while keeping the body
  * forwardable byte-for-byte.
  *
- * Used on routes pxpipe does not transform, where the only thing wanted from the
+ * Used on routes FuryPipe does not transform, where the only thing wanted from the
  * body is the model name for a dashboard label. Rejecting those requests is not
  * an option - the same route carries uploads and audio - so instead of buffering
  * everything, the consumed prefix is replayed ahead of the untouched remainder.
@@ -465,7 +465,7 @@ async function readStreamFieldFromClone(req: Request): Promise<boolean> {
 
 // Claude Code only admits gateway-discovered ids beginning with "claude" or
 // "anthropic". Prefix provider ids for discovery, then remove that compatibility
-// prefix before PXPIPE_MODELS matching and upstream routing.
+// prefix before FURYPIPE_MODELS matching and upstream routing.
 const CLAUDE_GATEWAY_MODEL_PREFIX = 'claude-';
 
 function claudeGatewayModelId(model: string): string {
@@ -1084,7 +1084,7 @@ const STRIP_REQ_HEADERS = new Set([
   'content-length', // we recompute
   'expect',
   'accept-encoding', // let upstream choose
-  'x-pxpipe-bypass', // pxpipe-only opt-out signal; never forwarded upstream
+  'x-furypipe-bypass', // FuryPipe-only opt-out signal; never forwarded upstream
 ]);
 
 const STRIP_RES_HEADERS = new Set([
@@ -1155,7 +1155,7 @@ function resolveAuthToken(config: ProxyConfig): string | undefined {
 /** What the client presented, by shape only.
  *
  *  Classification never inspects a credential's contents beyond its prefix and
- *  segment structure, and never reads a local token store: pxpipe does not know
+ *  segment structure, and never reads a local token store: FuryPipe does not know
  *  or want to know which account a token belongs to. Shape is enough to decide
  *  routing, and it is the only thing safe to decide it on. */
 export type InboundCredential =
@@ -1208,7 +1208,7 @@ export type OutboundAuth =
  *     route classifier already refuses this for the ambiguous `/v1/models` path;
  *     this applies the same rule to every OpenAI route.
  *  2. Subscription OAuth is preserved even when the host has an API key
- *     configured. A Codex user proxying through pxpipe means to spend their own
+ *     configured. A Codex user proxying through FuryPipe means to spend their own
  *     subscription; silently substituting the host key bills the wrong account
  *     and usually fails, and the user has no way to see why.
  *  3. Otherwise a configured key replaces whatever arrived, and is used as the
@@ -1340,7 +1340,7 @@ async function countGoogleTokensUpstream(
  * Every env-derived input is trimmed of leading/trailing whitespace before
  * URL construction, and trailing slashes are stripped so `base + path` joins
  * cleanly. The trim is defensive: a stray space in OPENAI_UPSTREAM /
- * ANTHROPIC_UPSTREAM / PXPIPE_GATEWAY_BASE_URL (commonly introduced by
+ * ANTHROPIC_UPSTREAM / FURYPIPE_GATEWAY_BASE_URL (commonly introduced by
  * cmd.exe `set VAR=...`, a copy-paste with a trailing space, or a shell
  * quoting bug in a launcher script) would otherwise build URLs like
  * "https://api.openai.com /v1/..." — fetch() then throws
@@ -1357,7 +1357,7 @@ export function resolveUpstreams(config: ProxyConfig): {
     const base = stripTrailingSlashes((config.gatewayBaseUrl ?? '').trim());
     if (!base) {
       throw new Error(
-        "provider 'cloudflare-ai-gateway' requires gatewayBaseUrl (PXPIPE_GATEWAY_BASE_URL)",
+        "provider 'cloudflare-ai-gateway' requires gatewayBaseUrl (FURYPIPE_GATEWAY_BASE_URL)",
       );
     }
     return { anthropic: `${base}/anthropic`, openai: `${base}/openai`, stripOpenAIV1: true };
@@ -1369,7 +1369,7 @@ export function resolveUpstreams(config: ProxyConfig): {
   };
 }
 
-/** Parse PXPIPE_GATEWAY_HEADERS — JSON object or `k=v;k2=v2`. */
+/** Parse FURYPIPE_GATEWAY_HEADERS — JSON object or `k=v;k2=v2`. */
 export function parseGatewayHeaders(spec: string | undefined): Record<string, string> {
   if (!spec) return {};
   const trimmed = spec.trim();
@@ -1620,10 +1620,10 @@ let responseContentType: string | undefined;
     // Transform only known shapes; everything else passes through.
     // Explicit per-request opt-out (#111): a subprocess that merely inherited
     // ANTHROPIC_BASE_URL (e.g. a plugin's internal `claude` probe) can send
-    // `x-pxpipe-bypass: 1` — via Claude Code's ANTHROPIC_CUSTOM_HEADERS — to
+    // `x-furypipe-bypass: 1` — via Claude Code's ANTHROPIC_CUSTOM_HEADERS — to
     // have its traffic forwarded byte-for-byte untouched. Routing and auth
     // still apply; the header itself is stripped before forwarding.
-    const bypassHeader = req.headers.get('x-pxpipe-bypass');
+    const bypassHeader = req.headers.get('x-furypipe-bypass');
     const bypass = bypassHeader !== null && !/^(?:0|false|off|no)$/i.test(bypassHeader.trim());
     const providerPrefixed = isProviderPrefixedPath(url.pathname);
     // Wire-shape detection stays independent from transform eligibility. A
@@ -1683,7 +1683,7 @@ let responseContentType: string | undefined;
       const bounded = await readBodyBounded(req, maxRequestBytes);
       if (!bounded.ok) {
         const message =
-          `request body exceeds the ${maxRequestBytes}-byte pxpipe limit ` +
+          `request body exceeds the ${maxRequestBytes}-byte FuryPipe limit ` +
           `(${bounded.declaredBytes !== undefined ? `declared ${bounded.declaredBytes}, ` : ''}` +
           `read ${bounded.observedBytes})`;
         const error = isMessages
@@ -1705,7 +1705,7 @@ let responseContentType: string | undefined;
         const model = googleModelFromPath ?? readModelField(bodyIn);
         if (isOpenAIResponses) responsesStreaming = readStreamField(bodyIn);
         requestModel = model ?? undefined;
-        // A turn whose only content is `@pxpipe pin` / `@pxpipe unpin` is
+        // A turn whose only content is `@furypipe pin` / `@furypipe unpin` is
         // configuration, not a question. Answer it here: forwarding it would bill
         // a full prefix to have the model paraphrase a list the proxy already
         // holds, and the reply would be a guess about state it cannot see.
@@ -1748,14 +1748,14 @@ let responseContentType: string | undefined;
         const chatStamp = bridgedChatMessages ? routedModel : undefined;
         const effectiveModel = (bridgedGptMessages || bridgedChatMessages) ? routedModel : model;
         // Gemini is in DEFAULT_MODEL_BASES as the family base `gemini`; the same
-        // allowlist gates it so PXPIPE_MODELS / the chip can opt out.
+        // allowlist gates it so FURYPIPE_MODELS / the chip can opt out.
         const modelOk = isGoogle
-          ? (isGeminiModel(model) && isPxpipeSupportedModel(model))
+          ? (isGeminiModel(model) && isFuryPipeSupportedModel(model))
           : isMessages
-            ? (messagesAnthropic && isPxpipeSupportedModel(model))
+            ? (messagesAnthropic && isFuryPipeSupportedModel(model))
               || bridgedGptMessages
-              || (bridgedChatMessages && isPxpipeSupportedGptModel(effectiveModel))
-            : isPxpipeSupportedGptModel(model);
+              || (bridgedChatMessages && isFuryPipeSupportedGptModel(effectiveModel))
+            : isFuryPipeSupportedGptModel(model);
         // Compression eligibility and telemetry follow the model that actually
         // receives the request, not Claude Code's local gateway alias.
         if ((bridgedGptMessages || bridgedChatMessages) && effectiveModel) {
@@ -1841,7 +1841,7 @@ let responseContentType: string | undefined;
         if (r.info.compressed && requestByteLimit !== undefined) {
           if (r.body.byteLength > requestByteLimit) {
             r.info.sizeLimitOutcome = 'rejected';
-            const message = `pxpipe serialized request exceeds model limit (${r.body.byteLength} > ${requestByteLimit} bytes)`;
+            const message = `FuryPipe serialized request exceeds model limit (${r.body.byteLength} > ${requestByteLimit} bytes)`;
             fire(413, r.info, message);
             const error = isMessages
               ? { type: 'error', error: { type: 'request_too_large', message } }
@@ -1894,7 +1894,7 @@ let responseContentType: string | undefined;
           }), { status: 400, headers: { 'content-type': 'application/json' } });
         }
         fire(502, undefined, `transform_error: ${(e as Error).message}`);
-        return new Response(JSON.stringify({ error: 'pxpipe transform failed' }), {
+        return new Response(JSON.stringify({ error: 'FuryPipe transform failed' }), {
           status: 502,
           headers: { 'content-type': 'application/json' },
         });
@@ -2064,7 +2064,7 @@ let responseContentType: string | undefined;
       headersTimer = setTimeout(() => {
         headersTimer = undefined;
         timeoutKind = 'headers';
-        upstreamAbort.abort(new Error('pxpipe: upstream headers timeout'));
+        upstreamAbort.abort(new Error('FuryPipe: upstream headers timeout'));
         resolve(HEADERS_TIMEOUT);
       }, headersTimeoutMs);
     });
@@ -2091,13 +2091,13 @@ let responseContentType: string | undefined;
       if (raced === HEADERS_TIMEOUT) {
         // Abandoned: keep its eventual rejection from surfacing as unhandled.
         void upstreamFetch.catch(() => undefined);
-        throw new Error('pxpipe: upstream headers timeout');
+        throw new Error('FuryPipe: upstream headers timeout');
       }
       upstreamRes = raced;
       // Watch the raw upstream stream, before any bridge re-encodes it.
       upstreamRes = withIdleTimeout(upstreamRes, headersTimeoutMs, idleTimeoutMs, () => {
         timeoutKind = 'idle';
-        upstreamAbort.abort(new Error('pxpipe: upstream stalled'));
+        upstreamAbort.abort(new Error('FuryPipe: upstream stalled'));
       });
       if (bridgedGptMessages) {
         upstreamRes = await openAIResponsesToAnthropicResponse(upstreamRes, requestModel ?? '');
@@ -2112,13 +2112,13 @@ let responseContentType: string | undefined;
           ? `no response headers within ${headersTimeoutMs}ms`
           : `no upstream bytes for ${idleTimeoutMs}ms`;
         fire(504, info, `upstream_timeout: ${detail}`);
-        return new Response(JSON.stringify({ error: `pxpipe upstream timeout (${detail})` }), {
+        return new Response(JSON.stringify({ error: `FuryPipe upstream timeout (${detail})` }), {
           status: 504,
           headers: { 'content-type': 'application/json' },
         });
       }
       fire(502, info, `upstream_error: ${(e as Error).message}`);
-      return new Response(JSON.stringify({ error: 'pxpipe upstream unreachable' }), {
+      return new Response(JSON.stringify({ error: 'FuryPipe upstream unreachable' }), {
         status: 502,
         headers: { 'content-type': 'application/json' },
       });
@@ -2190,7 +2190,7 @@ let teed: Response;
           clearHeadersTimer();
           releaseInFlight();
           if (!upstreamAbort.signal.aborted) {
-            upstreamAbort.abort(new Error('pxpipe: client disconnected'));
+            upstreamAbort.abort(new Error('FuryPipe: client disconnected'));
           }
         })
       : null;
