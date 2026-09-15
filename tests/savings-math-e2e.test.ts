@@ -1,14 +1,14 @@
 /**
  * END-TO-END savings-MATH contract through the REAL proxy.
  *
- * Cache tests (cache-stability-e2e) prove pxpipe doesn't bust the cache. THIS
- * file proves the prior question: pxpipe's gate gets the MATH right, so it never
+ * Cache tests (cache-stability-e2e) prove FuryPipe doesn't bust the cache. THIS
+ * file proves the prior question: FuryPipe's gate gets the MATH right, so it never
  * makes a request MORE expensive than leaving it as text. A wrong gate is worse
  * than a cache miss — it silently inverts the product (you pay more than not
- * running pxpipe at all), with no error.
+ * running FuryPipe at all), with no error.
  *
  *   fake api  = the upstream output (canned response + count_tokens ground truth)
- *   our input = pxpipe's transform + gate decision, read off the onRequest event
+ *   our input = FuryPipe's transform + gate decision, read off the onRequest event
  *
  * CRITICAL: these run with REALISTIC gate settings (transform: {} → defaults).
  * The cache tests used charsPerToken:1 to FORCE imaging — that would rig this
@@ -23,18 +23,18 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createProxy, type ProxyEvent } from '../src/core/proxy.js';
 import { countTokens as o200k } from 'gpt-tokenizer/encoding/o200k_base';
 
-// The GPT tests below drive exact Sol. Pin PXPIPE_MODELS so the suite is
+// The GPT tests below drive exact Sol. Pin FURYPIPE_MODELS so the suite is
 // deterministic regardless of the developer's shell (same convention as
 // proxy-usage.test.ts) — without this, the file passes or fails depending on
 // ambient env, which is exactly what broke CI.
-let ambientPxpipeModels: string | undefined;
+let ambientFuryPipeModels: string | undefined;
 beforeAll(() => {
-  ambientPxpipeModels = process.env.PXPIPE_MODELS;
-  process.env.PXPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol';
+  ambientFuryPipeModels = process.env.FURYPIPE_MODELS;
+  process.env.FURYPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol';
 });
 afterAll(() => {
-  if (ambientPxpipeModels === undefined) delete process.env.PXPIPE_MODELS;
-  else process.env.PXPIPE_MODELS = ambientPxpipeModels;
+  if (ambientFuryPipeModels === undefined) delete process.env.FURYPIPE_MODELS;
+  else process.env.FURYPIPE_MODELS = ambientFuryPipeModels;
 });
 
 const PROBE_TOKENS = 9999; // canned count_tokens result from the fake upstream
