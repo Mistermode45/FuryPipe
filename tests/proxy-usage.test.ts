@@ -2,14 +2,14 @@ import { afterAll, beforeAll, describe, it, expect } from 'vitest';
 import { createProxy, type ProxyEvent } from '../src/core/proxy.js';
 
 // Pin the model scope so these proxy-contract tests stay independent of the developer shell.
-let ambientPxpipeModels: string | undefined;
+let ambientFuryPipeModels: string | undefined;
 beforeAll(() => {
-  ambientPxpipeModels = process.env.PXPIPE_MODELS;
-  process.env.PXPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol,gemini-3.6-flash';
+  ambientFuryPipeModels = process.env.FURYPIPE_MODELS;
+  process.env.FURYPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol,gemini-3.6-flash';
 });
 afterAll(() => {
-  if (ambientPxpipeModels === undefined) delete process.env.PXPIPE_MODELS;
-  else process.env.PXPIPE_MODELS = ambientPxpipeModels;
+  if (ambientFuryPipeModels === undefined) delete process.env.FURYPIPE_MODELS;
+  else process.env.FURYPIPE_MODELS = ambientFuryPipeModels;
 });
 
 /** Tiny in-process mock upstream — accepts any request and returns whatever
@@ -362,7 +362,7 @@ describe('proxy usage extraction', () => {
       'http://localhost/google-ai-studio/v1beta/models/gemini-3.6-flash:generateContent',
       {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-pxpipe-bypass': '1' },
+        headers: { 'content-type': 'application/json', 'x-furypipe-bypass': '1' },
         body,
       },
     ));
@@ -662,7 +662,7 @@ describe('proxy usage extraction', () => {
       upstream = req.clone();
       return new Response(JSON.stringify({
         id: 'chatcmpl_vision', model: 'moonshotai/kimi-k3',
-        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'PXPIPE-NONCE' } }],
+        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'FURYPIPE-NONCE' } }],
         usage: { prompt_tokens: 10, completion_tokens: 2 },
       }), { headers: { 'content-type': 'application/json' } });
     });
@@ -712,7 +712,7 @@ describe('proxy usage extraction', () => {
         { type: 'text', text: 'Return the visible nonce.' },
       ] },
     ]);
-    expect(converted.content).toEqual([{ type: 'text', text: 'PXPIPE-NONCE' }]);
+    expect(converted.content).toEqual([{ type: 'text', text: 'FURYPIPE-NONCE' }]);
   });
 
   it('rejects Messages blocks that the Responses bridge cannot preserve', async () => {
@@ -762,9 +762,9 @@ describe('proxy usage extraction', () => {
   it('routes a scope-listed Kimi model to Cloudflare, not the Responses bridge', async () => {
     // Scope alone must not classify a model as GPT: kimi is listed here, yet
     // it has to take the Chat Completions bridge because its NAME is not
-    // GPT/Grok-shaped. Regression for the shared-PXPIPE_MODELS routing hole.
-    const prior = process.env.PXPIPE_MODELS;
-    process.env.PXPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol,moonshotai/kimi-k3';
+    // GPT/Grok-shaped. Regression for the shared-FURYPIPE_MODELS routing hole.
+    const prior = process.env.FURYPIPE_MODELS;
+    process.env.FURYPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol,moonshotai/kimi-k3';
     let upstream: Request | undefined;
     const restore = mockUpstream((req) => {
       upstream = req.clone();
@@ -789,8 +789,8 @@ describe('proxy usage extraction', () => {
     }));
     const body = await res.json() as any;
     restore();
-    if (prior === undefined) delete process.env.PXPIPE_MODELS;
-    else process.env.PXPIPE_MODELS = prior;
+    if (prior === undefined) delete process.env.FURYPIPE_MODELS;
+    else process.env.FURYPIPE_MODELS = prior;
     expect(upstream?.url).toBe('https://kimi.test/v1/chat/completions');
     expect(upstream?.headers.get('authorization')).toBe('Bearer tok_kimi');
     const sent = JSON.parse(await upstream!.text());
@@ -850,8 +850,8 @@ describe('proxy usage extraction', () => {
   });
 
   it('uses the resolved Kimi model for compression eligibility and telemetry', async () => {
-    const prior = process.env.PXPIPE_MODELS;
-    process.env.PXPIPE_MODELS = 'moonshotai/kimi-k3';
+    const prior = process.env.FURYPIPE_MODELS;
+    process.env.FURYPIPE_MODELS = 'moonshotai/kimi-k3';
     let sent: any;
     let captured: ProxyEvent | undefined;
     const restore = mockUpstream(async (req) => {
@@ -879,8 +879,8 @@ describe('proxy usage extraction', () => {
     await res.text();
     await new Promise((resolve) => setTimeout(resolve, 20));
     restore();
-    if (prior === undefined) delete process.env.PXPIPE_MODELS;
-    else process.env.PXPIPE_MODELS = prior;
+    if (prior === undefined) delete process.env.FURYPIPE_MODELS;
+    else process.env.FURYPIPE_MODELS = prior;
     expect(sent.model).toBe('moonshotai/kimi-k3');
     expect(captured?.model).toBe('moonshotai/kimi-k3');
     expect(captured?.info?.reason).not.toBe('unsupported_model');
@@ -1570,7 +1570,7 @@ describe('proxy usage extraction', () => {
     });
     const request = new Request('http://localhost/v1/responses', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-pxpipe-bypass': '1' },
+      headers: { 'content-type': 'application/json', 'x-furypipe-bypass': '1' },
       body,
       duplex: 'half',
     } as RequestInit & { duplex: 'half' });
@@ -1608,7 +1608,7 @@ describe('proxy usage extraction', () => {
     });
     const response = await proxy(new Request('http://localhost/backend-api/codex/responses', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-pxpipe-bypass': '1' },
+      headers: { 'content-type': 'application/json', 'x-furypipe-bypass': '1' },
       body: JSON.stringify({ model: 'gpt-5.6-sol', input: 'hi', stream: true }),
     }));
     await response.text();
@@ -1631,7 +1631,7 @@ describe('proxy usage extraction', () => {
     const proxy = createProxy({ openAIUpstream: 'https://chatgpt.test', onRequest: (event) => { captured = event; } });
     await (await proxy(new Request('http://localhost/backend-api/codex/responses', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-pxpipe-bypass': '1' },
+      headers: { 'content-type': 'application/json', 'x-furypipe-bypass': '1' },
       body: JSON.stringify({ model: 'gpt-5.6-sol', input: 'hi', stream: false }),
     }))).text();
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -2828,14 +2828,14 @@ describe('proxy usage extraction', () => {
   });
 
   it('rejects a compressed final provider body above its profile byte cap', async () => {
-    const prev = process.env.PXPIPE_GPT_PROFILES;
+    const prev = process.env.FURYPIPE_GPT_PROFILES;
     let upstreamCalls = 0;
     const restore = mockUpstream(() => {
       upstreamCalls++;
       return new Response('{}', { headers: { 'content-type': 'application/json' } });
     });
     try {
-      process.env.PXPIPE_GPT_PROFILES = JSON.stringify({
+      process.env.FURYPIPE_GPT_PROFILES = JSON.stringify({
         'gpt-5.6-sol': { maxSerializedRequestBytes: 1 },
       });
       let captured: ProxyEvent | undefined;
@@ -2864,20 +2864,20 @@ describe('proxy usage extraction', () => {
       expect(captured?.info?.sizeLimitOutcome).toBe('rejected');
     } finally {
       restore();
-      if (prev === undefined) delete process.env.PXPIPE_GPT_PROFILES;
-      else process.env.PXPIPE_GPT_PROFILES = prev;
+      if (prev === undefined) delete process.env.FURYPIPE_GPT_PROFILES;
+      else process.env.FURYPIPE_GPT_PROFILES = prev;
     }
   });
 
   it('does not apply the profile byte cap to an uncompressed pass-through body', async () => {
-    const prev = process.env.PXPIPE_GPT_PROFILES;
+    const prev = process.env.FURYPIPE_GPT_PROFILES;
     let forwarded = '';
     const restore = mockUpstream(async (req) => {
       forwarded = await req.text();
       return new Response('{}', { headers: { 'content-type': 'application/json' } });
     });
     try {
-      process.env.PXPIPE_GPT_PROFILES = JSON.stringify({
+      process.env.FURYPIPE_GPT_PROFILES = JSON.stringify({
         'gpt-5.6-sol': { maxSerializedRequestBytes: 1 },
       });
       const proxy = createProxy({
@@ -2900,8 +2900,8 @@ describe('proxy usage extraction', () => {
       expect(forwarded).toBe(body);
     } finally {
       restore();
-      if (prev === undefined) delete process.env.PXPIPE_GPT_PROFILES;
-      else process.env.PXPIPE_GPT_PROFILES = prev;
+      if (prev === undefined) delete process.env.FURYPIPE_GPT_PROFILES;
+      else process.env.FURYPIPE_GPT_PROFILES = prev;
     }
   });
 
