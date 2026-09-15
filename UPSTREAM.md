@@ -1,24 +1,81 @@
-# Upstream pxpipe
+# FuryPipe upstream provenance
 
-## État épinglé
+FuryPipe has historical roots in the open-source `pxpipe` repository and has since evolved into a broader governed AI workflow runtime.
 
-- URL : `https://github.com/teamchong/pxpipe.git`
-- Remote : `upstream`
-- Branche auditée : `main`
-- Commit exact : `8ba82b713a1e823bc1c09b7a68e47f63caa7b426`
-- Fetch/audit local : 2026-09-11
-- Repository cible : `https://github.com/Mistermode45/FuryPipe.git`
+This document records provenance. It is **not** the current product status page; use [README.md](README.md) and [CHANGELOG.md](CHANGELOG.md) for current public release information.
 
-Le dépôt FuryPipe local part de ce commit upstream. Il contient désormais des ajouts locaux explicitement séparés : ExactGuard, Recovery Store, doctor CLI, identité package `furypipe` et correctif de build Windows. Aucun commit upstream n’a été réécrit et aucun changement n’a été poussé.
+## Audited upstream baseline
 
-## Cible V5 et branche de travail
+- upstream repository: `https://github.com/teamchong/pxpipe.git`
+- audited upstream branch: `main`
+- audited upstream commit: `8ba82b713a1e823bc1c09b7a68e47f63caa7b426`
+- original local fetch/audit date: **2026-09-11**
+- FuryPipe repository: `https://github.com/Mistermode45/FuryPipe.git`
 
-- Repository cible vérifié : `https://github.com/Mistermode45/FuryPipe.git`
-- Baseline demandée et vérifiée : `26a9be93a765576ce338ed5b8d02bbff9f3f76fe`
-- Branche de travail locale : `v5-production-hardening`
-- Base de la branche : `26a9be93…`
-- État : aucun push, merge, publication npm ou déploiement.
+The audited upstream commit is preserved as a provenance reference. FuryPipe does not claim that later FuryPipe behavior, architecture or release evidence is provided by that upstream snapshot.
 
-## Licence et provenance
+## FuryPipe divergence
 
-Le fichier `LICENSE` upstream est conservé. Il déclare MIT mais porte le copyright `claude-image-proxy contributors`; cette attribution doit être clarifiée avant publication FuryPipe. Toute intégration supplémentaire doit être inscrite dans `SOURCE_LEDGER.md`, soumise à un audit de licence et accompagnée des notices nécessaires avant vendoring.
+FuryPipe extends the historical base with substantial FuryPipe-specific systems, including:
+
+- FuryPipe package and CLI identity;
+- ExactGuard;
+- Recovery Store and recovery evidence;
+- Context IR / Context Fabric;
+- Capability Router;
+- Instruction Fabric;
+- Context Optimizer;
+- Task Orchestrator;
+- Agent Fabric / Agent Runtime;
+- Continuous Memory / Long-Term Memory;
+- provider fabrics, governed provider execution and streaming;
+- modern MCP and hosted-conformance work;
+- Control Room and Web Studio;
+- release-readiness, security, provenance and supply-chain gates.
+
+The authoritative current implementation is the FuryPipe repository, not the upstream pxpipe repository.
+
+## Legacy compatibility
+
+FuryPipe intentionally retains limited compatibility with historical pxpipe interfaces.
+
+Current compatibility includes:
+
+- the `pxpipe` CLI alias;
+- selected `PXPIPE_*` environment variables;
+- selected legacy filesystem locations when no FuryPipe-native location exists.
+
+These are migration surfaces, not preferred public interfaces.
+
+New integrations should use:
+
+- `furypipe`;
+- `FURYPIPE_*`;
+- FuryPipe documentation and package exports.
+
+See [COMPATIBILITY.md](COMPATIBILITY.md).
+
+## License and attribution
+
+The upstream MIT license and its existing copyright attribution remain preserved in [LICENSE](LICENSE).
+
+Third-party and upstream obligations are tracked in:
+
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- [SOURCE_LEDGER.md](SOURCE_LEDGER.md)
+- [SKILL_LICENSE_MATRIX.md](SKILL_LICENSE_MATRIX.md)
+
+Preserving upstream attribution does not imply that upstream maintainers endorse FuryPipe, and FuryPipe does not claim ownership of third-party work.
+
+## Release history
+
+The earlier V5 hardening branch and PR history are retained in repository history and evidence documents. They should not be read as current lifecycle status.
+
+Current public release status:
+
+- FuryPipe `v0.13.2`: released **2026-09-15**
+- npm `furypipe@0.13.2`: published
+- GitHub Release `v0.13.2`: published
+- production deployment: separate lifecycle state
+
+Exact release details are recorded in [docs/RELEASE_SECURITY.md](docs/RELEASE_SECURITY.md).

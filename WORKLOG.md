@@ -1,5 +1,9 @@
 # FuryPipe — journal d’exécution
 
+> [!NOTE]
+> **Historical engineering worklog.** Statements such as “no merge/publish/release” are accurate only for the dated checkpoint where they appear. FuryPipe `v0.13.2` is now publicly released; current status lives in [README.md](README.md) and [docs/RELEASE_SECURITY.md](docs/RELEASE_SECURITY.md).
+
+
 ## 2026-09-11 — M0 checkpoint initial
 
 - Workspace de départ : `C:\Users\loicd\Desktop\FuryPipe-Build` non Git, starter pack conservé.

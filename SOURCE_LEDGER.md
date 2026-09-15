@@ -2,7 +2,7 @@
 
 | ID | Source | Type | Référence | Accès | Licence / provenance | Décision | Confiance |
 |---|---|---|---|---|---|---|---|
-| SRC-001 | https://github.com/teamchong/pxpipe | dépôt upstream | `8ba82b713a1e823bc1c09b7a68e47f63caa7b426` | 2026-09-11 | MIT déclaré ; copyright du fichier `LICENSE` = `claude-image-proxy contributors` ; attribution à clarifier avant publication | Base locale FuryPipe, non publiée | vérifiée statiquement |
+| SRC-001 | https://github.com/teamchong/pxpipe | dépôt upstream | `8ba82b713a1e823bc1c09b7a68e47f63caa7b426` | 2026-09-11 | MIT déclaré ; copyright du fichier `LICENSE` = `claude-image-proxy contributors` ; attribution upstream conservée ; provenance documentée avant/après publication | Base locale FuryPipe, non publiée | vérifiée statiquement |
 | SRC-002 | https://github.com/Mistermode45/FuryPipe | dépôt cible | dépôt vide au clone | 2026-09-11 | Propriété du dépôt cible, aucun code présent avant import upstream | Destination locale, pas une preuve de publication | vérifiée |
 | SRC-003 | https://nodejs.org/en/about/previous-releases | documentation officielle | Node.js 26.8.2 | 2026-09-11 | Release actuelle vérifiée ; MSI officiel SHA-256 vérifié localement | Toolchain locale | vérifiée |
 | SRC-004 | https://docs.npmjs.com/trusted-publishers/ | publication/provenance npm | documentation consultée | 2026-09-11 | OIDC trusted publishing ; npm >=11.5.1 et Node >=22.14.0 ; provenance automatique sous conditions | Release future seulement, aucune publication faite | vérifiée documentaire |
