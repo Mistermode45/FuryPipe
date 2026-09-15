@@ -9,8 +9,8 @@
  *
  * Syntax is one line, one pin, wherever the user can type:
  *
- *     @pxpipe pin be concise, no walls of text
- *     @pxpipe unpin
+ *     @furypipe pin be concise, no walls of text
+ *     @furypipe unpin
  *
  * The line is identical in a rules file (durable) and in a chat turn (session-only),
  * so a session pin that works is made permanent by pasting it into the file. What
@@ -29,7 +29,7 @@
  *
  * State is re-derived from the transcript on every request — no store, no session
  * id (the Messages API has none), and rewinding the conversation rewinds the pins.
- * This works even though we strip the commands from the outbound copy: pxpipe only
+ * This works even though we strip the commands from the outbound copy: FuryPipe only
  * rewrites the request going upstream, so the client's own transcript keeps
  * re-sending them verbatim every turn.
  */
@@ -42,13 +42,13 @@ const PIN_MAX_CHARS = 300;
 /** Total pinned text emitted at the tail. A pin that dilutes itself is not a pin. */
 const PIN_TOTAL_MAX_CHARS = 2000;
 
-// `@pxpipe pin <text>` / `@pxpipe unpin`, `>pxpipe pin`, `> pxpipe pin`,
+// `@furypipe pin <text>` / `@furypipe unpin`, `>furypipe pin`, `> FuryPipe pin`,
 // anchored to a whole line so removal is a whole-line delete - deterministic,
 // with no leftover blank-line ambiguity. That determinism is what lets us MOVE
 // pins (strip from source, emit at tail) instead of copying: the rewrite stays
 // a pure function of the message, so the protected prefix remains byte-stable
 // turn to turn, exactly like demoteProtectedHeadText.
-const PIN_CMD_RE = /^(?:>[ \t]*)?@?pxpipe[ \t]+(pin|unpin)\b(.*)$/;
+const PIN_CMD_RE = /^(?:>[ \t]*)?@?furypipe[ \t]+(pin|unpin)\b(.*)$/;
 
 /**
  * Parse one line as a pin command. Returns null when it isn't one.
@@ -97,10 +97,10 @@ function stripReminders(text: string): string {
 /** Opening marker of a synthesized pin confirmation. We generate these, so the
  *  match is on bytes we control, not a heuristic that could eat a real reply. */
 /** Prefix on every synthesized reply, and the whole test for recognizing one on
- *  the way back in. Shares the `@pxpipe` namespace with the commands so there is
+ *  the way back in. Shares the `@furypipe` namespace with the commands so there is
  *  one token to learn and one to match, and unlike `·` it survives any encoding
  *  or copy/paste the transcript is put through. */
-export const PIN_REPLY_MARK = '@pxpipe ';
+export const PIN_REPLY_MARK = '@furypipe ';
 
 /**
  * Which tier a pin lives in. `'file'`, not `'claude.md'`: the same tier holds
@@ -131,10 +131,10 @@ export interface Pin {
 /**
  * Fold every pin command in the transcript, oldest to newest.
  *
- *   @pxpipe unpin 2        remove the pin listed as 2
- *   @pxpipe unpin use tabs remove by text (exact, else prefix)
- *   @pxpipe unpin all      clear every session pin
- *   @pxpipe unpin          NOT destructive — prints the list
+ *   @furypipe unpin 2        remove the pin listed as 2
+ *   @furypipe unpin use tabs remove by text (exact, else prefix)
+ *   @furypipe unpin all      clear every session pin
+ *   @furypipe unpin          NOT destructive — prints the list
  *
  * Bare `unpin` used to clear everything and then print what survived, which read
  * as a menu and destroyed the thing the user was still deciding about. Removal now
@@ -173,7 +173,7 @@ function applyPinLine(
   // severed rule reads to the model as a whole one — "do X unless Y" becomes
   // "do X" — while the user's own transcript still shows the full text.
   const text = raw.length > PIN_MAX_CHARS
-    ? `${raw.slice(0, PIN_MAX_CHARS)}… [pxpipe: pin truncated]`
+    ? `${raw.slice(0, PIN_MAX_CHARS)}… [furypipe: pin truncated]`
     : raw;
   if (source === 'file') {
     // A file is a document, not a list of instructions. Its blank lines and
@@ -202,7 +202,7 @@ function applyPinLine(
  * Resolve one `unpin` argument against the pins in effect at that point.
  *
  * Numbers address the SESSION list only — the same list pinReplyText numbers.
- * This is not cosmetic: an `@pxpipe unpin 2` stays in the transcript and is
+ * This is not cosmetic: an `@furypipe unpin 2` stays in the transcript and is
  * re-folded on every later request, so if numbering also covered CLAUDE.md pins,
  * adding one line to that file would renumber the list underneath a command
  * already given, and it would silently start deleting a different pin.
@@ -241,7 +241,7 @@ function applyUnpin(pins: Pin[], arg: string): void {
  * A reminder block anywhere else is inlined `@`-mention content (the harness reads
  * the file and pastes it in) or a per-turn notice. No file tier backs those, so
  * they pin as `session` and `unpin` can drop them. That is deliberate: an inlined
- * document containing `@pxpipe pin ...` can pin itself, and the removable tier
+ * document containing `@furypipe pin ...` can pin itself, and the removable tier
  * plus the pin report is what makes that visible and reversible.
  */
 function* pinLines(
@@ -409,7 +409,7 @@ export function stripPinCommands(messages: Message[]): Message[] {
     const stripped = stripFromMessage(m);
     if (stripped === null) {
       // Commands and nothing else, with no confirmation to pair with. Keeping
-      // the original would send `@pxpipe pin ...` to the model as if it were a
+      // the original would send `@furypipe pin ...` to the model as if it were a
       // request; dropping it alone would break role alternation, so it goes
       // with the reply that answered it. As the final turn there is no reply
       // yet and proxy.ts answers locally, so leave it for that path.
@@ -549,7 +549,7 @@ export function pinBlockText(pins: Pin[]): string {
   if (lines.length === 0) return '';
   return [
     '<system-reminder>',
-    '[pxpipe pin] The user pinned these instructions and pxpipe relocated them here,',
+    '[furypipe pin] The user pinned these instructions and FuryPipe relocated them here,',
     'last in the request, because rules stated far above get read as background. They',
     "are the user's own words and they govern this reply; on conflict they win.",
     ...lines,
@@ -628,12 +628,12 @@ export function pinReplyText(pins: Pin[], verb: PinVerb = 'pin'): string {
         : '';
       return `${PIN_REPLY_MARK}nothing to unpin${fromFile}`;
     }
-    const lines = [`session   (@pxpipe unpin <n>, or unpin all)`, ''];
+    const lines = [`session   (@furypipe unpin <n>, or unpin all)`, ''];
     session.forEach((p, i) => lines.push(`${i + 1}. ${p.text}`));
     return `${PIN_REPLY_MARK}${session.length} removable\n${lines.join('\n')}`;
   }
   if (pins.length === 0) {
-    return `${PIN_REPLY_MARK}nothing pinned\n  @pxpipe pin <instruction>`;
+    return `${PIN_REPLY_MARK}nothing pinned\n  @furypipe pin <instruction>`;
   }
   // Grouped under a source header rather than tagging each line: against a real
   // CLAUDE.md the tag repeats down the whole list and buries the text it means to
@@ -649,7 +649,7 @@ export function pinReplyText(pins: Pin[], verb: PinVerb = 'pin'): string {
     for (const p of group.pins) out.push(p.text);
   }
   if (session.length > 0) {
-    out.push('', `session   (@pxpipe unpin <n>, or unpin all)`, '');
+    out.push('', `session   (@furypipe unpin <n>, or unpin all)`, '');
     session.forEach((p, i) => out.push(`${i + 1}. ${p.text}`));
   }
   return `${PIN_REPLY_MARK}${pins.length} pinned\n${out.slice(1).join('\n')}`;
@@ -727,7 +727,7 @@ export function pinCommandResponse(
     // answers "nothing pinned" to a user staring at four pinned lines. The
     // OpenAI twin below has always passed its own system field.
     pinReplyText(foldPins(req.messages, req.system), liveVerb(liveTurn(req.messages))),
-    typeof req.model === 'string' ? req.model : 'pxpipe',
+    typeof req.model === 'string' ? req.model : 'furypipe',
     req.stream === true,
   );
 }
@@ -740,7 +740,7 @@ export function synthesizeReply(
   model: string,
   stream: boolean,
 ): { body: string; contentType: string } {
-  const id = `msg_pxpipe_pin_${Date.now().toString(36)}`;
+  const id = `msg_furypipe_pin_${Date.now().toString(36)}`;
   const usage = { input_tokens: 0, output_tokens: 0 };
   if (!stream) {
     return {
@@ -1010,7 +1010,7 @@ export function pinCommandResponseOpenAI(
     foldPins(norm.messages, norm.system),
     liveVerb(norm.messages[norm.messages.length - 1]),
   );
-  const model = typeof req.model === 'string' ? req.model : 'pxpipe';
+  const model = typeof req.model === 'string' ? req.model : 'furypipe';
   return wire === 'responses'
     ? synthesizeResponsesReply(text, model, req.stream === true)
     : synthesizeChatReply(text, model, req.stream === true);
@@ -1023,7 +1023,7 @@ export function synthesizeChatReply(
   model: string,
   stream: boolean,
 ): { body: string; contentType: string } {
-  const id = `chatcmpl_pxpipe_pin_${Date.now().toString(36)}`;
+  const id = `chatcmpl_furypipe_pin_${Date.now().toString(36)}`;
   const created = Math.floor(Date.now() / 1000);
   if (!stream) {
     return {
@@ -1069,8 +1069,8 @@ export function synthesizeResponsesReply(
   stream: boolean,
 ): { body: string; contentType: string } {
   const stamp = Date.now().toString(36);
-  const id = `resp_pxpipe_pin_${stamp}`;
-  const itemId = `msg_pxpipe_pin_${stamp}`;
+  const id = `resp_furypipe_pin_${stamp}`;
+  const itemId = `msg_furypipe_pin_${stamp}`;
   const created_at = Math.floor(Date.now() / 1000);
   const usage = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
   const item = {
