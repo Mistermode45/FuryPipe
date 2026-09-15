@@ -135,7 +135,7 @@ describe('rendered-page cache', () => {
 // module under a different env instead of mutating a live cache.
 async function freshRender(maxBytes: string) {
   vi.resetModules();
-  vi.stubEnv('PXPIPE_RENDER_CACHE_BYTES', maxBytes);
+  vi.stubEnv('FURYPIPE_RENDER_CACHE_BYTES', maxBytes);
   const mod = await import('../src/core/render.js');
   mod.clearRenderCache();
   return mod;
@@ -220,7 +220,7 @@ describe('rendered-page cache budget', () => {
     expect(stats.evictions).toBe(0);
   });
 
-  it('PXPIPE_RENDER_CACHE_BYTES=0 disables caching entirely', async () => {
+  it('FURYPIPE_RENDER_CACHE_BYTES=0 disables caching entirely', async () => {
     const mod = await freshRender('0');
     await mod.renderTextToPngsWithCharLimit('hello world', 64);
     await mod.renderTextToPngsWithCharLimit('hello world', 64);
@@ -236,7 +236,7 @@ describe('rendered-page cache budget', () => {
   });
 });
 
-// A Worker never sees PXPIPE_RENDER_CACHE_BYTES through process.env — bindings arrive
+// A Worker never sees FURYPIPE_RENDER_CACHE_BYTES through process.env — bindings arrive
 // per request, long after this module evaluated — so the budget has to be settable
 // after load. src/worker.ts calls this on every request.
 describe('setRenderCacheMaxBytes', () => {
