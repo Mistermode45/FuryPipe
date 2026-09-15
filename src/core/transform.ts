@@ -1647,10 +1647,28 @@ export function extractEnvFields(dynamicText: string): EnvFields {
   }
 
   // Branch may be in <git_status>, <context name="git">, or a bare "Branch:" / "On branch" line.
-  const branch =
-    /(?:^|\n)\s*(?:On branch|Branch:)\s*([^\s\n]+)/i.exec(dynamicText) ??
-    /(?:^|\n)\s*Current branch:\s*([^\s\n]+)/i.exec(dynamicText);
-  if (branch) out.gitBranch = branch[1]!.trim();
+  // Parse linearly instead of applying a backtracking regex to uncontrolled text.
+  for (const rawLine of dynamicText.split('\n')) {
+    const line = rawLine.trim();
+    const lower = line.toLowerCase();
+    let value: string | undefined;
+
+    if (lower.startsWith('on branch ')) value = line.slice('on branch '.length).trimStart();
+    else if (lower.startsWith('branch:')) value = line.slice('branch:'.length).trimStart();
+    else if (lower.startsWith('current branch:')) value = line.slice('current branch:'.length).trimStart();
+
+    if (!value) continue;
+    let end = 0;
+    while (end < value.length) {
+      const code = value.charCodeAt(end);
+      if (code === 9 || code === 10 || code === 11 || code === 12 || code === 13 || code === 32) break;
+      end++;
+    }
+    if (end > 0) {
+      out.gitBranch = value.slice(0, end);
+      break;
+    }
+  }
 
   return out;
 }
