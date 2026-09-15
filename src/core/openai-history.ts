@@ -4,7 +4,7 @@
  * The static system+tool slab is small (~30k chars); the bulk of a GPT agent
  * request is the conversation transcript, which OpenCode resends in full every
  * turn — the Responses API is driven statelessly here (no `previous_response_id`),
- * so turns 1..N-1 are re-sent as plain text on turn N. pxpipe collapses the OLD
+ * so turns 1..N-1 are re-sent as plain text on turn N. FuryPipe collapses the OLD
  * closed-tool-call prefix of that transcript into 1-N PNG images and keeps the
  * recent tail as text.
  *
