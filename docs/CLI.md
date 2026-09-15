@@ -134,6 +134,8 @@ FURYPIPE_HOST=127.0.0.1
 FURYPIPE_PORT=48721
 ```
 
+If the selected listener port is already occupied, `furypipe start` fails closed with a FuryPipe-owned diagnostic and instructs the operator to select a free `FURYPIPE_PORT`; it does not reuse or attach to the process that already owns the port.
+
 `furypipe setup`, `furypipe doctor`, `furypipe export` and `furypipe stats` are offline commands and do not bind the runtime port.
 
 ## Distribution and release status
