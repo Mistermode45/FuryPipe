@@ -16,7 +16,6 @@ import { isIP } from 'node:net';
 import { spawnSync } from 'node:child_process';
 import { createProxy, parseGatewayHeaders, type ProxyConfig } from './core/proxy.js';
 import { createOmniRouteProxyConfig } from './core/omniroute.js';
-import { furyEnvValue } from './core/env-compat.js';
 import {
   parseExportArgv,
   runExportCore,
@@ -38,6 +37,7 @@ import {
 import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
 import { runSetupWizard } from './setup-tui.js';
+import { FURYPIPE_DEFAULT_HOST, FURYPIPE_DEFAULT_PORT, parseFuryPipePort } from './runtime-defaults.js';
 import { createControlRoomRuntime } from './control-room/runtime.js';
 import { loadControlRoomHostEvidence, type ControlRoomHostEvidence } from './control-room/evidence-file.js';
 import {
@@ -77,20 +77,14 @@ interface RuntimeConfig {
 }
 
 const DEFAULT_CONFIG_FILE = path.join(os.homedir(), '.config', 'furypipe', 'config.json');
-const LEGACY_CONFIG_FILE = path.join(os.homedir(), '.config', 'pxpipe', 'config.json');
 const DEFAULT_EVENTS_FILE = path.join(os.homedir(), '.furypipe', 'events.jsonl');
-const LEGACY_EVENTS_FILE = path.join(os.homedir(), '.pxpipe', 'events.jsonl');
-
-function compatibilityDefault(primary: string, legacy: string): string {
-  return fs.existsSync(primary) || !fs.existsSync(legacy) ? primary : legacy;
-}
 
 function defaultConfigFile(): string {
-  return compatibilityDefault(DEFAULT_CONFIG_FILE, LEGACY_CONFIG_FILE);
+  return DEFAULT_CONFIG_FILE;
 }
 
 function defaultEventsFile(): string {
-  return compatibilityDefault(DEFAULT_EVENTS_FILE, LEGACY_EVENTS_FILE);
+  return DEFAULT_EVENTS_FILE;
 }
 
 function controlRoomSourceCommit(): string | undefined {
@@ -139,7 +133,7 @@ function normalizeModelsConfig(value: unknown): string | undefined {
 }
 
 function applyConfigFileDefaults(): void {
-  const file = furyEnvValue(process.env.FURYPIPE_CONFIG, process.env.PXPIPE_CONFIG) ?? defaultConfigFile();
+  const file = process.env.FURYPIPE_CONFIG?.trim() || defaultConfigFile();
   if (!fs.existsSync(file)) return;
   let parsed: unknown;
   try {
@@ -153,7 +147,7 @@ function applyConfigFileDefaults(): void {
 
   // Env wins over file config. The dashboard can still override the scope at
   // runtime (in-memory) for an emergency live flip.
-  if (furyEnvValue(process.env.FURYPIPE_MODELS, process.env.PXPIPE_MODELS) === undefined) {
+  if (process.env.FURYPIPE_MODELS === undefined) {
     const models = normalizeModelsConfig(cfg.models);
     if (models !== undefined) process.env.FURYPIPE_MODELS = models;
   }
@@ -165,7 +159,7 @@ function applyConfigFileDefaults(): void {
  *  NOTE: on the next start an explicit FURYPIPE_MODELS env still wins over the
  *  persisted value (same precedence as every other config-file default). */
 function persistModelBasesToConfig(bases: readonly string[]): void {
-  const file = furyEnvValue(process.env.FURYPIPE_CONFIG, process.env.PXPIPE_CONFIG) ?? defaultConfigFile();
+  const file = process.env.FURYPIPE_CONFIG ?? defaultConfigFile();
   let cfg: Record<string, unknown> = {};
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
@@ -221,7 +215,7 @@ function parseCli(argv: string[]): RuntimeConfig {
     }
   }
   applyConfigFileDefaults();
-  const sharedUpstream = furyEnvValue(process.env.FURYPIPE_UPSTREAM, process.env.PXPIPE_UPSTREAM);
+  const sharedUpstream = process.env.FURYPIPE_UPSTREAM;
   const cfAccount = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
   const cfToken = process.env.CLOUDFLARE_API_TOKEN?.trim();
   const parseModels = (value: string | undefined): string[] | undefined => {
@@ -231,15 +225,22 @@ function parseCli(argv: string[]): RuntimeConfig {
   const cloudflareUpstream = cfAccount && cfToken
     ? `https://api.cloudflare.com/client/v4/accounts/${cfAccount}/ai/v1`
     : undefined;
-  const provider = parseProvider(furyEnvValue(process.env.FURYPIPE_PROVIDER, process.env.PXPIPE_PROVIDER));
-  const genericGatewayBaseUrl = furyEnvValue(process.env.FURYPIPE_GATEWAY_BASE_URL, process.env.PXPIPE_GATEWAY_BASE_URL);
+  const provider = parseProvider(process.env.FURYPIPE_PROVIDER);
+  const genericGatewayBaseUrl = process.env.FURYPIPE_GATEWAY_BASE_URL;
   const gatewayBaseUrl = provider === 'omniroute'
     ? process.env.OMNIROUTE_BASE_URL ?? genericGatewayBaseUrl
     : genericGatewayBaseUrl;
   return {
-    port: Number(process.env.PORT ?? 47821),
+    port: (() => {
+      try {
+        return parseFuryPipePort(process.env.FURYPIPE_PORT);
+      } catch (caught) {
+        console.error(`[furypipe] ${(caught as Error).message}`);
+        process.exit(2);
+      }
+    })(),
     // Loopback by default; opt into all-interfaces exposure explicitly via HOST.
-    host: process.env.HOST?.trim() || '127.0.0.1',
+    host: process.env.FURYPIPE_HOST?.trim() || FURYPIPE_DEFAULT_HOST,
     upstream: process.env.ANTHROPIC_UPSTREAM ?? sharedUpstream ?? 'https://api.anthropic.com',
     openAIUpstream: process.env.OPENAI_UPSTREAM ?? sharedUpstream ?? 'https://api.openai.com',
     openAIApiKey: process.env.OPENAI_API_KEY,
@@ -249,13 +250,13 @@ function parseCli(argv: string[]): RuntimeConfig {
     cloudflareModels: parseModels(process.env.CLOUDFLARE_MODELS),
     provider,
     gatewayBaseUrl,
-    gatewayHeaders: parseGatewayHeaders(furyEnvValue(process.env.FURYPIPE_GATEWAY_HEADERS, process.env.PXPIPE_GATEWAY_HEADERS)),
+    gatewayHeaders: parseGatewayHeaders(process.env.FURYPIPE_GATEWAY_HEADERS),
     omniRouteApiKey: process.env.OMNIROUTE_API_KEY,
-    eventsFile: furyEnvValue(process.env.FURYPIPE_LOG, process.env.PXPIPE_LOG) ?? defaultEventsFile(),
+    eventsFile: process.env.FURYPIPE_LOG ?? defaultEventsFile(),
     // Off by default: either side of a 4xx may hold prompts or secrets.
     // Opt in for debugging only. (issue #69)
-    captureErrorReqBody: furyEnvValue(process.env.FURYPIPE_DEBUG_CAPTURE_4XX, process.env.PXPIPE_DEBUG_CAPTURE_4XX) === '1',
-    maxRequestBytes: parseMaxRequestBytes(furyEnvValue(process.env.FURYPIPE_MAX_REQUEST_BYTES, process.env.PXPIPE_MAX_REQUEST_BYTES)),
+    captureErrorReqBody: process.env.FURYPIPE_DEBUG_CAPTURE_4XX === '1',
+    maxRequestBytes: parseMaxRequestBytes(process.env.FURYPIPE_MAX_REQUEST_BYTES),
   };
 }
 
@@ -299,7 +300,7 @@ Usage:
                         api.anthropic.com/v1/messages is routed by default;
                         --route adds rules for agents that talk to another
                         base URL, e.g.
-                          --route '127.0.0.1:9090/v1/*=http://127.0.0.1:47821'
+                          --route '127.0.0.1:9090/v1/*=http://127.0.0.1:48721'
   furypipe stats [--json] [--file <p>]
                         summarize the events log offline (no server needed),
                         incl. measured savings; defaults to $FURYPIPE_LOG
@@ -309,17 +310,16 @@ and history; tracks events to disk; and measures real saved_pct via
 /v1/messages/count_tokens. Dashboard controls can disable compression live.
 
 Live sessions and cleanup tools live in the dashboard at
-  http://127.0.0.1:<port>/  (default port 47821)
+  http://127.0.0.1:<port>/  (default port 48721)
 For after-the-fact analysis without the server running, use furypipe stats.
-The legacy \`pxpipe\` command remains an equivalent compatibility alias.
 
 Flags:
   -h, --help              show this help
       --version           show version
 
 Environment:
-  PORT                    listen port (default 47821)
-  HOST                    interface to bind (default 127.0.0.1, loopback only).
+  FURYPIPE_PORT           listen port (default 48721)
+  FURYPIPE_HOST           interface to bind (default 127.0.0.1, loopback only).
                           Non-loopback bindings expose only the proxy API;
                           dashboard routes remain loopback-only.
   FURYPIPE_UPSTREAM       upstream API base for every API family
@@ -363,10 +363,10 @@ Environment:
                           context) to disk. Off by default.
 
 Use with Claude Code:
-  ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+  ANTHROPIC_BASE_URL=http://127.0.0.1:48721 claude
 
 Use with OpenAI-compatible GPT clients:
-  OPENAI_BASE_URL=http://127.0.0.1:47821/v1
+  OPENAI_BASE_URL=http://127.0.0.1:48721/v1
 `);
 }
 
@@ -374,12 +374,12 @@ Use with OpenAI-compatible GPT clients:
 // `define`. Under a non-bundled dev runner (tsx) the identifier is not defined;
 // `typeof` returns "undefined" instead of throwing (ECMA-262 §13.5.3), so the
 // guard is safe. `npm_package_version` is only a dev fallback: npm sets it just
-// inside its own run-script env, so for `npx pxpipe-proxy` or a global bin it is
+// inside its own run-script env, so for `npx furypipe` or a global bin it is
 // undefined (or reflects the *consumer's* package), never this tool's version.
-declare const __PXPIPE_VERSION__: string | undefined;
+declare const __FURYPIPE_VERSION__: string | undefined;
 
 function currentVersion(): string {
-  const injected = typeof __PXPIPE_VERSION__ === 'string' ? __PXPIPE_VERSION__ : undefined;
+  const injected = typeof __FURYPIPE_VERSION__ === 'string' ? __FURYPIPE_VERSION__ : undefined;
   return injected ?? 'unknown';
 }
 
@@ -1182,7 +1182,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'stats') {
     // Offline log analysis — reads the events JSONL without a running proxy.
     // The live dashboard covers the same data while FuryPipe is up.
-    const defaultFile = furyEnvValue(process.env.FURYPIPE_LOG, process.env.PXPIPE_LOG) ?? defaultEventsFile();
+    const defaultFile = process.env.FURYPIPE_LOG ?? defaultEventsFile();
     const { code, out, err } = await runStats(argv.slice(1), defaultFile);
     if (out) process.stdout.write(out + '\n');
     if (err) process.stderr.write(err + '\n');
@@ -1237,7 +1237,7 @@ async function main(): Promise<void> {
     return;
   }
   // A/B harness passthrough switch (see the `transform` callback below).
-  const forcePassthrough = /^(1|true|yes|on)$/i.test(furyEnvValue(process.env.FURYPIPE_DISABLE, process.env.PXPIPE_DISABLE) ?? '');
+  const forcePassthrough = /^(1|true|yes|on)$/i.test(process.env.FURYPIPE_DISABLE ?? '');
   if (forcePassthrough) {
     console.log('[furypipe] FURYPIPE_DISABLE set — passthrough mode (compress=false), still logging usage + baselines');
   }
@@ -1272,7 +1272,7 @@ async function main(): Promise<void> {
   // legibility audits, demo inspection). Best-effort — never affects requests.
   // Note: the FURYPIPE_DISABLE arm renders nothing, so only the compress proxy
   // produces files here.
-  let imageDumpDir: string | undefined = furyEnvValue(process.env.FURYPIPE_DUMP_DIR, process.env.PXPIPE_DUMP_DIR)?.trim() || undefined;
+  let imageDumpDir: string | undefined = process.env.FURYPIPE_DUMP_DIR?.trim() || undefined;
   let imageDumpSeq = 0;
   if (imageDumpDir) {
     try {
@@ -1527,7 +1527,7 @@ async function main(): Promise<void> {
       });
   });
 
-  // IPv6 literals need bracket notation to form a valid URL (http://[::1]:47821).
+  // IPv6 literals need bracket notation to form a valid URL.
   const displayHost = opts.host.includes(':') ? `[${opts.host}]` : opts.host;
   const isLoopbackHost =
     opts.host === '127.0.0.1' || opts.host === 'localhost' || opts.host === '::1';
@@ -1546,6 +1546,18 @@ async function main(): Promise<void> {
       );
     }
   };
+
+  server.on('error', (caught: NodeJS.ErrnoException) => {
+    if (caught.code === 'EADDRINUSE') {
+      console.error(`[furypipe] cannot start: http://${displayHost}:${opts.port} is already in use`);
+      console.error('[furypipe] FuryPipe does not reuse another process. Set FURYPIPE_PORT to a free port and retry.');
+      process.exitCode = 1;
+      return;
+    }
+    const message = caught instanceof Error ? caught.message : String(caught);
+    console.error(`[furypipe] server error: ${message}`);
+    process.exitCode = 1;
+  });
 
   server.listen(opts.port, opts.host, () => {
     console.log(`[furypipe] listening on http://${displayHost}:${opts.port}`);
