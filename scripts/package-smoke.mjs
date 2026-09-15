@@ -98,6 +98,22 @@ try {
   await run(npm, ['install', tarball, '--ignore-scripts', '--no-audit', '--no-fund'], installDir);
 
   const packageRoot = path.join(installDir, 'node_modules', 'furypipe');
+
+  const legacyName = ['p', 'x', 'p', 'i', 'p', 'e'].join('');
+  const legacyEnv = legacyName.toUpperCase() + '_';
+  const textExtensions = new Set(['.js', '.mjs', '.cjs', '.ts', '.md', '.json', '.txt']);
+  const identityLeaks = [];
+  for (const entry of metadata.files ?? []) {
+    if (!textExtensions.has(path.extname(entry.path).toLowerCase())) continue;
+    const installedPath = path.join(packageRoot, entry.path);
+    if (!existsSync(installedPath)) continue;
+    const text = await readFile(installedPath, 'utf8');
+    if (text.toLowerCase().includes(legacyName)) identityLeaks.push(entry.path + ': legacy product name');
+    if (text.includes(legacyEnv)) identityLeaks.push(entry.path + ': legacy environment namespace');
+    if (text.includes('47821')) identityLeaks.push(entry.path + ': former default port');
+  }
+  assert(identityLeaks.length === 0, 'published package leaked historical runtime identity:\n' + identityLeaks.join('\n'));
+
   const installedPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
   assert(installedPackage.bin?.furypipe === 'bin/cli.js', 'furypipe executable is missing from the installed package');
   assert(!Object.prototype.hasOwnProperty.call(installedPackage.bin ?? {}, 'pxpipe'), 'legacy pxpipe executable alias leaked into the installed package');
