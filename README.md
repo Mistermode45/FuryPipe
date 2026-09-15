@@ -17,7 +17,7 @@
   <a href="#architecture">Architecture</a> ·
   <a href="#core-capabilities">Capabilities</a> ·
   <a href="#security-model">Security</a> ·
-  <a href="#français">Français</a> ·
+  <a href="#franais">Français</a> ·
   <a href="docs/CLI.md">CLI</a>
 </p>
 
@@ -87,6 +87,12 @@ pnpm test
 pnpm run build
 pnpm run package:smoke
 ```
+
+## Default model scope
+
+Default model scope: `FURYPIPE_MODELS=claude-fable-5,gemini`
+
+`gemini` is a family base. New integrations can override the scope explicitly with `FURYPIPE_MODELS`; legacy `PXPIPE_MODELS` remains a fallback only when the FuryPipe-native value is absent.
 
 ## Architecture
 
@@ -224,6 +230,17 @@ furypipe export --git
 ```
 
 See [docs/CLI.md](docs/CLI.md) for the public CLI contract.
+
+## Offline export (no proxy)
+
+FuryPipe can prepare context artifacts **without running the proxy**.
+
+```bash
+furypipe export --stdin < prompt.txt
+furypipe export --git
+```
+
+Depending on the input, the export can produce `page-*.png`, `factsheet.txt` and `prompt.txt`. This path is useful for inspecting or handing off generated context while keeping proxy execution out of the workflow.
 
 ## Package exports
 
