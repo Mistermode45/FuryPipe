@@ -145,6 +145,38 @@ try {
   assert(setupState.setup?.completed === true, 'setup did not persist completion state');
   assert(setupState.setup?.version === metadata.version, 'setup persisted the wrong package version');
 
+  const occupiedRuntime = createServer();
+  await new Promise((resolve, reject) => {
+    occupiedRuntime.once('error', reject);
+    occupiedRuntime.listen(0, '127.0.0.1', resolve);
+  });
+  const occupiedRuntimeAddress = occupiedRuntime.address();
+  assert(occupiedRuntimeAddress && typeof occupiedRuntimeAddress === 'object', 'could not allocate runtime port-conflict fixture');
+  let conflictError;
+  try {
+    await run(
+      process.execPath,
+      [cli, 'start'],
+      installDir,
+      {
+        ...process.env,
+        FURYPIPE_HOST: '127.0.0.1',
+        FURYPIPE_PORT: String(occupiedRuntimeAddress.port),
+        CI: '1',
+        NO_COLOR: '1',
+      },
+    );
+  } catch (error) {
+    conflictError = error;
+  } finally {
+    await new Promise((resolve) => occupiedRuntime.close(resolve));
+  }
+  assert(conflictError, 'furypipe start unexpectedly succeeded on an occupied port');
+  const conflictOutput = String(conflictError.stdout ?? '') + String(conflictError.stderr ?? '');
+  assert(conflictOutput.includes('[furypipe] cannot start:'), 'occupied-port start did not emit the FuryPipe conflict message');
+  assert(conflictOutput.includes('Set FURYPIPE_PORT to a free port'), 'occupied-port start did not explain the FuryPipe port override');
+  assert(!conflictOutput.includes('node:events:'), 'occupied-port start leaked a Node internal stack');
+
   const doctorEnv = { ...process.env };
   delete doctorEnv.FURYPIPE_PORT;
   delete doctorEnv.FURYPIPE_HOST;
