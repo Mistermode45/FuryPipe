@@ -37,7 +37,7 @@ if (!MODEL) {
 }
 const PROJECT_CC_SETTINGS = { model: MODEL };
 
-const SIDES = { left: '/tmp/pp-demo-left', right: '/tmp/pp-demo-right' };
+const SIDES = { left: '/tmp/furypipe-demo-left', right: '/tmp/furypipe-demo-right' };
 
 for (const [name, dest] of Object.entries(SIDES)) {
   rmSync(dest, { recursive: true, force: true });
@@ -54,9 +54,9 @@ const PROMPT =
   'tests to confirm.';
 
 // Both arms run through a proxy so BOTH are logged. LEFT = passthrough (normal),
-// RIGHT = pxpipe. See demo/cost-ab/README.md for the 4-terminal layout that starts them.
-const ON_PROXY = process.env.DEMO_ON_PROXY ?? 'http://127.0.0.1:47824';   // pxpipe
-const OFF_PROXY = process.env.DEMO_OFF_PROXY ?? 'http://127.0.0.1:47823';  // passthrough
+// RIGHT = FuryPipe. See demo/cost-ab/README.md for the 4-terminal layout that starts them.
+const ON_PROXY = process.env.DEMO_ON_PROXY ?? 'http://127.0.0.1:48724';   // FuryPipe
+const OFF_PROXY = process.env.DEMO_OFF_PROXY ?? 'http://127.0.0.1:48723';  // passthrough
 
 // --setting-sources project -> use ONLY the seeded project settings (model [1m],
 //   no MCP); ignore the user global ~/.claude/settings.json.
@@ -65,15 +65,15 @@ const FLAGS = '--setting-sources project --strict-mcp-config --dangerously-skip-
 
 console.log(`
 Both proxies should already be running in Terminal 1 (see demo/cost-ab/README.md):
-  ON  (pxpipe):      PXPIPE_LOG=~/.pxpipe/ab-on.jsonl  PORT=47824 ... node dist/node.js &
-  OFF (passthrough): PXPIPE_LOG=~/.pxpipe/ab-off.jsonl PORT=47823 PXPIPE_DISABLE=1 ... node dist/node.js &
+  ON  (FuryPipe):      FURYPIPE_LOG=~/.furypipe/ab-on.jsonl  FURYPIPE_PORT=48724 ... node dist/node.js &
+  OFF (passthrough): FURYPIPE_LOG=~/.furypipe/ab-off.jsonl FURYPIPE_PORT=48723 FURYPIPE_DISABLE=1 ... node dist/node.js &
 (Re-run this script before each A/B iteration to reset both /tmp working copies.)
 
 --- Terminal 3 — LEFT column: normal (through the passthrough, logged) ---
-cd /tmp/pp-demo-left  && ANTHROPIC_BASE_URL=${OFF_PROXY} claude ${FLAGS}
+cd /tmp/furypipe-demo-left  && ANTHROPIC_BASE_URL=${OFF_PROXY} claude ${FLAGS}
 
---- Terminal 4 — RIGHT column: pxpipe ---
-cd /tmp/pp-demo-right && ANTHROPIC_BASE_URL=${ON_PROXY} claude ${FLAGS}
+--- Terminal 4 — RIGHT column: FuryPipe ---
+cd /tmp/furypipe-demo-right && ANTHROPIC_BASE_URL=${ON_PROXY} claude ${FLAGS}
 
 --- paste this prompt into BOTH Claude columns ---
 ${PROMPT}
@@ -86,7 +86,7 @@ untouched.
 node --test          # 5 tests; "pass 5 / fail 0" means done
 
 --- COMPARE ---
-node eval/ab/analyze.mjs ~/.pxpipe/ab-on.jsonl ~/.pxpipe/ab-off.jsonl
+node eval/ab/analyze.mjs ~/.furypipe/ab-on.jsonl ~/.furypipe/ab-off.jsonl
 Also /cost inside each column (the in-session list-$ view; NOT /context, which is
 a local pre-proxy estimate and reads the same on both). Read the analyzer output
 honestly: the API-$ view is real if you pay per token; the cap?? column ASSUMES
