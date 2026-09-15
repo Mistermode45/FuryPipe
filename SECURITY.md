@@ -1,8 +1,8 @@
-# Security Policy
+# FuryPipe Security Policy
 
 ## Supported versions
 
-Security fixes are applied to the latest released version of pxpipe. Users
+Security fixes are applied to the latest released version of FuryPipe. Users
 should upgrade to the newest release before reporting a problem that may
 already have been fixed.
 
@@ -14,7 +14,7 @@ public discussion.
 
 Use GitHub's private vulnerability reporting form:
 
-https://github.com/teamchong/pxpipe/security/advisories/new
+https://github.com/Mistermode45/FuryPipe/security/advisories/new
 
 Include, where possible:
 
@@ -31,7 +31,7 @@ Please allow time for a patch before publishing details.
 
 ## Deployment security
 
-pxpipe handles API credentials and may process confidential prompts and tool
+FuryPipe handles API credentials and may process confidential prompts and tool
 results. Keep the Node server on its default loopback interface unless it is
 placed behind an authenticated, encrypted reverse proxy. Non-loopback bindings
 expose the proxy API, while dashboard routes remain loopback-only.
@@ -44,6 +44,11 @@ prompts and credentials.
 
 Telemetry, diagnostic captures, rendered PNG dumps, configuration files, and
 export artifacts are protected with owner-only permissions on POSIX systems.
+
+The local Recovery Store uses namespace isolation, bounded metadata, immutable
+SHA-256 objects, atomic file installation and optional object/namespace quotas.
+It does not yet provide encryption-at-rest, backup/restore or explicit Windows
+ACL management; operators must protect the recovery root with OS permissions.
 
 See [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) for trust boundaries,
 assumptions, and operator guidance.

@@ -1,6 +1,7 @@
 /** Applicability helpers for pxpipe's production-safe model scope. */
 
 import { isMisresolvedModelId } from './gpt-model-profiles.js';
+import { stripBracketedSegments } from './safe-string.js';
 
 export type PxpipeApplicabilityReason =
   | 'eligible'
@@ -17,10 +18,8 @@ export interface PxpipeApplicabilityInput {
 }
 
 /** Bracketed variant tags (e.g. `[1m]`) stripped before model matching so base and variant gate identically. */
-const VARIANT_TAG = /\[[^\]]*\]/g;
-
 function baseModelId(model: string): string {
-  return model.replace(VARIANT_TAG, '');
+  return stripBracketedSegments(model);
 }
 
 /** Dashboard runtime override; null = fall back to PXPIPE_MODELS env / built-in default. In-memory only. */
@@ -46,7 +45,7 @@ let runtimeModelBases: readonly string[] | null = null;
  *  reader following the docs believed a model was being imaged that was not. */
 /*  `gemini` is a family base: the prefix match below covers `gemini-3.6-flash`,
  *  `gemini-4`, `gemini-pro`, ... so every Gemini id is on by default. Opting out
- *  is the ordinary path — drop `gemini` from PXPIPE_MODELS or click the chip off —
+ *  is the ordinary path — drop `gemini` from FURYPIPE_MODELS or click the chip off —
  *  which only works because the Google gate in proxy.ts/dashboard.ts consults
  *  this list and nothing else. */
 export const DEFAULT_MODEL_BASES = ['claude-fable-5', 'gemini'];
@@ -55,14 +54,17 @@ function falsey(v: string): boolean {
   return /^(0|false|no|off|none)$/i.test(v.trim());
 }
 
-/** PXPIPE_MODELS env / built-in default, ignoring the runtime override. One CSV
- *  controls every family (Claude + GPT). Resolution (read per-call so scope flips LIVE):
+/** FURYPIPE_MODELS env / built-in default, ignoring the runtime override.
+ *  PXPIPE_MODELS remains a compatibility fallback only when FURYPIPE_MODELS is absent.
+ *  One CSV controls every family (Claude + GPT). Resolution (read per-call so scope flips LIVE):
  *  - unset or empty        → built-in default (Fable 5 + every Gemini)
  *  - `off`/`0`/`false`/... → compress nothing
  *  - CSV of model bases    → exactly those families (e.g. `claude-fable-5,gpt-5.6-sol`) */
 function envOrDefaultBases(): string[] {
   // Edge-safe: `process` is undefined off-Node; `typeof` avoids a ReferenceError.
-  const raw = typeof process !== 'undefined' ? process.env?.PXPIPE_MODELS : undefined;
+  const raw = typeof process !== 'undefined'
+    ? (process.env?.FURYPIPE_MODELS ?? process.env?.PXPIPE_MODELS)
+    : undefined;
   if (raw === undefined) return [...DEFAULT_MODEL_BASES];
   const trimmed = raw.trim();
   if (!trimmed) return [...DEFAULT_MODEL_BASES];
@@ -80,7 +82,8 @@ export function getAllowedModelBases(): string[] {
   return allowedModelBases();
 }
 
-/** PXPIPE_MODELS env / default scope, independent of runtime override.
+/** FURYPIPE_MODELS env / default scope, independent of runtime override.
+ *  PXPIPE_MODELS is accepted only as a legacy compatibility fallback.
  *  Dashboard unions this into its chip set so env-enabled models are always shown as toggles. */
 export function getConfiguredModelBases(): string[] {
   return envOrDefaultBases();

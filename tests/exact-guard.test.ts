@@ -2,10 +2,22 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPrecisionManifest,
   detectProtectedSpans,
+  exactGuardOptionsForMode,
   verifyPrecisionManifest,
 } from '../src/core/exact-guard.js';
 
 describe('ExactGuard', () => {
+  it('provides conservative automatic modes without weakening custom rules', () => {
+    const url = 'see https://api.example.test/v1/messages';
+    expect(detectProtectedSpans(url, exactGuardOptionsForMode('balanced'))).toHaveLength(0);
+    expect(detectProtectedSpans(url, exactGuardOptionsForMode('coding-safe'))[0]?.class).toBe('url');
+    expect(detectProtectedSpans(url, exactGuardOptionsForMode('safe'))[0]?.class).toBe('url');
+    expect(detectProtectedSpans('tenant=alpha', {
+      ...exactGuardOptionsForMode('balanced'),
+      rules: [{ id: 'tenant', class: 'identifier', pattern: /alpha/g, priority: 200 }],
+    })[0]?.class).toBe('identifier');
+  });
+
   it('detects sensitive exact values without storing plaintext', () => {
     const text = [
       'Authorization: Bearer sk-ant-api03-example-secret',
@@ -55,5 +67,10 @@ describe('ExactGuard', () => {
     expect(spans.some((span) => span.class === 'identifier')).toBe(true);
     expect(spans.some((span) => span.class === 'string_literal')).toBe(true);
   });
-});
 
+  it('rejects sticky global rules because they can silently miss later occurrences', () => {
+    expect(() => detectProtectedSpans('prefix alpha suffix alpha', {
+      rules: [{ id: 'sticky', class: 'identifier', pattern: /alpha/gy }],
+    })).toThrow('sticky rules are not supported');
+  });
+});

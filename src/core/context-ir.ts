@@ -67,24 +67,41 @@ function sha256(text: string): string {
   return createHash('sha256').update(new TextEncoder().encode(text)).digest('hex');
 }
 
-function stableId(input: ContextIRBlockInput, contentHash: string): string {
-  return `ctx_${sha256(`${input.sourceRole}\0${input.logicalTurn}\0${contentHash}`).slice(0, 24)}`;
+interface ContextIRBlockIdentity {
+  readonly scope: string;
+  readonly ordinal: number;
+}
+
+function stableId(input: ContextIRBlockInput, contentHash: string, identity: ContextIRBlockIdentity): string {
+  const range = input.byteRange ? `${input.byteRange.start}:${input.byteRange.end}` : '-';
+  return `ctx_${sha256([
+    identity.scope,
+    identity.ordinal,
+    input.sourceRole,
+    input.logicalTurn,
+    input.provenance,
+    range,
+    contentHash,
+  ].join('\0')).slice(0, 24)}`;
 }
 
 /** Create one IR block without retaining the source text in the IR. */
-export function createContextIRBlock(input: ContextIRBlockInput): ContextIRBlock {
+export function createContextIRBlock(input: ContextIRBlockInput, identity: Partial<ContextIRBlockIdentity> = {}): ContextIRBlock {
   const contentHash = sha256(input.text);
   const { text: _text, id: requestedId, ...metadata } = input;
   return {
     ...metadata,
-    id: requestedId ?? stableId(input, contentHash),
+    id: requestedId ?? stableId(input, contentHash, {
+      scope: identity.scope ?? 'standalone',
+      ordinal: identity.ordinal ?? 0,
+    }),
     contentHash,
   };
 }
 
 /** Build a typed request graph and reject duplicate block IDs. */
 export function createContextIR(requestId: string, inputs: readonly ContextIRBlockInput[]): ContextIR {
-  const blocks = inputs.map(createContextIRBlock);
+  const blocks = inputs.map((input, ordinal) => createContextIRBlock(input, { scope: requestId, ordinal }));
   const verification = verifyContextIR({ format: 'furypipe-context-ir/v1', requestId, blocks });
   if (!verification.ok) throw new Error(`invalid ContextIR: duplicate=${verification.duplicateIds.join(',')}`);
   return { format: 'furypipe-context-ir/v1', requestId, blocks };

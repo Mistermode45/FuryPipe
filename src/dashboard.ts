@@ -33,6 +33,7 @@ import * as os from 'node:os';
 import * as readline from 'node:readline';
 import type { ProxyEvent } from './core/proxy.js';
 import type { TrackEvent } from './core/tracker.js';
+import type { ControlRoomSnapshot } from './control-room/index.js';
 import {
   computeActualInputEffWithCacheTier,
   computeBaselineInputEffWithCacheTier,
@@ -67,7 +68,9 @@ import {
   renderRecentFragment,
   renderLatestFragment,
   renderSessionsFragment,
+  renderSessionsUnavailableFragment,
   renderStatsTableFragment,
+  renderControlRoomFragment,
   type ContextMapData,
 } from './dashboard/fragments.js';
 import {
@@ -83,13 +86,18 @@ import type {
   FullStatsPayload,
   CurrentSessionPayload,
 } from './dashboard/types.js';
+import { parseAcceptLanguage, resolveSupportedLocale } from './i18n/runtime.js';
+import { CORE_CATALOGS } from './i18n/catalogs.js';
 
+const DASHBOARD_AUTO_LOCALES = Object.freeze(Object.keys(CORE_CATALOGS));
 const RECENT_CAP = 50;
 
 /** How many rendered PNGs to keep in the in-memory image ring. Matches
  *  RECENT_CAP so every visible recent-requests row can still resolve its
  *  image. Images are never written to disk — this ring is the only store. */
 const IMAGE_RING_CAP = 800;
+
+type ControlRoomProvider = () => ControlRoomSnapshot | null | Promise<ControlRoomSnapshot | null>;
 
 /** One rendered image held in the in-memory ring. `id` is a monotonic
  *  counter (never reused) so a RecentRow can reference its image even after
@@ -571,15 +579,20 @@ export class DashboardState {
    *  writes the `models` key of the config file so chip toggles survive a
    *  restart. Best-effort: failures are the hook's problem, never the API's. */
   private readonly persistModelBases: ((bases: readonly string[]) => void) | undefined;
+  /** Optional metadata-only Control Room provider. Runtime subsystems own the
+   * evidence; the dashboard only renders a pre-built snapshot. */
+  private readonly controlRoomProvider: ControlRoomProvider | undefined;
 
   constructor(
     paths?: SessionsPaths,
     ccMapFn?: () => Promise<Map<string, ClaudeCodeSessionRef>>,
     persistModelBases?: (bases: readonly string[]) => void,
+    controlRoomProvider?: ControlRoomProvider,
   ) {
     this.paths = paths;
     this.ccMapFn = ccMapFn ?? (() => claudeCodeMap());
     this.persistModelBases = persistModelBases;
+    this.controlRoomProvider = controlRoomProvider;
   }
 
   private totalsForModel(model: string | undefined): Totals {
@@ -1514,23 +1527,49 @@ export class DashboardState {
     );
   }
 
-  serveHtml(port: number): Response {
-    return htmlResponse(renderPage(port, dashboardHostLabel()));
+  serveHtml(port: number, locale?: string, acceptLanguage?: string): Response {
+    const initialLocale = locale ?? resolveSupportedLocale(
+      parseAcceptLanguage(acceptLanguage),
+      DASHBOARD_AUTO_LOCALES,
+      'en',
+    );
+    return htmlResponse(renderPage(port, dashboardHostLabel(), initialLocale));
+  }
+
+  private async readControlRoomSnapshot(): Promise<ControlRoomSnapshot | null> {
+    if (!this.controlRoomProvider) return null;
+    try {
+      return await this.controlRoomProvider();
+    } catch {
+      // Provider failures must not leak runtime internals or break the dashboard.
+      return null;
+    }
+  }
+
+  /** GET /api/control-room.json — metadata-only V5 evidence snapshot. */
+  async serveControlRoomJson(): Promise<Response> {
+    const snapshot = await this.readControlRoomSnapshot();
+    if (!snapshot) {
+      return jsonResponse({ status: 'NOT_AVAILABLE' }, 503);
+    }
+    return jsonResponse(snapshot);
   }
 
   /** GET /fragments/<name> — server-rendered htmx fragments. Each one reuses
    *  the corresponding JSON endpoint's payload (via Response.json()) so the
    *  HTML and JSON surfaces can't drift apart. */
   async serveFragment(name: string, url: URL, port: number): Promise<Response> {
+    const locale = url.searchParams.get('locale') ?? 'en';
     switch (name) {
       case 'toggle':
-        return htmlResponse(renderToggleFragment(this.compressionEnabled));
+        return htmlResponse(renderToggleFragment(this.compressionEnabled, locale));
       case 'models':
         return htmlResponse(
           renderModelsFragment(
             getAllowedModelBases(),
             getConfiguredModelBases(),
             this.compressionEnabled,
+            locale,
           ),
         );
       case 'context-map': {
@@ -1540,26 +1579,26 @@ export class DashboardState {
           // or never recorded (no usage on that completion), say so — don't
           // silently fall back to the latest request's data under its label.
           const found = this.contextHistory.find((h) => h.id === Number(reqParam));
-          return htmlResponse(renderContextMapFragment(found, this.contextHistory, !found));
+          return htmlResponse(renderContextMapFragment(found, this.contextHistory, !found, locale));
         }
         // No specific request → default to the latest.
         return htmlResponse(
-          renderContextMapFragment(this.contextHistory[this.contextHistory.length - 1], this.contextHistory),
+          renderContextMapFragment(this.contextHistory[this.contextHistory.length - 1], this.contextHistory, false, locale),
         );
       }
       case 'session-summary': {
         // Lifetime hero — same cumulative payload as the header strip so the
         // headline and the "$ saved" tiles never disagree and it stops jumping.
         const s = (await this.serveStats().json()) as StatsPayload;
-        return htmlResponse(renderSessionSummaryFragment(s));
+        return htmlResponse(renderSessionSummaryFragment(s, locale));
       }
       case 'header': {
         const s = (await this.serveStats().json()) as StatsPayload;
-        return htmlResponse(renderHeaderFragment(s, port));
+        return htmlResponse(renderHeaderFragment(s, port, locale));
       }
       case 'recent': {
         const r = (await this.serveRecent().json()) as RecentPayload;
-        return htmlResponse(renderRecentFragment(r));
+        return htmlResponse(renderRecentFragment(r, locale));
       }
       case 'latest': {
         const r = (await this.serveRecent().json()) as RecentPayload;
@@ -1575,18 +1614,24 @@ export class DashboardState {
               : this.images[this.images.length - 1];
           sourceText = entry?.sourceText ?? null;
         }
-        return htmlResponse(renderLatestFragment({ payload: r, pin, showSource, sourceText }));
+        return htmlResponse(renderLatestFragment({ payload: r, pin, showSource, sourceText }, locale));
       }
       case 'sessions': {
         const res = await this.serveSessionsJson();
-        if (!res.ok) return htmlResponse(`<div class="status">sessions unavailable</div>`);
+        if (!res.ok) return htmlResponse(renderSessionsUnavailableFragment(locale));
         const p = (await res.json()) as SessionsPayload;
-        return htmlResponse(renderSessionsFragment(p));
+        return htmlResponse(renderSessionsFragment(p, locale));
       }
       case 'stats': {
         const res = await this.serveApiStats();
         const p = (await res.json()) as FullStatsPayload;
-        return htmlResponse(renderStatsTableFragment(p));
+        return htmlResponse(renderStatsTableFragment(p, locale));
+      }
+      case 'control-room': {
+        return htmlResponse(renderControlRoomFragment(
+          await this.readControlRoomSnapshot(),
+          locale,
+        ));
       }
       default:
         return new Response('unknown fragment', { status: 404 });
@@ -1712,6 +1757,7 @@ export type DashboardRoute =
   | { kind: 'png' } // /proxy-latest-png
   | { kind: 'api-sessions' } // /api/sessions.json
   | { kind: 'api-stats' } // /api/stats.json
+  | { kind: 'api-control-room' } // /api/control-room.json
   | { kind: 'current-session' } // /api/current-session.json
   | { kind: 'api-compression' } // /api/compression (POST {enabled}) — runtime kill switch
   | { kind: 'api-image-source' } // /api/image-source[?id=N] — source text behind a rendered PNG
@@ -1725,6 +1771,7 @@ export function dashboardPath(pathname: string): DashboardRoute | null {
   if (pathname === '/proxy-latest-png') return { kind: 'png' };
   if (pathname === '/api/sessions.json') return { kind: 'api-sessions' };
   if (pathname === '/api/stats.json') return { kind: 'api-stats' };
+  if (pathname === '/api/control-room.json') return { kind: 'api-control-room' };
   if (pathname === '/api/current-session.json') return { kind: 'current-session' };
   if (pathname === '/api/compression') return { kind: 'api-compression' };
   if (pathname === '/api/image-source') return { kind: 'api-image-source' };

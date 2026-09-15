@@ -24,6 +24,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { transformRequest } from '../src/core/transform.js';
+import { detectProtectedSpans } from '../src/core/exact-guard.js';
 import { transformAnthropicMessages } from '../src/core/library.js';
 
 const enc = new TextEncoder();
@@ -61,6 +62,38 @@ function userBlocks(body: Uint8Array): any[] {
 const BIG = 'x'.repeat(50_000);
 
 describe('keepSharp fidelity hint', () => {
+  it('bounds custom ExactGuard rule inputs', () => {
+    expect(() => detectProtectedSpans('payload', { rules: Array.from({ length: 65 }, (_, i) => ({ id: `r${i}`, class: 'custom' as const, pattern: /payload/g })) })).toThrow('64');
+    expect(() => detectProtectedSpans('payload', { rules: [{ id: 'oversized', class: 'custom', pattern: new RegExp('x'.repeat(513), 'g') }] })).toThrow('large');
+  });
+
+  it('wires ExactGuard into the lossy decision and preserves protected requests natively', async () => {
+    const source = makeReq([
+      { type: 'tool_result', tool_use_id: 'toolu_exact', content: `${BIG}\nrequest 123e4567-e89b-12d3-a456-426614174000` },
+    ]);
+    const { body, info } = await transformRequest(source, { exactGuard: {} });
+    expect(body).toEqual(source);
+    expect(info.compressed).toBe(false);
+    expect(info.exactGuard).toMatchObject({ action: 'preserve_native' });
+    expect(info.passthroughReasons?.exact_guard).toBe(1);
+  });
+
+  it('protects exact-looking tool output under the automatic balanced default', async () => {
+    const source = makeReq([
+      { type: 'tool_result', tool_use_id: 'toolu_exact', content: `${BIG}\nchecksum=${'a'.repeat(64)}` },
+    ]);
+    const { body, info } = await transformRequest(source, { charsPerToken: 2 });
+    expect(body).not.toEqual(source);
+    expect(info.compressed).toBe(true);
+    expect(info.toolResultImgs ?? 0).toBe(0);
+    expect(info.keptSharpBlocks).toBeGreaterThan(0);
+    const tr = userBlocks(body).find((b) => b.type === 'tool_result');
+    const text = typeof tr?.content === 'string'
+      ? tr.content
+      : (tr?.content ?? []).find((b: any) => b.type === 'text')?.text;
+    expect(text).toBe(`${BIG}\nchecksum=${'a'.repeat(64)}`);
+  });
+
   it('images a large tool_result by default (baseline, no hint)', async () => {
     const { body, info } = await transformRequest(
       makeReq([{ type: 'tool_result', tool_use_id: 'toolu_a', content: BIG }]),

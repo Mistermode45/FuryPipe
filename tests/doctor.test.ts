@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderDoctorReport, type DoctorReport } from '../src/doctor.js';
+import { renderDoctorReport, resolveDoctorLocale, type DoctorReport } from '../src/doctor.js';
 
 const report: DoctorReport = {
   platform: { os: 'test 1', arch: 'x64', shell: 'powershell', cwd: 'C:\\work', executable: 'node' },
@@ -32,5 +32,54 @@ describe('furypipe doctor renderer', () => {
     const parsed = JSON.parse(renderDoctorReport(report, true)) as DoctorReport;
     expect(parsed.network.port).toBe(47821);
     expect(parsed.runtime.pnpm.value).toBe('12.3.4');
+  });
+
+  it('wires the locale option into human-readable output while keeping protocol values intact', () => {
+    const output = renderDoctorReport(report, false, 'fr-FR');
+    expect(output).toContain('Configuration: C:\\Users\\test\\config.json');
+    expect(output).toContain('Écoute: 127.0.0.1:47821');
+    expect(output).toContain('Node: 26.8.2');
+  });
+
+  it('auto-detects French from POSIX locale variables when no explicit locale is supplied', () => {
+    expect(resolveDoctorLocale(undefined, {
+      env: { LANG: 'fr_FR.UTF-8' },
+      intlLocale: 'en-US',
+    })).toBe('fr');
+
+    expect(resolveDoctorLocale(undefined, {
+      env: { LC_ALL: 'fr_CA.UTF-8', LANG: 'en_US.UTF-8' },
+      intlLocale: 'en-US',
+    })).toBe('fr');
+  });
+
+  it('uses LANGUAGE ordering, ignores C/POSIX and falls back to the Intl OS locale', () => {
+    expect(resolveDoctorLocale(undefined, {
+      env: { LC_ALL: 'C.UTF-8', LANGUAGE: 'de_DE:fr_FR:en_US' },
+      intlLocale: 'en-US',
+    })).toBe('fr');
+
+    expect(resolveDoctorLocale(undefined, {
+      env: { LANG: 'POSIX' },
+      intlLocale: 'fr-FR',
+    })).toBe('fr');
+  });
+
+  it('keeps explicit locale authoritative and rejects malformed explicit tags', () => {
+    expect(resolveDoctorLocale('en-XA', {
+      env: { LANG: 'fr_FR.UTF-8' },
+      intlLocale: 'fr-FR',
+    })).toBe('en-XA');
+    expect(() => resolveDoctorLocale('not_a_locale')).toThrow(/invalid BCP-47 locale/);
+  });
+
+  it('bounds hostile environment locale values and defaults to English', () => {
+    expect(resolveDoctorLocale(undefined, {
+      env: {
+        LANGUAGE: 'x'.repeat(1025),
+        LANG: 'not_a_locale',
+      },
+      intlLocale: 'not_a_locale',
+    })).toBe('en');
   });
 });

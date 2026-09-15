@@ -23,6 +23,8 @@ export interface RecoveryIndex {
   clear(): void;
 }
 
+const MAX_RECOVERY_INDEX_ENTRIES = 10_000;
+
 interface IndexedHandle {
   readonly handle: string;
   readonly source?: string;
@@ -53,20 +55,35 @@ function lineAt(text: string, offset: number): number {
  */
 export function createRecoveryIndex(store: RecoveryStore): RecoveryIndex {
   const entries = new Map<string, IndexedHandle>();
+  let pendingAdds = 0;
 
   return {
     get size() { return entries.size; },
 
     async add(bytes, metadata) {
-      const handle = await store.put(bytes, metadata);
-      const key = canonicalHandle(handle);
-      entries.set(key, { handle: key, ...(metadata?.source === undefined ? {} : { source: metadata.source }) });
-      return handle;
+      if (entries.size + pendingAdds >= MAX_RECOVERY_INDEX_ENTRIES) {
+        throw new RangeError(`recovery index is limited to ${MAX_RECOVERY_INDEX_ENTRIES} unique handles`);
+      }
+      pendingAdds += 1;
+      try {
+        const handle = await store.put(bytes, metadata);
+        const key = canonicalHandle(handle);
+        if (!entries.has(key) && entries.size >= MAX_RECOVERY_INDEX_ENTRIES) {
+          throw new RangeError(`recovery index is limited to ${MAX_RECOVERY_INDEX_ENTRIES} unique handles`);
+        }
+        entries.set(key, { handle: key, ...(metadata?.source === undefined ? {} : { source: metadata.source }) });
+        return handle;
+      } finally {
+        pendingAdds -= 1;
+      }
     },
 
     async addHandle(handle) {
       const manifest = await store.manifest(handle);
       const key = canonicalHandle(manifest);
+      if (!entries.has(key) && entries.size >= MAX_RECOVERY_INDEX_ENTRIES) {
+        throw new RangeError(`recovery index is limited to ${MAX_RECOVERY_INDEX_ENTRIES} unique handles`);
+      }
       entries.set(key, {
         handle: key,
         ...(manifest.metadata?.source === undefined ? {} : { source: manifest.metadata.source }),
@@ -78,7 +95,8 @@ export function createRecoveryIndex(store: RecoveryStore): RecoveryIndex {
       if (query.length > 256) throw new RangeError('retrieval query exceeds 256 characters');
       const maxHits = boundedMaxHits(options.maxHits);
       const hits: RecoverySearchHit[] = [];
-      for (const entry of entries.values()) {
+      const snapshot = [...entries.values()];
+      for (const entry of snapshot) {
         if (options.source !== undefined && entry.source !== options.source) continue;
         let text: string;
         try {

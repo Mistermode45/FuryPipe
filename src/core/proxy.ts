@@ -34,6 +34,12 @@ export interface ProxyConfig {
   gatewayBaseUrl?: string;
   /** Extra headers injected on every upstream request (e.g. gateway auth). */
   gatewayHeaders?: Record<string, string>;
+  /**
+   * Remove inbound provider credentials before applying gatewayHeaders.
+   * Used by explicit trusted gateways such as OmniRoute so caller credentials
+   * cannot cross the gateway boundary.
+   */
+  gatewayCredentialIsolation?: boolean;
   /** Anthropic API base, no trailing slash. Defaults to api.anthropic.com. */
   upstream?: string;
   /** Override or supply an API key. If unset, we forward whatever the client sent. */
@@ -1348,7 +1354,7 @@ export function resolveUpstreams(config: ProxyConfig): {
   stripOpenAIV1: boolean;
 } {
   if (config.provider === 'cloudflare-ai-gateway') {
-    const base = (config.gatewayBaseUrl ?? '').trim().replace(/\/+$/, '');
+    const base = stripTrailingSlashes((config.gatewayBaseUrl ?? '').trim());
     if (!base) {
       throw new Error(
         "provider 'cloudflare-ai-gateway' requires gatewayBaseUrl (PXPIPE_GATEWAY_BASE_URL)",
@@ -1357,8 +1363,8 @@ export function resolveUpstreams(config: ProxyConfig): {
     return { anthropic: `${base}/anthropic`, openai: `${base}/openai`, stripOpenAIV1: true };
   }
   return {
-    anthropic: (config.upstream ?? DEFAULT_UPSTREAM).trim().replace(/\/+$/, ''),
-    openai: (config.openAIUpstream ?? DEFAULT_OPENAI_UPSTREAM).trim().replace(/\/+$/, ''),
+    anthropic: stripTrailingSlashes((config.upstream ?? DEFAULT_UPSTREAM).trim()),
+    openai: stripTrailingSlashes((config.openAIUpstream ?? DEFAULT_OPENAI_UPSTREAM).trim()),
     stripOpenAIV1: false,
   };
 }
@@ -1455,12 +1461,30 @@ export function createProxy(config: ProxyConfig = {}) {
   // (e.g. /openai/*, /google-ai-studio/*) safe from env whitespace — see the
   // JSDoc on resolveUpstreams for the full rationale.
   const passthroughUpstream = config.provider === 'cloudflare-ai-gateway'
-    ? (config.gatewayBaseUrl ?? '').trim().replace(/\/+$/, '')
+    ? stripTrailingSlashes((config.gatewayBaseUrl ?? '').trim())
     : upstream;
   const gatewayHeaders = config.gatewayHeaders ?? {};
+  const gatewayCredentialHeaderNames = [
+    'authorization',
+    'proxy-authorization',
+    'x-api-key',
+    'api-key',
+    'x-goog-api-key',
+    'cookie',
+  ] as const;
+  const gatewayCredentialQueryNames = ['key', 'api_key', 'apiKey', 'token', 'access_token'] as const;
   const applyGatewayHeaders = (h: Headers): Headers => {
+    if (config.gatewayCredentialIsolation) {
+      for (const name of gatewayCredentialHeaderNames) h.delete(name);
+    }
     for (const [k, v] of Object.entries(gatewayHeaders)) h.set(k, v);
     return h;
+  };
+  const applyGatewayUrlIsolation = (value: string): string => {
+    if (!config.gatewayCredentialIsolation) return value;
+    const isolated = new URL(value);
+    for (const name of gatewayCredentialQueryNames) isolated.searchParams.delete(name);
+    return isolated.toString();
   };
 
   return async function handle(req: Request): Promise<Response> {
@@ -1779,8 +1803,8 @@ let responseContentType: string | undefined;
           for (const [key, value] of url.searchParams) countUrl.searchParams.append(key, value);
           countUrl.searchParams.delete('alt');
           const [baseline, transformed] = await Promise.all([
-            countGoogleTokensUpstream(countUrl.toString(), bodyIn, countHeaders, model!),
-            countGoogleTokensUpstream(countUrl.toString(), r.body, countHeaders, model!),
+            countGoogleTokensUpstream(applyGatewayUrlIsolation(countUrl.toString()), bodyIn, countHeaders, model!),
+            countGoogleTokensUpstream(applyGatewayUrlIsolation(countUrl.toString()), r.body, countHeaders, model!),
           ]);
           if (baseline !== null && transformed !== null) {
             if (transformed >= baseline) {
@@ -1848,7 +1872,7 @@ let responseContentType: string | undefined;
             // `<messages-path>/count_tokens`, so provider-prefixed routes like
             // `/anthropic/messages` probe `/anthropic/messages/count_tokens`.
             const ctBase = providerPrefixed ? passthroughUpstream : upstream;
-            const ctUrl = ctBase + url.pathname + '/count_tokens';
+            const ctUrl = applyGatewayUrlIsolation(ctBase + url.pathname + '/count_tokens');
             baselinePromise = countTokensUpstream(ctUrl, ctBody, ctHeaders);
             // Null = no markers → cacheable=0 by definition, no probe needed.
             const ctCacheableBody = buildCacheablePrefixCountTokensBody(bodyIn);
@@ -1982,6 +2006,7 @@ let responseContentType: string | undefined;
       const requestUpstreamBase = bridgedGptMessages ? openAIUpstream : upstreamBase;
       upstreamUrl = requestUpstreamBase + outPath;
     }
+    upstreamUrl = applyGatewayUrlIsolation(upstreamUrl);
     let releaseInFlight = (): void => {};
     if (reqBodySha256 && duplicateHoldMs > 0) {
       const headers: [string, string][] = [];

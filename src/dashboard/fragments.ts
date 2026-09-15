@@ -3,6 +3,9 @@
 
 import { HTMX_JS, ALPINE_JS } from './vendor.js';
 import { CACHE_CREATE_RATE, CACHE_READ_RATE } from '../core/baseline.js';
+import type { ControlRoomSnapshot } from '../control-room/index.js';
+import { createI18n } from '../i18n/index.js';
+import { CORE_CATALOGS } from '../i18n/catalogs.js';
 import type {
   StatsPayload,
   RecentPayload,
@@ -14,6 +17,22 @@ import type {
 } from './types.js';
 
 // ---- helpers --------------------------------------------------------
+
+const DASHBOARD_I18N = createI18n({ catalogs: CORE_CATALOGS, defaultLocale: 'en' });
+const DASHBOARD_LOCALES = ['en', 'fr', 'en-XA', 'ar-XB'] as const;
+
+function resolveDashboardLocale(locale: string | undefined) {
+  try {
+    return DASHBOARD_I18N.resolve(locale ?? 'en');
+  } catch {
+    return DASHBOARD_I18N.resolve('en');
+  }
+}
+
+function dashboardT(locale: string | undefined, key: string, params?: Readonly<Record<string, string | number | boolean>>): string {
+  const resolved = resolveDashboardLocale(locale);
+  return DASHBOARD_I18N.translate(resolved.canonical, key, params ? { params } : undefined);
+}
 
 export function escapeHtml(s: string | null | undefined): string {
   if (s == null) return '';
@@ -52,23 +71,24 @@ function shortPath(p: string | null | undefined): string {
 
 // ---- compression toggle (kill switch) ------------------------------------
 
-export function renderToggleFragment(enabled: boolean): string {
-  // NOTE: "PASSTHROUGH MODE", "Disable compression", "Enable compression" are asserted by tests.
+export function renderToggleFragment(enabled: boolean, locale = 'en'): string {
+  const t = (key: string): string => dashboardT(locale, key);
+  // NOTE: English default keeps legacy asserted strings stable.
   const banner = enabled
     ? ''
-    : `<div class="banner"><strong>PASSTHROUGH MODE</strong> — compression is off. Every request goes to Claude unchanged: no images, no savings. Use this to A/B test, or if the upstream API is having problems.</div>`;
+    : `<div class="banner"><strong>${escapeHtml(t('dashboard.toggle.passthroughMode'))}</strong> — ${escapeHtml(t('dashboard.toggle.passthroughDescription'))}</div>`;
   // Button POSTs the OPPOSITE of current state; 2s poll keeps it fresh.
   const confirm = enabled
-    ? ` hx-confirm="Turn compression off?\n\nRequests will pass straight through to Claude, unchanged. Restarting the proxy turns it back on."`
+    ? ` hx-confirm="${escapeHtml(t('dashboard.toggle.confirm'))}"`
     : '';
   return (
     banner +
     `<div class="switch">` +
-    `<span class="switch-state ${enabled ? 'on' : 'off'}"><span class="switch-dot"></span>${enabled ? 'Compression on' : 'Compression off'}</span>` +
+    `<span class="switch-state ${enabled ? 'on' : 'off'}"><span class="switch-dot"></span>${escapeHtml(t(enabled ? 'dashboard.toggle.compressionOn' : 'dashboard.toggle.compressionOff'))}</span>` +
     `<button class="switch-btn" type="button" hx-post="/fragments/toggle" hx-target="#frag-toggle" hx-vals='{"enabled": ${!enabled}}'${confirm}>` +
-    (enabled ? 'Disable compression' : 'Enable compression') +
+    escapeHtml(t(enabled ? 'dashboard.toggle.disable' : 'dashboard.toggle.enable')) +
     `</button>` +
-    `<span class="hint">kill switch · resets to on when you restart</span>` +
+    `<span class="hint">${escapeHtml(t('dashboard.toggle.hint'))}</span>` +
     `</div>`
   );
 }
@@ -105,7 +125,9 @@ export function renderModelsFragment(
   active: string[],
   configured: string[],
   enabled: boolean,
+  locale = 'en',
 ): string {
+  const t = (key: string): string => dashboardT(locale, key);
   const on = new Set(active);
   const labelOf = new Map(
     [...MODEL_CATALOG, ...GPT_MODEL_CATALOG, ...GROK_MODEL_CATALOG, ...GEMINI_MODEL_CATALOG].map((m) => [m.id, m.label]),
@@ -147,32 +169,32 @@ export function renderModelsFragment(
     .join('');
   const moot = enabled
     ? ''
-    : `<div class="models"><span class="hint">compression is off — these settings have no effect right now</span></div>`;
+    : `<div class="models"><span class="hint">${escapeHtml(t('dashboard.models.offHint'))}</span></div>`;
   return (
     moot +
     `<div class="models">` +
-    `<span class="models-label">Image Claude models</span>` +
+    `<span class="models-label">${escapeHtml(t('dashboard.models.claude'))}</span>` +
     claudeChips +
-    `<span class="hint">unlisted models get plain text</span>` +
+    `<span class="hint">${escapeHtml(t('dashboard.models.unlisted'))}</span>` +
     `</div>` +
     `<div class="models">` +
-    `<span class="models-label">Image Gemini models</span>` +
+    `<span class="models-label">${escapeHtml(t('dashboard.models.gemini'))}</span>` +
     geminiChips +
-    `<span class="hint">on by default · toggle off to opt out · 100/100 vision reader</span>` +
+    `<span class="hint">${escapeHtml(t('dashboard.models.geminiHint'))}</span>` +
     `</div>` +
     `<div class="models">` +
-    `<span class="models-label">Image OpenAI Responses models</span>` +
+    `<span class="models-label">${escapeHtml(t('dashboard.models.openai'))}</span>` +
     gptChips +
     grokChips +
     otherChips +
-    `<span class="hint">opt-in · no Anthropic cache_control</span>` +
+    `<span class="hint">${escapeHtml(t('dashboard.models.openaiHint'))}</span>` +
     `</div>` +
     `<div class="models">` +
     `<span class="models-label">PXPIPE_MODELS</span>` +
     `<input class="models-csv" id="models-csv" type="text" name="list" ` +
     `value="${escapeHtml(active.join(','))}" spellcheck="false" autocomplete="off" ` +
     `hx-post="/fragments/models" hx-target="#frag-models" hx-trigger="change">` +
-    `<span class="hint">CSV of bases, or off · applies on enter/blur · export to persist</span>` +
+    `<span class="hint">${escapeHtml(t('dashboard.models.csvHint'))}</span>` +
     `</div>`
   );
 }
@@ -188,14 +210,18 @@ void INPUT_USD_PER_MTOK; // suppress unused-var; renderHeaderFragment uses the s
 // the number stops swinging on tiny per-session samples. Cache-weighted on
 // purpose ("lifeweight"): it answers "did pxpipe move my real, cache-discounted
 // bill since this proxy started", not a raw token count.
-export function renderSessionSummaryFragment(s: StatsPayload): string {
+export function renderSessionSummaryFragment(s: StatsPayload, locale = 'en'): string {
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(locale, key, params);
   const measured = s.compressed_requests ?? 0;
   if (measured <= 0) {
     return (
       `<div class="hero hero-empty">` +
-      `<div class="hero-eyebrow">Since start</div>` +
-      `<div class="hero-headline">Warming up…</div>` +
-      `<div class="hero-sub">Point Claude Code at this proxy with <code>ANTHROPIC_BASE_URL</code>, or launch it with <code>pxpipe warp -- claude</code> to keep <code>/remote-control</code> and claude.ai connectors working. Send a message and your running savings show up right here.</div>` +
+      `<div class="hero-eyebrow">${escapeHtml(t('dashboard.summary.sinceStart'))}</div>` +
+      `<div class="hero-headline">${escapeHtml(t('dashboard.summary.warming'))}</div>` +
+      `<div class="hero-sub">${escapeHtml(t('dashboard.summary.warmingHelp'))}</div>` +
       `</div>`
     );
   }
@@ -211,19 +237,18 @@ export function renderSessionSummaryFragment(s: StatsPayload): string {
   const inputPct = baselineW > 0 ? (1 - actualW / baselineW) * 100 : 0;
   const positive = inputPct >= 0;
   const bigNum = `${Math.abs(inputPct).toFixed(0)}%`;
-  const word = positive ? 'fewer tokens' : 'more tokens';
+  const word = t(positive ? 'dashboard.summary.fewerTokens' : 'dashboard.summary.moreTokens');
 
   return (
     `<div class="hero${positive ? '' : ' hero-neg'}">` +
-    `<div class="hero-eyebrow">Since start · ${numFmt(measured)} request${measured === 1 ? '' : 's'} imaged</div>` +
+    `<div class="hero-eyebrow">${escapeHtml(t('dashboard.summary.sinceStart'))} · ${escapeHtml(t('dashboard.summary.imagedRequests', { count: numFmt(measured) }))}</div>` +
     `<div class="hero-headline"><span class="hero-num">${bigNum}</span> ${word}</div>` +
     `<div class="hero-sub">` +
-    `<strong>${kFmt(actualW)}</strong> provider-accounted input tokens vs <strong>${kFmt(baselineW)}</strong> if this same context ` +
-    `stayed plain text. Your latest messages and model output are never compressed.` +
+    `<strong>${kFmt(actualW)}</strong> ${escapeHtml(t('dashboard.summary.accountedVs'))} <strong>${kFmt(baselineW)}</strong> ${escapeHtml(t('dashboard.summary.plainText'))} ${escapeHtml(t('dashboard.summary.latestUntouched'))}` +
     `</div>` +
     `<div class="hero-meta">` +
-    `Provider-token basis; cache discounts applied where measurable · ` +
-    `output untouched (${kFmt(rawOutput)}) · no $ assumptions` +
+    `${escapeHtml(t('dashboard.summary.providerBasis'))} · ` +
+    `${escapeHtml(t('dashboard.summary.outputUntouched'))} (${kFmt(rawOutput)}) · ${escapeHtml(t('dashboard.summary.noDollarAssumptions'))}` +
     `</div>` +
     `</div>`
   );
@@ -249,7 +274,7 @@ function statTile(
   tip = '',
 ): string {
   const q = tip
-    ? `<span class="q" tabindex="0" aria-label="${escapeHtml(tip)}" data-tip="${escapeHtml(tip)}">?</span>`
+    ? `<span class="q" tabindex="0" aria-label="${escapeHtml(tip)}" title="${escapeHtml(tip)}" data-tip="${escapeHtml(tip)}">?</span>`
     : '';
   return (
     `<div class="tile">` +
@@ -260,7 +285,11 @@ function statTile(
   );
 }
 
-export function renderHeaderFragment(s: StatsPayload, port: number): string {
+export function renderHeaderFragment(s: StatsPayload, port: number, locale = 'en'): string {
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(locale, key, params);
   const pa = s.pricing_assumptions;
   const unpricedImaged = Math.max(
     0,
@@ -276,55 +305,55 @@ export function renderHeaderFragment(s: StatsPayload, port: number): string {
   const withoutAvg = paidImaged > 0 ? cAvg + (s.saved_usd ?? 0) / paidImaged : 0;
   const costTile = paidImaged > 0
     ? statTile(
-        'Cost per request',
+        t('dashboard.header.costPerRequest'),
         `$${cAvg.toFixed(4)}`,
-        `vs $${withoutAvg.toFixed(4)} without pxpipe`,
+        t('dashboard.header.vsWithout', { value: `$${withoutAvg.toFixed(4)}` }),
         cAvg <= withoutAvg ? 'pos' : 'neg',
-        'Average cost of paid imaged requests versus the cache-aware text counterfactual for those same requests. Unmeasured requests are assigned zero savings.',
+        t('dashboard.header.costTip'),
       )
     : onlyUnpriced
       ? statTile(
-          'Cost per request',
+          t('dashboard.header.costPerRequest'),
           '—',
-          'provider pricing not configured',
+          t('dashboard.header.pricingNotConfigured'),
           'muted-val',
-          'Token savings are available, but this provider is excluded from Claude-priced dollar estimates.',
+          t('dashboard.header.tokenSavingsNoPricing'),
         )
       : statTile(
-        'Cost per request',
-        'collecting…',
-        'waiting for a paid imaged request',
+        t('dashboard.header.costPerRequest'),
+        t('dashboard.header.collecting'),
+        t('dashboard.header.waitingPaid'),
         'muted-val',
-        'The comparison appears after an imaged request returns provider usage.',
+        t('dashboard.header.comparisonAfterUsage'),
       );
 
   const savedUsdTile = onlyUnpriced
     ? statTile(
-        'Estimated saved',
+        t('dashboard.header.estimatedSaved'),
         '—',
-        'provider pricing not configured',
+        t('dashboard.header.pricingNotConfigured'),
         'muted-val',
-        'Token savings are shown separately. Dollar estimates require provider-specific pricing and are not inferred from Claude rates.',
+        t('dashboard.header.dollarRequiresPricing'),
       )
     : statTile(
-        'Estimated saved',
+        t('dashboard.header.estimatedSaved'),
         `$${(s.saved_usd ?? 0).toFixed(2)}`,
         unpricedImaged > 0
-          ? `${numFmt(unpricedImaged)} provider-priced request${unpricedImaged === 1 ? '' : 's'} excluded`
-          : `at $${pa.input_per_mtok}/M base input price`,
+          ? t(unpricedImaged === 1 ? 'dashboard.header.excludedPricingOne' : 'dashboard.header.excludedPricing', { count: numFmt(unpricedImaged) })
+          : t('dashboard.header.baseInputPrice', { value: `$${pa.input_per_mtok}` }),
         '',
-        'Cache-aware estimate for requests covered by the configured pricing assumptions. Other providers remain excluded.',
+        t('dashboard.header.estimateTip'),
       );
 
   const strip =
     `<div class="strip">` +
-    statTile('Requests', numFmt(s.requests), `${numFmt(s.compressed_requests)} turned into images`) +
+    statTile(t('dashboard.header.requests'), numFmt(s.requests), t('dashboard.header.turnedIntoImages', { count: numFmt(s.compressed_requests) })) +
     statTile(
-      'Input tokens saved',
+      t('dashboard.header.inputTokensSaved'),
       numFmt(s.saved_input_tokens),
-      'vs sending the same context as text',
+      t('dashboard.header.vsPlainText'),
       'pos',
-       'Bulky context sent as compact images instead of text. Uses provider-reported input tokens and a measured or model-profile text counterfactual; recent turns and output stay text.',
+       t('dashboard.header.inputSavingsTip'),
      ) +
     savedUsdTile +
     costTile +
@@ -332,72 +361,72 @@ export function renderHeaderFragment(s: StatsPayload, port: number): string {
 
   // math drawer
   const savedMath =
-    `<div><span class="k">formula:</span> <span class="v">saved = baseline − actual</span></div>` +
-    `<div><span class="k">weights:</span> <span class="v">input×1.0, cache_write_5m×1.25, cache_write_1h×2.0, cache_read×0.10</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">saved = baseline − actual</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.weights'))}:</span> <span class="v">input×1.0, cache_write_5m×1.25, cache_write_1h×2.0, cache_read×0.10</span></div>` +
     `<div class="sp"></div>` +
-    mathRow('baseline', s.baseline_input_weighted, '(cache-aware: cacheable×weight + cold_tail)') +
-    mathRow('actual', s.actual_input_weighted, '(input + cc_5m×1.25 + cc_1h×2.0 + cr×0.10)') +
+    mathRow('baseline', s.baseline_input_weighted, `(${escapeHtml(t('dashboard.math.cacheAwareBaseline'))})`) +
+    mathRow('actual', s.actual_input_weighted, `(${escapeHtml(t('dashboard.math.actualInput'))})`) +
     mathRow('saved', s.saved_input_tokens, `<span class="op">=</span> baseline − actual`) +
-    `<span class="src">output excluded — identical with/without compression</span>`;
+    `<span class="src">${escapeHtml(t('dashboard.math.outputExcluded'))}</span>`;
 
   const usdMath = onlyUnpriced
-    ? `<div><span class="v">Unavailable for this provider.</span></div>` +
-      `<span class="src">Token savings are still reported; Claude pricing is not applied across providers.</span>`
+    ? `<div><span class="v">${escapeHtml(t('dashboard.math.unavailableProvider'))}</span></div>` +
+      `<span class="src">${escapeHtml(t('dashboard.math.tokenSavingsStill'))}</span>`
     :
-    `<div><span class="k">formula:</span> <span class="v">$ saved = saved_tokens × $${pa.input_per_mtok}/Mtok</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">$ saved = saved_tokens × $${pa.input_per_mtok}/Mtok</span></div>` +
     `<div class="sp"></div>` +
-    mathRow('saved_tokens', s.saved_input_tokens, '(cache-aware, input-side)') +
+    mathRow('saved_tokens', s.saved_input_tokens, `(${escapeHtml(t('dashboard.math.inputSide'))})`) +
     mathRow('saved_usd', `$${(s.saved_usd || 0).toFixed(4)} `, `<span class="op">=</span> saved_tokens × input_rate / 1e6`) +
-    `<span class="src">source: ${escapeHtml(pa.source || 'docs.anthropic.com pricing')}</span>`;
+    `<span class="src">${escapeHtml(t('dashboard.math.source'))}: ${escapeHtml(pa.source || 'docs.anthropic.com pricing')}</span>`;
 
   const costPerRequestMath =
-    `<div><span class="k">formula:</span> <span class="v">without_pxpipe = actual_imaged + measured_savings</span></div>` +
-    `<div><span class="k">why:</span> <span class="v">both averages cover the same paid imaged requests. Passthrough requests are not used because the profitability gate selects a different, generally smaller population.</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">without_pxpipe = actual_imaged + measured_savings</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.why'))}:</span> <span class="v">${escapeHtml(t('dashboard.math.samePopulation'))}</span></div>` +
     `<div class="sp"></div>` +
-    mathRow(`actual imaged (n=${paidImaged})`, `$${(s.compressed_actual_usd || 0).toFixed(4)}`, `total · avg $${cAvg.toFixed(4)}/req`) +
-    mathRow('measured savings', `$${(s.saved_usd || 0).toFixed(4)}`, 'cache-aware input-side total') +
-    mathRow('without pxpipe', `$${withoutAvg.toFixed(4)}/req`, '<span class="op">=</span> (actual imaged + measured savings) / n') +
-    `<span class="src">unmeasured imaged rows remain in n and actual cost, with zero assumed savings</span>`;
+    mathRow(`actual imaged (n=${paidImaged})`, `$${(s.compressed_actual_usd || 0).toFixed(4)}`, t('dashboard.math.totalAvg', { value: `$${cAvg.toFixed(4)}` })) +
+    mathRow(t('dashboard.math.measuredSavings'), `$${(s.saved_usd || 0).toFixed(4)}`, escapeHtml(t('dashboard.math.cacheAwareTotal'))) +
+    mathRow(t('dashboard.math.withoutPxpipe'), `$${withoutAvg.toFixed(4)}/req`, '<span class="op">=</span> (actual imaged + measured savings) / n') +
+    `<span class="src">${escapeHtml(t('dashboard.math.unmeasuredZero'))}</span>`;
 
   const pctMath =
-    `<div><span class="k">formula:</span> <span class="v">share_of_spend = saved / (all_baseline_equivalent + all_output × ${pa.output_multiplier})</span></div>` +
-    `<div><span class="k">diagnostic, not the headline:</span> <span class="v">this is a counterfactual ("what you WOULD have paid"). It leans on the count_tokens probe, the cache-aware split, and an input-rate assumption. Useful as a sanity check; the real-traffic answer is the compressed-vs-passthrough split above.</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">share_of_spend = saved / (all_baseline_equivalent + all_output × ${pa.output_multiplier})</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.diagnostic'))}:</span> <span class="v">${escapeHtml(t('dashboard.math.diagnosticExplanation'))}</span></div>` +
     `<div class="sp"></div>` +
-    mathRow('saved', s.saved_input_tokens, '(measured-rows numerator; cache-aware)') +
-    mathRow('all_baseline_equivalent', s.all_baseline_equivalent_weighted, '(every paid request; baseline on measured + actual on the rest)') +
-    mathRow(`all_output × ${pa.output_multiplier}`, s.all_output_weighted, '(every paid request)') +
+    mathRow('saved', s.saved_input_tokens, `(${escapeHtml(t('dashboard.math.measuredNumerator'))})`) +
+    mathRow('all_baseline_equivalent', s.all_baseline_equivalent_weighted, `(${escapeHtml(t('dashboard.math.everyPaidBaseline'))})`) +
+    mathRow(`all_output × ${pa.output_multiplier}`, s.all_output_weighted, `(${escapeHtml(t('dashboard.math.everyPaidRequest'))})`) +
     mathRow('share_of_spend', (s.saved_pct_of_all_spend || 0).toFixed(1) + '%', `<span class="op">=</span> saved / counterfactual_total × 100`) +
-    mathRow('all_usage_requests', s.all_usage_requests, '(denominator request count — compressed + passthrough + probe-failed)') +
-    `<span class="src">measured numerator, all-rows counterfactual denominator — bounded at 100%</span>`;
+    mathRow('all_usage_requests', s.all_usage_requests, `(${escapeHtml(t('dashboard.math.denominatorCount'))})`) +
+    `<span class="src">${escapeHtml(t('dashboard.math.boundedCounterfactual'))}</span>`;
 
   const tokeqMath =
-    `<div><span class="k">formula:</span> <span class="v">token_equivalent = input + output × ${pa.output_multiplier}</span></div>` +
-    `<div><span class="k">why:</span> <span class="v">matches Anthropic's per-Mtok price ratio ($${pa.input_per_mtok} input vs $${pa.input_per_mtok * pa.output_multiplier} output) — this is what the weekly-limit meter counts.</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.formula'))}:</span> <span class="v">token_equivalent = input + output × ${pa.output_multiplier}</span></div>` +
+    `<div><span class="k">${escapeHtml(t('dashboard.math.why'))}:</span> <span class="v">${escapeHtml(t('dashboard.math.weeklyWhy'))} ($${pa.input_per_mtok} input vs $${pa.input_per_mtok * pa.output_multiplier} output)</span></div>` +
     `<div class="sp"></div>` +
     mathRow('actual_token_equivalent', s.actual_token_equivalent) +
-    mathRow('baseline_token_equivalent', s.baseline_token_equivalent, `(unproxied counterfactual, same ×${pa.output_multiplier} on output)`) +
+    mathRow('baseline_token_equivalent', s.baseline_token_equivalent, `(${escapeHtml(t('dashboard.math.unproxiedCounterfactual'))} ×${pa.output_multiplier})`) +
     `<div class="sp"></div>` +
-    mathRow('events_with_measurement', s.events_with_measurement, '(events where the SSE/JSON scanner produced char counts)') +
+    mathRow('events_with_measurement', s.events_with_measurement, `(${escapeHtml(t('dashboard.math.eventsMeasurement'))})`) +
     mathRow('measured_text_chars', s.measured_text_chars, '') +
     mathRow('measured_thinking_chars', s.measured_thinking_chars, '') +
     mathRow('measured_tool_use_chars', s.measured_tool_use_chars, '') +
-    mathRow('measured_redacted_blocks', s.measured_redacted_block_count, '(opaque encrypted blocks — billed but unmeasurable)') +
-    `<span class="src">measured — no estimation</span>`;
+    mathRow('measured_redacted_blocks', s.measured_redacted_block_count, `(${escapeHtml(t('dashboard.math.opaqueBlocks'))})`) +
+    `<span class="src">${escapeHtml(t('dashboard.math.measuredNoEstimate'))}</span>`;
 
   const drawer =
     `<details class="drawer" id="math-drawer">` +
-    `<summary>Show the math &amp; honesty receipts</summary>` +
-    `<div class="drawer-intro">Every number above, derived from the same per-event log. The proxy only moves <em>input</em> tokens; output is shown on both sides so percentages stay honest.</div>` +
+    `<summary>${escapeHtml(t('dashboard.math.show'))}</summary>` +
+    `<div class="drawer-intro">${escapeHtml(t('dashboard.math.intro'))}</div>` +
     `<div class="math-grid">` +
-    mathBlock('Input tokens saved', savedMath) +
-    mathBlock('Dollars saved', usdMath) +
-    mathBlock('Cost per imaged request', costPerRequestMath) +
-    mathBlock('Share of total spend (diagnostic)', pctMath) +
-    mathBlock('Token-equivalent (what the weekly cap counts)', tokeqMath) +
+    mathBlock(t('dashboard.header.inputTokensSaved'), savedMath) +
+    mathBlock(t('dashboard.math.dollarsSaved'), usdMath) +
+    mathBlock(t('dashboard.math.costImaged'), costPerRequestMath) +
+    mathBlock(t('dashboard.math.shareSpend'), pctMath) +
+    mathBlock(t('dashboard.math.tokenEquivalent'), tokeqMath) +
     `</div></details>`;
 
   // NOTE: tests assert the header fragment contains the port number.
-  const updated = `<div class="updated"><span class="live-dot"></span>live · port ${port} · uptime ${formatDuration(s.uptime_sec)}</div>`;
+  const updated = `<div class="updated"><span class="live-dot"></span>${escapeHtml(t('dashboard.math.live'))} · ${escapeHtml(t('dashboard.math.port'))} ${port} · ${escapeHtml(t('dashboard.math.uptime'))} ${formatDuration(s.uptime_sec)}</div>`;
 
   return strip + drawer + updated;
 }
@@ -449,12 +478,12 @@ export interface ContextMapData {
 }
 
 const CTXMAP_BUCKETS: ReadonlyArray<readonly [string, string]> = [
-  ['static_slab', 'System prompt + tool docs'],
-  ['reminder', 'System-reminder blocks'],
-  ['tool_result_prose', 'Tool results — prose'],
-  ['tool_result_log', 'Tool results — logs'],
-  ['tool_result_json', 'Tool results — JSON'],
-  ['history', 'Older conversation turns'],
+  ['static_slab', 'dashboard.context.bucket.static'],
+  ['reminder', 'dashboard.context.bucket.reminder'],
+  ['tool_result_prose', 'dashboard.context.bucket.toolProse'],
+  ['tool_result_log', 'dashboard.context.bucket.toolLogs'],
+  ['tool_result_json', 'dashboard.context.bucket.toolJson'],
+  ['history', 'dashboard.context.bucket.history'],
 ];
 
 /** Image-vs-text breakdown for one request. */
@@ -462,13 +491,18 @@ export function renderContextMapFragment(
   c: ContextMapData | undefined,
   history: ContextMapData[] = [],
   notFound = false,
+  locale = 'en',
 ): string {
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(locale, key, params);
   const isLatest = c !== undefined && c.id === (history.at(-1)?.id ?? -1);
   if (notFound) {
-    return `<div class="ctxmap"><div class="empty-note">That request's breakdown isn't kept anymore — only the most recent requests are. Pick <strong>Details</strong> on a newer row.</div></div>`;
+    return `<div class="ctxmap"><div class="empty-note">${escapeHtml(t('dashboard.context.notFound'))}</div></div>`;
   }
   if (!c || (c.baselineTokens <= 0 && c.imageCount <= 0)) {
-    return `<div class="ctxmap"><div class="empty-note">Pick <strong>Details</strong> on a request to see exactly which parts became images and which stayed as text.</div></div>`;
+    return `<div class="ctxmap"><div class="empty-note">${escapeHtml(t('dashboard.context.empty'))}</div></div>`;
   }
   // Cache-aware billing-equivalent basis — identical to the recent row's
   // As-text / Sent / Saved/lost columns. These are not raw token counts; they apply
@@ -484,57 +518,57 @@ export function renderContextMapFragment(
   const rawShrink = c.baselineTokens > 0 ? Math.round((1 - c.realInput / c.baselineTokens) * 100) : 0;
   const totalImagedChars = CTXMAP_BUCKETS.reduce((a, [key]) => a + (c.buckets[key] ?? 0), 0);
 
-  const imgRows = CTXMAP_BUCKETS.map(([key, label]) => [label, c.buckets[key] ?? 0] as const)
+  const imgRows = CTXMAP_BUCKETS.map(([key, labelKey]) => [labelKey, c.buckets[key] ?? 0] as const)
     .filter(([, ch]) => ch > 0)
     .map(
-      ([label, ch]) =>
-        `<div class="ctx-row"><span class="ctx-lbl">${label}</span><span class="ctx-val">${kFmt(ch)} chars</span></div>`,
+      ([labelKey, ch]) =>
+        `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t(labelKey))}</span><span class="ctx-val">${kFmt(ch)} chars</span></div>`,
     )
     .join('');
 
   const rc = c.responsesComposition;
   const responseRows: ReadonlyArray<readonly [string, number]> = rc
     ? [
-        ['Instructions', rc.instructions],
-        ['System / developer items', rc.systemDeveloper],
-        ['User / assistant text kept native', rc.userAssistant],
-        ['Native tool JSON', rc.toolsJson],
-        ['Function calls', rc.functionCalls],
-        ['Function outputs', rc.functionOutputs],
-        ['Function outputs eligible in old closed pairs', rc.imageableFunctionOutputs ?? 0],
-        ['Function outputs actually imaged this request', rc.collapsedFunctionOutputs ?? 0],
-        ['Reasoning / encrypted items', rc.reasoningEncrypted],
-        ['Compaction / opaque items', rc.compactionOpaque],
-        ['Other Responses items', rc.other],
+        ['dashboard.context.responses.instructions', rc.instructions],
+        ['dashboard.context.responses.systemDeveloper', rc.systemDeveloper],
+        ['dashboard.context.responses.userAssistant', rc.userAssistant],
+        ['dashboard.context.responses.toolsJson', rc.toolsJson],
+        ['dashboard.context.responses.functionCalls', rc.functionCalls],
+        ['dashboard.context.responses.functionOutputs', rc.functionOutputs],
+        ['dashboard.context.responses.eligibleOutputs', rc.imageableFunctionOutputs ?? 0],
+        ['dashboard.context.responses.imagedOutputs', rc.collapsedFunctionOutputs ?? 0],
+        ['dashboard.context.responses.reasoning', rc.reasoningEncrypted],
+        ['dashboard.context.responses.compaction', rc.compactionOpaque],
+        ['dashboard.context.responses.other', rc.other],
       ]
     : [];
   const responseBreakdown = rc
-    ? `<div class="split-note" style="margin-top:12px"><strong>Original Responses composition (local o200k estimate)</strong></div>` +
-      responseRows.filter(([, n]) => n > 0).map(([label, n]) =>
-        `<div class="ctx-row"><span class="ctx-lbl">${label}</span><span class="ctx-val">${kFmt(n)} tok</span></div>`,
+    ? `<div class="split-note" style="margin-top:12px"><strong>${escapeHtml(t('dashboard.context.responses.heading'))}</strong></div>` +
+      responseRows.filter(([, n]) => n > 0).map(([labelKey, n]) =>
+        `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t(labelKey))}</span><span class="ctx-val">${kFmt(n)} tok</span></div>`,
       ).join('') +
-      `<div class="ctx-row"><span class="ctx-lbl">Imageable text baseline</span><span class="ctx-val">${kFmt(c.baselineImagedTokens ?? 0)} tok</span></div>` +
-      `<div class="ctx-row"><span class="ctx-lbl">Completed tool pairs (old / recent native / imaged)</span><span class="ctx-val">${rc.completedFunctionPairs ?? 0} (${rc.oldFunctionPairs ?? 0} / ${rc.recentNativeFunctionPairs ?? 0} / ${rc.collapsedFunctionPairs ?? 0})</span></div>` +
-      `<div class="ctx-row"><span class="ctx-lbl">Open calls kept native</span><span class="ctx-val">${rc.openFunctionCalls ?? 0}</span></div>` +
-      `<div class="ctx-row"><span class="ctx-lbl">Native image parts</span><span class="ctx-val">${rc.imageParts}</span></div>` +
-      `<div class="ctx-row"><span class="ctx-lbl">Provider tokens not explained locally</span><span class="ctx-val">${kFmt(c.responsesUnexplainedTokens ?? 0)} tok</span></div>` +
-      `<div class="split-note">This diagnostic uses local o200k counts only; it never calls Anthropic /count_tokens.</div>`
+      `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.responses.imageableBaseline'))}</span><span class="ctx-val">${kFmt(c.baselineImagedTokens ?? 0)} tok</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.responses.completedPairs'))}</span><span class="ctx-val">${rc.completedFunctionPairs ?? 0} (${rc.oldFunctionPairs ?? 0} / ${rc.recentNativeFunctionPairs ?? 0} / ${rc.collapsedFunctionPairs ?? 0})</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.responses.openCalls'))}</span><span class="ctx-val">${rc.openFunctionCalls ?? 0}</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.responses.nativeImages'))}</span><span class="ctx-val">${rc.imageParts}</span></div>` +
+      `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.responses.unexplained'))}</span><span class="ctx-val">${kFmt(c.responsesUnexplainedTokens ?? 0)} tok</span></div>` +
+      `<div class="split-note">${escapeHtml(t('dashboard.context.responses.diagnostic'))}</div>`
     : '';
 
   const ids = c.imageIds ?? [];
-  const modelLabel = c.model ? escapeHtml(c.model) : 'the model';
+  const modelLabel = c.model ?? t('dashboard.context.modelFallback');
   const gallery = ids.length
-    ? `<div class="pages-title">${ids.length} image page${ids.length === 1 ? '' : 's'} sent to ${modelLabel} — click one to read the exact text behind it:</div>` +
+    ? `<div class="pages-title">${escapeHtml(t('dashboard.context.gallery', { model: modelLabel, count: ids.length }))}</div>` +
       `<div class="pages">` +
       ids
         .map(
           (id) =>
-            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="Click to read the source text behind page ${id}" onclick="ppPin(${id});ppSource(true)" onerror="this.classList.add('page-gone'); this.alt='page ${id} expired from buffer';" />`,
+            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="ppPin(${id});ppSource(true)" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
         )
         .join('') +
       `</div>`
     : c.restored && c.imageCount > 0
-      ? `<div class="pages-title">${c.imageCount} image page${c.imageCount === 1 ? '' : 's'} were sent — thumbnails expired when the proxy restarted. The breakdown above is reconstructed from the saved log.</div>`
+      ? `<div class="pages-title">${escapeHtml(t('dashboard.context.galleryRestored', { count: c.imageCount }))}</div>`
       : '';
 
   // Did the TEXT baseline's prefix read warm this turn? This follows the actual
@@ -542,33 +576,31 @@ export function renderContextMapFragment(
   // means cold. No wall-clock-only counterfactual is credited.
   const warm = showCompare && c.warm;
   const google = c.model?.startsWith('gemini-') === true;
-  const textNoun = warm ? 'cached text' : 'text';
-  // Raw count_tokens can grow (imaging bloated a short prompt), so say so rather
-  // than rendering a nonsensical "shrank -36%".
-  const rawPhrase =
-    rawShrink >= 0 ? `Raw content shrank ${rawShrink}%.` : `Raw content grew ${-rawShrink}%.`;
+  const textNoun = t(warm ? 'dashboard.context.cachedText' : 'dashboard.context.text');
+  // Raw count_tokens can grow (imaging bloated a short prompt), so report the
+  // direction explicitly instead of rendering a negative shrink percentage.
+  const rawPhrase = rawShrink >= 0
+    ? t('dashboard.context.rawShrank', { pct: rawShrink })
+    : t('dashboard.context.rawGrew', { pct: -rawShrink });
   const headline = !showCompare
-    ? `<strong>${kFmt(c.actualInputEff || c.realInput)}</strong> billing-equivalent input tokens sent`
+    ? `<strong>${kFmt(c.actualInputEff || c.realInput)}</strong> ${escapeHtml(t('dashboard.context.billingSent'))}`
     : pct >= 0
       ? google
-        ? `<span class="ctx-big">${pct}%</span> smaller — text would account as <strong>${kFmt(base)}</strong> input tokens; images account as <strong>${kFmt(real)}</strong>`
-        : `<span class="ctx-big">${pct}%</span> smaller — ${textNoun} would bill as <strong>${kFmt(base)}</strong> input tokens; images billed as <strong>${kFmt(real)}</strong>`
+        ? `<span class="ctx-big">${pct}%</span> ${escapeHtml(t('dashboard.context.smaller'))} — ${escapeHtml(t('dashboard.context.textWouldAccount'))} <strong>${kFmt(base)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))}; ${escapeHtml(t('dashboard.context.imagesAccount'))} <strong>${kFmt(real)}</strong>`
+        : `<span class="ctx-big">${pct}%</span> ${escapeHtml(t('dashboard.context.smaller'))} — ${escapeHtml(textNoun)} ${escapeHtml(t('dashboard.context.wouldBill'))} <strong>${kFmt(base)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))}; ${escapeHtml(t('dashboard.context.imagesBilled'))} <strong>${kFmt(real)}</strong>`
       : google
-        ? `<span class="ctx-big">${-pct}%</span> bigger — images account as <strong>${kFmt(real)}</strong> input tokens vs <strong>${kFmt(base)}</strong> for text`
-        : `<span class="ctx-big">${-pct}%</span> bigger — images billed as <strong>${kFmt(real)}</strong> input tokens vs <strong>${kFmt(base)}</strong> for ${textNoun}`;
-  // Clarifying sub-line. It must match the actual request's cache state: claiming
-  // a 0.1× read discount when cache_read===0 would count hypothetical cache as a
-  // pxpipe effect, so cold rows price both paths cold.
+        ? `<span class="ctx-big">${-pct}%</span> ${escapeHtml(t('dashboard.context.bigger'))} — ${escapeHtml(t('dashboard.context.imagesAccount'))} <strong>${kFmt(real)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))} ${escapeHtml(t('dashboard.context.vsText'))} <strong>${kFmt(base)}</strong>`
+        : `<span class="ctx-big">${-pct}%</span> ${escapeHtml(t('dashboard.context.bigger'))} — ${escapeHtml(t('dashboard.context.imagesBilled'))} <strong>${kFmt(real)}</strong> ${escapeHtml(t('dashboard.context.inputTokens'))} ${escapeHtml(t('dashboard.context.vsText'))} <strong>${kFmt(base)}</strong> ${escapeHtml(t('dashboard.context.forNoun', { noun: textNoun }))}`;
   const subnote = !showCompare
-    ? 'Billed tokens count cache discounts (reads at 0.1×) — no trustworthy text baseline for this request yet.'
+    ? t('dashboard.context.noBaseline')
     : google
-      ? `Same provider-token basis as the Saved column. The gap is token count. ${rawPhrase}`
-    : !warm
-      ? `No warm text cache this turn — the text counterfactual's prefix is priced at the 1.25× create rate (the same event the imaged path pays), identical basis to the Saved column. The gap is purely token count. ${rawPhrase}`
-      : pct < 0 && rawShrink > 0
-          ? `Billed = after cache discounts (reads at 0.1×), same basis as the Saved column. The raw text is ${rawShrink}% smaller, but most of it would have been a cheap cache-read — so imaging it cost more.`
-          : `Billed = after cache discounts (reads at 0.1×), same basis as the Saved column. ${rawPhrase}`;
-  const title = isLatest ? 'Latest request' : 'Selected request';
+      ? `${t('dashboard.context.providerBasisGap')} ${rawPhrase}`
+      : !warm
+        ? `${t('dashboard.context.coldBasis')} ${rawPhrase}`
+        : pct < 0 && rawShrink > 0
+          ? t('dashboard.context.warmLoss', { pct: rawShrink })
+          : `${t('dashboard.context.warmBasis')} ${rawPhrase}`;
+  const title = t(isLatest ? 'dashboard.context.latestRequest' : 'dashboard.context.selectedRequest');
 
   // The provider caps a request at 100 image blocks and counts the CLIENT's
   // images against the same limit. Three facts are worth showing, and only when
@@ -577,15 +609,17 @@ export function renderContextMapFragment(
   //   - we rendered more pages than we shipped (the collapse ate some),
   //   - we gave up on imaging something because the cap was full.
   const capBits: string[] = [];
-  if ((c.nativeImages ?? 0) > 0) {
-    capBits.push(`${c.nativeImages} image${c.nativeImages === 1 ? '' : 's'} came from your side and count against the same 100-image request cap`);
+  const nativeImages = c.nativeImages ?? 0;
+  const imageBudgetSkips = c.imageBudgetSkips ?? 0;
+  if (nativeImages > 0) {
+    capBits.push(t(nativeImages === 1 ? 'dashboard.context.capNativeOne' : 'dashboard.context.capNative', { count: nativeImages }));
   }
-  if (c.wireImages !== undefined && c.wireImages < c.imageCount + (c.nativeImages ?? 0)) {
-    const absorbed = c.imageCount + (c.nativeImages ?? 0) - c.wireImages;
-    capBits.push(`${absorbed} rendered page${absorbed === 1 ? '' : 's'} never went out — the history collapse absorbed those messages (${c.wireImages} on the wire)`);
+  if (c.wireImages !== undefined && c.wireImages < c.imageCount + nativeImages) {
+    const absorbed = c.imageCount + nativeImages - c.wireImages;
+    capBits.push(t(absorbed === 1 ? 'dashboard.context.capAbsorbedOne' : 'dashboard.context.capAbsorbed', { count: absorbed, wire: c.wireImages }));
   }
-  if ((c.imageBudgetSkips ?? 0) > 0) {
-    capBits.push(`${c.imageBudgetSkips} block${c.imageBudgetSkips === 1 ? '' : 's'} stayed as text because the image cap was full`);
+  if (imageBudgetSkips > 0) {
+    capBits.push(t(imageBudgetSkips === 1 ? 'dashboard.context.capSkippedOne' : 'dashboard.context.capSkipped', { count: imageBudgetSkips }));
   }
   const capNote = capBits.length
     ? `<div class="split-note cap-note">${capBits.map(escapeHtml).join(' · ')}</div>`
@@ -596,19 +630,19 @@ export function renderContextMapFragment(
     `<div class="ctxmap">` +
     `<div class="ctx-headline"><span class="ctx-title">${title}</span> ${headline}</div>` +
     `<div class="split-note ctx-subnote">${subnote}</div>` +
-    `<div class="legend"><span class="tag tag-img">Became an image</span><span class="tag tag-txt">Stayed as text</span></div>` +
+    `<div class="legend"><span class="tag tag-img">${escapeHtml(t('dashboard.context.becameImage'))}</span><span class="tag tag-txt">${escapeHtml(t('dashboard.context.stayedText'))}</span></div>` +
     `<div class="split">` +
     `<div class="split-col split-img">` +
-    `<div class="split-head">Compressed into images <span class="split-sum">${kFmt(totalImagedChars)} chars · ${c.imageCount} page${c.imageCount === 1 ? '' : 's'}</span></div>` +
-    (imgRows || `<div class="ctx-row muted-row">nothing imaged this request</div>`) +
+    `<div class="split-head">${escapeHtml(t('dashboard.context.compressedImages'))} <span class="split-sum">${escapeHtml(t('dashboard.context.pagesSummary', { chars: kFmt(totalImagedChars), count: c.imageCount }))}</span></div>` +
+    (imgRows || `<div class="ctx-row muted-row">${escapeHtml(t('dashboard.context.nothingImaged'))}</div>`) +
     capNote +
-    `<div class="split-note">pxpipe can misread exact values inside images — treat these as gist, not byte-exact.</div>` +
+    `<div class="split-note">${escapeHtml(t('dashboard.context.imageApprox'))}</div>` +
     `</div>` +
     `<div class="split-col split-txt">` +
-    `<div class="split-head">Kept as plain text <span class="split-sum">byte-exact</span></div>` +
-    `<div class="ctx-row"><span class="ctx-lbl">Your latest messages</span><span class="ctx-val">verbatim</span></div>` +
-    `<div class="ctx-row"><span class="ctx-lbl">Model reply (output)</span><span class="ctx-val">${kFmt(c.output)} tok</span></div>` +
-    `<div class="split-note">never imaged — safe for IDs, hashes and exact numbers.</div>` +
+    `<div class="split-head">${escapeHtml(t('dashboard.context.keptPlain'))} <span class="split-sum">${escapeHtml(t('dashboard.context.byteExact'))}</span></div>` +
+    `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.latestMessages'))}</span><span class="ctx-val">${escapeHtml(t('dashboard.context.verbatim'))}</span></div>` +
+    `<div class="ctx-row"><span class="ctx-lbl">${escapeHtml(t('dashboard.context.modelReply'))}</span><span class="ctx-val">${kFmt(c.output)} tok</span></div>` +
+    `<div class="split-note">${escapeHtml(t('dashboard.context.exactSafe'))}</div>` +
     `</div>` +
     `</div>` +
     responseBreakdown +
@@ -625,17 +659,21 @@ function statusCls(status: number): string {
   return 'good';
 }
 
-export function renderRecentFragment(p: RecentPayload): string {
+export function renderRecentFragment(p: RecentPayload, locale = 'en'): string {
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(locale, key, params);
   const rows = (p.recent ?? []).slice().reverse();
   const body =
     rows.length === 0
-      ? `<tr><td colspan="10" class="empty-cell">No requests yet — they stream in here live.</td></tr>`
+      ? `<tr><td colspan="10" class="empty-cell">${escapeHtml(t('dashboard.recent.empty'))}</td></tr>`
       : rows
           .map((e: RecentRow, i: number) => {
             const viewId = (e.img_ids ?? (e.img_id != null ? [e.img_id] : []))[0];
             const viewLink =
               viewId != null
-                ? `<a class="row-view" href="#" hx-get="/fragments/context-map?req=${viewId}" hx-target="#frag-context-map" hx-swap="innerHTML">Details →</a>`
+                ? `<a class="row-view" href="#" hx-get="/fragments/context-map?req=${viewId}" hx-target="#frag-context-map" hx-swap="innerHTML">${escapeHtml(t('dashboard.recent.details'))}</a>`
                 : `<span class="muted">—</span>`;
             const saved = e.session_saved_so_far_delta;
             // A loss that disappears when the newly written prefix is repriced at
@@ -649,7 +687,11 @@ export function renderRecentFragment(p: RecentPayload): string {
               cc > 0 &&
               saved + cc * (CACHE_CREATE_RATE - CACHE_READ_RATE) > 0;
             const createNote = createLoss
-              ? ` <span class="mk-create" title="Cache-create turn: this loss is the one-time ${CACHE_CREATE_RATE}× premium for writing ${numFmt(cc)} tokens to cache. Later turns re-read that prefix at ${CACHE_READ_RATE}×, which typically recoups it.">create</span>`
+              ? ` <span class="mk-create" title="${escapeHtml(t('dashboard.recent.createTip', {
+                  createRate: CACHE_CREATE_RATE,
+                  tokens: numFmt(cc),
+                  readRate: CACHE_READ_RATE,
+                }))}">${escapeHtml(t('dashboard.recent.create'))}</span>`
               : '';
             const savedCell = saved == null
               ? `<td class="num muted">—</td>`
@@ -659,8 +701,8 @@ export function renderRecentFragment(p: RecentPayload): string {
                   ? `<td class="num neg">${numFmt(saved)}${createNote}</td>`
                   : `<td class="num">0</td>`;
             const imaged = e.cc_added
-              ? `<span class="badge badge-img">image</span>`
-              : `<span class="badge badge-txt">text</span>`;
+              ? `<span class="badge badge-img">${escapeHtml(t('dashboard.recent.image'))}</span>`
+              : `<span class="badge badge-txt">${escapeHtml(t('dashboard.recent.text'))}</span>`;
             return (
               `<tr>` +
               `<td class="muted">${i + 1}</td>` +
@@ -680,14 +722,14 @@ export function renderRecentFragment(p: RecentPayload): string {
   return (
     `<table class="rtable"><thead><tr>` +
     `<th>#</th>` +
-    `<th>Result</th>` +
-    `<th>Endpoint</th>` +
-    `<th>Model</th>` +
-    `<th title="Was this request's context compressed into an image?">Sent as</th>` +
-    `<th class="num" title="Tokens the provider reported as served from cache">Cache hits</th>` +
-    `<th class="num" title="Billing-equivalent input if kept as plain text, after cache create/read rates">As text</th>` +
-    `<th class="num" title="Actual billing-equivalent input after imaging, after cache create/read rates">Sent</th>` +
-    `<th class="num" title="As-text minus Sent; negative means imaging cost more">Saved/lost</th>` +
+    `<th>${escapeHtml(t('dashboard.recent.result'))}</th>` +
+    `<th>${escapeHtml(t('dashboard.recent.endpoint'))}</th>` +
+    `<th>${escapeHtml(t('dashboard.recent.model'))}</th>` +
+    `<th title="${escapeHtml(t('dashboard.recent.sentAsTip'))}">${escapeHtml(t('dashboard.recent.sentAs'))}</th>` +
+    `<th class="num" title="${escapeHtml(t('dashboard.recent.cacheHitsTip'))}">${escapeHtml(t('dashboard.recent.cacheHits'))}</th>` +
+    `<th class="num" title="${escapeHtml(t('dashboard.recent.asTextTip'))}">${escapeHtml(t('dashboard.recent.asText'))}</th>` +
+    `<th class="num" title="${escapeHtml(t('dashboard.recent.sentTip'))}">${escapeHtml(t('dashboard.recent.sent'))}</th>` +
+    `<th class="num" title="${escapeHtml(t('dashboard.recent.savedLostTip'))}">${escapeHtml(t('dashboard.recent.savedLost'))}</th>` +
     `<th></th>` +
     `</tr></thead><tbody>${body}</tbody></table>`
   );
@@ -702,7 +744,11 @@ export interface LatestFragmentInput {
   sourceText: string | null; // null = not captured
 }
 
-export function renderLatestFragment(inp: LatestFragmentInput): string {
+export function renderLatestFragment(inp: LatestFragmentInput, locale = 'en'): string {
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(locale, key, params);
   const { payload, pin, showSource, sourceText } = inp;
   const hasPreview = payload.has_preview === true;
   const meta = payload.preview_meta ?? '';
@@ -717,35 +763,35 @@ export function renderLatestFragment(inp: LatestFragmentInput): string {
 
   const pinBar =
     pin != null
-      ? `<div class="viewer-bar"><button class="mini-btn" type="button" onclick="ppPin(null)">← back to latest</button><span class="mini-label">image #${pin}</span></div>`
+      ? `<div class="viewer-bar"><button class="mini-btn" type="button" onclick="ppPin(null)">${escapeHtml(t('dashboard.latest.back'))}</button><span class="mini-label">${escapeHtml(t('dashboard.latest.image', { id: pin }))}</span></div>`
       : '';
 
   let main: string;
   if (pin != null && pinnedEvicted) {
-    main = `<div class="evicted">image #${pin} is no longer in the buffer</div>`;
+    main = `<div class="evicted">${escapeHtml(t('dashboard.latest.evicted', { id: pin }))}</div>`;
   } else if (pin != null || hasPreview) {
     // When source pane is open the image appears inside the pairing — don't duplicate it.
-    main = showSource ? '' : `<div class="frame"><img src="${imgSrc}" alt="rendered page" /></div>`;
+    main = showSource ? '' : `<div class="frame"><img src="${imgSrc}" alt="${escapeHtml(t('dashboard.latest.renderedAlt'))}" /></div>`;
   } else {
-    main = `<div class="empty-note">No images yet — they appear the instant pxpipe compresses a request.</div>`;
+    main = `<div class="empty-note">${escapeHtml(t('dashboard.latest.noImages'))}</div>`;
   }
 
   const showBtn = pin != null ? !pinnedEvicted : hasPreview;
   const caption =
-    pin != null ? `image #${pin}` : meta ? `${escapeHtml(meta)} · top-left at native size` : '';
+    pin != null ? escapeHtml(t('dashboard.latest.image', { id: pin })) : meta ? `${escapeHtml(meta)} · ${escapeHtml(t('dashboard.latest.topLeft'))}` : '';
   const srcBtn = showBtn
-    ? `<button class="mini-btn" type="button" onclick="ppSource(${showSource ? 'false' : 'true'})">${showSource ? 'hide source text' : 'show the text behind this image'}</button>`
+    ? `<button class="mini-btn" type="button" onclick="ppSource(${showSource ? 'false' : 'true'})">${escapeHtml(t(showSource ? 'dashboard.latest.hideSource' : 'dashboard.latest.showSource'))}</button>`
     : '';
 
   let pane = '';
   if (showSource) {
     pane =
       sourceText == null
-        ? `<div class="evicted">source text wasn't captured for this image</div>`
+        ? `<div class="evicted">${escapeHtml(t('dashboard.latest.sourceMissing'))}</div>`
         : `<div class="pairing">` +
-          `<div class="pair-col"><div class="pair-head pair-img">What the model sees · image</div><div class="frame frame-sm"><img src="${imgSrc}" alt="rendered page" /></div></div>` +
-          `<div class="pair-mid">made from ↓</div>` +
-          `<div class="pair-col"><div class="pair-head pair-txt">The original text · byte-exact</div><pre class="src-pane">${escapeHtml(sourceText)}</pre></div>` +
+          `<div class="pair-col"><div class="pair-head pair-img">${escapeHtml(t('dashboard.latest.modelSees'))}</div><div class="frame frame-sm"><img src="${imgSrc}" alt="${escapeHtml(t('dashboard.latest.renderedAlt'))}" /></div></div>` +
+          `<div class="pair-mid">${escapeHtml(t('dashboard.latest.madeFrom'))}</div>` +
+          `<div class="pair-col"><div class="pair-head pair-txt">${escapeHtml(t('dashboard.latest.originalText'))}</div><pre class="src-pane">${escapeHtml(sourceText)}</pre></div>` +
           `</div>`;
   }
 
@@ -756,7 +802,12 @@ export function renderLatestFragment(inp: LatestFragmentInput): string {
 
 const TOP_N = 8;
 
-export function renderSessionsFragment(p: SessionsPayload): string {
+export function renderSessionsUnavailableFragment(locale = 'en'): string {
+  return `<div class="status">${escapeHtml(dashboardT(locale, 'dashboard.sessions.unavailable'))}</div>`;
+}
+
+export function renderSessionsFragment(p: SessionsPayload, locale = 'en'): string {
+  const t = (key: string): string => dashboardT(locale, key);
   const all = p.sessions ?? [];
   const rows = [...all]
     .sort((a, b) => (b.tokensSavedEst ?? 0) - (a.tokensSavedEst ?? 0))
@@ -769,8 +820,8 @@ export function renderSessionsFragment(p: SessionsPayload): string {
   };
   const barPct = (v: number) => (max <= 0 || v <= 0 ? 0 : (v / max) * 100);
 
-  const status = `<div class="status">${all.length} session${all.length === 1 ? '' : 's'} tracked</div>`;
-  if (rows.length === 0) return status + `<div class="empty">No sessions yet.</div>`;
+  const status = `<div class="status">${all.length} ${escapeHtml(t('dashboard.sessions.tracked'))}</div>`;
+  if (rows.length === 0) return status + `<div class="empty">${escapeHtml(t('dashboard.sessions.empty'))}</div>`;
 
   const chart = rows
     .map((s) => {
@@ -790,15 +841,67 @@ export function renderSessionsFragment(p: SessionsPayload): string {
   return (
     status +
     `<div class="bars">${chart}</div>` +
-    `<div class="axis">tokens saved per session (cache-aware) · top ${rows.length} of ${all.length}</div>`
+    `<div class="axis">${escapeHtml(t('dashboard.sessions.axis'))} · top ${rows.length} of ${all.length}</div>`
+  );
+}
+
+// ---- Control Room V5 ------------------------------------------------------
+
+export function renderControlRoomFragment(snapshot: ControlRoomSnapshot | null, locale = 'en'): string {
+  const t = (key: string): string => dashboardT(locale, key);
+  if (!snapshot) {
+    return (
+      `<div class="status"><strong>Control Room V5 · NOT_AVAILABLE</strong> — ${escapeHtml(t('dashboard.controlRoom.noEvidence'))}</div>` +
+      `<table class="dtable"><tbody></tbody></table>`
+    );
+  }
+
+  const labels: Readonly<Record<keyof ControlRoomSnapshot['sections'], string>> = {
+    receipts: t('dashboard.controlRoom.receipts'),
+    recovery: t('dashboard.controlRoom.recovery'),
+    agent: t('dashboard.controlRoom.agent'),
+    learning: t('dashboard.controlRoom.learning'),
+    provider: t('dashboard.controlRoom.provider'),
+    mcp: t('dashboard.controlRoom.mcp'),
+    i18n: t('dashboard.controlRoom.i18n'),
+    webStudio: t('dashboard.controlRoom.webStudio'),
+    security: t('dashboard.controlRoom.security'),
+    benchmarks: t('dashboard.controlRoom.benchmarks'),
+    release: t('dashboard.controlRoom.releaseReadiness'),
+  };
+
+  const rows = (Object.entries(snapshot.sections) as Array<[
+    keyof ControlRoomSnapshot['sections'],
+    ControlRoomSnapshot['sections'][keyof ControlRoomSnapshot['sections']],
+  ]>).map(([key, section]) =>
+    `<tr><td>${escapeHtml(labels[key])}</td><td class="num">${escapeHtml(section.status)}</td></tr>`
+  ).join('');
+
+  const warnings = Object.values(snapshot.sections)
+    .flatMap((section) => section.warnings)
+    .map((warning) => `<div class="status">⚠ ${escapeHtml(warning)}</div>`)
+    .join('');
+
+  const release = snapshot.sections.release.evidence;
+  const releaseSummary =
+    `<div class="status">${escapeHtml(t('dashboard.controlRoom.releaseReadiness'))} · <strong>${escapeHtml(release.technicalStatus)}</strong>` +
+    ` · ${escapeHtml(t('dashboard.controlRoom.requiredGates'))} ${numFmt(release.verifiedRequiredGates)}/${numFmt(release.requiredGates)}` +
+    ` · ${escapeHtml(t('dashboard.controlRoom.blockers'))} ${numFmt(release.blockers)} · ${escapeHtml(t('dashboard.controlRoom.releaseActions'))}</div>`;
+
+  return (
+    `<div class="status"><strong>Control Room V5 · ${escapeHtml(snapshot.overall)}</strong> · commit <code>${escapeHtml(snapshot.sourceCommit.slice(0, 12))}</code></div>` +
+    releaseSummary +
+    `<table class="dtable"><tbody>${rows}</tbody></table>` +
+    warnings
   );
 }
 
 // ---- full-history stats table --------------------------------------------
 
-export function renderStatsTableFragment(p: FullStatsPayload): string {
+export function renderStatsTableFragment(p: FullStatsPayload, locale = 'en'): string {
+  const t = (key: string): string => dashboardT(locale, key);
   if (p.error || !p.summary) {
-    return `<div class="status">${escapeHtml(p.error || 'no data')}</div><table class="dtable"><tbody></tbody></table>`;
+    return `<div class="status">${escapeHtml(p.error || t('dashboard.stats.noData'))}</div><table class="dtable"><tbody></tbody></table>`;
   }
   const s = p.summary;
   const totalIn = (s.inputTokensTotal || 0) + (s.cacheCreateTokensTotal || 0) + (s.cacheReadTokensTotal || 0);
@@ -811,28 +914,28 @@ export function renderStatsTableFragment(p: FullStatsPayload): string {
   // NOTE: the literal word "requests" is asserted by tests.
   const tr = (k: string, v: string) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`;
   return (
-    `<div class="status">${numFmt(p.parsed)} events parsed from disk</div>` +
+    `<div class="status">${numFmt(p.parsed)} ${escapeHtml(t('dashboard.stats.eventsParsed'))}</div>` +
     `<table class="dtable"><tbody>` +
-    tr('requests', numFmt(s.total)) +
+    tr(t('dashboard.stats.requests'), numFmt(s.total)) +
     tr('2xx / 4xx / 5xx', `${numFmt(s.ok2xx)} / ${numFmt(s.err4xx)} / ${numFmt(s.err5xx)}`) +
-    tr('compressed', numFmt(s.compressed)) +
-    tr('passthrough', numFmt(s.passthrough)) +
-    tr('input tokens', numFmt(s.inputTokensTotal)) +
-    tr('cache create', numFmt(s.cacheCreateTokensTotal)) +
-    tr('cache read', numFmt(s.cacheReadTokensTotal)) +
-    tr('cache hit (by tokens)', hitRateTok) +
-    tr('cache hit (by events)', hitRateEv) +
-    tr('original chars', numFmt(s.origCharsTotal)) +
-    tr('image bytes', numFmt(s.imageBytesTotal)) +
-    tr('bytes / char', charRatio) +
+    tr(t('dashboard.stats.compressed'), numFmt(s.compressed)) +
+    tr(t('dashboard.stats.passthrough'), numFmt(s.passthrough)) +
+    tr(t('dashboard.stats.inputTokens'), numFmt(s.inputTokensTotal)) +
+    tr(t('dashboard.stats.cacheCreate'), numFmt(s.cacheCreateTokensTotal)) +
+    tr(t('dashboard.stats.cacheRead'), numFmt(s.cacheReadTokensTotal)) +
+    tr(t('dashboard.stats.cacheHitTokens'), hitRateTok) +
+    tr(t('dashboard.stats.cacheHitEvents'), hitRateEv) +
+    tr(t('dashboard.stats.originalChars'), numFmt(s.origCharsTotal)) +
+    tr(t('dashboard.stats.imageBytes'), numFmt(s.imageBytesTotal)) +
+    tr(t('dashboard.stats.bytesChar'), charRatio) +
     (s.pinEvents
       ? tr(
-          'pin footer (uncached)',
+          t('dashboard.stats.pinFooter'),
           `${numFmt(s.pinCharsTotal ?? 0)} chars / ${numFmt(s.pinEvents)} req`,
         )
       : '') +
-    tr('latency p50 / p95', `${numFmt(s.durationP50)} / ${numFmt(s.durationP95)} ms`) +
-    tr('first-byte p50 / p95', `${numFmt(s.firstByteP50)} / ${numFmt(s.firstByteP95)} ms`) +
+    tr(t('dashboard.stats.latency'), `${numFmt(s.durationP50)} / ${numFmt(s.durationP95)} ms`) +
+    tr(t('dashboard.stats.firstByte'), `${numFmt(s.firstByteP50)} / ${numFmt(s.firstByteP95)} ms`) +
     `</tbody></table>`
   );
 }
@@ -1003,16 +1106,36 @@ const CSS = `
     border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border-strong);
     color: var(--muted); font-size: 9px; font-weight: 700; cursor: help; position: relative; outline: none; }
   .q:hover, .q:focus-visible { color: var(--flame-ink); border-color: var(--flame); }
-  .q::after { content: attr(data-tip); position: absolute; z-index: 50; left: 50%; bottom: calc(100% + 8px);
-    width: min(280px, 75vw); transform: translate(-50%, 4px); padding: 8px 10px; border-radius: 7px;
+  .q::after { content: attr(data-tip); position: absolute; z-index: 50; left: 0; bottom: calc(100% + 8px);
+    width: min(280px, calc(100vw - 32px)); transform: translateY(4px); padding: 8px 10px; border-radius: 7px;
     background: var(--ink); color: var(--surface); box-shadow: var(--shadow); font-size: 11px; font-weight: 500;
-    line-height: 1.4; text-align: left; pointer-events: none; opacity: 0; visibility: hidden;
+    line-height: 1.4; text-align: left; pointer-events: none; opacity: 0; visibility: hidden; display: none;
     transition: opacity .12s, transform .12s, visibility .12s; }
-  .q::before { content: ''; position: absolute; z-index: 51; left: 50%; bottom: calc(100% + 3px);
-    transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--ink);
-    pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .12s, visibility .12s; }
-  .q:hover::after, .q:focus-visible::after { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
-  .q:hover::before, .q:focus-visible::before { opacity: 1; visibility: visible; }
+  .q::before { content: ''; position: absolute; z-index: 51; left: 2px; bottom: calc(100% + 3px);
+    border: 5px solid transparent; border-top-color: var(--ink);
+    pointer-events: none; opacity: 0; visibility: hidden; display: none; transition: opacity .12s, visibility .12s; }
+  .tile:nth-child(3) .q::after, .tile:nth-child(4) .q::after { left: auto; right: 0; }
+  .tile:nth-child(3) .q::before, .tile:nth-child(4) .q::before { left: auto; right: 2px; }
+  @media (min-width: 1001px) {
+    [dir="rtl"] .tile:nth-child(3) .q::after, [dir="rtl"] .tile:nth-child(4) .q::after { left: 0; right: auto; }
+    [dir="rtl"] .tile:nth-child(3) .q::before, [dir="rtl"] .tile:nth-child(4) .q::before { left: 2px; right: auto; }
+  }
+  .q:hover::after, .q:focus-visible::after { display: block; opacity: 1; visibility: visible; transform: translateY(0); }
+  .q:hover::before, .q:focus-visible::before { display: block; opacity: 1; visibility: visible; }
+  @media (max-width: 1000px) {
+    .tile:nth-child(odd) .q::after { left: 0; right: auto; }
+    .tile:nth-child(odd) .q::before { left: 2px; right: auto; }
+    .tile:nth-child(even) .q::after { left: auto; right: 0; }
+    .tile:nth-child(even) .q::before { left: auto; right: 2px; }
+    [dir="rtl"] .tile:nth-child(odd) .q::after { left: auto; right: 0; }
+    [dir="rtl"] .tile:nth-child(odd) .q::before { left: auto; right: 2px; }
+    [dir="rtl"] .tile:nth-child(even) .q::after { left: 0; right: auto; }
+    [dir="rtl"] .tile:nth-child(even) .q::before { left: 2px; right: auto; }
+  }
+  @media (max-width: 560px) {
+    .tile .q::after { left: 0; right: auto; }
+    .tile .q::before { left: 2px; right: auto; }
+  }
 
   /* drawer */
   .drawer { margin: 0 0 14px; background: var(--surface); border: 1px solid var(--border);
@@ -1221,8 +1344,8 @@ const THEME_JS = `
       document.documentElement.dataset.theme = t;
       var b = document.getElementById('theme-btn');
       if (b) {
-        b.textContent = t === 'dark' ? '☀ Light' : '☾ Dark';
-        b.setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+        b.textContent = t === 'dark' ? '☀ ' + b.dataset.lightLabel : '☾ ' + b.dataset.darkLabel;
+        b.setAttribute('aria-label', b.dataset.toggleLabel || '');
       }
     }
     window.ppTheme = function () {
@@ -1238,15 +1361,24 @@ const THEME_JS = `
  *  byte-identical across hosts, so a tab opened against a remote host through
  *  the tailnet front is indistinguishable from the local one - which is how a
  *  session gets read on the wrong box. Empty label = render as before. */
-export function renderPage(port: number, hostLabel = ''): string {
+export function renderPage(port: number, hostLabel = '', locale = 'en'): string {
   const host = escapeHtml(hostLabel.trim());
+  const localeResolution = resolveDashboardLocale(locale);
+  const activeLocale = localeResolution.canonical;
+  const t = (
+    key: string,
+    params?: Readonly<Record<string, string | number | boolean>>,
+  ): string => dashboardT(activeLocale, key, params);
+  const languageOptions = DASHBOARD_LOCALES.map((candidate) =>
+    `<option value="${candidate}"${candidate === activeLocale ? ' selected' : ''}>${candidate}</option>`
+  ).join('');
   // hx-trigger="load, every Ns": paint on load then poll (2s live, 5s aggregates).
   return `<!doctype html>
-<html lang="en">
+<html lang="${escapeHtml(activeLocale)}" dir="${localeResolution.direction}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${host ? `${host} · pxpipe dashboard` : 'pxpipe — live dashboard'}</title>
+<title>${host ? `${host} · ${escapeHtml(dashboardT(activeLocale, 'dashboard.title'))}` : escapeHtml(dashboardT(activeLocale, 'dashboard.liveTitle'))}</title>
 <link rel="icon" href="${FAVICON}" />
 <style>${CSS}</style>
 <script>
@@ -1258,6 +1390,29 @@ export function renderPage(port: number, hostLabel = ''): string {
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     } catch (e) { document.documentElement.dataset.theme = 'light'; }
   })();
+  window.ppLocale = ${JSON.stringify(activeLocale)};
+  (function () {
+    try {
+      var params = new URLSearchParams(location.search);
+      var requested = params.get('locale');
+      var saved = localStorage.getItem('furypipe-locale');
+      if (!requested && saved && saved !== window.ppLocale) {
+        params.set('locale', saved);
+        location.replace(location.pathname + '?' + params.toString() + location.hash);
+        return;
+      }
+      localStorage.setItem('furypipe-locale', window.ppLocale);
+    } catch (e) {}
+    window.ppSetLocale = function (next) {
+      try { localStorage.setItem('furypipe-locale', next); } catch (e) {}
+      var params = new URLSearchParams(location.search);
+      params.set('locale', next);
+      location.search = params.toString();
+    };
+    document.addEventListener('htmx:configRequest', function (event) {
+      if (event.detail && event.detail.parameters) event.detail.parameters.locale = window.ppLocale;
+    });
+  })();
 </script>
 </head>
 <body>
@@ -1268,47 +1423,53 @@ export function renderPage(port: number, hostLabel = ''): string {
     <div>
       <div class="wordmark-row">
         <div class="wordmark">pxpipe</div>
-        ${host ? `<span class="hostchip" title="proxy host">${host}</span>` : ''}
+        ${host ? `<span class="hostchip" title="${escapeHtml(t('dashboard.page.proxyHost'))}">${host}</span>` : ''}
       </div>
-      <div class="tagline">See exactly what got turned into images to shrink your Claude Code bill.</div>
+      <div class="tagline">${escapeHtml(dashboardT(activeLocale, 'dashboard.tagline'))}</div>
     </div>
   </div>
   <div class="controls">
-    <button type="button" id="theme-btn" class="theme-btn" onclick="ppTheme()" aria-label="Toggle dark mode" title="Toggle dark / light mode">☾ Dark</button>
+    <label class="hint">${escapeHtml(dashboardT(activeLocale, 'dashboard.language'))} <select class="mini-btn" onchange="ppSetLocale(this.value)">${languageOptions}</select></label>
+    <button type="button" id="theme-btn" class="theme-btn" onclick="ppTheme()"
+      data-dark-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeDark'))}"
+      data-light-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeLight'))}"
+      data-toggle-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeToggle'))}"
+      aria-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeToggle'))}"
+      title="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeToggle'))}">☾ ${escapeHtml(dashboardT(activeLocale, 'dashboard.themeDark'))}</button>
     <div id="frag-toggle" hx-get="/fragments/toggle" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
   </div>
 </header>
 
 <details class="models-collapse">
-  <summary class="models-summary">Connect an agent <span class="hint">warp launches any CLI through this proxy · pin keeps instructions last in the request</span></summary>
-  <p>Warp starts the agent with the proxy already wired, no env or config edits:</p>
+  <summary class="models-summary">${escapeHtml(t('dashboard.page.connectAgent'))} <span class="hint">${escapeHtml(t('dashboard.page.connectHint'))}</span></summary>
+  <p>${escapeHtml(t('dashboard.page.warpIntro'))}</p>
   <pre>pxpipe warp -- claude
 pxpipe warp -- codex
 pxpipe warp -- cursor-agent</pre>
-  <p>Aliases work too (<code>pxpipe warp -- pp</code>), and <code>--route PATTERN=http://host:port</code> adds routes beyond <code>api.anthropic.com</code> (a PATTERN that names a port matches only that port, e.g. <code>--route '127.0.0.1:9090/v1/*=http://127.0.0.1:${port}'</code> warps an agent pointed at another local proxy). Without warp, point the agent at <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code> yourself.</p>
-  <p>Pin instructions from inside the session — they get moved to the end of every request, where the model actually reads them:</p>
+  <p>${escapeHtml(t('dashboard.page.aliasHelp'))}<br><code>pxpipe warp -- pp</code> · <code>--route PATTERN=http://host:port</code> · <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code></p>
+  <p>${escapeHtml(t('dashboard.page.pinIntro'))}</p>
   <pre>@pxpipe pin be concise, no walls of text
 @pxpipe unpin 2
 @pxpipe unpin all</pre>
-  <p><code>@pxpipe pin</code> with no text lists what is pinned.</p>
-  <p>A <code>@pxpipe pin …</code> line in your global or project <code>CLAUDE.md</code> (<code>AGENTS.md</code> under Codex / OpenCode) is relocated the same way, on every session, with no typing. Those are file-backed, so <code>unpin</code> and <code>unpin all</code> never touch them — edit the file to remove one.</p>
+  <p>${escapeHtml(t('dashboard.page.pinList'))}</p>
+  <p>${escapeHtml(t('dashboard.page.pinFileHelp'))} <code>CLAUDE.md</code> / <code>AGENTS.md</code></p>
 </details>
 
 <details class="models-collapse">
-  <summary class="models-summary">Image model scope <span class="hint">Fable 5, Gemini 3.6 Flash, and Gemini 3.7 Flash by default · expand to experiment with other families</span></summary>
-  <div class="models-warning">⚠ Image compression is validated for Fable 5, Gemini 3.6 Flash, and Gemini 3.7 Flash — other families can use <strong>more</strong> tokens, not less. Opt in only for deliberate experiments.</div>
+  <summary class="models-summary">${escapeHtml(t('dashboard.page.modelScope'))} <span class="hint">${escapeHtml(t('dashboard.page.modelScopeHint'))}</span></summary>
+  <div class="models-warning">⚠ ${escapeHtml(t('dashboard.page.modelScopeWarning'))}</div>
   <div id="frag-models" hx-get="/fragments/models" hx-trigger="load, every 2s [!document.activeElement || document.activeElement.id !== 'models-csv']" hx-swap="innerHTML"></div>
-  <div class="models-routing"><span class="hint">imaging scope ≠ provider routing — non-Anthropic IDs also need routing env on the proxy</span> <button class="mini-btn" type="button" onclick="document.getElementById('routing-help').showModal()">routing help</button></div>
+  <div class="models-routing"><span class="hint">${escapeHtml(t('dashboard.page.routingHint'))}</span> <button class="mini-btn" type="button" onclick="document.getElementById('routing-help').showModal()">${escapeHtml(t('dashboard.page.routingHelp'))}</button></div>
 </details>
 
 <dialog id="routing-help" onclick="if (event.target === this) this.close()">
-  <h3>Routing Claude Code to OpenAI / Cloudflare models</h3>
-  <p>Claude models use Anthropic by default. Two optional routes can run together — set on the <strong>pxpipe process</strong> (keep provider credentials out of Claude Code):</p>
+  <h3>${escapeHtml(t('dashboard.page.routingTitle'))}</h3>
+  <p>${escapeHtml(t('dashboard.page.routingIntro'))}</p>
   <ul>
-    <li><code>OPENAI_MODELS</code> — exact model IDs routed to OpenAI Responses (<code>OPENAI_UPSTREAM</code> + <code>OPENAI_API_KEY</code>)</li>
-    <li><code>CLOUDFLARE_MODELS</code> — exact model IDs routed to Cloudflare's OpenAI-compatible endpoint (<code>CLOUDFLARE_ACCOUNT_ID</code> + <code>CLOUDFLARE_API_TOKEN</code>)</li>
+    <li><code>OPENAI_MODELS</code> — ${escapeHtml(t('dashboard.page.routingOpenAI'))} (<code>OPENAI_UPSTREAM</code> + <code>OPENAI_API_KEY</code>)</li>
+    <li><code>CLOUDFLARE_MODELS</code> — ${escapeHtml(t('dashboard.page.routingCloudflare'))} (<code>CLOUDFLARE_ACCOUNT_ID</code> + <code>CLOUDFLARE_API_TOKEN</code>)</li>
   </ul>
-  <p>If a model appears in both lists: <code>CLOUDFLARE_MODELS &gt; OPENAI_MODELS &gt; default routing</code>.</p>
+  <p>${escapeHtml(t('dashboard.page.routingPrecedence'))} <code>CLOUDFLARE_MODELS &gt; OPENAI_MODELS &gt; default routing</code>.</p>
   <pre>OPENAI_UPSTREAM=https://api.openai.com \\
 OPENAI_API_KEY=your-openai-key \\
 OPENAI_MODELS=gpt-5.6-sol \\
@@ -1316,28 +1477,28 @@ CLOUDFLARE_ACCOUNT_ID=your-account-id \\
 CLOUDFLARE_API_TOKEN=your-cloudflare-token \\
 CLOUDFLARE_MODELS=moonshotai/kimi-k3 \\
 npx pxpipe-proxy</pre>
-  <p>Non-Anthropic IDs are advertised with a <code>claude-</code> prefix because Claude Code needs a Claude-shaped ID; pxpipe strips it before forwarding. Switch to one inside Claude Code with <code>/model claude-&lt;model&gt;</code> — e.g. <code>/model claude-moonshotai/kimi-k3</code> — or launch with <code>claude --model claude-moonshotai/kimi-k3</code>. Verify discovery with <code>curl …/v1/models</code>.</p>
-  <p><code>PXPIPE_MODELS</code> above is separate: it controls image compression, not routing. Kimi K3 on Cloudflare is the only non-Anthropic model tested end to end — see <code>docs/CLAUDE_CODE_PROVIDER_ROUTING.md</code>.</p>
-  <button class="mini-btn" type="button" onclick="this.closest('dialog').close()">close</button>
+  <p>${escapeHtml(t('dashboard.page.routingPrefix'))} ${escapeHtml(t('dashboard.page.routingSwitch'))}</p>
+  <p><code>PXPIPE_MODELS</code> — ${escapeHtml(t('dashboard.page.scopeSeparate'))} ${escapeHtml(t('dashboard.page.routingEvidence'))}</p>
+  <button class="mini-btn" type="button" onclick="this.closest('dialog').close()">${escapeHtml(t('dashboard.page.close'))}</button>
 </dialog>
 
 <div id="frag-session" hx-get="/fragments/session-summary" hx-trigger="load, every 2s" hx-swap="innerHTML">
-  <div class="hero hero-empty"><div class="hero-headline">Connecting…</div></div>
+  <div class="hero hero-empty"><div class="hero-headline">${escapeHtml(t('dashboard.page.connecting'))}</div></div>
 </div>
 
 <div id="frag-header" hx-get="/fragments/header" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
 
 <section class="section">
-  <h2 class="section-head">What happened to your context <span class="section-sub">click a request to see image vs text</span></h2>
+  <h2 class="section-head">${escapeHtml(t('dashboard.page.contextTitle'))} <span class="section-sub">${escapeHtml(t('dashboard.page.contextSub'))}</span></h2>
   <div class="xray">
     <div class="card">
-      <h3 class="card-head">Recent requests</h3>
+      <h3 class="card-head">${escapeHtml(t('dashboard.page.recent'))}</h3>
       <div id="frag-recent" hx-get="/fragments/recent" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
     </div>
     <div class="card">
-      <h3 class="card-head">Image vs text breakdown</h3>
+      <h3 class="card-head">${escapeHtml(t('dashboard.page.breakdown'))}</h3>
       <div id="frag-context-map" hx-get="/fragments/context-map" hx-trigger="load" hx-swap="innerHTML"></div>
-      <h3 class="card-head spaced">Image ↔ source inspector</h3>
+      <h3 class="card-head spaced">${escapeHtml(t('dashboard.page.inspector'))}</h3>
       <div id="frag-latest" hx-get="/fragments/latest" hx-trigger="load, every 2s, pp-refresh" hx-swap="innerHTML"
            hx-vals='js:{pin: window.pp.pin == null ? "" : window.pp.pin, source: window.pp.src ? "1" : ""}'></div>
     </div>
@@ -1345,9 +1506,18 @@ npx pxpipe-proxy</pre>
 </section>
 
 <section class="section">
-  <h2 class="section-head">Top sessions <span class="section-sub">by tokens saved</span></h2>
+  <h2 class="section-head">${escapeHtml(t('dashboard.page.topSessions'))} <span class="section-sub">${escapeHtml(t('dashboard.page.bySaved'))}</span></h2>
   <div class="card">
     <div id="frag-sessions" hx-get="/fragments/sessions" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
+  </div>
+</section>
+
+<section class="section">
+  <h2 class="section-head">Control Room V5 <span class="section-sub">${escapeHtml(t('dashboard.page.controlRoomSub'))}</span></h2>
+  <div class="card">
+    <div id="frag-control-room" hx-get="/fragments/control-room" hx-trigger="load, every 5s" hx-swap="innerHTML">
+      <div class="status">${escapeHtml(t('dashboard.page.loadingControlRoom'))}</div>
+    </div>
   </div>
 </section>
 

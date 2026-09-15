@@ -1,0 +1,39 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [v5-chatgpt-security, v5-production-hardening]
+  pull_request:
+    branches: [v5-production-hardening, v5-chatgpt-post-codex-integrity-final-validation]
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze JavaScript/TypeScript
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@1cf8f518e1ad217271451b975391e639ea196e55
+        with:
+          languages: javascript-typescript
+          build-mode: none
+      - name: Analyze
+        uses: github/codeql-action/analyze@1cf8f518e1ad217271451b975391e639ea196e55
+        with:
+          category: /language:javascript-typescript

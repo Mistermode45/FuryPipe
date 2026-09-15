@@ -40,8 +40,23 @@ export interface PolicyDecision {
   readonly canaryEligible: boolean;
 }
 
+const POLICY_COST_KEYS = [
+  'regularInput', 'cacheWrite', 'cacheRead', 'visualInput',
+  'retrieval', 'localCompute', 'retry', 'output',
+] as const;
+
 function total(costs: PolicyCostInputs): number {
+  if (!costs || typeof costs !== 'object') return Number.POSITIVE_INFINITY;
   return Object.values(costs).reduce((sum, value) => sum + (Number.isFinite(value) && value >= 0 ? value : Number.POSITIVE_INFINITY), 0);
+}
+
+function validCosts(costs: PolicyCostInputs): boolean {
+  if (!costs || typeof costs !== 'object') return false;
+  const keys = Object.keys(costs).sort();
+  const expected = [...POLICY_COST_KEYS].sort();
+  return keys.length === expected.length
+    && keys.every((key, index) => key === expected[index])
+    && Object.values(costs).every((value) => Number.isFinite(value) && value >= 0);
 }
 
 function hasHardProtection(blocks: readonly ContextIRBlock[]): string | undefined {
@@ -59,6 +74,8 @@ function hasHardProtection(blocks: readonly ContextIRBlock[]): string | undefine
 export function evaluatePolicy(input: PolicyRequest): PolicyDecision {
   const expectedTotalCostUsd = total(input.costs);
   const hardConstraints: string[] = [];
+  const costsValid = validCosts(input.costs) && Number.isFinite(expectedTotalCostUsd);
+  if (!costsValid) hardConstraints.push('invalid or out-of-range cost estimate');
   const protection = hasHardProtection(input.blocks);
   if (protection) hardConstraints.push(protection);
   if (input.providerAvailable === false) hardConstraints.push('provider unavailable');
@@ -67,7 +84,8 @@ export function evaluatePolicy(input: PolicyRequest): PolicyDecision {
     hardConstraints.push('max spend constraint exceeded');
   }
   const forceRaw = hardConstraints.length > 0 || input.mode === 'offline-local';
-  const lossyEconomical = input.costs.regularInput > input.costs.visualInput + input.costs.localCompute + input.costs.retry;
+  const lossyEconomical = costsValid
+    && input.costs.regularInput > input.costs.visualInput + input.costs.localCompute + input.costs.retry;
   const strategy: PolicyStrategy = forceRaw
     ? 'raw'
     : input.mode === 'max-cache' || input.mode === 'safe' || input.mode === 'coding-safe'
@@ -91,4 +109,3 @@ export function evaluatePolicy(input: PolicyRequest): PolicyDecision {
     canaryEligible: strategy === 'guarded-lossy' && hardConstraints.length === 0 && input.mode !== 'aggressive',
   };
 }
-

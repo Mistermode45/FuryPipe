@@ -40,4 +40,36 @@ describe('source-aware recovery retrieval', () => {
     await expect(index.search('x'.repeat(257))).rejects.toThrow('exceeds 256');
     expect(await index.search('needle', { source: 'binary.bin' })).toEqual([]);
   });
+
+  it('searches a stable index snapshot while new handles are added', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-retrieval-snapshot-'));
+    roots.push(root);
+    const backingStore = createRecoveryStore(root);
+    let releaseRead!: () => void;
+    let signalRead!: () => void;
+    const readEntered = new Promise<void>((resolve) => { signalRead = resolve; });
+    const readGate = new Promise<void>((resolve) => { releaseRead = resolve; });
+    let pauseNextRead = true;
+    const delayedStore = {
+      ...backingStore,
+      async get(handle: Parameters<typeof backingStore.get>[0]) {
+        if (pauseNextRead) {
+          pauseNextRead = false;
+          signalRead();
+          await readGate;
+        }
+        return backingStore.get(handle);
+      },
+    };
+    const index = createRecoveryIndex(delayedStore);
+    await index.add(new TextEncoder().encode('needle first'), { source: 'first.txt' });
+
+    const pendingSearch = index.search('needle');
+    await readEntered;
+    await index.add(new TextEncoder().encode('needle second'), { source: 'second.txt' });
+    releaseRead();
+
+    expect(await pendingSearch).toHaveLength(1);
+    expect(index.size).toBe(2);
+  });
 });

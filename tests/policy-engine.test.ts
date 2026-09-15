@@ -32,5 +32,15 @@ describe('policy engine', () => {
     expect(evaluatePolicy({ mode: 'safe', blocks: block('LOSSY_ALLOWED'), costs }).strategy).toBe('native-cache');
     expect(evaluatePolicy({ mode: 'coding-safe', blocks: block('LOSSY_ALLOWED'), costs }).strategy).toBe('native-cache');
   });
-});
 
+  it('fails closed to raw when any cost component is negative or non-finite', () => {
+    const negative = evaluatePolicy({ mode: 'balanced', blocks: block('LOSSY_ALLOWED'), costs: { ...costs, visualInput: -100 } });
+    expect(negative.strategy).toBe('raw');
+    expect(negative.canaryEligible).toBe(false);
+    expect(negative.hardConstraints).toContain('invalid or out-of-range cost estimate');
+
+    const notFinite = evaluatePolicy({ mode: 'balanced', blocks: block('LOSSY_ALLOWED'), costs: { ...costs, regularInput: Number.NaN } });
+    expect(notFinite.strategy).toBe('raw');
+    expect(notFinite.canaryEligible).toBe(false);
+  });
+});

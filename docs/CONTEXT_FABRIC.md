@@ -49,3 +49,62 @@ utilisateur.
 organisation stable/semi-stable/dynamique, force `raw_passthrough` en présence
 d’un bloc protégé et signale quand un contrat provider est requis. Aucun
 `cache_control`, ordre wire ou marqueur n’est réécrit par cette tranche.
+
+## Intégration runtime M5
+
+`src/core/context-fabric.ts` relie désormais ces primitives dans le chemin
+réel `transformRequest` : le body JSON est parsé, ses surfaces textuelles sont
+classées, un Context IR est construit, le ledger de provenance est validé, le
+contrat de cache Anthropic est évalué et la policy produit une stratégie
+estimée avant le transformeur historique. À la sortie, l’analyse est
+complétée avec la stratégie observée (`raw` ou `guarded-lossy`), les tailles
+d’entrée/sortie et l’état de vérification. `native-cache` reste une
+recommandation du planner tant qu’un exécuteur de cache provider dédié n’est
+pas branché.
+
+`src/core/policy-fabric.ts` complète cette décision avec cinq évaluations
+séparées (`raw`, `native-cache`, `guarded-lossy`, `retrieval`, `hybrid`) et un
+état provider borné : santé, circuit breaker, fallback, canary, rollback et
+détection de régression qualité. La santé est `unknown` par défaut dans le
+runtime local ; aucun appel provider n’est simulé et aucune stratégie
+mutuellement exclusive n’est additionnée comme si elle était exécutée en
+parallèle.
+
+`TransformInfo.contextFabric` est un diagnostic borné : il expose des
+compteurs, catégories, états de validation et identifiants `ctx_` opaques,
+mais ni ledger, ni IR complet, ni texte source. L’analyse ne possède pas le
+body sortant et ne peut donc pas réordonner ou réécrire la conversation.
+
+## Externalize ExactGuard
+
+L’externalisation est une stratégie explicitement opt-in :
+
+```ts
+const result = await transformAnthropicMessages({
+  body,
+  model,
+  options: {
+    exactGuard: { representationPolicy: 'externalize' },
+    recoveryStore,
+    emitReceipt: true,
+  },
+});
+```
+
+Les spans sémantiques sont remplacés par des marqueurs contenant un handle
+Recovery ; chaque handle est vérifié immédiatement par hash et relu avant que
+la requête provider-shaped ne soit retournée. Les champs d’identité de
+protocole (`id`, `tool_use_id`, `request_id`, etc.) ne sont jamais remplacés :
+si un tel champ est protégé, le chemin échoue fermé et conserve la requête
+native. Sans `recoveryStore`, l’opt-in externalize échoue également fermé.
+
+La stratégie `redact` n’est pas exécutée par défaut et aucune donnée n’est
+silencieusement supprimée. Le receipt opt-in porte la stratégie `externalize`
+et les handles, sans plaintext ; `verifyCompressionReceipt` vérifie les octets
+de la requête originale et provider-shaped, tandis que `RecoveryStore.verify`
+et `get` vérifient la récupération exacte du span.
+
+La policy et les coûts restent `estimated` tant qu’un oracle provider/modèle
+et des coûts de retrieval vérifiés ne sont pas disponibles. Cette intégration
+M5 ne marque donc pas M6 comme terminé et ne prétend pas fournir une preuve
+provider hébergée.

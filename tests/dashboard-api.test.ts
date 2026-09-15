@@ -14,6 +14,7 @@ import { DashboardState, dashboardPath, dashboardHostLabel } from '../src/dashbo
 import { getAllowedModelBases, isPxpipeSupportedModel, setAllowedModelBases } from '../src/core/applicability.js';
 import type { SessionsPaths } from '../src/sessions.js';
 import type { TrackEvent } from '../src/core/tracker.js';
+import { createControlRoomSnapshot, type ControlRoomSnapshot } from '../src/control-room/index.js';
 import type { StatsPayload, RecentPayload } from '../src/dashboard/types.js';
 import {
   renderHeaderFragment,
@@ -46,6 +47,54 @@ function writeEvents(paths: SessionsPaths, events: TrackEvent[]): void {
     paths.eventsFile,
     events.map((e) => JSON.stringify(e)).join('\n') + '\n',
   );
+}
+
+function controlRoomSnapshot(): ControlRoomSnapshot {
+  return createControlRoomSnapshot({
+    generatedAt: 1_725_000_000_000,
+    sourceCommit: 'a'.repeat(40),
+    receipts: { receipts: 2, verifiedReceipts: 2, protectedSpans: 3, recoveryHandles: 1, confidence: 'verified' },
+    recovery: {
+      objects: 1,
+      verifiedObjects: 1,
+      encryption: 'aes-256-gcm',
+      activeKeyId: 'primary',
+      backupEvidence: 'BACKUP_EXISTS',
+      crashRecovery: 'PARTIAL',
+      multiProcess: 'PARTIAL',
+    },
+    agent: {
+      runs: 1,
+      completedRuns: 1,
+      handoffRuns: 0,
+      failedRuns: 0,
+      contextUsedTokens: 20,
+      persistedMemory: 'PARTIAL',
+      distributedHandoff: 'NOT_EXECUTED',
+    },
+    learning: { humanTopics: 1, agentLessons: 1, reusedLessons: 0, durableStore: 'PARTIAL', semanticRetrieval: 'NOT_EXECUTED' },
+    mcp: { stdio: 'VERIFIED', http: 'VERIFIED', bearerAuth: 'VERIFIED', oauth: 'PARTIAL', externalConformance: 'NOT_EXECUTED' },
+    i18n: { locale: 'fr', direction: 'ltr', runtimeKernel: 'VERIFIED', cliWiring: 'NOT_EXECUTED', dashboardWiring: 'VERIFIED' },
+    webStudio: {
+      kernel: 'VERIFIED',
+      figma: 'NOT_EXECUTED',
+      playwright: 'NOT_EXECUTED',
+      accessibility: 'NOT_EXECUTED',
+      security: 'NOT_EXECUTED',
+      seo: 'NOT_EXECUTED',
+      deployment: 'NOT_EXECUTED',
+    },
+    security: {
+      codeql: 'VERIFIED',
+      secretScan: 'VERIFIED',
+      dependencyAudit: 'VERIFIED',
+      sbom: 'VERIFIED',
+      actionPinning: 'VERIFIED',
+      licenseCompliance: 'VERIFIED',
+      dependencyReview: 'BLOCKED',
+    },
+    benchmarks: { harness: 'VERIFIED', providerRuns: 'NOT_EXECUTED', comparableRuns: 0 },
+  });
 }
 
 let tmp: SessionsPaths;
@@ -83,6 +132,7 @@ describe('dashboardPath()', () => {
   it('matches the new /api/* routes', () => {
     expect(dashboardPath('/api/sessions.json')?.kind).toBe('api-sessions');
     expect(dashboardPath('/api/stats.json')?.kind).toBe('api-stats');
+    expect(dashboardPath('/api/control-room.json')?.kind).toBe('api-control-room');
   });
 
   it('returns null for unknown paths', () => {
@@ -132,6 +182,58 @@ describe('serveSessionsJson', () => {
   });
 });
 
+// ---- /api/control-room.json ----------------------------------------------
+
+describe('serveControlRoomJson', () => {
+  it('returns 503 and a fail-visible status when no provider is configured', async () => {
+    const res = await dash.serveControlRoomJson();
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ status: 'NOT_AVAILABLE' });
+  });
+
+  it('returns the metadata-only snapshot supplied by the host', async () => {
+    const snapshot = controlRoomSnapshot();
+    const withControlRoom = new DashboardState(tmp, async () => new Map(), undefined, () => snapshot);
+    const res = await withControlRoom.serveControlRoomJson();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.format).toBe('furypipe-control-room/v1');
+    expect(body.sourceCommit).toBe('a'.repeat(40));
+    expect(body.sections.provider.status).toBe('NOT_EXECUTED');
+    expect(body.sections.provider.evidence.providerVerification).toBe('NOT_AVAILABLE');
+    expect(body.sections.security.status).toBe('BLOCKED');
+  });
+
+  it('renders the Control Room fragment from the same provider', async () => {
+    const snapshot = controlRoomSnapshot();
+    const withControlRoom = new DashboardState(tmp, async () => new Map(), undefined, () => snapshot);
+    const html = await (await withControlRoom.serveFragment('control-room', new URL('http://localhost/fragments/control-room'), 1234)).text();
+    expect(html).toContain('Control Room V5');
+    expect(html).toContain('Security / Supply Chain');
+    expect(html).toContain('Provider runtime');
+    expect(html).toContain('Release readiness');
+    expect(html).toContain('Release readiness · <strong>NOT_AVAILABLE</strong>');
+    expect(html).toContain('release actions executed: no');
+    expect(html).toContain('Provider benchmarks are not verified');
+  });
+
+  it('localizes Control Room human labels without translating machine statuses', async () => {
+    const snapshot = controlRoomSnapshot();
+    const withControlRoom = new DashboardState(tmp, async () => new Map(), undefined, () => snapshot);
+    const html = await (await withControlRoom.serveFragment(
+      'control-room',
+      new URL('http://localhost/fragments/control-room?locale=fr'),
+      1234,
+    )).text();
+    expect(html).toContain('Sécurité / Supply Chain');
+    expect(html).toContain('Runtime fournisseur');
+    expect(html).toContain('Préparation de la release');
+    expect(html).toContain('actions de release exécutées : non');
+    expect(html).toContain('<strong>NOT_AVAILABLE</strong>');
+    expect(html).toContain('commit <code>aaaaaaaaaaaa</code>');
+  });
+});
+
 // ---- /api/stats.json ------------------------------------
 
 describe('serveApiStats', () => {
@@ -168,6 +270,7 @@ describe('serveFragment', () => {
   it('routes /fragments/<name> via dashboardPath', () => {
     expect(dashboardPath('/fragments/header')).toEqual({ kind: 'fragment', name: 'header' });
     expect(dashboardPath('/fragments/latest')).toEqual({ kind: 'fragment', name: 'latest' });
+    expect(dashboardPath('/fragments/control-room')).toEqual({ kind: 'fragment', name: 'control-room' });
   });
 
   it('renders the toggle fragment reflecting compression state', async () => {
@@ -374,6 +477,147 @@ describe('serveFragment', () => {
   it('404s unknown fragments', async () => {
     const res = await dash.serveFragment('nope', url, 1);
     expect(res.status).toBe(404);
+  });
+});
+
+describe('dashboard localized fragments', () => {
+  it('propagates the active locale into toggle, models, recent and sessions fragments', async () => {
+    dash.handleCompressionToggle({ enabled: false });
+    const localeUrl = new URL('http://localhost/fragments/toggle?locale=fr');
+
+    const toggle = await (await dash.serveFragment('toggle', localeUrl, 1)).text();
+    expect(toggle).toContain('MODE PASSTHROUGH');
+    expect(toggle).toContain('Compression désactivée');
+    expect(toggle).toContain('Activer la compression');
+
+    const models = await (await dash.serveFragment(
+      'models',
+      new URL('http://localhost/fragments/models?locale=fr'),
+      1,
+    )).text();
+    expect(models).toContain('Modèles Claude en image');
+    expect(models).toContain('les modèles non listés restent en texte brut');
+
+    const recent = await (await dash.serveFragment(
+      'recent',
+      new URL('http://localhost/fragments/recent?locale=fr'),
+      1,
+    )).text();
+    expect(recent).toContain('Aucune requête pour le moment');
+
+    const sessions = await (await dash.serveFragment(
+      'sessions',
+      new URL('http://localhost/fragments/sessions?locale=fr'),
+      1,
+    )).text();
+    expect(sessions).toContain('sessions suivies');
+    expect(sessions).toContain('Aucune session pour le moment');
+  });
+
+  it('localizes empty context guidance while leaving machine identifiers untouched', async () => {
+    const html = await (await dash.serveFragment(
+      'context-map',
+      new URL('http://localhost/fragments/context-map?locale=fr'),
+      1,
+    )).text();
+    expect(html).toContain('Ouvrez Détails sur une requête');
+    expect(html).not.toContain('Pick <strong>Details</strong>');
+  });
+
+  it('localizes header math and legacy stats while preserving exact formula identifiers', async () => {
+    const header = await (await dash.serveFragment(
+      'header',
+      new URL('http://localhost/fragments/header?locale=fr'),
+      4711,
+    )).text();
+    expect(header).toContain('Coût par requête');
+    expect(header).toContain('Afficher les calculs et preuves d’honnêteté');
+    expect(header).toContain('saved = baseline − actual');
+    expect(header).toContain('saved_tokens');
+    expect(header).toContain('port 4711');
+
+    writeEvents(tmp, [
+      ev({ status: 200, compressed: true, input_tokens: 120, cache_read_tokens: 40 }),
+    ]);
+    const stats = await (await dash.serveFragment(
+      'stats',
+      new URL('http://localhost/fragments/stats?locale=fr'),
+      4711,
+    )).text();
+    expect(stats).toContain('requêtes');
+    expect(stats).toContain('tokens d’entrée');
+    expect(stats).toContain('lecture cache');
+    expect(stats).toContain('2xx / 4xx / 5xx');
+  });
+
+  it('localizes the image/source inspector without altering captured source text', async () => {
+    const id = dash.captureImage({
+      imagePngs: [new Uint8Array([137, 80, 78, 71])],
+      imageDims: [{ width: 100, height: 80 }],
+      imageSourceText: 'EXACT_SOURCE_VALUE_123',
+    } as never)[0]!;
+    const html = await (await dash.serveFragment(
+      'latest',
+      new URL(`http://localhost/fragments/latest?locale=fr&source=1&pin=${id}`),
+      1,
+    )).text();
+    expect(html).toContain('revenir au plus récent');
+    expect(html).toContain('Ce que voit le modèle · image');
+    expect(html).toContain('Texte d’origine · byte-exact');
+    expect(html).toContain('EXACT_SOURCE_VALUE_123');
+    expect(html).not.toContain('What the model sees');
+  });
+});
+
+describe('dashboard locale surface', () => {
+  it('auto-negotiates the initial page from Accept-Language when no explicit locale exists', async () => {
+    const html = await (await dash.serveHtml(47821, undefined, 'en-US;q=0.3, fr-CA;q=0.9')).text();
+    expect(html).toContain('<html lang="fr" dir="ltr">');
+    expect(html).toContain('Tableau de bord FuryPipe</title>');
+    expect(html).toContain('window.ppLocale = "fr"');
+  });
+
+  it('keeps an explicit locale authoritative over Accept-Language, including pseudo-locales', async () => {
+    const explicit = await (await dash.serveHtml(47821, 'en', 'fr-FR')).text();
+    expect(explicit).toContain('<html lang="en" dir="ltr">');
+
+    const pseudo = await (await dash.serveHtml(47821, 'ar-XB', 'fr-FR')).text();
+    expect(pseudo).toContain('<html lang="ar-XB" dir="rtl">');
+  });
+
+  it('falls back to English for unsupported or oversized Accept-Language input', async () => {
+    const unsupported = await (await dash.serveHtml(47821, undefined, 'de-DE, es-ES;q=0.8')).text();
+    expect(unsupported).toContain('<html lang="en" dir="ltr">');
+
+    const oversized = await (await dash.serveHtml(47821, undefined, 'f'.repeat(4097))).text();
+    expect(oversized).toContain('<html lang="en" dir="ltr">');
+  });
+
+  it('renders French lang metadata, shell labels and browser persistence controls', () => {
+    const html = renderPage(47821, '', 'fr');
+    expect(html).toContain('<html lang="fr" dir="ltr">');
+    expect(html).toContain('<title>FuryPipe — tableau de bord en direct</title>');
+    expect(html).toContain('Voir exactement ce qui a été transformé et pourquoi.');
+    expect(html).toContain('Langue <select');
+    expect(html).toContain('furypipe-locale');
+    expect(html).toContain('window.ppLocale = "fr"');
+    expect(html).toContain("event.detail.parameters.locale = window.ppLocale");
+    expect(html).toContain('Connecter un agent');
+    expect(html).toContain('Périmètre des modèles imagés');
+    expect(html).toContain('Router Claude Code vers des modèles OpenAI / Cloudflare');
+    expect(html).toContain('Chargement des preuves Control Room');
+    expect(html).toContain('OPENAI_MODELS');
+    expect(html).toContain('ANTHROPIC_BASE_URL');
+    expect(html).not.toContain('Connect an agent');
+  });
+
+  it('marks the bidi pseudo-locale RTL and falls back safely for invalid tags', () => {
+    const rtl = renderPage(47821, '', 'ar-XB');
+    expect(rtl).toContain('<html lang="ar-XB" dir="rtl">');
+
+    const invalid = renderPage(47821, '', '<script>');
+    expect(invalid).toContain('<html lang="en" dir="ltr">');
+    expect(invalid).not.toContain('<script><script>');
   });
 });
 

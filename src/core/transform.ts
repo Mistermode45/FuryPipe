@@ -58,6 +58,11 @@ import { visionTokens, type VisionPricing } from './vision-cost.js';
 import { CLAUDE_PROFILE } from './claude-model-profiles.js';
 import { resolveGptProfile } from './gpt-model-profiles.js';
 import type { CompressionReceipt } from './receipt.js';
+import { detectProtectedSpans, exactGuardOptionsForMode, type ExactGuardMode, type ExactGuardOptions } from './exact-guard.js';
+import { analyzeContextFabric, finalizeContextFabricAnalysis, type ContextFabricAnalysis } from './context-fabric.js';
+import type { RecoveryHandle, RecoveryStore } from './recovery-store.js';
+import { compileFuryPrompt, type FuryPromptCompileInput, type FuryPromptCompilation } from '../fury-prompt.js';
+import type { ProviderRegistry } from './provider-fabric.js';
 
 /** Per-block descriptor passed to `TransformOptions.keepSharp`. */
 export interface KeepSharpBlock {
@@ -143,9 +148,28 @@ export interface TransformOptions {
   emitRecoverable?: boolean;
   /** When true, the public library wrapper emits a plaintext-free compression receipt. */
   emitReceipt?: boolean;
+  /**
+   * Explicit ExactGuard rule set. Passing `false` is the documented opt-out.
+   * When omitted, `safetyMode` supplies the automatic built-in policy.
+   */
+  exactGuard?: ExactGuardOptions | false;
+  /** Automatic protection profile applied before any lossy transform. */
+  safetyMode?: ExactGuardMode | false;
+  /** Explicit Recovery target required by the `externalize` ExactGuard policy. */
+  recoveryStore?: RecoveryStore;
+  /** Explicit structured prompt augmentation compiled before ExactGuard. */
+  furyPrompt?: FuryPromptCompileInput;
+  /** Optional provider registry carrying fresh host-supplied health evidence. */
+  providerRegistry?: ProviderRegistry;
 }
 
-const DEFAULTS: Required<TransformOptions> = {
+type ResolvedTransformOptions = Omit<Required<TransformOptions>, 'recoveryStore' | 'furyPrompt' | 'providerRegistry'> & {
+  recoveryStore?: RecoveryStore;
+  furyPrompt?: FuryPromptCompileInput;
+  providerRegistry?: ProviderRegistry;
+};
+
+const DEFAULTS: ResolvedTransformOptions = {
   compress: true,
   compressTools: true,
   compressToolResults: true,
@@ -167,6 +191,9 @@ const DEFAULTS: Required<TransformOptions> = {
   keepSharp: () => false,
   emitRecoverable: false,
   emitReceipt: false,
+  exactGuard: false,
+  safetyMode: 'balanced',
+  recoveryStore: undefined,
   // GPT-only knobs; the Anthropic transform ignores them but Required<> needs them.
   collapseHistory: true,
   gptHistory: {},
@@ -335,7 +362,7 @@ function imageTokensCost(
  *  undefined in every shipped profile, so this returns the dense geometry
  *  unchanged out of the box. */
 function historyGateGeometry(
-  o?: Required<TransformOptions>,
+  o?: ResolvedTransformOptions,
   callerOverrodeCols: boolean = false,
 ): GateGeometry {
   const dense = denseGateGeometry(o);
@@ -349,7 +376,7 @@ function historyGateGeometry(
 }
 
 /** Gate geometry for dense tool-result, reminder, and history pages. */
-function denseGateGeometry(o?: Required<TransformOptions>): GateGeometry {
+function denseGateGeometry(o?: ResolvedTransformOptions): GateGeometry {
   const profile = o?.model ? resolveGptProfile(o.model) : undefined;
   const cols = o?.cols ?? profile?.stripCols ?? DENSE_CONTENT_COLS;
   return {
@@ -531,10 +558,168 @@ export function isCompressionProfitableAmortized(
 /** Increment a passthrough-reason counter on `info`. Lazily allocates `passthroughReasons`. */
 function bumpPassthrough(
   info: TransformInfo,
-  reason: 'below_threshold' | 'not_profitable' | 'kept_sharp' | 'image_budget',
+  reason: 'below_threshold' | 'not_profitable' | 'kept_sharp' | 'image_budget' | 'exact_guard',
 ): void {
   if (!info.passthroughReasons) info.passthroughReasons = {};
   info.passthroughReasons[reason] = (info.passthroughReasons[reason] ?? 0) + 1;
+}
+
+/** Count protected spans without retaining their plaintext in telemetry. */
+function countProtectedRequestSpans(
+  value: unknown,
+  options: ExactGuardOptions,
+  depth = 0,
+  key?: string,
+  skipToolResultContent = false,
+): number {
+  if (depth > 8) return 0;
+  // This header is consumed as transport metadata before the lossy stages;
+  // its request id must not prevent the billing-line extraction below.
+  if (key?.toLowerCase() === 'x-anthropic-billing-header') return 0;
+  if (typeof value === 'string') {
+    // The billing line is transport metadata embedded in a system string,
+    // rather than a semantic prompt value. It is extracted before the lossy
+    // stages, so its request id must not make the whole request native. Keep
+    // scanning the remainder of the string: unrelated protected values still
+    // need to fail closed.
+    const semanticText = value.replace(
+      /(?:^|\r?\n)x-anthropic-billing-header:[^\r\n]*/gi,
+      '',
+    );
+    return detectProtectedSpans(semanticText, options).length;
+  }
+  if (!value || typeof value !== 'object') return 0;
+  // Live tool-result text has its own per-block gate. Keeping it out of the
+  // whole-request preflight lets safe static context compress while the exact
+  // tool output remains native when a protected span is found.
+  if (skipToolResultContent && !Array.isArray(value) && (value as { type?: unknown }).type === 'tool_result') {
+    let metadataCount = 0;
+    for (const [childKey, item] of Object.entries(value as Record<string, unknown>)) {
+      if (childKey !== 'content') {
+        metadataCount += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent);
+      }
+    }
+    return metadataCount;
+  }
+  let count = 0;
+  if (Array.isArray(value)) {
+    for (const item of value) count += countProtectedRequestSpans(item, options, depth + 1, undefined, skipToolResultContent);
+  } else {
+    for (const [childKey, item] of Object.entries(value as Record<string, unknown>)) {
+      count += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent);
+    }
+  }
+  return count;
+}
+
+const NON_EXTERNALIZABLE_KEYS = new Set([
+  'id',
+  'tool_use_id',
+  'request_id',
+  'message_id',
+  'session_id',
+  'thread_id',
+]);
+
+function isNonExternalizableKey(key: string | undefined): boolean {
+  return key !== undefined && NON_EXTERNALIZABLE_KEYS.has(key.toLowerCase());
+}
+
+function recoveryHandleString(handle: RecoveryHandle): string {
+  return `${handle.format}/${handle.algorithm}/${handle.digest}`;
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+/** Check protocol identity fields before writing any externalized object. */
+function hasExternalizationBlocker(
+  value: unknown,
+  options: ExactGuardOptions,
+  depth = 0,
+  key?: string,
+): boolean {
+  if (depth > 8) return false;
+  if (typeof value === 'string') {
+    if (key?.toLowerCase() === 'x-anthropic-billing-header') return false;
+    return isNonExternalizableKey(key) && detectProtectedSpans(value, options).length > 0;
+  }
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some((item) => hasExternalizationBlocker(item, options, depth + 1));
+  return Object.entries(value as Record<string, unknown>).some(([childKey, item]) =>
+    hasExternalizationBlocker(item, options, depth + 1, childKey));
+}
+
+interface ExternalizationResult {
+  readonly value: unknown;
+  readonly protectedSpans: number;
+  readonly recoveryHandles: readonly string[];
+}
+
+/**
+ * Replace only semantic protected spans with explicit Recovery handles.
+ * Protocol identity fields are rejected up front because replacing a
+ * tool_use_id or request id would change provider correlation semantics.
+ */
+async function externalizeProtectedRequest(
+  value: unknown,
+  options: ExactGuardOptions,
+  store: RecoveryStore,
+): Promise<ExternalizationResult> {
+  const handles: string[] = [];
+  let protectedSpans = 0;
+  const encoder = new TextEncoder();
+
+  async function visit(input: unknown, depth = 0, key?: string): Promise<unknown> {
+    if (depth > 8 || input === null || typeof input !== 'object') {
+      if (typeof input !== 'string') return input;
+      if (key?.toLowerCase() === 'x-anthropic-billing-header') return input;
+      const spans = detectProtectedSpans(input, options);
+      protectedSpans += spans.length;
+      if (spans.length === 0) return input;
+      let output = input;
+      for (let index = spans.length - 1; index >= 0; index -= 1) {
+        const span = spans[index]!;
+        const original = input.slice(span.start, span.end);
+        const handle = await store.put(encoder.encode(original), {
+          contentType: 'text/plain; charset=utf-8',
+          source: 'exact-guard.externalize',
+          exactnessClass: span.class,
+        });
+        const handleText = recoveryHandleString(handle);
+        const verification = await store.verify(handle);
+        if (!verification.ok) throw new Error('recovery verification failed after externalization');
+        const recovered = await store.get(handle);
+        if (!sameBytes(recovered, encoder.encode(original))) throw new Error('recovery bytes changed after externalization');
+        handles.push(handleText);
+        output = `${output.slice(0, span.start)}[furypipe-externalized:${handleText}]${output.slice(span.end)}`;
+      }
+      return output;
+    }
+    if (Array.isArray(input)) {
+      const output: unknown[] = [];
+      for (const item of input) output.push(await visit(item, depth + 1));
+      return output;
+    }
+    const output: Record<string, unknown> = {};
+    for (const [childKey, item] of Object.entries(input as Record<string, unknown>)) {
+      output[childKey] = await visit(item, depth + 1, childKey);
+    }
+    return output;
+  }
+
+  try {
+    const result = await visit(value);
+    return { value: result, protectedSpans, recoveryHandles: [...new Set(handles)] };
+  } catch (error) {
+    await Promise.all(handles.map((handle) => store.delete(handle).catch(() => false)));
+    throw error;
+  }
 }
 
 /** Invoke `keepSharp` defensively; a throw or non-`true` return means "image as usual". */
@@ -547,6 +732,21 @@ function callerKeepsSharp(
     return fn(block) === true;
   } catch {
     return false;
+  }
+}
+
+/** Automatic ExactGuard for live blocks; failures fail safe to native text. */
+function guardKeepsSharp(
+  fn: ((block: KeepSharpBlock) => boolean) | undefined,
+  block: KeepSharpBlock,
+  options: ExactGuardOptions | false,
+): boolean {
+  if (callerKeepsSharp(fn, block)) return true;
+  if (options === false) return false;
+  try {
+    return detectProtectedSpans(block.text, options).length > 0;
+  } catch {
+    return true;
   }
 }
 
@@ -596,6 +796,17 @@ export interface TransformInfo {
   reason?: string;
   /** Optional plaintext-free audit receipt, populated by provider wrappers on request. */
   receipt?: CompressionReceipt;
+  /** Shared Context Fabric decision, exposed for safe per-request diagnostics. */
+  contextFabric?: ContextFabricAnalysis;
+  /** Plaintext-free metadata for an explicit FuryPrompt augmentation. */
+  furyPrompt?: {
+    level: FuryPromptCompilation['level'];
+    promptBytes: number;
+    promptDigest: string;
+    sourceContentDigest: string;
+    orderedSections: readonly string[];
+    exactGuardMode: FuryPromptCompilation['exactGuard']['mode'];
+  };
   /** Exact UTF-8 byte length of the final serialized provider request. */
   serializedRequestBytes?: number;
   /** Result of the profile-level serialized request guard. */
@@ -724,7 +935,13 @@ export interface TransformInfo {
   /** Top dropped codepoints by frequency (`U+HHHH` → count), at most 20 entries. */
   droppedCodepointsTop?: Record<string, number>;
   /** Why blocks passed through without compression. Only present when count > 0. */
-  passthroughReasons?: { below_threshold?: number; not_profitable?: number; kept_sharp?: number; image_budget?: number };
+  passthroughReasons?: { below_threshold?: number; not_profitable?: number; kept_sharp?: number; image_budget?: number; exact_guard?: number };
+  /** ExactGuard runtime decision, when the configured guard found protected values. */
+  exactGuard?: {
+    protectedSpans: number;
+    action: 'preserve_native' | 'externalize';
+    recoveryHandles?: readonly string[];
+  };
   /** Slab gate diagnostics — imageTokens, textTokens, burn terms, and verdict.
    *  Lets hosts measure flap-prevention efficacy and tune amortization horizon. */
   gateEval?: {
@@ -1430,10 +1647,28 @@ export function extractEnvFields(dynamicText: string): EnvFields {
   }
 
   // Branch may be in <git_status>, <context name="git">, or a bare "Branch:" / "On branch" line.
-  const branch =
-    /(?:^|\n)\s*(?:On branch|Branch:)\s*([^\s\n]+)/i.exec(dynamicText) ??
-    /(?:^|\n)\s*Current branch:\s*([^\s\n]+)/i.exec(dynamicText);
-  if (branch) out.gitBranch = branch[1]!.trim();
+  // Parse linearly instead of applying a backtracking regex to uncontrolled text.
+  for (const rawLine of dynamicText.split('\n')) {
+    const line = rawLine.trim();
+    const lower = line.toLowerCase();
+    let value: string | undefined;
+
+    if (lower.startsWith('on branch ')) value = line.slice('on branch '.length).trimStart();
+    else if (lower.startsWith('branch:')) value = line.slice('branch:'.length).trimStart();
+    else if (lower.startsWith('current branch:')) value = line.slice('current branch:'.length).trimStart();
+
+    if (!value) continue;
+    let end = 0;
+    while (end < value.length) {
+      const code = value.charCodeAt(end);
+      if (code === 9 || code === 10 || code === 11 || code === 12 || code === 13 || code === 32) break;
+      end++;
+    }
+    if (end > 0) {
+      out.gitBranch = value.slice(0, end);
+      break;
+    }
+  }
 
   return out;
 }
@@ -1948,7 +2183,7 @@ function historyGridTuning(
 async function runHistoryCollapseAndFinalize(
   req: MessagesRequest,
   info: TransformInfo,
-  o: Required<TransformOptions>,
+  o: ResolvedTransformOptions,
   opts: TransformOptions,
   droppedCodepoints: Map<number, number>,
   pins: Pin[],
@@ -2068,6 +2303,28 @@ async function runHistoryCollapseAndFinalize(
   return { body: outBody, info, collapsed: collapsedFlag };
 }
 
+function appendFuryPrompt(req: MessagesRequest, compilation: FuryPromptCompilation): void {
+  const block: TextBlock = { type: 'text', text: compilation.prompt };
+  if (req.system === undefined) {
+    req.system = [block];
+  } else if (typeof req.system === 'string') {
+    req.system = [{ type: 'text', text: req.system }, block];
+  } else {
+    req.system = [...req.system, block];
+  }
+}
+
+function furyPromptMetadata(compilation: FuryPromptCompilation): NonNullable<TransformInfo['furyPrompt']> {
+  return {
+    level: compilation.level,
+    promptBytes: compilation.promptBytes,
+    promptDigest: compilation.promptDigest,
+    sourceContentDigest: compilation.source.contentDigest,
+    orderedSections: [...compilation.source.orderedSections],
+    exactGuardMode: compilation.exactGuard.mode,
+  };
+}
+
 /**
  * Rewrite a Messages API request body. Returns the new body (still JSON
  * bytes) plus diagnostic info. On any error, returns the original bytes
@@ -2098,7 +2355,7 @@ export async function transformRequest(
         ?? (DEFAULTS as Record<string, unknown>)[k];
     }
   }
-  const o: Required<TransformOptions> = merged as Required<TransformOptions>;
+  const o: ResolvedTransformOptions = merged as ResolvedTransformOptions;
   const info: TransformInfo = {
     compressed: false,
     origChars: 0,
@@ -2126,6 +2383,95 @@ export async function transformRequest(
   } catch (e) {
     info.reason = `parse_error: ${(e as Error).message}`;
     return { body, info };
+  }
+
+  // FuryPrompt is opt-in: ordinary requests pay no compiler cost and retain
+  // the historical body. An explicit compilation is inserted as a system text
+  // block before ExactGuard and Context Fabric inspect the request.
+  let exactGuardBody = body;
+  if (opts.furyPrompt !== undefined) {
+    try {
+      const compilation = compileFuryPrompt(opts.furyPrompt);
+      appendFuryPrompt(req, compilation);
+      info.furyPrompt = furyPromptMetadata(compilation);
+      exactGuardBody = new TextEncoder().encode(JSON.stringify(req));
+    } catch (caught) {
+      info.reason = `furyprompt_error: ${caught instanceof Error ? caught.message : String(caught)}`;
+      return { body, info };
+    }
+  }
+
+  // Build one shared analysis from the parsed provider request. This is
+  // deliberately diagnostic-only: the existing transform remains the sole
+  // writer of the outbound body, while the IR/ledger/planner/policy stages
+  // share the exact same parsed request and cannot silently reorder it.
+  if (Array.isArray(req.messages)) {
+    try {
+      info.contextFabric = analyzeContextFabric(req, {
+        mode: o.safetyMode === false ? 'balanced' : o.safetyMode,
+        providerId: 'anthropic',
+        ...(opts.providerRegistry === undefined ? {} : { providerRegistry: opts.providerRegistry }),
+      });
+    } catch {
+      // Context analysis must never turn a provider-valid request into a
+      // transform failure. The production path continues with its existing
+      // parser and guards when an unusual extension shape is encountered.
+    }
+  }
+  const finish = (outBody: Uint8Array): { body: Uint8Array; info: TransformInfo } => {
+    if (info.contextFabric) {
+      info.contextFabric = finalizeContextFabricAnalysis(
+        info.contextFabric,
+        body.byteLength,
+        outBody.byteLength,
+        info.compressed,
+        info.reason,
+      );
+    }
+    return { body: outBody, info };
+  };
+
+  // ExactGuard is a real strategy gate, not receipt decoration. Until a
+  // reversible externalize/redact adapter is selected, preserve the complete
+  // native request whenever a configured rule detects a protected value.
+  // Counting only hashes/spans keeps this diagnostic plaintext-free.
+  const activeExactGuard = opts.exactGuard !== undefined
+    ? opts.exactGuard
+    : o.safetyMode === false ? false : exactGuardOptionsForMode(o.safetyMode);
+  if (activeExactGuard !== false) {
+    const protectedSpans = countProtectedRequestSpans(
+      req,
+      activeExactGuard,
+      0,
+      undefined,
+      opts.exactGuard === undefined,
+    );
+    if (protectedSpans > 0) {
+      if (activeExactGuard.representationPolicy === 'externalize' && opts.recoveryStore) {
+        try {
+          if (!hasExternalizationBlocker(req, activeExactGuard)) {
+            const externalized = await externalizeProtectedRequest(req, activeExactGuard, opts.recoveryStore);
+            if (externalized.protectedSpans > 0) {
+              const externalizedBody = new TextEncoder().encode(JSON.stringify(externalized.value));
+              info.reason = `exact_guard (externalize, spans=${externalized.protectedSpans})`;
+              info.exactGuard = {
+                protectedSpans: externalized.protectedSpans,
+                action: 'externalize',
+                recoveryHandles: externalized.recoveryHandles,
+              };
+              bumpPassthrough(info, 'exact_guard');
+              return finish(externalizedBody);
+            }
+          }
+        } catch {
+          // Recovery failures fail closed to the original provider request.
+        }
+      }
+      info.reason = `exact_guard (preserve_native, spans=${protectedSpans})`;
+      info.exactGuard = { protectedSpans, action: 'preserve_native' };
+      bumpPassthrough(info, 'exact_guard');
+      return finish(exactGuardBody);
+    }
   }
 
   // Price the caller's OWN images before we rewrite anything: they occupy the
@@ -2342,12 +2688,12 @@ export async function transformRequest(
     const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, pins);
     if (finalized.collapsed) {
       info.compressed = true;
-      return { body: finalized.body, info };
+      return finish(finalized.body);
     }
     // `body` is the original bytes. If the pin pass edited `req`, those bytes
     // describe a request we are no longer sending, so forwarding them would put
     // the raw `@pxpipe pin` line back and drop the tail block.
-    return { body: pinsRewrote ? finalized.body : body, info };
+    return finish(pinsRewrote ? finalized.body : exactGuardBody);
   }
 
   // The wire cap guards even the slab. Imaging it is our biggest single win, but
@@ -2359,7 +2705,7 @@ export async function transformRequest(
     bumpPassthrough(info, 'image_budget');
     info.imageBudgetSkips = (info.imageBudgetSkips ?? 0) + 1;
     const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, pins);
-    return { body: pinsRewrote || finalized.collapsed ? finalized.body : body, info };
+    return finish(pinsRewrote || finalized.collapsed ? finalized.body : exactGuardBody);
   }
 
   // Break-even check guards even the slab (rare edge: tiny tool docs + tiny slab < 10k chars).
@@ -2426,12 +2772,12 @@ export async function transformRequest(
     const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, pins);
     if (finalized.collapsed) {
       info.compressed = true;
-      return { body: finalized.body, info };
+      return finish(finalized.body);
     }
     // `body` is the original bytes. If the pin pass edited `req`, those bytes
     // describe a request we are no longer sending, so forwarding them would put
     // the raw `@pxpipe pin` line back and drop the tail block.
-    return { body: pinsRewrote ? finalized.body : body, info };
+    return finish(pinsRewrote ? finalized.body : exactGuardBody);
   }
 
   // Instruction header co-renders into the same PNG (+1.04pp L1 OCR vs baseline;
@@ -2465,9 +2811,9 @@ export async function transformRequest(
     const finalized = await runHistoryCollapseAndFinalize(req, info, o, opts, droppedCodepoints, pins);
     if (finalized.collapsed) {
       info.compressed = true;
-      return { body: finalized.body, info };
+      return finish(finalized.body);
     }
-    return { body: pinsRewrote ? finalized.body : body, info };
+    return finish(pinsRewrote ? finalized.body : exactGuardBody);
   }
 
   const imageBlocks: ImageBlock[] = [];
@@ -2683,7 +3029,7 @@ export async function transformRequest(
           const innerRaw = tr.content;
           if (typeof innerRaw === 'string') {
             // Caller fidelity override: pin this tool_result as text.
-            if (callerKeepsSharp(o.keepSharp, { kind: 'tool_result', text: innerRaw, toolUseId: tr.tool_use_id })) {
+            if (guardKeepsSharp(o.keepSharp, { kind: 'tool_result', text: innerRaw, toolUseId: tr.tool_use_id }, activeExactGuard)) {
               bumpPassthrough(info, 'kept_sharp');
               info.keptSharpBlocks = (info.keptSharpBlocks ?? 0) + 1;
               rewritten.push(blk);
@@ -2796,7 +3142,7 @@ export async function transformRequest(
               }
               const innerTextRaw = (ib as TextBlock).text;
               // Caller fidelity override: pin this tool_result part as text.
-              if (callerKeepsSharp(o.keepSharp, { kind: 'tool_result_part', text: innerTextRaw, toolUseId: tr.tool_use_id })) {
+              if (guardKeepsSharp(o.keepSharp, { kind: 'tool_result_part', text: innerTextRaw, toolUseId: tr.tool_use_id }, activeExactGuard)) {
                 bumpPassthrough(info, 'kept_sharp');
                 info.keptSharpBlocks = (info.keptSharpBlocks ?? 0) + 1;
                 newInner.push(ib as TextBlock | ImageBlock);
@@ -2958,7 +3304,7 @@ export async function transformRequest(
   info.wireImages = countNativeImages(req.messages);
   if (nearByteLimit(info, o.maxImageBytes)) info.imageBytesNearLimit = true;
   const outBody = new TextEncoder().encode(JSON.stringify(req));
-  return { body: outBody, info };
+  return finish(outBody);
 }
 
 /** Sum every TEXT char the upstream tokenizer will see (system, tools, messages).

@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": [
+    "scripts/hosted-mcp-conformance.ts",
+    "scripts/hosted-mcp-fixture.ts",
+    "scripts/hosted-mcp-fixture-constants.ts"
+  ]
+}

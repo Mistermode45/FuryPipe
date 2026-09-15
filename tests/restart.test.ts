@@ -134,6 +134,9 @@ describe('process matching', () => {
       { pid: 12, command: '' },
       { pid: 13, command: 'x' },
     ]);
+    expect(parseWindowsProcessJson('[{"Id":14,"ProcessName":"node"}]')).toEqual([
+      { pid: 14, command: 'node' },
+    ]);
   });
 
   it('sorts PIDs and never returns our own process', () => {

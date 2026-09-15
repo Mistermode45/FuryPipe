@@ -402,7 +402,14 @@ describe('paging end-to-end (transformRequest)', () => {
     expect(lockish.length).toBeGreaterThan(2 * DENSE_CONTENT_CHARS_PER_IMAGE);
     expect(lockish.length).toBeLessThan(80_000);
 
-    const { info } = await transformRequest(makeReq(lockish), { charsPerToken: 2 });
+    // This fixture intentionally contains checksum-looking lockfile data so
+    // the test remains focused on paging geometry rather than the production
+    // safety default. The explicit opt-out is the supported way to exercise
+    // lossy paging for synthetic content whose exact values are not in scope.
+    const { info } = await transformRequest(makeReq(lockish), {
+      charsPerToken: 2,
+      safetyMode: false,
+    });
     expect(info.compressed).toBe(true);
     expect(info.truncatedToolResults ?? 0).toBe(0);
     expect(info.omittedChars ?? 0).toBe(0);

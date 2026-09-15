@@ -1,6 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
+import { discoverOpenClaw, type OpenClawDiscovery } from './openclaw.js';
+import { createI18n } from './i18n/index.js';
+import { CORE_CATALOGS } from './i18n/catalogs.js';
+import { resolveSupportedLocale } from './i18n/runtime.js';
 
 export interface DoctorCheck {
   readonly status: 'available' | 'unavailable' | 'configured' | 'not_configured';
@@ -36,6 +40,7 @@ export interface DoctorReport {
     readonly codex: DoctorCheck;
     readonly openclaw: DoctorCheck;
   };
+  readonly openclaw?: Pick<OpenClawDiscovery, 'format' | 'paths' | 'config' | 'workspace' | 'security'>;
 }
 
 function commandVersion(command: string): DoctorCheck {
@@ -96,6 +101,7 @@ function safeUpstream(value: string | undefined): string {
 export function collectDoctorReport(): DoctorReport {
   const home = os.homedir();
   const port = Number(process.env.PORT ?? 47821);
+  const openclaw = discoverOpenClaw();
   return {
     platform: {
       os: `${os.platform()} ${os.release()}`,
@@ -125,27 +131,94 @@ export function collectDoctorReport(): DoctorReport {
       codex: commandVersion('codex'),
       openclaw: commandVersion('openclaw'),
     },
+    openclaw: {
+      format: openclaw.format,
+      paths: openclaw.paths,
+      config: openclaw.config,
+      workspace: openclaw.workspace,
+      security: openclaw.security,
+    },
   };
 }
 
-export function renderDoctorReport(report: DoctorReport, json = false): string {
+function normalizeSystemLocaleCandidate(value: string | undefined): string | undefined {
+  const raw = value?.trim();
+  if (!raw || raw.length > 256 || raw.includes('\0')) return undefined;
+  const upper = raw.toUpperCase();
+  if (upper === 'C' || upper === 'POSIX' || upper.startsWith('C.')) return undefined;
+  const base = raw.split('@', 1)[0]!.split('.', 1)[0]!.replaceAll('_', '-').trim();
+  if (!base) return undefined;
+  try {
+    return new Intl.Locale(base).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+export interface DoctorLocaleOptions {
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly intlLocale?: string;
+}
+
+export function resolveDoctorLocale(
+  explicitLocale?: string,
+  options: DoctorLocaleOptions = {},
+): string {
+  const explicit = explicitLocale?.trim();
+  if (explicit) {
+    try {
+      return new Intl.Locale(explicit).toString();
+    } catch {
+      throw new RangeError(`invalid BCP-47 locale: ${explicitLocale}`);
+    }
+  }
+
+  const env = options.env ?? process.env;
+  const preferences: string[] = [];
+  const add = (value: string | undefined): void => {
+    const normalized = normalizeSystemLocaleCandidate(value);
+    if (normalized && !preferences.includes(normalized)) preferences.push(normalized);
+  };
+
+  add(env.LC_ALL);
+  add(env.LC_MESSAGES);
+
+  const language = env.LANGUAGE?.trim();
+  if (language && language.length <= 1024 && !language.includes('\0')) {
+    for (const value of language.split(':').slice(0, 8)) add(value);
+  }
+
+  add(env.LANG);
+  add(options.intlLocale ?? Intl.DateTimeFormat().resolvedOptions().locale);
+
+  return resolveSupportedLocale(preferences, ['en', 'fr'], 'en');
+}
+
+export function renderDoctorReport(report: DoctorReport, json = false, locale = 'en'): string {
   if (json) return JSON.stringify(report, null, 2);
+  const i18n = createI18n({ catalogs: CORE_CATALOGS, defaultLocale: 'en' });
+  const t = (key: string): string => i18n.translate(locale, key);
   const check = (value: DoctorCheck): string => value.value ? `${value.status} (${value.value})` : value.status;
   return [
-    'FuryPipe doctor',
-    `OS/arch: ${report.platform.os} / ${report.platform.arch}`,
-    `Node: ${report.runtime.node}`,
-    `npm: ${check(report.runtime.npm)}`,
-    `pnpm: ${check(report.runtime.pnpm)}`,
-    `Shell: ${report.platform.shell}`,
-    `Listen: ${report.network.host}:${report.network.port}`,
-    `Upstream: ${report.network.upstream}`,
-    `Config: ${report.paths.config}`,
-    `Events: ${report.paths.events}`,
-    `Docker: ${check(report.tools.docker)}`,
-    `Browser open: ${check(report.tools.browser)}`,
-    `Claude: ${check(report.tools.claude)}`,
-    `Codex: ${check(report.tools.codex)}`,
-    `OpenClaw: ${check(report.tools.openclaw)}`,
+    t('doctor.title'),
+    `${t('doctor.osArch')}: ${report.platform.os} / ${report.platform.arch}`,
+    `${t('doctor.node')}: ${report.runtime.node}`,
+    `${t('doctor.npm')}: ${check(report.runtime.npm)}`,
+    `${t('doctor.pnpm')}: ${check(report.runtime.pnpm)}`,
+    `${t('doctor.shell')}: ${report.platform.shell}`,
+    `${t('doctor.listen')}: ${report.network.host}:${report.network.port}`,
+    `${t('doctor.upstream')}: ${report.network.upstream}`,
+    `${t('doctor.config')}: ${report.paths.config}`,
+    `${t('doctor.events')}: ${report.paths.events}`,
+    `${t('doctor.docker')}: ${check(report.tools.docker)}`,
+    `${t('doctor.browserOpen')}: ${check(report.tools.browser)}`,
+    `${t('doctor.claude')}: ${check(report.tools.claude)}`,
+    `${t('doctor.codex')}: ${check(report.tools.codex)}`,
+    `${t('doctor.openclaw')}: ${check(report.tools.openclaw)}`,
+    ...(report.openclaw ? [
+      `${t('doctor.openclawConfig')}: ${report.openclaw.config.status} (${report.openclaw.config.path})`,
+      `${t('doctor.openclawWorkspace')}: ${report.openclaw.workspace.exists ? 'present' : 'missing'} (${report.openclaw.workspace.path})`,
+      `${t('doctor.openclawSecrets')}: ${report.openclaw.config.secretBearingPaths.length}`,
+    ] : []),
   ].join('\n');
 }

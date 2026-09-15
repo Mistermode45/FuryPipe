@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appendInstructionEntry,
   createContextIR,
+  createInstructionEntry,
   createInstructionLedger,
   planCache,
   validateInstructionLedger,
@@ -39,6 +40,13 @@ describe('Context IR and cache planner', () => {
     expect(ir.blocks[0]?.id).toMatch(/^ctx_[0-9a-f]{24}$/);
     expect(verifyContextIRBlockText(ir.blocks[0]!, 'alpha')).toBe(true);
     expect(verifyContextIRBlockText(ir.blocks[0]!, 'tampered')).toBe(false);
+  });
+
+  it('assigns distinct IDs to repeated content in one request', () => {
+    const first = input('repeat');
+    const second = { ...input('repeat'), byteRange: { start: 6, end: 12 } };
+    const ir = createContextIR('req-repeated', [first, second]);
+    expect(ir.blocks[0]?.id).not.toBe(ir.blocks[1]?.id);
   });
 
   it('forces raw mode for protected blocks and never mutates their order', () => {
@@ -88,5 +96,45 @@ describe('Instruction Ledger', () => {
     };
     expect(validateInstructionLedger(ledger).ok).toBe(false);
   });
-});
 
+  it('keeps one active latest user request per scope and preserves history', () => {
+    let ledger = createInstructionLedger();
+    ledger = appendInstructionEntry(ledger, {
+      category: 'latest_user_request', sourceRole: 'user', scope: 'task', text: 'first',
+      provenance: 'fixture:user:1', logicalTurn: 1, active: true, historical: false,
+    });
+    ledger = appendInstructionEntry(ledger, {
+      category: 'latest_user_request', sourceRole: 'user', scope: 'task', text: 'second',
+      provenance: 'fixture:user:2', logicalTurn: 2, active: true, historical: false,
+    });
+    expect(ledger.entries[0]).toMatchObject({ active: false, historical: true });
+    expect(ledger.entries[1]).toMatchObject({ active: true, historical: false, supersedes: ledger.entries[0]?.id });
+    expect(ledger.latestUserTurnIds?.task).toBe(ledger.entries[1]?.id);
+    expect(validateInstructionLedger(ledger)).toEqual({ ok: true, errors: [] });
+  });
+
+  it('preserves prototype-named scopes in the latest request index', () => {
+    const ledger = appendInstructionEntry(createInstructionLedger(), {
+      category: 'latest_user_request', sourceRole: 'user', scope: '__proto__', text: 'keep this scoped request',
+      provenance: 'fixture:prototype-scope', logicalTurn: 1, active: true, historical: false,
+    });
+
+    expect(ledger.latestUserTurnIds).toBeDefined();
+    expect(Object.hasOwn(ledger.latestUserTurnIds!, '__proto__')).toBe(true);
+    expect(ledger.latestUserTurnIds?.['__proto__']).toBe(ledger.entries[0]?.id);
+    expect(validateInstructionLedger(ledger)).toEqual({ ok: true, errors: [] });
+  });
+
+  it('bounds individual instruction text and total ledger entry count', () => {
+    expect(() => createInstructionEntry({
+      category: 'constraint', sourceRole: 'user', text: 'x'.repeat(256 * 1024 + 1),
+      provenance: 'fixture:large', logicalTurn: 1, active: true, historical: false,
+    })).toThrow(/per-entry limit/);
+
+    const entries = Array.from({ length: 4_097 }, (_, index) => createInstructionEntry({
+      category: 'constraint', sourceRole: 'system', text: 'bounded',
+      provenance: `fixture:${index}`, logicalTurn: index, active: true, historical: false,
+    }));
+    expect(() => createInstructionLedger(entries)).toThrow(/limited to 4096 entries/);
+  });
+});

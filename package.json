@@ -1,12 +1,13 @@
 {
   "name": "furypipe",
   "version": "0.13.2",
-  "description": "FuryPipe context compiler and provider proxy, derived from pxpipe with exactness and recovery safeguards.",
+  "description": "FuryPipe — context, agents, skills, MCP, memory, provider routing and capability orchestration for production AI workflows.",
   "type": "module",
   "bin": {
     "furypipe": "bin/cli.js",
     "pxpipe": "bin/cli.js",
-    "furypipe-mcp": "bin/mcp.js"
+    "furypipe-mcp": "bin/mcp.js",
+    "furypipe-mcp-http": "bin/mcp-http.js"
   },
   "exports": {
     ".": {
@@ -53,6 +54,14 @@
       "types": "./dist/core/policy-engine.d.ts",
       "import": "./dist/core/policy-engine.js"
     },
+    "./policy-fabric": {
+      "types": "./dist/core/policy-fabric.d.ts",
+      "import": "./dist/core/policy-fabric.js"
+    },
+    "./policy-runtime": {
+      "types": "./dist/core/policy-runtime.d.ts",
+      "import": "./dist/core/policy-runtime.js"
+    },
     "./receipt": {
       "types": "./dist/core/receipt.d.ts",
       "import": "./dist/core/receipt.js"
@@ -69,6 +78,90 @@
       "types": "./dist/core/document-compiler.d.ts",
       "import": "./dist/core/document-compiler.js"
     },
+    "./context-fabric": {
+      "types": "./dist/core/context-fabric.d.ts",
+      "import": "./dist/core/context-fabric.js"
+    },
+    "./provider-fabric": {
+      "types": "./dist/core/provider-fabric.d.ts",
+      "import": "./dist/core/provider-fabric.js"
+    },
+    "./provider-runtime": {
+      "types": "./dist/core/provider-runtime.d.ts",
+      "import": "./dist/core/provider-runtime.js"
+    },
+    "./omniroute": {
+      "types": "./dist/core/omniroute.d.ts",
+      "import": "./dist/core/omniroute.js"
+    },
+    "./openclaw": {
+      "types": "./dist/openclaw.d.ts",
+      "import": "./dist/openclaw.js"
+    },
+    "./agent-fabric": {
+      "types": "./dist/agent-fabric.d.ts",
+      "import": "./dist/agent-fabric.js"
+    },
+    "./agent-runtime": {
+      "types": "./dist/agent-runtime.d.ts",
+      "import": "./dist/agent-runtime.js"
+    },
+    "./skill-registry": {
+      "types": "./dist/skill-registry.d.ts",
+      "import": "./dist/skill-registry.js"
+    },
+    "./plugin-bundles": {
+      "types": "./dist/plugin-bundles.d.ts",
+      "import": "./dist/plugin-bundles.js"
+    },
+    "./external-references": {
+      "types": "./dist/external-reference-catalog.d.ts",
+      "import": "./dist/external-reference-catalog.js"
+    },
+    "./fury-prompt": {
+      "types": "./dist/fury-prompt.d.ts",
+      "import": "./dist/fury-prompt.js"
+    },
+    "./instruction-profiles": {
+      "types": "./dist/instruction-profiles.d.ts",
+      "import": "./dist/instruction-profiles.js"
+    },
+    "./learning": {
+      "types": "./dist/learning.d.ts",
+      "import": "./dist/learning.js"
+    },
+    "./knowledge": {
+      "types": "./dist/knowledge.d.ts",
+      "import": "./dist/knowledge.js"
+    },
+    "./knowledge-recovery": {
+      "types": "./dist/knowledge-recovery.d.ts",
+      "import": "./dist/knowledge-recovery.js"
+    },
+    "./long-term-memory": {
+      "types": "./dist/long-term-memory.d.ts",
+      "import": "./dist/long-term-memory.js"
+    },
+    "./web-studio": {
+      "types": "./dist/web-studio/index.d.ts",
+      "import": "./dist/web-studio/index.js"
+    },
+    "./control-room": {
+      "types": "./dist/control-room/index.d.ts",
+      "import": "./dist/control-room/index.js"
+    },
+    "./control-room-runtime": {
+      "types": "./dist/control-room/runtime.d.ts",
+      "import": "./dist/control-room/runtime.js"
+    },
+    "./control-room-evidence": {
+      "types": "./dist/control-room/evidence-file.d.ts",
+      "import": "./dist/control-room/evidence-file.js"
+    },
+    "./control-room-security-evidence": {
+      "types": "./dist/control-room/security-ci-evidence.d.ts",
+      "import": "./dist/control-room/security-ci-evidence.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"
@@ -77,6 +170,14 @@
       "types": "./dist/mcp.d.ts",
       "import": "./dist/mcp.js"
     },
+    "./mcp-modern": {
+      "types": "./dist/mcp-modern.d.ts",
+      "import": "./dist/mcp-modern.js"
+    },
+    "./mcp-http-node": {
+      "types": "./dist/mcp-http-node.d.ts",
+      "import": "./dist/mcp-http-node.js"
+    },
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
@@ -84,6 +185,122 @@
     "./worker": {
       "types": "./dist/worker.d.ts",
       "import": "./dist/worker.js"
+    },
+    "./capability-router": {
+      "types": "./dist/capability-router.d.ts",
+      "import": "./dist/capability-router.js"
+    },
+    "./continuous-memory": {
+      "types": "./dist/continuous-memory.d.ts",
+      "import": "./dist/continuous-memory.js"
+    },
+    "./instruction-fabric": {
+      "types": "./dist/instruction-fabric.d.ts",
+      "import": "./dist/instruction-fabric.js"
+    },
+    "./context-optimizer": {
+      "types": "./dist/context-optimizer.d.ts",
+      "import": "./dist/context-optimizer.js"
+    },
+    "./continuous-memory-turn": {
+      "types": "./dist/continuous-memory-turn.d.ts",
+      "import": "./dist/continuous-memory-turn.js"
+    },
+    "./task-orchestrator": {
+      "types": "./dist/task-orchestrator.d.ts",
+      "import": "./dist/task-orchestrator.js"
+    },
+    "./model-adapter-registry": {
+      "types": "./dist/model-adapter-registry.d.ts",
+      "import": "./dist/model-adapter-registry.js"
+    },
+    "./capability-catalog": {
+      "types": "./dist/capability-catalog.d.ts",
+      "import": "./dist/capability-catalog.js"
+    },
+    "./benchmark-claim-gate": {
+      "types": "./dist/benchmark-claim-gate.d.ts",
+      "import": "./dist/benchmark-claim-gate.js"
+    },
+    "./provider-attempt-adapter": {
+      "types": "./dist/provider-attempt-adapter.d.ts",
+      "import": "./dist/provider-attempt-adapter.js"
+    },
+    "./context-optimizer-profile": {
+      "types": "./dist/context-optimizer-profile.d.ts",
+      "import": "./dist/context-optimizer-profile.js"
+    },
+    "./provider-attempt-planner": {
+      "types": "./dist/provider-attempt-planner.d.ts",
+      "import": "./dist/provider-attempt-planner.js"
+    },
+    "./provider-attempt-context-runtime": {
+      "types": "./dist/provider-attempt-context-runtime.d.ts",
+      "import": "./dist/provider-attempt-context-runtime.js"
+    },
+    "./provider-attempt-receipt": {
+      "types": "./dist/provider-attempt-receipt.d.ts",
+      "import": "./dist/provider-attempt-receipt.js"
+    },
+    "./provider-attempt-context-receipt": {
+      "types": "./dist/provider-attempt-context-receipt.d.ts",
+      "import": "./dist/provider-attempt-context-receipt.js"
+    },
+    "./provider-request-envelope": {
+      "types": "./dist/provider-request-envelope.d.ts",
+      "import": "./dist/provider-request-envelope.js"
+    },
+    "./provider-execution-gate": {
+      "types": "./dist/provider-execution-gate.d.ts",
+      "import": "./dist/provider-execution-gate.js"
+    },
+    "./provider-transport": {
+      "types": "./dist/provider-transport.d.ts",
+      "import": "./dist/provider-transport.js"
+    },
+    "./governed-provider-executor": {
+      "types": "./dist/governed-provider-executor.d.ts",
+      "import": "./dist/governed-provider-executor.js"
+    },
+    "./provider-execution-errors": {
+      "types": "./dist/provider-execution-errors.d.ts",
+      "import": "./dist/provider-execution-errors.js"
+    },
+    "./governed-provider-execution-receipt": {
+      "types": "./dist/governed-provider-execution-receipt.d.ts",
+      "import": "./dist/governed-provider-execution-receipt.js"
+    },
+    "./provider-execution-audit-chain": {
+      "types": "./dist/provider-execution-audit-chain.d.ts",
+      "import": "./dist/provider-execution-audit-chain.js"
+    },
+    "./provider-execution-audit-ledger": {
+      "types": "./dist/provider-execution-audit-ledger.d.ts",
+      "import": "./dist/provider-execution-audit-ledger.js"
+    },
+    "./provider-transports": {
+      "types": "./dist/provider-transports/index.d.ts",
+      "import": "./dist/provider-transports/index.js"
+    },
+    "./provider-transport-health": {
+      "types": "./dist/provider-transport-health.d.ts",
+      "import": "./dist/provider-transport-health.js"
+    },
+    "./provider-execution-audit-ledger-recovery": {
+      "types": "./dist/provider-execution-audit-ledger-recovery.d.ts",
+      "import": "./dist/provider-execution-audit-ledger-recovery.js"
+    },
+    "./provider-retry-fallback-orchestrator": {
+      "types": "./dist/provider-retry-fallback-orchestrator.d.ts",
+      "import": "./dist/provider-retry-fallback-orchestrator.js"
+    },
+    "./provider-streaming": {
+      "types": "./dist/provider-streaming.d.ts",
+      "import": "./dist/provider-streaming.js"
+    },
+    "./provider-stream-transports": {
+      "types": "./dist/provider-stream-transports/index.d.ts",
+      "import": "./dist/provider-stream-transports/index.js"
     }
   },
   "files": [
@@ -95,13 +312,51 @@
     "SECURITY.md",
     "THIRD_PARTY_NOTICES.md",
     "docs/SECURITY_MODEL.md",
-    "docs/PXPIPE_GAP_ANALYSIS.md",
     "docs/CLI.md",
     "docs/MCP.md",
+    "docs/MCP_HOSTED_CONFORMANCE.md",
+    "docs/FURY_PROMPT.md",
+    "docs/INSTRUCTION_PROFILES.md",
+    "docs/SKILL_ECOSYSTEM_2026.md",
+    "docs/PLUGIN_BUNDLES.md",
     "docs/CONTEXT_FABRIC.md",
+    "docs/PROVIDER_FABRIC.md",
+    "docs/OMNIROUTE.md",
+    "docs/OPENCLAW.md",
+    "docs/AGENT_FABRIC.md",
+    "docs/LEARNING_KNOWLEDGE.md",
+    "docs/LONG_TERM_MEMORY.md",
     "docs/POLICY.md",
     "docs/RECEIPTS.md",
-    "LICENSE"
+    "LICENSE",
+    "docs/CAPABILITY_ROUTER.md",
+    "docs/CONTINUOUS_MEMORY.md",
+    "docs/INSTRUCTION_FABRIC.md",
+    "docs/CONTEXT_OPTIMIZER.md",
+    "docs/CONTINUOUS_MEMORY_TURN.md",
+    "docs/TASK_ORCHESTRATOR.md",
+    "docs/MODEL_ADAPTERS.md",
+    "docs/CAPABILITY_CATALOG.md",
+    "docs/ECOSYSTEM_INGESTION.md",
+    "docs/FURYTRUST.md",
+    "docs/CAPABILITY_CATALOG_RESOLVER.md",
+    "docs/CAPABILITY_ACTIVATION.md",
+    "docs/BENCHMARK_CLAIM_GATE.md",
+    "docs/PROVIDER_ATTEMPT_ADAPTER.md",
+    "docs/CONTEXT_OPTIMIZER_PROFILES.md",
+    "docs/PROVIDER_ATTEMPT_PLANNER.md",
+    "docs/PROVIDER_RETRY_FALLBACK_ORCHESTRATOR.md",
+    "docs/GOVERNED_PROVIDER_STREAMING.md",
+    "docs/PROVIDER_ATTEMPT_CONTEXT_RUNTIME.md",
+    "docs/PROVIDER_ATTEMPT_RECEIPTS.md",
+    "docs/PROVIDER_ATTEMPT_CONTEXT_RECEIPTS.md",
+    "docs/GOVERNED_PROVIDER_EXECUTOR.md",
+    "docs/GOVERNED_PROVIDER_EXECUTION_RECEIPTS.md",
+    "docs/PROVIDER_EXECUTION_AUDIT_CHAIN.md",
+    "docs/PROVIDER_EXECUTION_AUDIT_LEDGER.md",
+    "docs/PROVIDER_EXECUTION_AUDIT_LEDGER_RECOVERY.md",
+    "docs/PRODUCTION_PROVIDER_TRANSPORTS.md",
+    "docs/PROVIDER_TRANSPORT_HEALTH.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
@@ -110,10 +365,15 @@
     "dev:node": "tsx watch src/node.ts",
     "dev:worker": "wrangler dev",
     "deploy:worker": "wrangler deploy",
+    "browser:qa": "tsx scripts/cross-browser-qa.ts",
+    "openclaw:probe": "tsx scripts/openclaw-live-probe.ts",
+    "hosted-mcp:fixture": "tsx scripts/hosted-mcp-fixture.ts",
+    "hosted-mcp:conformance": "tsx scripts/hosted-mcp-conformance.ts",
     "restart": "node scripts/restart.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.hosted-mcp.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "package:smoke": "node scripts/package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
     "vendor:ui": "node scripts/vendor-ui.mjs"
   },
@@ -130,7 +390,7 @@
     "cloudflare-workers"
   ],
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.14"
   },
   "packageManager": "pnpm@10.21.0",
   "pnpm": {
@@ -144,6 +404,7 @@
     "@napi-rs/canvas": "^1.0.9",
     "@types/node": "^26.5.1",
     "esbuild": "^0.28.2",
+    "playwright": "1.63.0",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
@@ -151,7 +412,9 @@
     "wrangler": "^4.131.0"
   },
   "dependencies": {
-    "gpt-tokenizer": "^4.0.0"
+    "@modelcontextprotocol/server": "2.0.0",
+    "gpt-tokenizer": "^4.0.0",
+    "json5": "^2.2.3"
   },
   "repository": {
     "type": "git",

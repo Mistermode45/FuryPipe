@@ -28,7 +28,7 @@ export type BytesLike = Uint8Array | ArrayBuffer | ArrayBufferView;
 export interface PxpipeOptions
   extends Pick<
     TransformOptions,
-    'charsPerToken' | 'historyAmortizationHorizon' | 'keepSharp' | 'emitRecoverable' | 'emitReceipt'
+    'charsPerToken' | 'historyAmortizationHorizon' | 'keepSharp' | 'emitRecoverable' | 'emitReceipt' | 'exactGuard' | 'recoveryStore'
   > {
   /** Test/debug-only bypass. Product hosts should prefer their dashboard setting. */
   readonly compress?: boolean;
@@ -44,6 +44,7 @@ export interface PxpipeTransformInput {
 
 export type PxpipeReason =
   | 'applied'
+  | 'externalized'
   | 'unsupported_model'
   | 'parse_error'
   | 'below_min_chars'
@@ -90,6 +91,7 @@ function emptyInfo(reason: string): TransformInfo {
 }
 
 function classifyReason(info: TransformInfo): PxpipeReason {
+  if (info.exactGuard?.action === 'externalize') return 'externalized';
   if (info.compressed) return 'applied';
   const r = info.reason ?? '';
   if (r.startsWith('parse_error')) return 'parse_error';
@@ -108,6 +110,7 @@ function buildReceipt(
   strategy: CompressionReceipt['strategy'],
   markerCount: number,
   ownsCacheControl: boolean,
+  recoveryHandles?: readonly string[],
 ): CompressionReceipt | undefined {
   if (!input.options?.emitReceipt) return undefined;
 
@@ -128,6 +131,7 @@ function buildReceipt(
     requestId: input.requestId,
     model: input.model,
     strategy,
+    recoveryHandles,
     precisionManifest,
     cacheEffects: { markerCount, ownsCacheControl },
   });
@@ -160,7 +164,7 @@ export async function transformAnthropicMessages(
     const markerCount = countCacheControlMarkers(body);
     return {
       body,
-      applied: info.compressed,
+      applied: info.compressed || info.exactGuard?.action === 'externalize',
       reason,
       detail: info.reason,
       info,
@@ -172,9 +176,12 @@ export async function transformAnthropicMessages(
         input,
         original,
         body,
-        info.compressed ? 'pxpipe-transform' : 'passthrough',
+        info.exactGuard?.action === 'externalize'
+          ? 'externalize'
+          : info.compressed ? 'pxpipe-transform' : 'passthrough',
         markerCount,
         info.compressed && markerCount > 0,
+        info.exactGuard?.recoveryHandles,
       ),
     };
   } catch (e) {
