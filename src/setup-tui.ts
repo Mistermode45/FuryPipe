@@ -160,6 +160,17 @@ export function detectSetupLocale(env: NodeJS.ProcessEnv = process.env): SetupLo
   return raw?.toLowerCase().startsWith('fr') ? 'fr' : 'en';
 }
 
+export function readConfiguredSetupLocale(file: string): SetupLocale | undefined {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    const locale = (parsed as Record<string, unknown>).locale;
+    return locale === 'fr' || locale === 'en' ? locale : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function parseSetupArgs(argv: readonly string[]): ParsedSetupArgs {
   let locale: SetupLocale | undefined;
   let plain = false;
@@ -359,6 +370,7 @@ export function persistSetupLocale(
 
 function canUseRichTui(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, env: NodeJS.ProcessEnv): boolean {
   if (!stdin.isTTY || !stdout.isTTY) return false;
+  if ((stdout.columns ?? 0) < MIN_WIDTH) return false;
   if (env.TERM?.toLowerCase() === 'dumb') return false;
   if (env.CI && env.CI !== '0' && env.CI.toLowerCase() !== 'false') return false;
   return true;
@@ -416,7 +428,7 @@ export async function runSetupWizard(options: SetupWizardOptions = {}): Promise<
   const stdin = options.stdin ?? process.stdin;
   const stdout = options.stdout ?? process.stdout;
   const env = options.env ?? process.env;
-  const configFile = options.configFile ?? env.FURYPIPE_CONFIG?.trim() ?? defaultSetupConfigFile();
+  const configFile = options.configFile ?? (env.FURYPIPE_CONFIG?.trim() || defaultSetupConfigFile());
   const version = options.version ?? 'dev';
   const now = options.now ?? (() => new Date());
 
@@ -431,7 +443,7 @@ export async function runSetupWizard(options: SetupWizardOptions = {}): Promise<
 
   if (parsed.help) { stdout.write(setupHelp() + '\n'); return 0; }
 
-  const initial = parsed.locale ?? detectSetupLocale(env);
+  const initial = parsed.locale ?? readConfiguredSetupLocale(configFile) ?? detectSetupLocale(env);
   const color = parsed.color && !('NO_COLOR' in env);
   const rich = !parsed.plain && !parsed.yes && canUseRichTui(stdin, stdout, env);
   const selected = rich
