@@ -1,7 +1,7 @@
 /**
  * gen-context-chart.ts — README chart: how many *characters* a frontier context
  * window has held over time, GPT-1 (2018) → Fable 5 / Grok 4.5 (2026), as a
- * line chart on a real year axis. One pxpipe overlay is measured live for
+ * line chart on a real year axis. One FuryPipe overlay is measured live for
  * Fable (the default reader); Grok appears as a plain text-window series only
  * (opt-in, not Fable-level pure-image quality).
  *
@@ -13,7 +13,7 @@
  *  - Text points: window tokens × 4 chars/token (the standard English-prose
  *    rule of thumb; token-dense content like code/JSON tokenizes *worse*,
  *    ~2-2.5, so 4 is the generous assumption for the text series).
- *  - pxpipe points: window tokens × measured chars-per-vision-token using the
+ *  - FuryPipe points: window tokens × measured chars-per-vision-token using the
  *    shipped 312-column geometry and each provider's image-token accounting.
  *
  * Window sizes (announcement-era frontier defaults), with release dates used
@@ -56,7 +56,7 @@ interface Density {
 // 1. Measure chars-per-vision-token through the real pipeline.
 // ---------------------------------------------------------------------------
 function loadFixture(): string {
-  // Representative token-dense context — the kinds of content pxpipe actually
+  // Representative token-dense context — the kinds of content FuryPipe actually
   // images (markdown docs, TS source, JSON), taken from this repo itself.
   // Literal ↵ sentinels are stripped: these files *document* the sentinel, and
   // reflow() deliberately bails on source that already contains it.
@@ -111,8 +111,8 @@ interface Point {
   /** Model context window, in tokens. */
   tokens: number;
   chars: number;
-  /** Vendor series — each gets its own line. 'pxpipe' is a measured overlay. */
-  kind: 'openai' | 'gemini' | 'claude' | 'grok' | 'pxpipe';
+  /** Vendor series — each gets its own line. 'furypipe' is a measured overlay. */
+  kind: 'openai' | 'gemini' | 'claude' | 'grok' | 'furypipe';
   /** Where to hang the label so the cluttered 2023 cluster stays readable. */
   label: LabelSide;
   /** Extra vertical label offset (px) — staggers the linear-scale floor pileup. */
@@ -154,7 +154,7 @@ function points(fableCpt: number, geminiCpt: number, opusCpt: number): Point[] {
     t('claude', 'Fable 5 [1m]', 2026.05, 1_000_000, 'below'),
     // Gemini 3.6 Flash 1M window
     t('gemini', 'Gemini 3.6 Flash', 2026.50, 1_000_000, 'below'),
-    // Grok 4.5: text-window only (opt-in; no pxpipe overlay on this chart).
+    // Grok 4.5: text-window only (opt-in; no FuryPipe overlay on this chart).
     // Window = xAI docs maxPromptLength for grok-4.5 (500000).
     t('grok', 'Grok 4.5', 2026.42, 500_000, 'below', 10),
     // Claude Opus 5: released July 25, 2026. Window = 1M tokens per Anthropic
@@ -163,30 +163,30 @@ function points(fableCpt: number, geminiCpt: number, opusCpt: number): Point[] {
     // the YYYYMMDD snapshot — so the date comes from the release, not the ID.
     t('claude', 'Opus 5', 2026.56, 1_000_000, 'above', -18),
     {
-      name: 'Fable 5 [1m] + pxpipe',
+      name: 'Fable 5 [1m] + FuryPipe',
       x: 2026.05,
       tokens: 1_000_000,
       chars: Math.round(1_000_000 * fableCpt),
-      kind: 'pxpipe',
+      kind: 'furypipe',
       label: 'above',
     },
     {
-      name: 'Gemini 3.6 Flash + pxpipe',
+      name: 'Gemini 3.6 Flash + FuryPipe',
       x: 2026.50,
       tokens: 1_000_000,
       chars: Math.round(1_000_000 * geminiCpt),
-      kind: 'pxpipe',
+      kind: 'furypipe',
       label: 'above',
     },
     {
       // Measures identical to Fable 5 (same resolved profile geometry), so this
       // lands on the same horizontal line — that equality is the finding, not a
       // copy: opusCpt comes from its own render pass.
-      name: 'Opus 5 + pxpipe',
+      name: 'Opus 5 + FuryPipe',
       x: 2026.56,
       tokens: 1_000_000,
       chars: Math.round(1_000_000 * opusCpt),
-      kind: 'pxpipe',
+      kind: 'furypipe',
       label: 'above',
     },
   ];
@@ -239,7 +239,7 @@ function draw(data: Point[], fableCpt: number, geminiCpt: number): Buffer {
     gemini: '#a371f7',
     claude: '#58a6ff',
     grok: '#e3b341',
-    pxpipe: '#f0883e',
+    FuryPipe: '#f0883e',
   };
 
   ctx.fillStyle = bg;
@@ -253,7 +253,7 @@ function draw(data: Point[], fableCpt: number, geminiCpt: number): Buffer {
   ctx.font = '400 14px sans-serif';
   ctx.fillText(
     `each point: model · context window (tokens) → characters it holds · text at ~${TEXT_CPT} chars/token · ` +
-      `pxpipe uses shipped 312-column pages · Fable ${fableCpt.toFixed(1)} · Gemini ${geminiCpt.toFixed(1)} chars/vision-token`,
+      `FuryPipe uses shipped 312-column pages · Fable ${fableCpt.toFixed(1)} · Gemini ${geminiCpt.toFixed(1)} chars/vision-token`,
     36,
     68,
   );
@@ -322,11 +322,11 @@ function draw(data: Point[], fableCpt: number, geminiCpt: number): Buffer {
     ctx.stroke();
   }
 
-  // Dashed vertical connector: Fable / Gemini text window → same window imaged (pxpipe).
-  // Grok is plotted as a text series only (no pxpipe overlay).
+  // Dashed vertical connector: Fable / Gemini text window → same window imaged (FuryPipe).
+  // Grok is plotted as a text series only (no FuryPipe overlay).
   const overlays: Array<{ textName: string; pxName: string }> = [
-    { textName: 'Fable 5 [1m]', pxName: 'Fable 5 [1m] + pxpipe' },
-    { textName: 'Gemini 3.6 Flash', pxName: 'Gemini 3.6 Flash + pxpipe' },
+    { textName: 'Fable 5 [1m]', pxName: 'Fable 5 [1m] + FuryPipe' },
+    { textName: 'Gemini 3.6 Flash', pxName: 'Gemini 3.6 Flash + FuryPipe' },
   ];
   for (const o of overlays) {
     const base = data.find((p) => p.name === o.textName)!;
@@ -334,7 +334,7 @@ function draw(data: Point[], fableCpt: number, geminiCpt: number): Buffer {
     const cx = x(base.x); // same as x(px.x) — both points share the year
     const y0 = y(base.chars) - 7;
     const y1 = y(px.chars) + 8;
-    ctx.strokeStyle = colors.pxpipe;
+    ctx.strokeStyle = colors.furypipe;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([5, 4]);
     ctx.beginPath();
@@ -352,7 +352,7 @@ function draw(data: Point[], fableCpt: number, geminiCpt: number): Buffer {
     ctx.lineWidth = 5;
     ctx.font = '700 15px sans-serif';
     ctx.strokeText(annLine1, annX, annY - 9);
-    ctx.fillStyle = colors.pxpipe;
+    ctx.fillStyle = colors.furypipe;
     ctx.fillText(annLine1, annX, annY - 9);
     ctx.font = '600 12px sans-serif';
     ctx.strokeText(annLine2, annX, annY + 9);
@@ -360,7 +360,7 @@ function draw(data: Point[], fableCpt: number, geminiCpt: number): Buffer {
   }
 
   const emphasize = (p: Point): boolean =>
-    p.kind === 'pxpipe' || p.name === 'Fable 5 [1m]' || p.name === 'Grok 4.5';
+    p.kind === 'furypipe' || p.name === 'Fable 5 [1m]' || p.name === 'Grok 4.5';
 
   // Markers first, so no marker is drawn over a neighbouring label.
   for (const p of data) {
@@ -370,11 +370,11 @@ function draw(data: Point[], fableCpt: number, geminiCpt: number): Buffer {
     ctx.arc(cx, cy, emphasize(p) ? 6.5 : 4.5, 0, Math.PI * 2);
     ctx.fillStyle = colors[p.kind];
     ctx.fill();
-    // Outer ring on pxpipe overlays so they read as measured, not vendor text.
-    if (p.kind === 'pxpipe') {
+    // Outer ring on FuryPipe overlays so they read as measured, not vendor text.
+    if (p.kind === 'furypipe') {
       ctx.beginPath();
       ctx.arc(cx, cy, 9, 0, Math.PI * 2);
-      ctx.strokeStyle = colors.pxpipe;
+      ctx.strokeStyle = colors.furypipe;
       ctx.lineWidth = 2;
       ctx.stroke();
     }
@@ -466,7 +466,7 @@ function draw(data: Point[], fableCpt: number, geminiCpt: number): Buffer {
     [colors.gemini, 'Google · Gemini'],
     [colors.claude, 'Anthropic · Claude → Fable'],
     [colors.grok, 'xAI · Grok 4.5'],
-    [colors.pxpipe, 'pxpipe images (measured overlays)'],
+    [colors.furypipe, 'FuryPipe images (measured overlays)'],
   ];
   ctx.font = '400 13px sans-serif';
   let ly = top + 20;
@@ -484,7 +484,7 @@ function draw(data: Point[], fableCpt: number, geminiCpt: number): Buffer {
   ctx.fillStyle = '#484f58';
   ctx.font = '400 12px sans-serif';
   ctx.fillText(
-    `same ratio at any size: a standard 200K Fable 5 window × pxpipe ≈ ${fmt(Math.round(200_000 * fableCpt))} chars (vs 800K as text). Regenerate: npx tsx scripts/gen-context-chart.ts`,
+    `same ratio at any size: a standard 200K Fable 5 window × FuryPipe ≈ ${fmt(Math.round(200_000 * fableCpt))} chars (vs 800K as text). Regenerate: npx tsx scripts/gen-context-chart.ts`,
     36,
     1000 - 14,
   );
@@ -518,15 +518,15 @@ for (const p of data) {
   );
 }
 const fableText = data.find((p) => p.name === 'Fable 5 [1m]')!;
-const fablePx = data.find((p) => p.name === 'Fable 5 [1m] + pxpipe')!;
+const fableFury = data.find((p) => p.name === 'Fable 5 [1m] + FuryPipe')!;
 const geminiText = data.find((p) => p.name === 'Gemini 3.6 Flash')!;
-const geminiPx = data.find((p) => p.name === 'Gemini 3.6 Flash + pxpipe')!;
+const geminiFury = data.find((p) => p.name === 'Gemini 3.6 Flash + FuryPipe')!;
 
 console.log(
-  `\n  Fable pxpipe multiplier on the same window: ${(fablePx.chars / fableText.chars).toFixed(2)}×`,
+  `\n  Fable FuryPipe multiplier on the same window: ${(fableFury.chars / fableText.chars).toFixed(2)}×`,
 );
 console.log(
-  `  Gemini 3.6 Flash pxpipe multiplier on the same window: ${(geminiPx.chars / geminiText.chars).toFixed(2)}×`,
+  `  Gemini 3.6 Flash FuryPipe multiplier on the same window: ${(geminiFury.chars / geminiText.chars).toFixed(2)}×`,
 );
 
 mkdirSync(dirname(OUT), { recursive: true });
