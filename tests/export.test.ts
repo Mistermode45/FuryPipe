@@ -26,7 +26,7 @@ import { resolveGptProfile } from '../src/core/gpt-model-profiles.js';
 let tmpDir = '';
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxpipe-export-test-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'FuryPipe-export-test-'));
 });
 
 afterEach(() => {
@@ -410,7 +410,7 @@ describe('runExportCore integration', () => {
   });
 
   it('manifest.pages has correct shape for each rendered page', async () => {
-    const sourceText = 'hello pxpipe export\n'.repeat(30);
+    const sourceText = 'hello FuryPipe export\n'.repeat(30);
     const result = await runExportCore(sourceText, {
       sourceFiles: [],
       cols: DEFAULT_EXPORT_COLS,
