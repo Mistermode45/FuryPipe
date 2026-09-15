@@ -20,10 +20,10 @@ function summary(median: number, repetitions = 5) {
   };
 }
 
-function metric(raw: number, pxpipe: number, furypipe: number, repetitions = 5) {
+function metric(raw: number, upstream: number, furypipe: number, repetitions = 5) {
   return {
     raw: summary(raw, repetitions),
-    pxpipe: summary(pxpipe, repetitions),
+    upstream: summary(upstream, repetitions),
     furypipe: summary(furypipe, repetitions),
   };
 }
@@ -32,17 +32,17 @@ function benchmarkSuite(overrides: {
   provider?: string;
   model?: string;
   rawTokens?: number;
-  pxpipeTokens?: number;
+  upstreamTokens?: number;
   furyTokens?: number;
   rawQuality?: number;
-  pxpipeQuality?: number;
+  upstreamQuality?: number;
   furyQuality?: number;
   repetitions?: number;
 } = {}) {
   const digest = (id: string, ch: string) => ({ id, sha256: ch.repeat(64) });
   const repetitions = overrides.repetitions ?? 5;
   const rawTokens = overrides.rawTokens ?? 1000;
-  const pxpipeTokens = overrides.pxpipeTokens ?? 850;
+  const upstreamTokens = overrides.upstreamTokens ?? 850;
   const furyTokens = overrides.furyTokens ?? 700;
 
   return {
@@ -60,7 +60,7 @@ function benchmarkSuite(overrides: {
     context: digest('coding-context-v1', 'd'),
     cache_state: 'cold',
     metrics: {
-      input_tokens: metric(rawTokens, pxpipeTokens, furyTokens, repetitions),
+      input_tokens: metric(rawTokens, upstreamTokens, furyTokens, repetitions),
       output_tokens: metric(100, 100, 100, repetitions),
       cache_read_tokens: metric(0, 0, 0, repetitions),
       cache_write_tokens: metric(0, 0, 0, repetitions),
@@ -75,7 +75,7 @@ function benchmarkSuite(overrides: {
     },
     quality: {
       raw: summary(overrides.rawQuality ?? 0.90, repetitions),
-      pxpipe: summary(overrides.pxpipeQuality ?? 0.92, repetitions),
+      upstream: summary(overrides.upstreamQuality ?? 0.92, repetitions),
       furypipe: summary(overrides.furyQuality ?? 0.95, repetitions),
     },
     exactness: {
@@ -180,7 +180,7 @@ describe('Context Optimizer benchmark-qualified profiles', () => {
       measuredTokenImprovement: 300,
       measuredTokenImprovementRatio: 0.3,
       rawQualityMedian: 0.90,
-      pxpipeQualityMedian: 0.92,
+      upstreamQualityMedian: 0.92,
       candidateQualityMedian: 0.95,
       exactnessMismatches: 0,
       benchmarkErrors: 0,
@@ -210,7 +210,7 @@ describe('Context Optimizer benchmark-qualified profiles', () => {
     const decision = qualify(profile(), {
       suite: benchmarkSuite({
         rawQuality: 0.90,
-        pxpipeQuality: 0.92,
+        upstreamQuality: 0.92,
         furyQuality: 0.80,
       }),
     });
