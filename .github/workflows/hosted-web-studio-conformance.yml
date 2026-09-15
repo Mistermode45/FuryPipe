@@ -44,15 +44,25 @@ jobs:
       FURYPIPE_HOSTED_WEB_STUDIO_URL: ${{ inputs.target_url || vars.FURYPIPE_HOSTED_WEB_STUDIO_TARGET_URL || 'https://mcp.furycraft.fr/studio-qa' }}
       FURYPIPE_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
       FURYPIPE_HOSTED_WEB_STUDIO_OUTPUT_DIR: ${{ github.workspace }}/artifacts/hosted-web-studio-conformance
-      FURYPIPE_VALIDATOR_COMMIT: ${{ github.event.pull_request.base.sha || github.sha }}
 
     steps:
       - name: Checkout validator source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
           path: validator
+
+      - name: Bind exact validator source
+        shell: bash
+        run: |
+          validator_sha="$(git -C validator rev-parse HEAD)"
+          if [[ ! "$validator_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::validator checkout did not resolve to an exact SHA"
+            exit 1
+          fi
+          test -f validator/scripts/hosted-web-studio-conformance.mjs
+          echo "FURYPIPE_VALIDATOR_COMMIT=$validator_sha" >> "$GITHUB_ENV"
 
       - name: Validate requested source SHA
         shell: bash
