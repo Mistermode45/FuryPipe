@@ -6,8 +6,9 @@ Security fixes are applied to the latest public FuryPipe release.
 
 | Version | Security support |
 |---|---|
-| 0.13.2 | Supported |
-| Older / unreleased snapshots | Upgrade or reproduce on the latest release before triage |
+| 0.14.x | Supported |
+| 0.15.0 release candidate | Validated before publication; becomes the supported line when publicly released |
+| Older releases / unreleased snapshots | Upgrade or reproduce on the latest supported release before triage |
 
 Pre-1.0 releases may contain API changes. Security support refers to vulnerability fixes, not indefinite compatibility guarantees.
 
@@ -50,7 +51,7 @@ See [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) for the detailed threat mod
 
 The Node runtime is loopback-oriented by default.
 
-If `HOST` is configured to a non-loopback address, the proxy API can become reachable off-host. Put any non-loopback deployment behind an authenticated TLS reverse proxy or another equivalent access-control boundary.
+If `FURYPIPE_HOST` is configured to a non-loopback address, the proxy API can become reachable off-host. Put any non-loopback deployment behind an authenticated TLS reverse proxy or another equivalent access-control boundary.
 
 Dashboard routes remain loopback-only in the current runtime.
 
@@ -78,8 +79,6 @@ Set the secret with Wrangler, for example:
 npx wrangler secret put FURYPIPE_WORKER_SECRET
 ```
 
-Legacy `PXPIPE_WORKER_SECRET` and `x-pxpipe-secret` support exists only as a compatibility fallback. New deployments should not use the legacy names.
-
 ## Diagnostic capture
 
 Full 4xx request/upstream-error capture is a debugging feature and may contain prompts, tool data or credentials.
@@ -91,8 +90,6 @@ FURYPIPE_DEBUG_CAPTURE_4XX=1
 ```
 
 Do not enable diagnostic body capture in normal production operation unless the storage, retention and access model is explicitly controlled.
-
-Any legacy `PXPIPE_*` diagnostic names that remain accepted by compatibility code are deprecated for new deployments.
 
 ## Filesystem and Recovery security
 
@@ -122,13 +119,17 @@ The first public `0.13.2` npm publication was bootstrapped manually so the packa
 
 See [docs/RELEASE_SECURITY.md](docs/RELEASE_SECURITY.md) for the exact release-state record.
 
-## Legacy compatibility
+## Runtime identity
 
-FuryPipe-native configuration names are authoritative.
+FuryPipe uses a FuryPipe-only runtime identity.
 
-Selected `PXPIPE_*` variables and the `pxpipe` CLI alias remain accepted for backward compatibility. They should be treated as deprecated compatibility surfaces, not names for new integrations.
+- CLI: `furypipe`
+- environment namespace: `FURYPIPE_*`
+- default bind host: `127.0.0.1`
+- default listener port: `48721`
+- Worker auth header: `x-furypipe-secret`
 
-When a FuryPipe-native value and its legacy fallback are both present, the FuryPipe-native value wins.
+The runtime does not consult historical command aliases, historical environment-variable namespaces, historical config/event paths or the former default listener port.
 
 ## Security-sensitive contribution areas
 
