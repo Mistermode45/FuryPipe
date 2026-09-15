@@ -30,7 +30,7 @@ export {
 /** Resolve a model's vision tier. Which model sits on which tier is a property
  *  of the model profile (`visionTier` in gpt-model-profiles.ts), not a list
  *  maintained here: profile resolution already handles id aliases, `[variant]`
- *  tags, and PXPIPE_GPT_PROFILES overrides. This module owns only the geometry
+ *  tags, and FURYPIPE_GPT_PROFILES overrides. This module owns only the geometry
  *  each tier implies. Non-Claude and blank ids have no tier and get standard. */
 export function anthropicVisionProfile(model: string | null | undefined) {
   return ANTHROPIC_TIERS[resolveGptProfile(model).visionTier ?? 'standard'];
