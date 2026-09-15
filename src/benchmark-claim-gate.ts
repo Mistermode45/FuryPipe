@@ -1,4 +1,4 @@
-export const FURY_BENCHMARK_VARIANTS = Object.freeze(['raw', 'pxpipe', 'furypipe'] as const);
+export const FURY_BENCHMARK_VARIANTS = Object.freeze(['raw', 'upstream', 'furypipe'] as const);
 export const FURY_BENCHMARK_METRICS = Object.freeze([
   'input_tokens',
   'output_tokens',
@@ -67,7 +67,7 @@ export type FuryBenchmarkAntiRegressionBlockerCode =
   | 'insufficient-repetitions'
   | 'incomplete-quality-evidence'
   | 'quality-regression-vs-raw'
-  | 'quality-regression-vs-pxpipe'
+  | 'quality-regression-vs-upstream'
   | 'exactness-incomplete'
   | 'benchmark-errors';
 
@@ -234,7 +234,7 @@ function parseVariantSummaries(
   if (!isPlainRecord(value)) throw new Error(`${label} must be an object`);
   const parsed = {
     raw: parseSummary(value.raw, `${label}.raw`, repetitions),
-    pxpipe: parseSummary(value.pxpipe, `${label}.pxpipe`, repetitions),
+    upstream: parseSummary(value.upstream, `${label}.upstream`, repetitions),
     furypipe: parseSummary(value.furypipe, `${label}.furypipe`, repetitions),
   };
   return Object.freeze(parsed);
@@ -372,17 +372,17 @@ export function assessBenchmarkAntiRegression(
 
   const furyMedian = suite.quality.furypipe.median;
   const rawMedian = suite.quality.raw.median;
-  const pxpipeMedian = suite.quality.pxpipe.median;
+  const upstreamMedian = suite.quality.upstream.median;
   if (furyMedian !== null && rawMedian !== null && furyMedian < rawMedian) {
     blockers.push(blocker(
       'quality-regression-vs-raw',
       `FuryPipe median quality ${furyMedian} is below RAW median quality ${rawMedian}`,
     ));
   }
-  if (furyMedian !== null && pxpipeMedian !== null && furyMedian < pxpipeMedian) {
+  if (furyMedian !== null && upstreamMedian !== null && furyMedian < upstreamMedian) {
     blockers.push(blocker(
-      'quality-regression-vs-pxpipe',
-      `FuryPipe median quality ${furyMedian} is below pxpipe median quality ${pxpipeMedian}`,
+      'quality-regression-vs-upstream',
+      `FuryPipe median quality ${furyMedian} is below upstream median quality ${upstreamMedian}`,
     ));
   }
 
@@ -407,7 +407,7 @@ export function assessBenchmarkAntiRegression(
     status: blockers.length === 0 ? 'PASS' : 'BLOCKED',
     qualityMedian: Object.freeze({
       raw: rawMedian,
-      pxpipe: pxpipeMedian,
+      upstream: upstreamMedian,
       furypipe: furyMedian,
     }),
     blockers: Object.freeze(blockers),
@@ -427,8 +427,8 @@ function claimBlocker(code: FuryBenchmarkClaimBlockerCode, detail: string): Fury
 
 export function evaluateBenchmarkClaim(input: FuryBenchmarkClaimRequest): FuryBenchmarkClaimDecision {
   if (!input || typeof input !== 'object') throw new Error('benchmark claim request is required');
-  if (input.baseline !== 'raw' && input.baseline !== 'pxpipe') {
-    throw new Error('benchmark claim baseline must be raw or pxpipe');
+  if (input.baseline !== 'raw' && input.baseline !== 'upstream') {
+    throw new Error('benchmark claim baseline must be raw or upstream');
   }
   if (!FURY_BENCHMARK_METRICS.includes(input.metric)) {
     throw new Error('benchmark claim metric is invalid');
