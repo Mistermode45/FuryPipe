@@ -11,7 +11,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { DashboardState, dashboardPath, dashboardHostLabel } from '../src/dashboard.js';
-import { getAllowedModelBases, isPxpipeSupportedModel, setAllowedModelBases } from '../src/core/applicability.js';
+import { getAllowedModelBases, isFuryPipeSupportedModel, setAllowedModelBases } from '../src/core/applicability.js';
 import type { SessionsPaths } from '../src/sessions.js';
 import type { TrackEvent } from '../src/core/tracker.js';
 import { createControlRoomSnapshot, type ControlRoomSnapshot } from '../src/control-room/index.js';
@@ -23,7 +23,7 @@ import {
 } from '../src/dashboard/fragments.js';
 
 function makeTmp(): SessionsPaths {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxpipe-dashapi-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'FuryPipe-dashapi-'));
   return {
     eventsFile: path.join(dir, 'events.jsonl'),
     sidecarDir: path.join(dir, '4xx-bodies'),
@@ -166,10 +166,10 @@ describe('serveSessionsJson', () => {
 
   it('respects ?project filtering', async () => {
     writeEvents(tmp, [
-      ev({ first_user_sha8: 'aaaaaaaa', cwd: '/Users/me/code/pxpipe' }),
+      ev({ first_user_sha8: 'aaaaaaaa', cwd: '/Users/me/code/FuryPipe' }),
       ev({ first_user_sha8: 'bbbbbbbb', cwd: '/Users/me/code/other' }),
     ]);
-    const res = await dash.serveSessionsJson({ project: 'pxpipe' });
+    const res = await dash.serveSessionsJson({ project: 'FuryPipe' });
     const body = await res.json();
     expect(body.count).toBe(1);
     expect(body.sessions[0].id).toBe('aaaaaaaa');
@@ -286,14 +286,14 @@ describe('serveFragment', () => {
   });
 
   it('renders opt-in GPT 5.5/5.6 chips and mutates the single model scope', async () => {
-    const prev = process.env.PXPIPE_MODELS;
+    const prev = process.env.FURYPIPE_MODELS;
     try {
-      delete process.env.PXPIPE_MODELS;
+      delete process.env.FURYPIPE_MODELS;
       setAllowedModelBases(null); // reset to built-in Fable-only default
       const off = await (await dash.serveFragment('models', url, 1234)).text();
       expect(off).toContain('Image OpenAI Responses models');
       expect(off).not.toContain('<div class="models" style="display:none">');
-      // PXPIPE_MODELS textbox mirrors the live scope as CSV.
+      // FURYPIPE_MODELS textbox mirrors the live scope as CSV.
       expect(off).toContain('name="list"');
       expect(off).toContain('value="claude-fable-5,gemini"');
       expect(off).toContain('GPT 5.6 Sol</button>');
@@ -323,18 +323,18 @@ describe('serveFragment', () => {
       const geminiOff = await (await dash.serveFragment('models', url, 1234)).text();
       expect(geminiOff).toContain('Gemini (all versions)</button>');
       expect(getAllowedModelBases()).not.toContain('gemini');
-      expect(isPxpipeSupportedModel('gemini-4')).toBe(false);
+      expect(isFuryPipeSupportedModel('gemini-4')).toBe(false);
     } finally {
       setAllowedModelBases(null);
-      if (prev === undefined) delete process.env.PXPIPE_MODELS;
-      else process.env.PXPIPE_MODELS = prev;
+      if (prev === undefined) delete process.env.FURYPIPE_MODELS;
+      else process.env.FURYPIPE_MODELS = prev;
     }
   });
 
-  it('replaces the whole scope from the PXPIPE_MODELS textbox CSV', async () => {
-    const prev = process.env.PXPIPE_MODELS;
+  it('replaces the whole scope from the FURYPIPE_MODELS textbox CSV', async () => {
+    const prev = process.env.FURYPIPE_MODELS;
     try {
-      delete process.env.PXPIPE_MODELS;
+      delete process.env.FURYPIPE_MODELS;
       dash.handleModelsSet(' claude-fable-5 , grok-4.5 ,');
       expect(getAllowedModelBases()).toEqual(['claude-fable-5', 'grok-4.5']);
       const html = await (await dash.serveFragment('models', url, 1234)).text();
@@ -347,15 +347,15 @@ describe('serveFragment', () => {
       expect(getAllowedModelBases()).toEqual([]);
     } finally {
       setAllowedModelBases(null);
-      if (prev === undefined) delete process.env.PXPIPE_MODELS;
-      else process.env.PXPIPE_MODELS = prev;
+      if (prev === undefined) delete process.env.FURYPIPE_MODELS;
+      else process.env.FURYPIPE_MODELS = prev;
     }
   });
 
   it('invokes the host persistence hook on scope mutations', () => {
-    const prev = process.env.PXPIPE_MODELS;
+    const prev = process.env.FURYPIPE_MODELS;
     try {
-      delete process.env.PXPIPE_MODELS;
+      delete process.env.FURYPIPE_MODELS;
       setAllowedModelBases(null);
       const saved: string[][] = [];
       const persisting = new DashboardState(tmp, async () => new Map(), (bases) => {
@@ -384,8 +384,8 @@ describe('serveFragment', () => {
       expect(getAllowedModelBases()).toContain('grok-4.5');
     } finally {
       setAllowedModelBases(null);
-      if (prev === undefined) delete process.env.PXPIPE_MODELS;
-      else process.env.PXPIPE_MODELS = prev;
+      if (prev === undefined) delete process.env.FURYPIPE_MODELS;
+      else process.env.FURYPIPE_MODELS = prev;
     }
   });
 
@@ -571,30 +571,30 @@ describe('dashboard localized fragments', () => {
 
 describe('dashboard locale surface', () => {
   it('auto-negotiates the initial page from Accept-Language when no explicit locale exists', async () => {
-    const html = await (await dash.serveHtml(47821, undefined, 'en-US;q=0.3, fr-CA;q=0.9')).text();
+    const html = await (await dash.serveHtml(48721, undefined, 'en-US;q=0.3, fr-CA;q=0.9')).text();
     expect(html).toContain('<html lang="fr" dir="ltr">');
     expect(html).toContain('Tableau de bord FuryPipe</title>');
     expect(html).toContain('window.ppLocale = "fr"');
   });
 
   it('keeps an explicit locale authoritative over Accept-Language, including pseudo-locales', async () => {
-    const explicit = await (await dash.serveHtml(47821, 'en', 'fr-FR')).text();
+    const explicit = await (await dash.serveHtml(48721, 'en', 'fr-FR')).text();
     expect(explicit).toContain('<html lang="en" dir="ltr">');
 
-    const pseudo = await (await dash.serveHtml(47821, 'ar-XB', 'fr-FR')).text();
+    const pseudo = await (await dash.serveHtml(48721, 'ar-XB', 'fr-FR')).text();
     expect(pseudo).toContain('<html lang="ar-XB" dir="rtl">');
   });
 
   it('falls back to English for unsupported or oversized Accept-Language input', async () => {
-    const unsupported = await (await dash.serveHtml(47821, undefined, 'de-DE, es-ES;q=0.8')).text();
+    const unsupported = await (await dash.serveHtml(48721, undefined, 'de-DE, es-ES;q=0.8')).text();
     expect(unsupported).toContain('<html lang="en" dir="ltr">');
 
-    const oversized = await (await dash.serveHtml(47821, undefined, 'f'.repeat(4097))).text();
+    const oversized = await (await dash.serveHtml(48721, undefined, 'f'.repeat(4097))).text();
     expect(oversized).toContain('<html lang="en" dir="ltr">');
   });
 
   it('renders French lang metadata, shell labels and browser persistence controls', () => {
-    const html = renderPage(47821, '', 'fr');
+    const html = renderPage(48721, '', 'fr');
     expect(html).toContain('<html lang="fr" dir="ltr">');
     expect(html).toContain('<title>FuryPipe — tableau de bord en direct</title>');
     expect(html).toContain('Voir exactement ce qui a été transformé et pourquoi.');
@@ -612,10 +612,10 @@ describe('dashboard locale surface', () => {
   });
 
   it('marks the bidi pseudo-locale RTL and falls back safely for invalid tags', () => {
-    const rtl = renderPage(47821, '', 'ar-XB');
+    const rtl = renderPage(48721, '', 'ar-XB');
     expect(rtl).toContain('<html lang="ar-XB" dir="rtl">');
 
-    const invalid = renderPage(47821, '', '<script>');
+    const invalid = renderPage(48721, '', '<script>');
     expect(invalid).toContain('<html lang="en" dir="ltr">');
     expect(invalid).not.toContain('<script><script>');
   });
@@ -623,49 +623,49 @@ describe('dashboard locale surface', () => {
 
 describe('dashboard host label', () => {
   it('names the host in the title and topbar so two hosts are distinguishable', () => {
-    const html = renderPage(47821, 'ber-dev-lm-ai');
-    expect(html).toContain('<title>ber-dev-lm-ai · pxpipe dashboard</title>');
+    const html = renderPage(48721, 'ber-dev-lm-ai');
+    expect(html).toContain('<title>ber-dev-lm-ai · FuryPipe dashboard</title>');
     expect(html).toContain('class="hostchip"');
     expect(html).toContain('>ber-dev-lm-ai<');
   });
 
   it('renders the unlabelled page when no host label is given', () => {
-    const html = renderPage(47821);
-    expect(html).toContain('<title>pxpipe — live dashboard</title>');
+    const html = renderPage(48721);
+    expect(html).toContain('<title>FuryPipe — live dashboard</title>');
     expect(html).not.toContain('class="hostchip"');
   });
 
   it('escapes the label instead of injecting it as markup', () => {
-    const html = renderPage(47821, '<img src=x onerror=alert(1)>');
+    const html = renderPage(48721, '<img src=x onerror=alert(1)>');
     expect(html).not.toContain('<img src=x');
     expect(html).toContain('&lt;img src=x');
   });
 
-  it('prefers PXPIPE_DASH_LABEL and shortens an FQDN hostname', () => {
-    const prev = process.env.PXPIPE_DASH_LABEL;
+  it('prefers FURYPIPE_DASH_LABEL and shortens an FQDN hostname', () => {
+    const prev = process.env.FURYPIPE_DASH_LABEL;
     try {
-      process.env.PXPIPE_DASH_LABEL = 'edi-prod';
+      process.env.FURYPIPE_DASH_LABEL = 'edi-prod';
       expect(dashboardHostLabel()).toBe('edi-prod');
       // An explicitly empty override opts out of the chip entirely.
-      process.env.PXPIPE_DASH_LABEL = '';
+      process.env.FURYPIPE_DASH_LABEL = '';
       expect(dashboardHostLabel()).toBe('');
-      delete process.env.PXPIPE_DASH_LABEL;
+      delete process.env.FURYPIPE_DASH_LABEL;
       expect(dashboardHostLabel()).toBe(os.hostname().split('.')[0]);
     } finally {
-      if (prev === undefined) delete process.env.PXPIPE_DASH_LABEL;
-      else process.env.PXPIPE_DASH_LABEL = prev;
+      if (prev === undefined) delete process.env.FURYPIPE_DASH_LABEL;
+      else process.env.FURYPIPE_DASH_LABEL = prev;
     }
   });
 });
 
 describe('dashboard page help UI', () => {
   it('ships visible hover/focus tooltip CSS for question-mark controls', () => {
-    const html = renderPage(47821);
+    const html = renderPage(48721);
     expect(html).toContain('.q:hover::after, .q:focus-visible::after');
     expect(html).toContain('content: attr(data-tip)');
   });
 
-  it('compares imaged requests with their own without-pxpipe counterfactual', () => {
+  it('compares imaged requests with their own without-FuryPipe counterfactual', () => {
     const html = renderHeaderFragment({
       compressed_paid_requests: 600,
       compressed_actual_usd: 96.42,
@@ -675,11 +675,11 @@ describe('dashboard page help UI', () => {
       passthrough_avg_usd_per_request: 0.0722,
       saved_usd: 194.83,
       pricing_assumptions: { input_per_mtok: 10, output_multiplier: 5 },
-    } as StatsPayload, 47821);
+    } as StatsPayload, 48721);
 
     expect(html).toContain('$0.1607');
-    expect(html).toContain('vs $0.4854 without pxpipe');
-    expect(html).not.toContain('vs $0.0722 without pxpipe');
+    expect(html).toContain('vs $0.4854 without FuryPipe');
+    expect(html).not.toContain('vs $0.0722 without FuryPipe');
     expect(html).toContain('same paid imaged requests');
   });
 });
@@ -1154,10 +1154,10 @@ describe('server-observed warmth: text follows actual cache_read', () => {
     const recent = (await dash.serveRecent().json()) as RecentPayload;
     const miss = recent.recent.at(-1)!;
 
-    // pxpipe's image really did miss — it paid the cold create this turn.
+    // FuryPipe's image really did miss — it paid the cold create this turn.
     expect(miss.cache_read).toBe(0);
 
-    // actual = 100 + 20000×1.25 = 25100 (what pxpipe actually paid this turn).
+    // actual = 100 + 20000×1.25 = 25100 (what FuryPipe actually paid this turn).
     expect(miss.actual_input).toBe(25100);
 
     // Cold text baseline: 20000×1.25 + 10000 tail = 35000.
@@ -1286,7 +1286,7 @@ describe('server-observed warmth: text follows actual cache_read', () => {
 
   it('prices a warm read warm even with NO prior warmth state (post-restart)', async () => {
     // The cache is already warm on Anthropic's side (cr>0), but this process has
-    // never seen the session — exactly the first turn after a pxpipe restart or a
+    // never seen the session — exactly the first turn after a FuryPipe restart or a
     // SESSION_CAP eviction. The OLD code required
     // an in-memory warmthPrev entry, so it fell through to the COLD branch and
     // billed the known-cached prefix the 1.25× CREATE rate — fabricating the
