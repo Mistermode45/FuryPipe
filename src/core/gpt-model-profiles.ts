@@ -21,6 +21,7 @@
  * sizing and font geometry differ.
  */
 import { type RenderFont } from './render.js';
+import { stripBracketedSegments } from './safe-string.js';
 import { hasGeminiMeasuredProfile, resolveGeminiProfile } from './gemini-model-profiles.js';
 import { isClaudeModel, resolveClaudeProfile } from './claude-model-profiles.js';
 import { BASE_HISTORY, BASE_PRICING, BASE_STYLE, NATIVE_14PX_HISTORY } from './profile-base.js';
@@ -606,7 +607,7 @@ function candidateIds(m: string): string[] {
 export function resolveGptProfile(model: string | null | undefined): GptModelProfile {
   // Match applicability.ts: bracketed transport variants (for example [1m])
   // do not define a different visual reader profile.
-  const m = (model ?? '').toLowerCase().replace(/\[[^\]]*\]/g, '');
+  const m = stripBracketedSegments((model ?? '').toLowerCase());
   const ids = candidateIds(m);
   const geminiId = ids.find(hasGeminiMeasuredProfile);
   if (geminiId) return resolveGeminiProfile(geminiId);
