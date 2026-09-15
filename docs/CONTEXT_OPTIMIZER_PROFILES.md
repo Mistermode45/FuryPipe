@@ -132,7 +132,7 @@ The registry reports a digest mismatch instead.
 - benchmark suite evidence;
 - caller-provided benchmark suite SHA-256 reference;
 - profile definition;
-- optional raw/pxpipe baseline;
+- optional raw/upstream baseline;
 - optional minimum absolute token improvement;
 - optional minimum relative token improvement ratio.
 
@@ -154,7 +154,7 @@ A profile qualification requires:
 - at least 5 repetitions per variant;
 - positive median input-token improvement;
 - FuryPipe median quality non-regressive against RAW;
-- FuryPipe median quality non-regressive against pxpipe;
+- FuryPipe median quality non-regressive against upstream;
 - complete passing exactness;
 - zero benchmark errors.
 
