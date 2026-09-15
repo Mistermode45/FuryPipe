@@ -3,54 +3,54 @@
  * Chat Completions transformer, and Responses API transformer.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isPxpipeSupportedGptModel } from '../src/core/applicability.js';
+import { isFuryPipeSupportedGptModel } from '../src/core/applicability.js';
 import { openAIVisionTokens, visionTokensForModel, isClaudeModel, resolveVisionCost, transformOpenAIChatCompletions, transformOpenAIResponses } from '../src/core/openai.js';
 import { resolveGptProfile } from '../src/core/gpt-model-profiles.js';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
-let ambientPxpipeModels: string | undefined;
+let ambientFuryPipeModels: string | undefined;
 beforeEach(() => {
-  ambientPxpipeModels = process.env.PXPIPE_MODELS;
-  delete process.env.PXPIPE_MODELS;
+  ambientFuryPipeModels = process.env.FURYPIPE_MODELS;
+  delete process.env.FURYPIPE_MODELS;
 });
 afterEach(() => {
-  if (ambientPxpipeModels === undefined) delete process.env.PXPIPE_MODELS;
-  else process.env.PXPIPE_MODELS = ambientPxpipeModels;
+  if (ambientFuryPipeModels === undefined) delete process.env.FURYPIPE_MODELS;
+  else process.env.FURYPIPE_MODELS = ambientFuryPipeModels;
 });
 
 // ── Task 1: applicability gate ──────────────────────────────────────────────
 
-describe('isPxpipeSupportedGptModel', () => {
+describe('isFuryPipeSupportedGptModel', () => {
   it('keeps GPT 5.6 Sol and sibling models opt-in by default', () => {
-    expect(isPxpipeSupportedGptModel('gpt-5')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.5')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5-mini')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-nano')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol[1m]')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol-codex[1m]')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.5')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5-mini')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-nano')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol[1m]')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol-codex[1m]')).toBe(false);
   });
 
   it('enables only exact Sol ids and suffix aliases when explicitly opted in', () => {
-    process.env.PXPIPE_MODELS = 'gpt-5.6-sol';
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol[1m]')).toBe(true);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol-codex')).toBe(true);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-sol-codex[1m]')).toBe(true);
-    expect(isPxpipeSupportedGptModel('gpt-5.6')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
+    process.env.FURYPIPE_MODELS = 'gpt-5.6-sol';
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol[1m]')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol-codex')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol-codex[1m]')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
   });
 
   it('rejects non-GPT-5 models', () => {
-    expect(isPxpipeSupportedGptModel('gpt-4o')).toBe(false);
-    expect(isPxpipeSupportedGptModel('gpt-50')).toBe(false);
-    expect(isPxpipeSupportedGptModel('')).toBe(false);
-    expect(isPxpipeSupportedGptModel(null)).toBe(false);
-    expect(isPxpipeSupportedGptModel(undefined)).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-4o')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-50')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('')).toBe(false);
+    expect(isFuryPipeSupportedGptModel(null)).toBe(false);
+    expect(isFuryPipeSupportedGptModel(undefined)).toBe(false);
   });
 });
 
@@ -1135,9 +1135,9 @@ describe('resolveGptProfile (GPT-5.6 Sol)', () => {
 
 describe('resolveGptProfile style overrides', () => {
   it('merges every render knob into the selected model profile', () => {
-    const prev = process.env.PXPIPE_GPT_PROFILES;
+    const prev = process.env.FURYPIPE_GPT_PROFILES;
     try {
-      process.env.PXPIPE_GPT_PROFILES = JSON.stringify({
+      process.env.FURYPIPE_GPT_PROFILES = JSON.stringify({
         'gpt-5.6-sol': {
           stripCols: 100,
           minCompressTokens: 900,
@@ -1190,8 +1190,8 @@ describe('resolveGptProfile style overrides', () => {
         },
       });
     } finally {
-      if (prev === undefined) delete process.env.PXPIPE_GPT_PROFILES;
-      else process.env.PXPIPE_GPT_PROFILES = prev;
+      if (prev === undefined) delete process.env.FURYPIPE_GPT_PROFILES;
+      else process.env.FURYPIPE_GPT_PROFILES = prev;
     }
   });
 });
