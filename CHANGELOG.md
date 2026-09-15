@@ -13,7 +13,7 @@ behavioral changes, patch = fixes).
 
 _No changes yet._
 
-## 0.15.0 — 2026-09-15
+## 0.15.0 — 2026-09-16
 
 ### Changed
 - **FuryPipe runtime identity is now fully independent.** The runtime no longer
