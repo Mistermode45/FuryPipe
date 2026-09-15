@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-// End-to-end coverage of the real `pxpipe export --git` path (the bug PR-4 fixed
+// End-to-end coverage of the real `furypipe export --git` path (the bug PR-4 fixed
 // was in collectSource's untracked branch, not in the readExportTextFile helper).
 // Runs the actual CLI via tsx against a throwaway git repo and asserts the
 // untracked-file filtering. Kept in its own file because it spawns a subprocess.
@@ -20,12 +20,12 @@ function git(cwd: string, args: string[]): void {
   if (r.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${r.stderr}`);
 }
 
-describe('pxpipe export --git (end-to-end)', () => {
+describe('furypipe export --git (end-to-end)', () => {
   let repo: string;
   let outDir: string;
   beforeEach(() => {
-    repo = fs.mkdtempSync(path.join(os.tmpdir(), 'pxpipe-git-e2e-'));
-    outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxpipe-git-out-'));
+    repo = fs.mkdtempSync(path.join(os.tmpdir(), 'FuryPipe-git-e2e-'));
+    outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'FuryPipe-git-out-'));
     git(repo, ['init', '-q']);
     git(repo, ['config', 'user.email', 't@t.t']);
     git(repo, ['config', 'user.name', 't']);
