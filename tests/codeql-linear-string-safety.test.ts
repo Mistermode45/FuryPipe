@@ -3,7 +3,7 @@ import { extractEnvFields } from '../src/core/transform.js';
 import { resolveUpstreams } from '../src/core/proxy.js';
 import { chatCompletionsUrl } from '../src/core/messages-chat-bridge.js';
 import { resolveGptProfile } from '../src/core/gpt-model-profiles.js';
-import { isPxpipeSupportedModel } from '../src/core/applicability.js';
+import { isFuryPipeSupportedModel } from '../src/core/applicability.js';
 import { stripBracketedSegments, stripTrailingSlashes } from '../src/core/safe-string.js';
 
 describe('linear-time string hardening', () => {
@@ -50,7 +50,7 @@ describe('linear-time string hardening', () => {
 
   it('keeps bracketed model variants equivalent to their base model', () => {
     expect(resolveGptProfile('gpt-5.6-sol[1m]')).toEqual(resolveGptProfile('gpt-5.6-sol'));
-    expect(isPxpipeSupportedModel('claude-fable-5[1m]')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-fable-5[1m]')).toBe(true);
   });
 
   it('extracts branch metadata without regex backtracking', () => {
