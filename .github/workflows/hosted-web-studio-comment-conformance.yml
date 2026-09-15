@@ -1,0 +1,131 @@
+name: Hosted Web Studio Conformance
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: hosted-web-studio-comment-${{ github.event.issue.number }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  conformance:
+    name: External hosted Web Studio matrix
+    if: >-
+      github.actor == github.repository_owner &&
+      github.event.issue.pull_request &&
+      github.event.comment.body == '/hosted-web-studio-conformance'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      FURYPIPE_HOSTED_WEB_STUDIO_URL: https://mcp.furycraft.fr/studio-qa
+      FURYPIPE_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
+      FURYPIPE_HOSTED_WEB_STUDIO_OUTPUT_DIR: ${{ github.workspace }}/artifacts/hosted-web-studio-conformance
+
+    steps:
+      - name: Checkout validator source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          path: validator
+
+      - name: Bind exact validator source
+        shell: bash
+        run: |
+          validator_sha="$(git -C validator rev-parse HEAD)"
+          if [[ ! "$validator_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::validator checkout did not resolve to an exact SHA"
+            exit 1
+          fi
+          test -f validator/scripts/hosted-web-studio-conformance.mjs
+          echo "FURYPIPE_VALIDATOR_COMMIT=$validator_sha" >> "$GITHUB_ENV"
+
+      - name: Resolve exact PR candidate SHA
+        id: candidate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$ISSUE_NUMBER")"
+          head_sha="$(jq -r '.head.sha' <<<"$pr_json")"
+          head_repo="$(jq -r '.head.repo.full_name' <<<"$pr_json")"
+          head_owner="$(jq -r '.user.login' <<<"$pr_json")"
+          state="$(jq -r '.state' <<<"$pr_json")"
+
+          if [[ "$state" != "open" ]]; then
+            echo "::error::target pull request is not open"
+            exit 1
+          fi
+          if [[ "$head_repo" != "$REPOSITORY" ]]; then
+            echo "::error::target pull request head repository mismatch"
+            exit 1
+          fi
+          if [[ "$head_owner" != "${{ github.repository_owner }}" ]]; then
+            echo "::error::target pull request owner mismatch"
+            exit 1
+          fi
+          if [[ ! "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::resolved PR head is not an exact lowercase 40-character SHA"
+            exit 1
+          fi
+
+          echo "sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "FURYPIPE_SOURCE_COMMIT=$head_sha" >> "$GITHUB_ENV"
+
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.candidate.outputs.sha }}
+          persist-credentials: false
+          path: candidate
+
+      - name: Verify exact candidate checkout
+        shell: bash
+        run: |
+          test "$(git -C candidate rev-parse HEAD)" = "$FURYPIPE_SOURCE_COMMIT"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 10.21.0
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+
+      - name: Build exact candidate
+        shell: bash
+        working-directory: candidate
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm run typecheck
+          pnpm run build
+
+      - name: Install pinned Playwright browsers
+        shell: bash
+        working-directory: candidate
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+
+      - name: Run external hosted Web Studio conformance
+        env:
+          FURYPIPE_GITHUB_RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        run: node validator/scripts/hosted-web-studio-conformance.mjs
+
+      - name: Upload source-bound hosted Web Studio evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: furypipe-hosted-web-studio-conformance-${{ steps.candidate.outputs.sha }}
+          path: |
+            artifacts/hosted-web-studio-conformance/hosted-web-studio-conformance.json
+            artifacts/hosted-web-studio-conformance/hosted-web-studio-conformance.json.sha256
+          if-no-files-found: warn
+          retention-days: 30
