@@ -239,7 +239,7 @@ function draw(data: Point[], fableCpt: number, geminiCpt: number): Buffer {
     gemini: '#a371f7',
     claude: '#58a6ff',
     grok: '#e3b341',
-    FuryPipe: '#f0883e',
+    furypipe: '#f0883e',
   };
 
   ctx.fillStyle = bg;
@@ -324,13 +324,13 @@ function draw(data: Point[], fableCpt: number, geminiCpt: number): Buffer {
 
   // Dashed vertical connector: Fable / Gemini text window → same window imaged (FuryPipe).
   // Grok is plotted as a text series only (no FuryPipe overlay).
-  const overlays: Array<{ textName: string; pxName: string }> = [
-    { textName: 'Fable 5 [1m]', pxName: 'Fable 5 [1m] + FuryPipe' },
-    { textName: 'Gemini 3.6 Flash', pxName: 'Gemini 3.6 Flash + FuryPipe' },
+  const overlays: Array<{ textName: string; furyName: string }> = [
+    { textName: 'Fable 5 [1m]', furyName: 'Fable 5 [1m] + FuryPipe' },
+    { textName: 'Gemini 3.6 Flash', furyName: 'Gemini 3.6 Flash + FuryPipe' },
   ];
   for (const o of overlays) {
     const base = data.find((p) => p.name === o.textName)!;
-    const px = data.find((p) => p.name === o.pxName)!;
+    const px = data.find((p) => p.name === o.furyName)!;
     const cx = x(base.x); // same as x(px.x) — both points share the year
     const y0 = y(base.chars) - 7;
     const y1 = y(px.chars) + 8;
