@@ -390,7 +390,7 @@ async function compressGoogleToolResults(
       const packed = options.reflow !== false ? reflow(safe) ?? safe : safe;
       const rendered = prepareImagedRenderText(
         `================= RENDERED TOOL RESULT: ${name} =================\n` +
-        'pxpipe rendered this completed tool result into image pages to reduce input tokens. Read it as the exact result returned by the tool.\n' +
+        'FuryPipe rendered this completed tool result into image pages to reduce input tokens. Read it as the exact result returned by the tool.\n' +
         packed,
         false,
       );
