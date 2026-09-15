@@ -1,23 +1,38 @@
 # Changelog
 
-All notable changes to pxpipe are documented here. This project adheres to
+All notable changes to FuryPipe are documented here. This project follows
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor = features /
 behavioral changes, patch = fixes).
+
+> Historical entries inherited from the pre-FuryPipe pxpipe codebase intentionally
+> retain legacy names such as `pxpipe` and `PXPIPE_*` when they describe the
+> behavior or interface that existed at that point in history. New public
+> interfaces use `furypipe` and `FURYPIPE_*`.
 
 ## Unreleased
 
 ### Changed
 - **Gemini is on by default for every version, and opt-out works again.** The
-  built-in scope is now `PXPIPE_MODELS=claude-fable-5,gemini`; the `gemini`
+  built-in scope is now `FURYPIPE_MODELS=claude-fable-5,gemini`; the `gemini`
   family base matches `gemini-3.6-flash`, `gemini-4`, `gemini-pro`, and future
   ids through the ordinary prefix rule. The Google gate in the proxy and the
   dashboard totals previously admitted any measured Gemini model whenever the
-  allowlist was non-empty, which made `PXPIPE_MODELS=claude-fable-5` (and the
+  allowlist was non-empty, which made `FURYPIPE_MODELS=claude-fable-5` (and the
   dashboard chip) unable to turn Gemini off. That bypass is removed; the
   allowlist is the only gate. Dashboard: one "Gemini (all versions)" chip plus
   per-version chips for narrowing.
 
-## 0.13.2 — 2026-08-18
+## 0.13.2 — 2026-09-15
+
+### FuryPipe public release
+- First public npm publication of `furypipe@0.13.2` and GitHub Release `v0.13.2`.
+- FuryPipe is the public package/CLI identity; the `pxpipe` binary and selected
+  `PXPIPE_*` variables remain only as legacy compatibility fallbacks.
+- V5 release hardening combines source-bound CI/security evidence, release
+  readiness, governed provider execution, modern MCP surfaces, agent/context
+  orchestration, Continuous Memory, Control Room and Web Studio.
+- Package publication remains distinct from production deployment and from
+  optional external-integration verification.
 
 ### Added
 - `createProviderRouter`: explicit `/providers/<id>/<upstream-path>`
