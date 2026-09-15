@@ -6,6 +6,7 @@ import {
   detectSetupLocale,
   parseSetupArgs,
   persistSetupLocale,
+  readConfiguredSetupLocale,
   renderSetupScreen,
 } from '../src/setup-tui.js';
 
@@ -89,6 +90,13 @@ describe('FuryPipe setup TUI', () => {
       completedAt: '2026-09-15T18:30:00.000Z',
       version: '0.13.2',
     });
+  });
+
+  it('reuses the previously configured setup locale', () => {
+    const file = tempConfig();
+    fs.writeFileSync(file, JSON.stringify({ locale: 'fr', models: ['gemini'] }));
+    expect(readConfiguredSetupLocale(file)).toBe('fr');
+    expect(readConfiguredSetupLocale(file + '.missing')).toBeUndefined();
   });
 
   it('refuses to overwrite an invalid existing config', () => {
