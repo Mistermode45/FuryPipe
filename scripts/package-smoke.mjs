@@ -323,6 +323,12 @@ try {
     "const m = await import('furypipe/control-room-security-evidence'); if (typeof m.parseControlRoomSecurityCiEvidence !== 'function' || typeof m.createControlRoomSecurityCiSnapshot !== 'function' || typeof m.createControlRoomSecurityCiSnapshotFromUnknown !== 'function') process.exit(1);",
   ], installDir);
   assert(controlRoomSecurityEvidenceExport.stderr === '', `Control Room security evidence package export wrote stderr: ${controlRoomSecurityEvidenceExport.stderr}`);
+  const controlPlaneExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/control-plane'); if (typeof m.createControlPlaneSnapshot !== 'function' || !Array.isArray(m.CONTROL_PLANE_LIFECYCLE)) process.exit(1);",
+  ], installDir);
+  assert(controlPlaneExport.stderr === '', `Control Plane package export wrote stderr: ${controlPlaneExport.stderr}`);
   const providerRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',

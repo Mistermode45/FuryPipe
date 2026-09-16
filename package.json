@@ -169,6 +169,10 @@
       "types": "./dist/control-room/security-ci-evidence.d.ts",
       "import": "./dist/control-room/security-ci-evidence.js"
     },
+    "./control-plane": {
+      "types": "./dist/control-plane.d.ts",
+      "import": "./dist/control-plane.js"
+    },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
       "import": "./dist/doctor.js"
@@ -327,6 +331,7 @@
     "docs/SKILL_ECOSYSTEM_2026.md",
     "docs/PLUGIN_BUNDLES.md",
     "docs/CONTEXT_FABRIC.md",
+    "docs/CONTROL_PLANE.md",
     "docs/VISUAL_ENGINE.md",
     "docs/PROVIDER_FABRIC.md",
     "docs/OMNIROUTE.md",
