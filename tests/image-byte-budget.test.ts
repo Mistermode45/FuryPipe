@@ -182,10 +182,18 @@ describe('telemetry distinguishes the two ceilings', () => {
   });
 
   it('warns before the next turn walks into the wall', async () => {
+    // Derive the fixture budget from the encoder's own deterministic output.
+    // This keeps the telemetry contract stable when a lossless PNG improvement
+    // legitimately reduces bytes: the test is about the 90% warning boundary,
+    // not about preserving an old compression ratio forever.
+    const baseline = await transformRequest(withSlab([{ role: 'user', content: 'go' }]), {
+      maxImageBytes: 1_000_000,
+    });
+    const measuredBytes = baseline.info.imageBytes;
+    expect(measuredBytes).toBeGreaterThan(0);
+
     const { info } = await transformRequest(withSlab([{ role: 'user', content: 'go' }]), {
-      // The slab measures 12,683 bytes, so a 14,000-byte budget admits it at
-      // about 91% full: nothing is dropped this turn, and the next one will be.
-      maxImageBytes: 14_000,
+      maxImageBytes: Math.ceil(measuredBytes / 0.91),
     });
     expect(info.imageCount ?? 0).toBeGreaterThan(0);
     expect(info.imageBytesNearLimit).toBe(true);
