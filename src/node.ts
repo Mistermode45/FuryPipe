@@ -39,6 +39,7 @@ import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
 import { runSetupWizard } from './setup-tui.js';
 import { refreshRuntimeModelCatalog } from './model-catalog-node.js';
+import { resolvePersistedModelScope } from './model-config.js';
 import { FURYPIPE_DEFAULT_HOST, FURYPIPE_DEFAULT_PORT, parseFuryPipePort } from './runtime-defaults.js';
 import { createControlRoomRuntime } from './control-room/runtime.js';
 import { loadControlRoomHostEvidence, type ControlRoomHostEvidence } from './control-room/evidence-file.js';
@@ -151,8 +152,12 @@ function applyConfigFileDefaults(): void {
   // Env wins over file config. The dashboard can still override the scope at
   // runtime (in-memory) for an emergency live flip.
   if (process.env.FURYPIPE_MODELS === undefined) {
-    const models = normalizeModelsConfig(cfg.models);
-    if (models !== undefined) process.env.FURYPIPE_MODELS = models;
+    const scope = resolvePersistedModelScope(cfg.models, cfg.modelScopeExplicit);
+    if (scope.mode === 'explicit' && scope.envValue !== undefined) {
+      process.env.FURYPIPE_MODELS = scope.envValue;
+    } else if (scope.migratedLegacyDefault) {
+      console.log('[furypipe] migrated legacy default model scope to automatic Model Fabric discovery');
+    }
   }
   if (process.env.FURYPIPE_VISUAL_POLICY === undefined && typeof cfg.visualPolicy === 'string') {
     const policy = cfg.visualPolicy.trim().toLowerCase();
@@ -183,8 +188,10 @@ function persistModelBasesToConfig(bases: readonly string[]): void {
       return;
     }
   }
-  // Empty array round-trips as 'off' via normalizeModelsConfig on load.
+  // Empty array round-trips as 'off'. Mark current writes as explicit so a
+  // deliberate operator scope is never confused with the <=0.15 legacy default.
   cfg.models = [...bases];
+  cfg.modelScopeExplicit = true;
   const tmp = `${file}.tmp-${process.pid}`;
   try {
     const parentExists = fs.existsSync(path.dirname(file));
