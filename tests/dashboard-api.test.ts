@@ -574,7 +574,7 @@ describe('dashboard locale surface', () => {
     const html = await (await dash.serveHtml(48721, undefined, 'en-US;q=0.3, fr-CA;q=0.9')).text();
     expect(html).toContain('<html lang="fr" dir="ltr">');
     expect(html).toContain('Tableau de bord FuryPipe</title>');
-    expect(html).toContain('window.ppLocale = "fr"');
+    expect(html).toContain('window.furyLocale = "fr"');
   });
 
   it('keeps an explicit locale authoritative over Accept-Language, including pseudo-locales', async () => {
@@ -597,11 +597,11 @@ describe('dashboard locale surface', () => {
     const html = renderPage(48721, '', 'fr');
     expect(html).toContain('<html lang="fr" dir="ltr">');
     expect(html).toContain('<title>FuryPipe — tableau de bord en direct</title>');
-    expect(html).toContain('Voir exactement ce qui a été transformé et pourquoi.');
+    expect(html).toContain('Intelligence de contexte, optimisation visuelle, routage des agents et preuves runtime vérifiables.');
     expect(html).toContain('Langue <select');
     expect(html).toContain('furypipe-locale');
-    expect(html).toContain('window.ppLocale = "fr"');
-    expect(html).toContain("event.detail.parameters.locale = window.ppLocale");
+    expect(html).toContain('window.furyLocale = "fr"');
+    expect(html).toContain("event.detail.parameters.locale = window.furyLocale");
     expect(html).toContain('Connecter un agent');
     expect(html).toContain('Périmètre des modèles imagés');
     expect(html).toContain('Router Claude Code vers des modèles OpenAI / Cloudflare');
