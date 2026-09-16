@@ -188,9 +188,12 @@ function inferredModalities(model: string, provider: ModelFabricProvider): Model
   let textOutput: ModelFabricCapability = 'yes';
 
   if (provider === 'anthropic') {
-    // Current Claude families are multimodal. Exact model lifecycle still comes
-    // from provider metadata/observations rather than this capability rule.
-    imageInput = 'yes';
+    // Known Claude product families are multimodal. A bare "claude-" prefix is
+    // not evidence: future/fictional family names remain unknown until a
+    // provider catalog or operator profile proves image input.
+    imageInput = /^claude-(?:fable|opus|sonnet|haiku)-(?:\d|latest)/u.test(id)
+      ? 'yes'
+      : 'unknown';
   } else if (provider === 'google') {
     // General Gemini families are multimodal; speech/transcription/TTS-only
     // endpoints are deliberately not promoted to visual compression by name.
@@ -530,11 +533,18 @@ export function normalizeAnthropicModelsPayload(payload: unknown, observedAt = n
     if (!id) return [];
     const capabilities = record(item?.capabilities);
     const thinking = record(capabilities?.thinking);
+    const inputModalities = new Set(stringList(item?.input_modalities).map((value) => value.toLowerCase()));
     return [catalogEntry({
       provider: 'anthropic',
       id,
       displayName: bounded(item?.display_name, id, DISPLAY_MAX),
       lifecycle: 'active',
+      ...(inputModalities.size === 0 ? {} : {
+        modalities: {
+          textInput: inputModalities.has('text') ? 'yes' : 'unknown',
+          imageInput: inputModalities.has('image') ? 'yes' : 'no',
+        },
+      }),
       capabilities: {
         reasoning: boolCapability(thinking?.supported),
       },
