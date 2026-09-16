@@ -10,7 +10,6 @@ import {
   neutralizeSentinel,
   reflow,
   renderTextToPngs,
-  shrinkColsToContent,
   type RenderedImage,
 } from './render.js';
 import { geminiVisionTokens, hasGeminiMeasuredProfile, resolveGeminiProfile } from './gemini-model-profiles.js';
