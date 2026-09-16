@@ -14,24 +14,24 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
 
 describe('README model policy', () => {
-  it('documents automatic vision-capable discovery as the zero-config policy', () => {
-    expect(readme).toContain('Default model policy: **automatic vision-capable discovery**.');
+  it('documents dynamic discovery plus evidence-first AUTO as the zero-config policy', () => {
+    expect(readme).toContain('Default policy: **dynamic discovery + evidence-first AUTO**.');
     expect(readme).toContain('Model Fabric');
   });
 
-  it('documents every built-in family seed without presenting it as the complete catalog', () => {
-    for (const modelBase of DEFAULT_MODEL_BASES) {
-      expect(readme).toContain('`' + modelBase + '`');
-    }
-    expect(readme).toContain('configured provider catalogs can add newly released vision models');
+  it('documents the backward-compatible default seed without presenting it as the complete catalog', () => {
+    expect(readme).toContain(
+      'backward-compatible default scope remains `' + DEFAULT_MODEL_BASES.join(',') + '`',
+    );
+    expect(readme).toContain('Configured provider catalogs can surface newly released models');
   });
 
-  it('keeps FURYPIPE_MODELS as an explicit override and documents the kill switch', () => {
-    expect(readme).toContain('`FURYPIPE_MODELS` remains an explicit operator override');
+  it('keeps FURYPIPE_MODELS as an explicit scope override and documents the kill switch', () => {
+    expect(readme).toContain('`FURYPIPE_MODELS` remains an explicit backward-compatible operator scope override');
     expect(readme).toContain('`off` disables visual compression');
   });
 
-  it('does not claim discovery is equivalent to verification', () => {
-    expect(readme).toContain('Discovered does not mean verified');
+  it('does not collapse discovery, capability and quality verification into one state', () => {
+    expect(readme).toContain('`discovered != vision-capable != quality-verified`');
   });
 });
