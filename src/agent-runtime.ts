@@ -237,6 +237,7 @@ const MAX_EVIDENCE_LENGTH = 512;
 const DEFAULT_SUBAGENT_CONCURRENCY = 4;
 const MAX_SUBAGENT_CONCURRENCY = 8;
 const MAX_SUBAGENT_BATCH = 16;
+const MAX_CAPABILITY_EXECUTION_RECEIPTS = 512;
 
 function digest(value: string): string {
   return `afrun_${createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 24)}`;
@@ -248,6 +249,14 @@ function validSafeInteger(value: number): boolean {
 
 function executionDigest(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex');
+}
+
+function assertCapabilityReceiptCapacity(
+  receipts: readonly AgentCapabilityExecutionReceipt[],
+): void {
+  if (receipts.length >= MAX_CAPABILITY_EXECUTION_RECEIPTS) {
+    throw new Error('capability execution receipt limit exceeded');
+  }
 }
 
 function validateEvidence(evidence: unknown): evidence is readonly string[] {
@@ -810,6 +819,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     }
     skillHealth[skill.id] = health.status;
     if (health.status === 'unhealthy') throw new Error(`skill health is unhealthy: ${skillId}`);
+    assertCapabilityReceiptCapacity(capabilityExecutions);
     const result = await skill.execute({
       runId, stage, objectiveDigest, permission,
       allowedWritePaths: permission === 'scoped-write' ? [...(request.allowedWritePaths ?? [])] : [],
@@ -839,6 +849,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     const server = mcpServers.get(serverId);
     if (!server || !server.allowedMethods.includes(method)) throw new Error(`MCP method is not permitted: ${serverId}/${method}`);
     if (server.network === 'required') throw new Error(`MCP network access is disabled: ${serverId}`);
+    assertCapabilityReceiptCapacity(capabilityExecutions);
     const result = await server.execute(method, params, { runId, stage, objectiveDigest, network: 'disabled', secrets: 'never_requested' });
     capabilityExecutions.push(Object.freeze({
       format: 'furypipe-agent-capability-execution/v1',
@@ -861,6 +872,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     if (permission === 'scoped-write' && (request.allowWrites !== true || stage !== 'implement')) {
       throw new Error(`subagent write permission is not allowed at stage: ${subagentId}`);
     }
+    assertCapabilityReceiptCapacity(capabilityExecutions);
     const result = await subagent.execute({
       runId, parentStage: stage, objectiveDigest, permission,
       allowedWritePaths: permission === 'scoped-write' ? [...(request.allowedWritePaths ?? [])] : [],
