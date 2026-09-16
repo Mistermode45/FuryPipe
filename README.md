@@ -112,11 +112,13 @@ furypipe export --git
 
 Depending on the input, export can produce artifacts such as `page-*.png`, `factsheet.txt` and `prompt.txt` for inspection or handoff.
 
-### Default model scope
+### Default model policy
 
-Default model scope: `FURYPIPE_MODELS=claude-fable-5,gemini`
+Default model policy: **automatic vision-capable discovery**.
 
-The default is a runtime contract, not a benchmark claim. Override it explicitly when a workflow needs a different provider/model scope.
+When `FURYPIPE_MODELS` is unset or empty, FuryPipe's Model Fabric resolves the observed model by proven image-input capability and visual-profile evidence instead of requiring its exact ID in a release-time chip list. The built-in family seed currently covers `claude`, `gemini`, `gpt-5`, `gpt-6` and `grok-4.6`; configured provider catalogs can add newly released vision models without a FuryPipe release.
+
+`FURYPIPE_MODELS` remains an explicit operator override. A CSV narrows the eligible model bases; `off` disables visual compression. Discovered does not mean verified: unprofiled vision readers remain visibly canary/unverified and still pass ExactGuard, image budgets and profitability gates.
 
 ---
 
@@ -507,11 +509,13 @@ furypipe export --git
 
 Selon l’entrée, l’export peut produire des artefacts comme `page-*.png`, `factsheet.txt` et `prompt.txt` pour inspection ou handoff.
 
-#### Portée des modèles par défaut
+#### Politique modèles par défaut
 
-La portée runtime par défaut est `FURYPIPE_MODELS=claude-fable-5,gemini`.
+La politique par défaut utilise la **découverte automatique des modèles capables de lire des images**.
 
-Cette valeur est un contrat runtime, pas une revendication de benchmark. Elle doit être surchargée explicitement lorsqu’un workflow nécessite une autre portée provider/modèle.
+Quand `FURYPIPE_MODELS` est absent ou vide, le Model Fabric résout le modèle observé à partir de sa capacité image prouvée et de l'état de son profil visuel, au lieu d'exiger que son ID exact soit codé dans une release. Le seed intégré couvre actuellement `claude`, `gemini`, `gpt-5`, `gpt-6` et `grok-4.6`, puis les catalogues providers configurés peuvent ajouter de nouveaux modèles.
+
+`FURYPIPE_MODELS` reste une surcharge explicite : un CSV réduit la portée et `off` désactive la compression visuelle. Découvert ne signifie pas vérifié : les modèles vision non profilés restent canary/non vérifiés et passent toujours par ExactGuard, les budgets image et la gate de rentabilité.
 
 ---
 
