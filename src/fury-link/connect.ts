@@ -1,13 +1,13 @@
 /**
- * The CONNECT proxy warp puts in front of the child process.
+ * The narrow CONNECT bridge FuryLink puts in front of the child process.
  *
  * Ported from wardex proxy.go, with two deliberate narrowings:
  *
- *  - wardex decrypts every host once --mitm is on; warp decrypts only hosts a
- *    route could match and blindly tunnels the rest. Under warp the agent
+ *  - wardex decrypts every host once --mitm is on; FuryLink decrypts only hosts a
+ *    route could match and blindly tunnels the rest. Under FuryLink the agent
  *    believes it is talking straight to api.anthropic.com, so the less we
  *    terminate, the fewer ways that belief can break.
- *  - wardex owns its listener; warp attaches to the proxy server FuryPipe is
+ *  - wardex owns its listener; FuryLink attaches to the proxy server FuryPipe is
  *    already running. CONNECT is a distinct event from a normal request, so one
  *    port serves both the origin-form traffic FuryPipe handles and the
  *    absolute-form/CONNECT traffic a forward proxy handles.
@@ -42,14 +42,14 @@ const HOP_HEADERS = new Set([
   'upgrade',
 ]);
 
-export interface WarpHandlerOptions {
+export interface FuryLinkHandlerOptions {
   routes: readonly Route[];
   ca: CertificateAuthority;
   /** Called the first time each route diverts a request, for the log. */
   onDivert?: (host: string, path: string, target: string) => void;
 }
 
-export interface WarpHandlers {
+export interface FuryLinkHandlers {
   /** Attach as the server's 'connect' listener. */
   handleConnect: (req: IncomingMessage, socket: Socket, head: Buffer) => void;
   /** Call from the request handler for absolute-form request targets. */
@@ -114,7 +114,7 @@ function pipeSockets(a: Socket, b: Socket): void {
 const httpAgent = new HttpAgent({ keepAlive: true });
 const httpsAgent = new HttpsAgent({ keepAlive: true });
 
-export function createWarpHandlers(options: WarpHandlerOptions): WarpHandlers {
+export function createFuryLinkHandlers(options: FuryLinkHandlerOptions): FuryLinkHandlers {
   const { routes, ca, onDivert } = options;
   const announced = new Set<string>();
 
@@ -166,7 +166,7 @@ export function createWarpHandlers(options: WarpHandlerOptions): WarpHandlers {
       // already gone, so writing a 502 into it would throw.
       if (res.writableEnded || res.destroyed) return;
       if (!res.headersSent) res.writeHead(502, { 'content-type': 'text/plain' });
-      res.end(`furypipe warp: upstream error: ${err.message}`);
+      res.end(`furypipe FuryLink: upstream error: ${err.message}`);
     });
     // An SSE completion only ends when the model stops. If the agent is killed
     // mid-stream nothing else cancels the upstream: the response keeps draining
@@ -258,7 +258,7 @@ export function createWarpHandlers(options: WarpHandlerOptions): WarpHandlers {
   const handleAbsoluteForm = (req: IncomingMessage, res: ServerResponse): void => {
     if (!isLoopbackAddress(req.socket.remoteAddress)) {
       res.writeHead(403, { 'content-type': 'text/plain' });
-      res.end('furypipe warp: forward proxy is loopback-only');
+      res.end('furypipe FuryLink: forward proxy is loopback-only');
       return;
     }
     let target: URL;
@@ -266,12 +266,12 @@ export function createWarpHandlers(options: WarpHandlerOptions): WarpHandlers {
       target = new URL(req.url ?? '');
     } catch {
       res.writeHead(400, { 'content-type': 'text/plain' });
-      res.end('furypipe warp: bad absolute URI');
+      res.end('furypipe FuryLink: bad absolute URI');
       return;
     }
     if (target.protocol !== 'http:' && target.protocol !== 'https:') {
       res.writeHead(400, { 'content-type': 'text/plain' });
-      res.end('furypipe warp: unsupported scheme');
+      res.end('furypipe FuryLink: unsupported scheme');
       return;
     }
     // target.origin, not a rebuilt https:// URL: scheme and non-default port

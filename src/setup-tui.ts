@@ -25,7 +25,7 @@ export interface SetupWizardOptions {
   readonly now?: () => Date;
 }
 
-interface Keypress {
+export interface Keypress {
   readonly name?: string;
   readonly ctrl?: boolean;
 }
@@ -38,27 +38,22 @@ interface ParsedSetupArgs {
   readonly help: boolean;
 }
 
+// FuryPipe terminal identity: midnight/navy surfaces, cobalt/ice accents and
+// warm-cream foregrounds. Windows Terminal, modern PowerShell, macOS Terminal
+// and the major Linux terminals support these true-color ANSI sequences.
 const A = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
-  cyan: '\x1b[38;5;45m',
-  blue: '\x1b[38;5;39m',
-  purple: '\x1b[38;5;141m',
-  green: '\x1b[38;5;82m',
-  yellow: '\x1b[38;5;220m',
-  muted: '\x1b[38;5;245m',
-  white: '\x1b[38;5;255m',
-  bgBlue: '\x1b[48;5;24m',
+  cyan: '\x1b[38;2;96;165;250m',
+  blue: '\x1b[38;2;59;130;246m',
+  purple: '\x1b[38;2;129;140;248m',
+  green: '\x1b[38;2;52;211;153m',
+  yellow: '\x1b[38;2;250;204;21m',
+  muted: '\x1b[38;2;148;163;184m',
+  white: '\x1b[38;2;248;245;237m',
+  bgBlue: '\x1b[48;2;23;37;84m',
 } as const;
 
-const LOGO = [
-  '███████╗██╗   ██╗██████╗ ██╗   ██╗██████╗ ██╗██████╗ ███████╗',
-  '██╔════╝██║   ██║██╔══██╗╚██╗ ██╔╝██╔══██╗██║██╔══██╗██╔════╝',
-  '█████╗  ██║   ██║██████╔╝ ╚████╔╝ ██████╔╝██║██████╔╝█████╗  ',
-  '██╔══╝  ██║   ██║██╔══██╗  ╚██╔╝  ██╔═══╝ ██║██╔═══╝ ██╔══╝  ',
-  '██║     ╚██████╔╝██║  ██║   ██║   ██║     ██║██║     ███████╗',
-  '╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝     ╚═╝╚═╝     ╚══════╝',
-] as const;
 
 const MIN_WIDTH = 78;
 const MAX_WIDTH = 118;
@@ -102,46 +97,6 @@ function box(lines: readonly string[], width: number, color: boolean, title?: st
     paint(color, A.blue, top),
     ...lines.map((line) => paint(color, A.blue, '│ ') + pad(fit(line, inner), inner) + paint(color, A.blue, ' │')),
     paint(color, A.blue, border(width, '└', '┘')),
-  ];
-}
-
-function columns(left: readonly string[], right: readonly string[], leftWidth: number): string[] {
-  const rows = Math.max(left.length, right.length);
-  const out: string[] = [];
-  for (let i = 0; i < rows; i += 1) {
-    out.push(pad(left[i] ?? '', leftWidth) + '  ' + (right[i] ?? ''));
-  }
-  return out;
-}
-
-function stepLines(
-  n: number,
-  label: string,
-  description: string,
-  state: 'active' | 'pending' | 'done',
-  color: boolean,
-): string[] {
-  const marker = state === 'done' ? '✓' : String(n);
-  const markerColor = state === 'active' ? A.cyan : state === 'done' ? A.green : A.muted;
-  const titleColor = state === 'active' ? A.white + A.bold : state === 'done' ? A.white : A.muted;
-  return [
-    paint(color, markerColor, '[' + marker + ']') + ' ' + paint(color, titleColor, label),
-    '    ' + paint(color, A.muted, description),
-  ];
-}
-
-function languageCard(locale: SetupLocale, selected: SetupLocale, color: boolean): string[] {
-  const active = locale === selected;
-  const tag = locale === 'fr' ? 'FR' : 'EN';
-  const name = locale === 'fr' ? 'Français' : 'English';
-  const detail = locale === 'fr' ? 'Interface et onboarding en français' : 'Interface and onboarding in English';
-  const pointer = active ? paint(color, A.cyan + A.bold, '▶') : ' ';
-  const badge = active
-    ? paint(color, A.bgBlue + A.white + A.bold, ' ' + tag + ' ')
-    : paint(color, A.muted, '[' + tag + ']');
-  return [
-    pointer + ' ' + badge + '  ' + paint(color, active ? A.white + A.bold : A.muted, name),
-    '       ' + paint(color, A.muted, detail),
   ];
 }
 
@@ -204,117 +159,110 @@ export function renderSetupScreen(options: SetupRenderOptions): string {
   const selected = options.selectedLocale;
   const fr = selected === 'fr';
 
-  const header = [
-    ...LOGO.map((line) => paint(color, A.cyan + A.bold, line)),
-    paint(color, A.cyan + A.bold, 'FURYPIPE // SETUP EXPERIENCE'),
+  // FuryPipe's terminal experience is a control-plane console, not a wizard
+  // sidebar. The top rail exposes the runtime domains and the progress capsule
+  // stays horizontal so the visual language matches the web Control Plane.
+  const title = paint(color, A.white + A.bold, 'FURYPIPE') +
+    paint(color, A.cyan + A.bold, '  //  CONTROL PLANE') +
+    paint(color, A.muted, '  v' + version);
+  const domains = [
+    paint(color, A.blue + A.bold, 'CONTEXT'),
+    paint(color, A.cyan + A.bold, 'FURYLINK'),
+    paint(color, A.purple + A.bold, 'VISUAL'),
+    paint(color, A.blue + A.bold, 'MCP'),
+    paint(color, A.cyan + A.bold, 'PROVIDERS'),
+    paint(color, A.purple + A.bold, 'MEMORY'),
+  ].join(paint(color, A.muted, '  ◆  '));
+
+  const phaseLabels = fr
+    ? ['LANGUE', 'RUNTIME', 'INSTALL', 'CONFIG', 'PRÊT']
+    : ['LANGUAGE', 'RUNTIME', 'INSTALL', 'CONFIG', 'READY'];
+  const phase = phaseLabels.map((label, index) => {
+    const done = stage === 'done';
+    const active = !done && index === 0;
+    const marker = done ? '✓' : String(index + 1).padStart(2, '0');
+    const tone = done ? A.green : active ? A.cyan + A.bold : A.muted;
+    return paint(color, tone, '[' + marker + ' ' + label + ']');
+  }).join(paint(color, A.muted, ' ─ '));
+
+  const header = box([
+    title,
+    paint(color, A.muted, fr
+      ? 'Runtime de contexte gouverné · exécution explicite · preuves vérifiables'
+      : 'Governed context runtime · explicit execution · verifiable evidence'),
     '',
-    paint(color, A.white + A.bold, 'GOVERNED AI WORKFLOWS') +
-      paint(color, A.muted, '  ·  context  ·  agents  ·  skills  ·  MCP  ·  providers  ·  memory'),
-    paint(color, A.purple + A.bold, 'FuryPipe ' + version) +
-      paint(color, A.muted, '  // one CLI, explicit execution, verifiable results'),
+    domains,
     '',
-  ];
-
-  const leftWidth = Math.max(30, Math.min(36, Math.floor(width * 0.34)));
-  const rightWidth = width - leftWidth - 2;
-  const labels = fr
-    ? [
-        ['Langue', 'Choisir la langue'],
-        ['Vérifications', 'Runtime et terminal'],
-        ['Installation', 'Préparer FuryPipe'],
-        ['Configuration', 'Écrire les préférences'],
-        ['Terminé', 'Prêt à créer'],
-      ] as const
-    : [
-        ['Language', 'Choose your language'],
-        ['Checks', 'Runtime and terminal'],
-        ['Installation', 'Prepare FuryPipe'],
-        ['Configuration', 'Write preferences'],
-        ['Done', 'Ready to create'],
-      ] as const;
-
-  const sidebar: string[] = [];
-  for (let i = 0; i < labels.length; i += 1) {
-    const state = stage === 'done' ? 'done' : i === 0 ? 'active' : 'pending';
-    sidebar.push(...stepLines(i + 1, labels[i]![0], labels[i]![1], state, color));
-    if (i < labels.length - 1) sidebar.push(paint(color, A.muted, '    │'));
-  }
-
-  const tips = fr
-    ? [
-        paint(color, A.yellow + A.bold, 'ASTUCE'),
-        'Aucune dépendance TUI externe.',
-        'Fallback texte automatique dans CI,',
-        'pipes et terminaux non interactifs.',
-      ]
-    : [
-        paint(color, A.yellow + A.bold, 'TIP'),
-        'No external TUI dependency.',
-        'Automatic text fallback in CI, pipes,',
-        'and non-interactive terminals.',
-      ];
-
-  const left = [...box(sidebar, leftWidth, color, 'SETUP'), '', ...box(tips, leftWidth, color)];
+    phase,
+  ], width, color, 'FURYPIPE');
 
   let main: string[];
   if (stage === 'done') {
     const compact = configFile.startsWith(os.homedir()) ? '~' + configFile.slice(os.homedir().length) : configFile;
     main = fr
       ? [
-          paint(color, A.green + A.bold, '✓ Configuration FuryPipe enregistrée'),
+          paint(color, A.green + A.bold, '✓ ENVIRONNEMENT PRÊT'),
           '',
-          'Langue : ' + paint(color, A.white + A.bold, selected === 'fr' ? 'Français' : 'English'),
-          'Config : ' + paint(color, A.muted, fit(compact, rightWidth - 14)),
+          paint(color, A.white + A.bold, 'Configuration enregistrée') +
+            paint(color, A.muted, '  ·  ' + fit(compact, width - 38)),
+          paint(color, A.muted, 'Langue') + '  ' + paint(color, A.white + A.bold, selected === 'fr' ? 'Français' : 'English'),
           '',
-          paint(color, A.white + A.bold, 'Prochaine étape'),
-          paint(color, A.cyan, '  furypipe doctor'),
-          paint(color, A.cyan, '  furypipe start'),
-          '',
-          paint(color, A.muted, 'Relancez `furypipe setup` pour modifier les préférences.'),
+          paint(color, A.cyan + A.bold, 'PROCHAINE ACTION'),
+          '  ' + paint(color, A.white, 'furypipe doctor') + paint(color, A.muted, '   vérifier le runtime local'),
+          '  ' + paint(color, A.white, 'furypipe start') + paint(color, A.muted, '    ouvrir le Control Plane'),
+          '  ' + paint(color, A.white, 'furypipe link codex') + paint(color, A.muted, ' connecter un agent avec FuryLink'),
         ]
       : [
-          paint(color, A.green + A.bold, '✓ FuryPipe setup saved'),
+          paint(color, A.green + A.bold, '✓ ENVIRONMENT READY'),
           '',
-          'Language: ' + paint(color, A.white + A.bold, 'English'),
-          'Config: ' + paint(color, A.muted, fit(compact, rightWidth - 14)),
+          paint(color, A.white + A.bold, 'Configuration saved') +
+            paint(color, A.muted, '  ·  ' + fit(compact, width - 38)),
+          paint(color, A.muted, 'Language') + '  ' + paint(color, A.white + A.bold, 'English'),
           '',
-          paint(color, A.white + A.bold, 'Next step'),
-          paint(color, A.cyan, '  furypipe doctor'),
-          paint(color, A.cyan, '  furypipe start'),
-          '',
-          paint(color, A.muted, 'Run `furypipe setup` again to change preferences.'),
+          paint(color, A.cyan + A.bold, 'NEXT ACTION'),
+          '  ' + paint(color, A.white, 'furypipe doctor') + paint(color, A.muted, '   inspect the local runtime'),
+          '  ' + paint(color, A.white, 'furypipe start') + paint(color, A.muted, '    open the Control Plane'),
+          '  ' + paint(color, A.white, 'furypipe link codex') + paint(color, A.muted, ' connect an agent with FuryLink'),
         ];
   } else {
+    const frState = selected === 'fr' ? A.bgBlue + A.white + A.bold : A.muted;
+    const enState = selected === 'en' ? A.bgBlue + A.white + A.bold : A.muted;
     main = [
-      paint(color, A.white + A.bold, fr ? 'Bienvenue dans FuryPipe' : 'Welcome to FuryPipe'),
+      paint(color, A.white + A.bold, fr ? 'Choisissez votre environnement' : 'Choose your environment'),
       paint(color, A.muted, fr
-        ? 'Choisissez la langue de votre environnement FuryPipe.'
-        : 'Choose the language for your FuryPipe environment.'),
+        ? 'La langue s’applique au setup et aux surfaces locales FuryPipe.'
+        : 'The language applies to setup and local FuryPipe surfaces.'),
       '',
-      ...languageCard('fr', selected, color),
+      paint(color, selected === 'fr' ? A.cyan + A.bold : A.muted, selected === 'fr' ? '◆' : '◇') +
+        '  ' + paint(color, frState, ' FR ') + '  ' + paint(color, selected === 'fr' ? A.white + A.bold : A.muted, 'Français') +
+        paint(color, A.muted, '  ·  interface et onboarding FR'),
       '',
-      ...languageCard('en', selected, color),
+      paint(color, selected === 'en' ? A.cyan + A.bold : A.muted, selected === 'en' ? '◆' : '◇') +
+        '  ' + paint(color, enState, ' EN ') + '  ' + paint(color, selected === 'en' ? A.white + A.bold : A.muted, 'English') +
+        paint(color, A.muted, '  ·  English interface and onboarding'),
       '',
+      paint(color, A.blue, '────────────────────────────────────────────────────────'),
       paint(color, A.muted, fr
-        ? '←/→ ou ↑/↓ pour choisir · Entrée pour continuer · Échap pour quitter'
-        : '←/→ or ↑/↓ to choose · Enter to continue · Esc to quit'),
-      '',
-      paint(color, A.muted, fr ? 'Raccourcis : 1 = Français · 2 = English' : 'Shortcuts: 1 = Français · 2 = English'),
+        ? '↑/↓ ou ←/→ sélectionner   ·   Entrée valider   ·   Échap quitter   ·   1/2 raccourcis'
+        : '↑/↓ or ←/→ select   ·   Enter confirm   ·   Esc quit   ·   1/2 shortcuts'),
     ];
   }
 
-  const right = box(main, rightWidth, color, stage === 'done' ? (fr ? 'PRÊT' : 'READY') : 'LANGUAGE / LANGUE');
+  const panelTitle = stage === 'done'
+    ? (fr ? 'RUNTIME PRÊT' : 'RUNTIME READY')
+    : (fr ? 'LANGUE / ENVIRONNEMENT' : 'LANGUAGE / ENVIRONMENT');
+  const panel = box(main, width, color, panelTitle);
+
   const footer = stage === 'done'
-    ? (fr ? 'READY // FuryPipe est configuré.' : 'READY // FuryPipe is configured.')
-    : (fr ? 'SETUP // Sélectionnez une langue pour continuer.' : 'SETUP // Select a language to continue.');
+    ? (fr ? 'READY  FuryPipe est configuré.' : 'READY  FuryPipe is configured.')
+    : (fr ? 'SELECT  choisissez une langue pour continuer.' : 'SELECT  choose a language to continue.');
 
   return [
     ...header,
-    ...columns(left, right, leftWidth),
     '',
-    paint(color, A.blue, border(width)),
-    paint(color, A.muted, ' FuryPipe Setup ' + version + '  ') + paint(color, A.cyan + A.bold, footer),
-    paint(color, A.blue, border(width, '└', '┘')),
+    ...panel,
+    '',
+    paint(color, A.muted, ' FuryPipe ') + paint(color, A.cyan + A.bold, footer),
   ].join('\n');
 }
 
@@ -376,6 +324,30 @@ function canUseRichTui(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, env
   return true;
 }
 
+export type SetupKeyAction = SetupLocale | 'accept' | 'cancel' | null;
+
+/**
+ * Normalize raw readline keypresses before the TUI acts on them.
+ *
+ * On Windows, readline can emit special-key events with an undefined `input`
+ * string (notably around Enter/navigation depending on the terminal host).
+ * Treat the printable input as optional; never call string methods on it until
+ * it has been narrowed. Keeping this pure also gives the package a deterministic
+ * regression test for the production crash reported on Node 26 + Windows.
+ */
+export function resolveSetupKey(
+  input: string | undefined,
+  key: Keypress | undefined,
+): SetupKeyAction {
+  const typed = typeof input === 'string' ? input.toLowerCase() : '';
+  const name = key?.name?.toLowerCase();
+  if ((key?.ctrl && name === 'c') || name === 'escape' || name === 'q') return 'cancel';
+  if (name === 'left' || name === 'up' || typed === '1' || typed === 'f') return 'fr';
+  if (name === 'right' || name === 'down' || typed === '2' || typed === 'e') return 'en';
+  if (name === 'return' || name === 'enter') return 'accept';
+  return null;
+}
+
 async function chooseLocale(
   initial: SetupLocale,
   stdin: NodeJS.ReadStream,
@@ -397,19 +369,19 @@ async function chooseLocale(
 
   try {
     return await new Promise<SetupLocale | null>((resolve) => {
-      const onKeypress = (input: string, key: Keypress): void => {
-        if ((key.ctrl && key.name === 'c') || key.name === 'escape' || key.name === 'q') {
+      const onKeypress = (input: string | undefined, key: Keypress | undefined): void => {
+        const action = resolveSetupKey(input, key);
+        if (action === 'cancel') {
           stdin.off('keypress', onKeypress);
           resolve(null);
           return;
         }
-        if (key.name === 'left' || key.name === 'up' || input === '1' || input.toLowerCase() === 'f') {
-          selected = 'fr'; redraw(); return;
+        if (action === 'fr' || action === 'en') {
+          selected = action;
+          redraw();
+          return;
         }
-        if (key.name === 'right' || key.name === 'down' || input === '2' || input.toLowerCase() === 'e') {
-          selected = 'en'; redraw(); return;
-        }
-        if (key.name === 'return' || key.name === 'enter') {
+        if (action === 'accept') {
           stdin.off('keypress', onKeypress);
           resolve(selected);
         }

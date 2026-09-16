@@ -2,7 +2,7 @@
  * DECODED IMAGE BYTES are a second budget, and the count cap does not stand in
  * for them.
  *
- * The provider's documented limit is 100 images, and pxpipe enforced only that.
+ * The provider's documented limit is 100 images; image count alone is not enough.
  * A long session can assemble a request that is legal by count and fails by
  * weight: production traffic degrades sharply somewhere around 20 MiB, and it
  * degrades as 500s, 502s, empty 200s and stalls, which read as flakiness rather
@@ -122,15 +122,39 @@ describe('a group that does not fit keeps its text', () => {
   });
 
   it('keeps a tool_result as text when its pages do not fit', async () => {
-    // Measured on this fixture: the slab renders to 12,683 bytes and the
-    // tool_result group to about 6,358 more. A budget between the two admits the
-    // slab and leaves the tool group without room, which is the case worth
-    // pinning: partial admission is what must not happen.
+    // Calibrate the fixture from the renderer that is actually under test
+    // instead of baking in a historical PNG byte count. The invariant is:
+    // choose a budget that admits the slab but cannot admit the complete
+    // slab+tool group, then require atomic fallback of the tool group.
+    const generous = 64 * 1024 * 1024;
+
+    const slabProbe = await transformRequest(
+      withSlab([{ role: 'user', content: 'go' }]),
+      { maxImageBytes: generous },
+    );
+    const slabBytes = slabProbe.info.imageBytes ?? 0;
+    expect(slabProbe.info.imageCount ?? 0).toBeGreaterThan(0);
+    expect(slabBytes).toBeGreaterThan(0);
+
+    resetSessionState();
+    const fullProbe = await transformRequest(
+      withSlab([{ role: 'user', content: 'go' }, toolResult('t1')]),
+      { maxImageBytes: generous },
+    );
+    const fullBytes = fullProbe.info.imageBytes ?? 0;
+    expect(fullProbe.info.toolResultImgs ?? 0).toBeGreaterThan(0);
+    expect(fullBytes).toBeGreaterThan(slabBytes);
+
+    const limit = slabBytes + Math.max(1, Math.floor((fullBytes - slabBytes) / 2));
+
+    resetSessionState();
     const { body: out, info } = await transformRequest(
       withSlab([{ role: 'user', content: 'go' }, toolResult('t1')]),
-      { maxImageBytes: 15_000 },
+      { maxImageBytes: limit },
     );
+
     expect(info.imageCount ?? 0).toBeGreaterThan(0); // the slab was admitted
+    expect(info.imageBytes ?? 0).toBeLessThanOrEqual(limit);
     expect(info.toolResultImgs ?? 0).toBe(0); // the tool group was not
     expect(info.imageByteSkips ?? 0).toBeGreaterThan(0);
     // Degrading must never drop content.
@@ -182,10 +206,18 @@ describe('telemetry distinguishes the two ceilings', () => {
   });
 
   it('warns before the next turn walks into the wall', async () => {
+    // Derive the fixture budget from the encoder's own deterministic output.
+    // This keeps the telemetry contract stable when a lossless PNG improvement
+    // legitimately reduces bytes: the test is about the 90% warning boundary,
+    // not about preserving an old compression ratio forever.
+    const baseline = await transformRequest(withSlab([{ role: 'user', content: 'go' }]), {
+      maxImageBytes: 1_000_000,
+    });
+    const measuredBytes = baseline.info.imageBytes;
+    expect(measuredBytes).toBeGreaterThan(0);
+
     const { info } = await transformRequest(withSlab([{ role: 'user', content: 'go' }]), {
-      // The slab measures 12,683 bytes, so a 14,000-byte budget admits it at
-      // about 91% full: nothing is dropped this turn, and the next one will be.
-      maxImageBytes: 14_000,
+      maxImageBytes: Math.ceil(measuredBytes / 0.91),
     });
     expect(info.imageCount ?? 0).toBeGreaterThan(0);
     expect(info.imageBytesNearLimit).toBe(true);

@@ -1,5 +1,5 @@
 /**
- * Minimal PNG encoder (grayscale + RGB, 8-bit, filter=Average, single IDAT).
+ * Minimal PNG encoder (grayscale + RGB, 8-bit, fast adaptive Average/Up filtering, single IDAT).
  * Pure Uint8Array — uses CompressionStream (Node 18+, Workers, browsers); no Buffer/node:zlib.
  */
 
@@ -78,36 +78,50 @@ async function deflateZlib(input: Uint8Array): Promise<Uint8Array> {
 const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 /**
- * Prepend scanline filter bytes using PNG's Average filter (type 3):
- *   Filt(x) = Orig(x) − floor((Recon(a) + Recon(b)) / 2)
- * where `a` is the same channel of the pixel to the left (x − bpp) and `b` the byte directly
- * above. Encoding may read the ORIGINAL bytes for a/b because the decoder reconstructs those
- * positions exactly before it needs them — the transform is bit-exact reversible, so decoded
- * pixels are byte-identical to `pixels`. Nothing about the image the model sees changes.
+ * Fast adaptive filtering for FuryPipe's text pages.
  *
- * Chosen over filter=None (the previous behavior): residuals of 5×8 bitmap glyphs on a flat
- * background collapse to mostly zeros, which deflate encodes in both less space and less time —
- * ~34% smaller IDAT at roughly half the compression cost on a representative dense page. That
- * matters because every image is re-uploaded on every turn, so IDAT size is a per-request
- * bandwidth cost. Filtering is pure JS ahead of the compressor, so it stays portable to
- * Workers unlike a deflate-level change (see the CompressionStream note above).
+ * Average (PNG filter 3) stays the production default because it was already
+ * measured as a strong fit for anti-aliased glyphs. The only adaptive branch is
+ * evidence-cheap and deterministic: when a row is byte-identical to the row
+ * above, switch that row to Up (filter 2), whose residual becomes all zeroes.
+ * Text pages contain many repeated paper/background rows, so this gives deflate
+ * an easier stream without evaluating all five PNG predictors for every byte.
+ *
+ * This deliberately replaced the exhaustive five-filter scorer: CI showed that
+ * variant roughly doubled render-heavy test time and did not reliably reduce
+ * wire bytes. The fast path is one pass per row plus an occasional zero-fill,
+ * while decoded pixels remain byte-identical to the framebuffer.
  */
-function filterAverage(pixels: Uint8Array, width: number, height: number, bpp: number): Uint8Array {
+function filterAdaptive(pixels: Uint8Array, width: number, height: number, bpp: number): Uint8Array {
   const rowBytes = width * bpp;
   const stride = rowBytes + 1;
   const out = new Uint8Array(stride * height);
+
   for (let y = 0; y < height; y++) {
     const src = y * rowBytes;
     const dst = y * stride;
-    out[dst] = 3; // filter: Average
+    let sameAsAbove = y > 0;
+
+    // Default to Average, preserving the proven baseline byte-for-byte on every
+    // non-repeated row.
+    out[dst] = 3;
     for (let x = 0; x < rowBytes; x++) {
-      // Off-image neighbors are defined as zero by the spec, not clamped/wrapped.
-      const a = x >= bpp ? pixels[src + x - bpp]! : 0;
-      const b = y > 0 ? pixels[src - rowBytes + x]! : 0;
-      // a + b ≤ 510 so the shift is exact; only the result wraps to a byte.
-      out[dst + 1 + x] = (pixels[src + x]! - ((a + b) >> 1)) & 0xff;
+      const value = pixels[src + x]!;
+      const left = x >= bpp ? pixels[src + x - bpp]! : 0;
+      const up = y > 0 ? pixels[src - rowBytes + x]! : 0;
+      if (sameAsAbove && value !== up) sameAsAbove = false;
+      out[dst + 1 + x] = (value - ((left + up) >> 1)) & 0xff;
+    }
+
+    if (sameAsAbove) {
+      // Up on an identical row is exactly zero for every byte. Zero-fill is
+      // cheaper than running another predictor pass and compresses extremely
+      // well across blank/paper bands.
+      out[dst] = 2;
+      out.fill(0, dst + 1, dst + 1 + rowBytes);
     }
   }
+
   return out;
 }
 
@@ -124,7 +138,7 @@ export async function encodeGrayPng(pixels: Uint8Array, width: number, height: n
   ihdr[8] = 8;
   ihdr[9] = 0; // colorType 0 = grayscale; bytes 10-12 already zero
 
-  const compressed = await deflateZlib(filterAverage(pixels, width, height, 1));
+  const compressed = await deflateZlib(filterAdaptive(pixels, width, height, 1));
 
   return concat([
     PNG_SIGNATURE,
@@ -146,7 +160,7 @@ export async function encodeRgbPng(pixels: Uint8Array, width: number, height: nu
   ihdr[8] = 8; // bit depth per channel
   ihdr[9] = 2; // colorType 2 = truecolor RGB; bytes 10-12 already zero
 
-  const compressed = await deflateZlib(filterAverage(pixels, width, height, 3));
+  const compressed = await deflateZlib(filterAdaptive(pixels, width, height, 3));
 
   return concat([
     PNG_SIGNATURE,

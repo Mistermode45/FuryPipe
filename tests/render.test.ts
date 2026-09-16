@@ -21,6 +21,7 @@ import {
   maxCharsPerImage,
   estimateImageCount,
   compactSlabWhitespace,
+  planVisualColumns,
   SLAB_CHARS_PER_TOKEN,
 } from '../src/core/transform.js';
 import { stripSchemaDescriptions } from '../src/core/schema-strip.js';
@@ -121,6 +122,31 @@ describe('Spleen 5×8 glyph confusability', () => {
     // No two distinct alphanumeric glyphs may collide (d=0) or differ by a
     // single pixel (d=1, the K/H defect the surgery removed).
     expect(worst.d, `closest pair '${worst.a}'~'${worst.b}' d=${worst.d}`).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('FuryPipe Visual Planner', () => {
+  it('can beat the incumbent full-width patch geometry without changing text', () => {
+    // One long logical line forces the planner to choose between width and
+    // wrapped height. At 312 cols the page is 1568 px wide; provider patch
+    // rounding makes a narrower page materially cheaper for this shape.
+    const text = 'a'.repeat(1000);
+    const plan = planVisualColumns(text, 312);
+    expect(plan.cols).toBeLessThan(312);
+    expect(plan.visualRows).toBeGreaterThan(0);
+    expect(plan.imageCount).toBe(1);
+    // 312 cols at the production 5x8 geometry costs 124 gated image tokens
+    // for this 4-row shape (112 raw patches * 1.10 margin, rounded up).
+    expect(plan.imageTokens).toBeLessThan(124);
+  });
+
+  it('is deterministic and stays within the requested column ceiling', () => {
+    const text = ('alpha beta gamma delta '.repeat(50) + '\n').repeat(8);
+    const a = planVisualColumns(text, 224);
+    const b = planVisualColumns(text, 224);
+    expect(a).toEqual(b);
+    expect(a.cols).toBeGreaterThan(0);
+    expect(a.cols).toBeLessThanOrEqual(224);
   });
 });
 

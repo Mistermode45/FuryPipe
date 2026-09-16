@@ -276,12 +276,12 @@ describe('serveFragment', () => {
   it('renders the toggle fragment reflecting compression state', async () => {
     const on = await dash.serveFragment('toggle', url, 1234);
     expect(on.headers.get('content-type')).toContain('text/html');
-    expect(await on.text()).toContain('Disable compression');
+    expect(await on.text()).toContain('Bypass Visual Engine');
     dash.handleCompressionToggle({ enabled: false });
     const off = await dash.serveFragment('toggle', url, 1234);
     const offHtml = await off.text();
-    expect(offHtml).toContain('PASSTHROUGH MODE');
-    expect(offHtml).toContain('Enable compression');
+    expect(offHtml).toContain('VISUAL ENGINE BYPASS');
+    expect(offHtml).toContain('Enable Visual Engine');
     dash.handleCompressionToggle({ enabled: true });
   });
 
@@ -291,7 +291,7 @@ describe('serveFragment', () => {
       delete process.env.FURYPIPE_MODELS;
       setAllowedModelBases(null); // reset to built-in Fable-only default
       const off = await (await dash.serveFragment('models', url, 1234)).text();
-      expect(off).toContain('Image OpenAI Responses models');
+      expect(off).toContain('OpenAI Responses visual profiles');
       expect(off).not.toContain('<div class="models" style="display:none">');
       // FURYPIPE_MODELS textbox mirrors the live scope as CSV.
       expect(off).toContain('name="list"');
@@ -486,16 +486,16 @@ describe('dashboard localized fragments', () => {
     const localeUrl = new URL('http://localhost/fragments/toggle?locale=fr');
 
     const toggle = await (await dash.serveFragment('toggle', localeUrl, 1)).text();
-    expect(toggle).toContain('MODE PASSTHROUGH');
-    expect(toggle).toContain('Compression désactivée');
-    expect(toggle).toContain('Activer la compression');
+    expect(toggle).toContain('CONTOURNEMENT DU MOTEUR VISUEL');
+    expect(toggle).toContain('Moteur visuel contourné');
+    expect(toggle).toContain('Activer le moteur visuel');
 
     const models = await (await dash.serveFragment(
       'models',
       new URL('http://localhost/fragments/models?locale=fr'),
       1,
     )).text();
-    expect(models).toContain('Modèles Claude en image');
+    expect(models).toContain('Profils visuels Claude');
     expect(models).toContain('les modèles non listés restent en texte brut');
 
     const recent = await (await dash.serveFragment(
@@ -574,7 +574,7 @@ describe('dashboard locale surface', () => {
     const html = await (await dash.serveHtml(48721, undefined, 'en-US;q=0.3, fr-CA;q=0.9')).text();
     expect(html).toContain('<html lang="fr" dir="ltr">');
     expect(html).toContain('Tableau de bord FuryPipe</title>');
-    expect(html).toContain('window.ppLocale = "fr"');
+    expect(html).toContain('window.furyLocale = "fr"');
   });
 
   it('keeps an explicit locale authoritative over Accept-Language, including pseudo-locales', async () => {
@@ -597,13 +597,13 @@ describe('dashboard locale surface', () => {
     const html = renderPage(48721, '', 'fr');
     expect(html).toContain('<html lang="fr" dir="ltr">');
     expect(html).toContain('<title>FuryPipe — tableau de bord en direct</title>');
-    expect(html).toContain('Voir exactement ce qui a été transformé et pourquoi.');
+    expect(html).toContain('Intelligence de contexte, optimisation visuelle, routage des agents et preuves runtime vérifiables.');
     expect(html).toContain('Langue <select');
     expect(html).toContain('furypipe-locale');
-    expect(html).toContain('window.ppLocale = "fr"');
-    expect(html).toContain("event.detail.parameters.locale = window.ppLocale");
+    expect(html).toContain('window.furyLocale = "fr"');
+    expect(html).toContain("event.detail.parameters.locale = window.furyLocale");
     expect(html).toContain('Connecter un agent');
-    expect(html).toContain('Périmètre des modèles imagés');
+    expect(html).toContain('Périmètre du moteur visuel');
     expect(html).toContain('Router Claude Code vers des modèles OpenAI / Cloudflare');
     expect(html).toContain('Chargement des preuves Control Room');
     expect(html).toContain('OPENAI_MODELS');

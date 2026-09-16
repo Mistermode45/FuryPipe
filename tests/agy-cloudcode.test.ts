@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createProxy } from '../src/core/proxy.js';
 import { isGoogleInferencePath, transformGoogleGenerateContent } from '../src/core/google.js';
-import { matchRoute, parseRoute } from '../src/warp/route.js';
+import { matchRoute, parseRoute } from '../src/fury-link/route.js';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -17,7 +17,7 @@ describe('Antigravity CloudCode PA inference routing', () => {
     expect(isGoogleInferencePath('/google-ai-studio/v1beta/models/gemini-3.6-flash:generateContent')).toBe(true);
   });
 
-  it('matches warp default route for Antigravity streamGenerateContent', () => {
+  it('matches FuryLink default route for Antigravity streamGenerateContent', () => {
     const route = parseRoute('daily-cloudcode-pa.googleapis.com/v1internal:streamGenerateContent*=http://127.0.0.1:47821');
     expect(matchRoute([route], 'daily-cloudcode-pa.googleapis.com:443', '/v1internal:streamGenerateContent?alt=sse')).not.toBeNull();
     expect(matchRoute([route], 'daily-cloudcode-pa.googleapis.com:443', '/v1internal:loadCodeAssist')).toBeNull();

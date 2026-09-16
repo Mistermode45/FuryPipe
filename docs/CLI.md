@@ -25,7 +25,7 @@ furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
 furypipe stats [--json] [--file <path>]
 furypipe export [...]
-furypipe warp [...] -- <agent>
+furypipe link [--route PATTERN=TARGET]... [--] <agent> [args...]
 ```
 
 Use `furypipe --help` and command-specific help as the runtime source of truth for options available in the installed version.
@@ -34,7 +34,7 @@ Use `furypipe --help` and command-specific help as the runtime source of truth f
 
 `furypipe setup` launches the FuryPipe first-run terminal experience.
 
-The rich TUI is dependency-free and uses the terminal directly. It provides FuryPipe branding, a step rail, bilingual language selection, keyboard navigation and a completion screen.
+The rich TUI is dependency-free and uses the terminal directly. It presents the FuryPipe Control Plane identity, a horizontal runtime-domain rail, bilingual language selection, keyboard navigation and a completion screen.
 
 ```bash
 furypipe setup
@@ -111,11 +111,26 @@ furypipe export --git
 
 Depending on the input and runtime path, exports can include context pages, factsheets and prompt artifacts.
 
-## Warp
+## Visual Engine
 
-`furypipe warp ... -- <agent>` prepares the FuryPipe routing environment for the requested child process.
+The Visual Engine is FuryPipe's guarded context-optimization layer. It keeps text native when visual transformation is not profitable or would violate exactness/provider limits, and otherwise uses provider-priced geometry planning plus deterministic lossless rendering.
 
-Warp does not grant permissions, credentials or capabilities that the target process did not already have through the configured host environment.
+See [VISUAL_ENGINE.md](VISUAL_ENGINE.md) for the pipeline, fidelity constraints and release-blocking invariants.
+
+## FuryLink
+
+`furypipe link <agent> [args...]` connects a child CLI to the already-running local FuryPipe runtime without requiring a permanent base-URL edit. The explicit separator form (`furypipe link -- <agent>`) is also accepted, but it is optional so Windows PowerShell and cmd.exe are first-class launch environments.
+
+Examples:
+
+```bash
+furypipe link claude
+furypipe link codex
+furypipe link cursor-agent
+furypipe link --route '127.0.0.1:9090/v1/*=http://127.0.0.1:48721' codex
+```
+
+FuryLink does not grant permissions, credentials or capabilities that the target process did not already have through the configured host environment. The local FuryPipe runtime remains the transformation, tracking and dashboard authority.
 
 ## Runtime identity
 
@@ -140,17 +155,11 @@ If the selected listener port is already occupied, `furypipe start` fails closed
 
 ## Distribution and release status
 
-Current public package:
+Current public package: the version published under the npm `latest` dist-tag.
 
-```text
-furypipe@0.14.0
-```
+Current GitHub release: the latest non-draft release in `Mistermode45/FuryPipe`.
 
-Current GitHub release:
-
-```text
-v0.14.0
-```
+Do not infer either state from source metadata alone; publication and release status require registry/GitHub evidence.
 
 Package publication, GitHub release and production deployment are distinct lifecycle states.
 

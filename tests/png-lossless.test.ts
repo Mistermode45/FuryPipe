@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { encodeGrayPng, encodeRgbPng } from '../src/core/png.js';
 
 /**
- * The encoder applies PNG's Average scanline filter, which must be bit-exact
- * reversible: the model has to see the pixels the renderer drew, not an
- * approximation. Verified with skia (@napi-rs/canvas) rather than a hand-rolled
+ * The encoder adaptively selects among PNG's five lossless scanline filters.
+ * Every selection must remain bit-exact reversible: the model has to see the
+ * pixels the renderer drew, not an approximation. Verified with skia (@napi-rs/canvas) rather than a hand-rolled
  * decoder, so a bug in the filter can't be masked by the same bug in the check.
  *
  * `loadImage` awaits the decode. `new Image()` + `.src` does NOT, and silently
@@ -25,7 +25,7 @@ const H = 131;
 
 describe('PNG encoder is lossless', () => {
   it('round-trips grayscale pixels bit-for-bit', async () => {
-    // Includes 0 and 255 (the filter residual wraps past both) and the mid greys
+    // Includes 0 and 255 (filter residuals wrap past both) and the mid greys
     // the antialiased atlas actually emits.
     const pixels = new Uint8Array(W * H);
     const palette = [0, 31, 68, 119, 255, 1, 254, 128];

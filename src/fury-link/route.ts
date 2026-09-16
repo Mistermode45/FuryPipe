@@ -5,7 +5,7 @@
  * That indirection is the whole point. Claude Code hides /remote-control the
  * moment ANTHROPIC_BASE_URL is custom (and gates connectors on the same
  * "firstParty" check), so pointing the agent at FuryPipe directly costs you the
- * feature. Under warp the agent still talks to api.anthropic.com; only the one
+ * feature. Under FuryLink the agent still talks to api.anthropic.com; only the one
  * path we rewrite is diverted, and auth, telemetry and the control plane go to
  * the real host untouched.
  *

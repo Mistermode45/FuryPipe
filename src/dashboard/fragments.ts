@@ -563,7 +563,7 @@ export function renderContextMapFragment(
       ids
         .map(
           (id) =>
-            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="ppPin(${id});ppSource(true)" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
+            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="furyPin(${id});furySource(true)" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
         )
         .join('') +
       `</div>`
@@ -693,28 +693,29 @@ export function renderRecentFragment(p: RecentPayload, locale = 'en'): string {
                   readRate: CACHE_READ_RATE,
                 }))}">${escapeHtml(t('dashboard.recent.create'))}</span>`
               : '';
+            const savedLabel = escapeHtml(t('dashboard.recent.savedLost'));
             const savedCell = saved == null
-              ? `<td class="num muted">—</td>`
+              ? `<td class="num muted" data-label="${savedLabel}">—</td>`
               : saved > 0
-                ? `<td class="num pos">${numFmt(saved)}</td>`
+                ? `<td class="num pos" data-label="${savedLabel}">${numFmt(saved)}</td>`
                 : saved < 0
-                  ? `<td class="num neg">${numFmt(saved)}${createNote}</td>`
-                  : `<td class="num">0</td>`;
+                  ? `<td class="num neg" data-label="${savedLabel}">${numFmt(saved)}${createNote}</td>`
+                  : `<td class="num" data-label="${savedLabel}">0</td>`;
             const imaged = e.cc_added
               ? `<span class="badge badge-img">${escapeHtml(t('dashboard.recent.image'))}</span>`
               : `<span class="badge badge-txt">${escapeHtml(t('dashboard.recent.text'))}</span>`;
             return (
               `<tr>` +
-              `<td class="muted">${i + 1}</td>` +
-              `<td><span class="pill pill-${statusCls(e.status)}">${e.status}</span></td>` +
-              `<td class="endp">${escapeHtml(shortPath(e.path))}</td>` +
-              `<td>${e.model ? `<code>${escapeHtml(e.model)}</code>` : '<span class="muted">—</span>'}</td>` +
-              `<td>${imaged}</td>` +
-              `<td class="num">${e.cache_read != null ? numFmt(e.cache_read) : '—'}</td>` +
-              `<td class="num">${e.baseline_input != null ? numFmt(e.baseline_input) : '—'}</td>` +
-              `<td class="num">${e.actual_input != null ? numFmt(e.actual_input) : '—'}</td>` +
+              `<td class="muted" data-label="#">${i + 1}</td>` +
+              `<td data-label="${escapeHtml(t('dashboard.recent.result'))}"><span class="pill pill-${statusCls(e.status)}">${e.status}</span></td>` +
+              `<td class="endp" data-label="${escapeHtml(t('dashboard.recent.endpoint'))}">${escapeHtml(shortPath(e.path))}</td>` +
+              `<td data-label="${escapeHtml(t('dashboard.recent.model'))}">${e.model ? `<code>${escapeHtml(e.model)}</code>` : '<span class="muted">—</span>'}</td>` +
+              `<td data-label="${escapeHtml(t('dashboard.recent.sentAs'))}">${imaged}</td>` +
+              `<td class="num" data-label="${escapeHtml(t('dashboard.recent.cacheHits'))}">${e.cache_read != null ? numFmt(e.cache_read) : '—'}</td>` +
+              `<td class="num" data-label="${escapeHtml(t('dashboard.recent.asText'))}">${e.baseline_input != null ? numFmt(e.baseline_input) : '—'}</td>` +
+              `<td class="num" data-label="${escapeHtml(t('dashboard.recent.sent'))}">${e.actual_input != null ? numFmt(e.actual_input) : '—'}</td>` +
               savedCell +
-              `<td class="num">${viewLink}</td>` +
+              `<td class="num recent-details" data-label="${escapeHtml(t('dashboard.recent.details'))}">${viewLink}</td>` +
               `</tr>`
             );
           })
@@ -763,7 +764,7 @@ export function renderLatestFragment(inp: LatestFragmentInput, locale = 'en'): s
 
   const pinBar =
     pin != null
-      ? `<div class="viewer-bar"><button class="mini-btn" type="button" onclick="ppPin(null)">${escapeHtml(t('dashboard.latest.back'))}</button><span class="mini-label">${escapeHtml(t('dashboard.latest.image', { id: pin }))}</span></div>`
+      ? `<div class="viewer-bar"><button class="mini-btn" type="button" onclick="furyPin(null)">${escapeHtml(t('dashboard.latest.back'))}</button><span class="mini-label">${escapeHtml(t('dashboard.latest.image', { id: pin }))}</span></div>`
       : '';
 
   let main: string;
@@ -780,7 +781,7 @@ export function renderLatestFragment(inp: LatestFragmentInput, locale = 'en'): s
   const caption =
     pin != null ? escapeHtml(t('dashboard.latest.image', { id: pin })) : meta ? `${escapeHtml(meta)} · ${escapeHtml(t('dashboard.latest.topLeft'))}` : '';
   const srcBtn = showBtn
-    ? `<button class="mini-btn" type="button" onclick="ppSource(${showSource ? 'false' : 'true'})">${escapeHtml(t(showSource ? 'dashboard.latest.hideSource' : 'dashboard.latest.showSource'))}</button>`
+    ? `<button class="mini-btn" type="button" onclick="furySource(${showSource ? 'false' : 'true'})">${escapeHtml(t(showSource ? 'dashboard.latest.hideSource' : 'dashboard.latest.showSource'))}</button>`
     : '';
 
   let pane = '';
@@ -942,75 +943,96 @@ export function renderStatsTableFragment(p: FullStatsPayload, locale = 'en'): st
 
 // ---- page shell -------------------------------------------------------------
 
-// Favicon mirrors the .flame-dot glyph: a glossy flame sphere (radial highlight
-// at 35%/30%, --flame -> --flame-strong) ringed by a faint --flame-tint halo.
-// Inlined as a URL-encoded SVG data URI so the dashboard stays self-contained
-// (no extra route/static asset). Keep colors in sync with :root in CSS below.
+// FuryPipe favicon: three linked nodes on a midnight field. It mirrors the
+// FuryLink / Context Fabric identity rather than the historical warm-flame mark.
 const FAVICON =
   "data:image/svg+xml," +
   "%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E" +
-  "%3Cdefs%3E%3CradialGradient%20id='f'%20cx='35%25'%20cy='30%25'%20r='80%25'%3E" +
-  "%3Cstop%20offset='0%25'%20stop-color='%23ffd0a8'/%3E" +
-  "%3Cstop%20offset='55%25'%20stop-color='%23ff5a1f'/%3E" +
-  "%3Cstop%20offset='100%25'%20stop-color='%23e8420a'/%3E" +
-  "%3C/radialGradient%3E%3C/defs%3E" +
-  "%3Ccircle%20cx='16'%20cy='16'%20r='15.5'%20fill='%23fff1ea'/%3E" +
-  "%3Ccircle%20cx='16'%20cy='16'%20r='10'%20fill='url(%23f)'/%3E%3C/svg%3E";
+  "%3Crect%20x='1'%20y='1'%20width='30'%20height='30'%20rx='8'%20fill='%23050914'%20stroke='%231b3156'/%3E" +
+  "%3Cpath%20d='M8%2010h8l8%206-8%206H8'%20fill='none'%20stroke='%236f9dff'%20stroke-width='2.4'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E" +
+  "%3Ccircle%20cx='8'%20cy='10'%20r='2.4'%20fill='%23f6f0e4'/%3E" +
+  "%3Ccircle%20cx='24'%20cy='16'%20r='2.4'%20fill='%236f9dff'/%3E" +
+  "%3Ccircle%20cx='8'%20cy='22'%20r='2.4'%20fill='%23f6f0e4'/%3E%3C/svg%3E";
 
 const CSS = `
   :root {
-    --bg: #faf6f2; --surface: #ffffff; --surface-2: #fbf4ee;
-    --border: #efe5db; --border-strong: #e4d6c8;
-    --ink: #241f1b; --ink-2: #5d534a; --muted: #9b9189;
-    --flame: #ff5a1f; --flame-strong: #e8420a; --flame-ink: #bd3a08; --flame-tint: #fff1ea;
-    --good: #1f9d57; --good-tint: #e7f6ee; --bad: #d8483b; --bad-tint: #fcebe9; --warn: #b7791f; --warn-tint: #fbf0db;
-    --img: #ff5a1f; --img-ink: #bd3a08; --img-tint: #fff1ea;
-    --txt: #2f7db0; --txt-ink: #1f5f8b; --txt-tint: #e9f3fb;
-    --radius: 14px;
-    --shadow: 0 1px 2px rgba(60,35,15,.05), 0 8px 24px rgba(60,35,15,.05);
+    --bg: #f4eee3; --surface: #fffaf1; --surface-2: #ece5d9;
+    --border: #dcd2c3; --border-strong: #cbbdac;
+    --ink: #10213a; --ink-2: #42526a; --muted: #7d8795;
+    --accent: #4f7cff; --accent-strong: #2f5ee8; --accent-ink: #244fc5; --accent-tint: #e8eeff;
+    --good: #168a68; --good-tint: #e2f4ec; --bad: #c94f62; --bad-tint: #f8e7e9; --warn: #9a6a19; --warn-tint: #f5ecd8;
+    --img: #4f7cff; --img-ink: #244fc5; --img-tint: #e8eeff;
+    --txt: #168f91; --txt-ink: #0f696b; --txt-tint: #e2f3f1;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(16,33,58,.06), 0 14px 36px rgba(16,33,58,.08);
     --mono: 'SF Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     color-scheme: light;
   }
-  /* Dark theme: same warm-flame identity, inverted neutrals. Set before first
-     paint by the <head> script (localStorage 'pp-theme' else system pref);
-     toggled by ppTheme(). Accents (flame/img/txt) are lifted for contrast. */
+  /* FuryPipe midnight theme. Applied before first paint from the FuryPipe-owned
+     theme preference, then toggled by furyTheme(). Cobalt and teal accents are
+     lifted independently from the neutral navy/black surface stack. */
   :root[data-theme="dark"] {
-    --bg: #17120f; --surface: #211a15; --surface-2: #2a211b;
-    --border: #352a22; --border-strong: #46382e;
-    --ink: #f6efe8; --ink-2: #cabbac; --muted: #9a8c7d;
-    --flame: #ff6a33; --flame-strong: #e8420a; --flame-ink: #ff9a63; --flame-tint: #3a2318;
-    --good: #3fbd76; --good-tint: #15291f; --bad: #f0645a; --bad-tint: #341b18; --warn: #d99a3a; --warn-tint: #33260f;
-    --img: #ff6a33; --img-ink: #ff9a63; --img-tint: #3a2318;
-    --txt: #5aa3d6; --txt-ink: #8cc3ea; --txt-tint: #142631;
-    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px rgba(0,0,0,.45);
+    --bg: #03060c; --surface: #07111f; --surface-2: #0c192b;
+    --border: #152641; --border-strong: #22395d;
+    --ink: #f4f1e9; --ink-2: #b8c5d8; --muted: #778ba7;
+    --accent: #6f9dff; --accent-strong: #4e7ff0; --accent-ink: #9ab8ff; --accent-tint: #10234a;
+    --good: #32c39a; --good-tint: #0b2b25; --bad: #ef6d7b; --bad-tint: #32141c; --warn: #e0a94f; --warn-tint: #30230e;
+    --img: #6f9dff; --img-ink: #a8c2ff; --img-tint: #10234a;
+    --txt: #4ed2cf; --txt-ink: #88e7e2; --txt-tint: #0b292c;
+    --shadow: 0 1px 2px rgba(0,0,0,.55), 0 18px 46px rgba(0,0,0,.42);
     color-scheme: dark;
   }
   /* Dark fix-ups for the few intentionally hard-coded (light) spots. */
-  :root[data-theme="dark"] .banner { border-color: #6e342c; color: #f4b9b1; }
-  :root[data-theme="dark"] .banner strong { color: #ffd6cf; }
+  :root[data-theme="dark"] .banner { border-color: #603041; color: #ffc2cb; }
+  :root[data-theme="dark"] .banner strong { color: #ffdce1; }
   :root[data-theme="dark"] .toast { box-shadow: 0 8px 24px rgba(0,0,0,.5); }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 22px 26px 64px; background: var(--bg); color: var(--ink-2);
-    font: 14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  html { scroll-behavior: smooth; }
+  body { margin: 0; padding: 0 0 72px; color: var(--ink-2);
+    background: radial-gradient(circle at 8% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 30rem), radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--txt) 10%, transparent), transparent 34rem), var(--bg);
+    font: 14px/1.5 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased; }
+  .workspace { width: min(1480px, calc(100% - 40px)); margin: 0 auto; }
   b, strong { color: var(--ink); }
   .good { color: var(--good); } .bad { color: var(--bad); }
   .muted { color: var(--muted); }
 
   /* topbar */
-  .topbar { display: flex; align-items: flex-start; justify-content: space-between;
-    gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  .topbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between;
+    gap: 18px; flex-wrap: wrap; margin: 0 -8px 14px; padding: 16px 10px 14px;
+    background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(18px);
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
   .brand { display: flex; align-items: center; gap: 12px; }
-  .flame-dot { width: 14px; height: 14px; border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #ffd0a8, var(--flame) 55%, var(--flame-strong));
-    box-shadow: 0 0 0 4px var(--flame-tint); flex: none; }
-  .wordmark { font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; }
+  .pulse-mark { position: relative; width: 34px; height: 34px; border-radius: 10px;
+    background-image: radial-gradient(circle at 50% 50%, var(--ink) 0 2px, transparent 2.5px), linear-gradient(145deg, #08162b, #102b59);
+    border: 1px solid var(--border-strong); box-shadow: inset 0 0 0 1px rgba(255,255,255,.03), 0 10px 25px rgba(27,72,150,.16); flex: none; }
+  .pulse-mark::before, .pulse-mark::after { content: ''; position: absolute; top: 15px; width: 8px; height: 4px;
+    border-radius: 99px; background: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 70%, transparent); }
+  .pulse-mark::before { left: 5px; } .pulse-mark::after { right: 5px; }
+  .wordmark { font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -0.03em; }
+  .brand-kicker { margin-left: 8px; color: var(--accent-ink); font: 700 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
   .wordmark-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
   /* Which machine is this? Two dashboards from two hosts look identical otherwise. */
   .hostchip { font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 1px 7px;
-    border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
+    border: 1px solid var(--border); border-radius: 999px; white-space: nowrap; }
   .tagline { font-size: 12.5px; color: var(--muted); margin-top: 1px; max-width: 460px; }
   .controls { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .command-nav { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; margin: 0 0 18px;
+    padding: 8px; border: 1px solid var(--border); border-radius: 14px;
+    background: color-mix(in srgb, var(--surface) 82%, transparent); box-shadow: var(--shadow); }
+  .command-nav::-webkit-scrollbar { display: none; }
+  .command-nav a { flex: 0 0 auto; color: var(--ink-2); text-decoration: none; font-size: 12px; font-weight: 650;
+    padding: 7px 11px; border-radius: 9px; border: 1px solid transparent; }
+  .command-nav a:hover { color: var(--accent-ink); background: var(--accent-tint); border-color: var(--border-strong); }
+  .connect-panel { margin: 0 0 18px; padding: 2px 0; border: 1px solid var(--border); border-radius: var(--radius);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent-tint) 65%, var(--surface)), var(--surface) 58%);
+    box-shadow: var(--shadow); overflow: hidden; }
+  .connect-panel > summary { padding: 13px 16px; }
+  .connect-panel[open] > summary { border-bottom: 1px solid var(--border); }
+  .connect-panel > p, .connect-panel > pre { margin-left: 16px; margin-right: 16px; }
+  .connect-panel > p:last-child { margin-bottom: 16px; }
+  .connect-panel pre { color: var(--ink); background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 11px 13px; overflow-x: auto; font: 12px/1.55 var(--mono); }
 
   /* kill switch */
   .banner { display: block; margin: 0 0 8px; padding: 9px 13px; background: var(--bad-tint);
@@ -1025,12 +1047,12 @@ const CSS = `
   .switch-btn { background: var(--surface); color: var(--ink); border: 1px solid var(--border-strong);
     padding: 6px 13px; cursor: pointer; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 600;
     box-shadow: var(--shadow); }
-  .switch-btn:hover { border-color: var(--flame); color: var(--flame-ink); }
+  .switch-btn:hover { border-color: var(--accent); color: var(--accent-ink); }
   .hint { color: var(--muted); font-size: 11px; }
   .theme-btn { background: var(--surface); color: var(--ink-2); border: 1px solid var(--border-strong);
     padding: 5px 11px; cursor: pointer; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 600;
     box-shadow: var(--shadow); display: inline-flex; align-items: center; gap: 6px; line-height: 1; }
-  .theme-btn:hover { border-color: var(--flame); color: var(--flame-ink); }
+  .theme-btn:hover { border-color: var(--accent); color: var(--accent-ink); }
 
   /* model chips */
   .models { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 18px; }
@@ -1038,11 +1060,11 @@ const CSS = `
   .models-csv { flex: 1 1 260px; min-width: 220px; color: var(--ink); background: var(--surface);
     border: 1px solid var(--border-strong); border-radius: 6px; padding: 4px 8px;
     font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .models-csv:focus { outline: none; border-color: var(--flame-ink); }
+  .models-csv:focus { outline: none; border-color: var(--accent-ink); }
   .models-routing { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 18px; }
   #routing-help { border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface);
     color: var(--ink); max-width: 600px; padding: 16px 20px; }
-  #routing-help::backdrop { background: rgba(20, 12, 6, .4); }
+  #routing-help::backdrop { background: rgba(2, 7, 18, .62); }
   #routing-help h3 { margin: 0 0 8px; font-size: 14px; color: var(--ink); }
   #routing-help p, #routing-help li { font-size: 12px; line-height: 1.55; color: var(--ink-2); margin: 6px 0; }
   #routing-help ul { margin: 6px 0; padding-left: 18px; }
@@ -1052,8 +1074,8 @@ const CSS = `
     font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
   .chip { background: var(--surface); color: var(--ink-2); border: 1px solid var(--border-strong);
     border-radius: 999px; padding: 4px 12px; cursor: pointer; font: inherit; font-size: 12px; }
-  .chip:hover { border-color: var(--flame); color: var(--flame-ink); }
-  .chip.on { background: var(--flame-tint); color: var(--flame-ink); border-color: var(--flame);
+  .chip:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .chip.on { background: var(--accent-tint); color: var(--accent-ink); border-color: var(--accent);
     font-weight: 600; }
 
   /* collapsed model-scope section (#116): the default compress scope is Fable 5
@@ -1065,21 +1087,21 @@ const CSS = `
   .models-collapse .models:last-child { margin-bottom: 0; }
   .models-summary { cursor: pointer; color: var(--ink-2); font-size: 12px; font-weight: 600;
     margin: 0 0 8px; user-select: none; }
-  .models-summary:hover { color: var(--flame-ink); }
+  .models-summary:hover { color: var(--accent-ink); }
   .models-warning { color: var(--ink-2); background: var(--surface); border: 1px solid var(--border-strong);
     border-left: 3px solid var(--bad); border-radius: 8px; padding: 8px 12px; font-size: 12px;
     margin: 0 0 12px; }
 
   /* session hero */
   #frag-session { display: block; margin-bottom: 16px; }
-  .hero { background: linear-gradient(135deg, var(--flame-tint), var(--surface) 60%); border: 1px solid var(--border);
-    border-left: 4px solid var(--flame); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow); }
+  .hero { position: relative; overflow: hidden; background: linear-gradient(135deg, color-mix(in srgb, var(--accent-tint) 78%, var(--surface)), var(--surface) 62%); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: var(--radius); padding: 22px 24px; box-shadow: var(--shadow); }
+  .hero::after { content: ''; position: absolute; width: 190px; height: 190px; right: -70px; top: -110px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 50%; box-shadow: 0 0 0 28px color-mix(in srgb, var(--accent) 5%, transparent), 0 0 0 56px color-mix(in srgb, var(--accent) 3%, transparent); pointer-events: none; }
   .hero-neg { border-left-color: var(--bad); }
   .hero-eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
     color: var(--muted); margin-bottom: 8px; }
   .hero-headline { font-size: 28px; font-weight: 700; color: var(--ink); letter-spacing: -0.02em; line-height: 1.1; }
   .hero-num { font-size: 56px; font-weight: 800; line-height: 1; margin-right: 8px;
-    background: linear-gradient(135deg, #ff9a4d, var(--flame) 55%, var(--flame-strong));
+    background: linear-gradient(135deg, #8fb1ff, var(--accent) 55%, var(--accent-strong));
     -webkit-background-clip: text; background-clip: text; color: transparent;
     font-variant-numeric: tabular-nums; }
   .hero-neg .hero-num { background: linear-gradient(135deg, #f0857a, var(--bad));
@@ -1105,7 +1127,7 @@ const CSS = `
   .q { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px;
     border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border-strong);
     color: var(--muted); font-size: 9px; font-weight: 700; cursor: help; position: relative; outline: none; }
-  .q:hover, .q:focus-visible { color: var(--flame-ink); border-color: var(--flame); }
+  .q:hover, .q:focus-visible { color: var(--accent-ink); border-color: var(--accent); }
   .q::after { content: attr(data-tip); position: absolute; z-index: 50; left: 0; bottom: calc(100% + 8px);
     width: min(280px, calc(100vw - 32px)); transform: translateY(4px); padding: 8px 10px; border-radius: 7px;
     background: var(--ink); color: var(--surface); box-shadow: var(--shadow); font-size: 11px; font-weight: 500;
@@ -1141,20 +1163,20 @@ const CSS = `
   .drawer { margin: 0 0 14px; background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
   .drawer > summary { cursor: pointer; user-select: none; list-style: none; padding: 12px 16px;
-    font-size: 13px; font-weight: 600; color: var(--flame-ink); display: flex; align-items: center; gap: 8px; }
+    font-size: 13px; font-weight: 600; color: var(--accent-ink); display: flex; align-items: center; gap: 8px; }
   .drawer > summary::-webkit-details-marker { display: none; }
-  .drawer > summary::before { content: '▸'; color: var(--flame); font-size: 11px; }
+  .drawer > summary::before { content: '▸'; color: var(--accent); font-size: 11px; }
   .drawer[open] > summary::before { content: '▾'; }
   .drawer > summary:hover { background: var(--surface-2); }
   .drawer-intro { padding: 0 16px 10px; font-size: 12px; color: var(--ink-2); }
-  .drawer-intro em { color: var(--flame-ink); font-style: normal; font-weight: 600; }
+  .drawer-intro em { color: var(--accent-ink); font-style: normal; font-weight: 600; }
   .math-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 0 16px 16px; }
   @media (max-width: 860px) { .math-grid { grid-template-columns: 1fr; } }
   .math-block h4 { margin: 0 0 6px; font-size: 12px; color: var(--ink); }
   .formula { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
     padding: 9px 11px; font: 11px/1.55 var(--mono); color: var(--ink-2); white-space: pre-wrap;
     word-break: break-word; }
-  .formula .k { color: var(--muted); } .formula .v { color: var(--ink); } .formula .op { color: var(--flame); }
+  .formula .k { color: var(--muted); } .formula .v { color: var(--ink); } .formula .op { color: var(--accent); }
   .formula .sp { height: 6px; }
   .formula .src { color: var(--muted); font-size: 10px; display: block; margin-top: 7px;
     border-top: 1px solid var(--border); padding-top: 6px; }
@@ -1183,7 +1205,7 @@ const CSS = `
     border: 1px dashed var(--border-strong); border-radius: 10px; }
   .ctx-headline { font-size: 13px; color: var(--ink-2); margin-bottom: 10px; }
   .ctx-title { display: inline-block; font-weight: 700; color: var(--ink); margin-right: 6px; }
-  .ctx-big { font-size: 22px; font-weight: 800; color: var(--flame); font-variant-numeric: tabular-nums; }
+  .ctx-big { font-size: 22px; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
   .legend { display: flex; gap: 8px; margin-bottom: 10px; }
   .tag { font-size: 11px; font-weight: 600; padding: 3px 9px 3px 22px; border-radius: 999px; position: relative; }
   .tag::before { content: ''; position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
@@ -1209,19 +1231,19 @@ const CSS = `
   /* Cap notes explain a turn that compressed less than the user expects, so they
      must read as a reason, not as fine print. Warm tint, not an error colour —
      nothing here is broken. */
-  .cap-note { color: var(--ink); border-left: 2px solid var(--flame); padding-left: 7px; }
+  .cap-note { color: var(--ink); border-left: 2px solid var(--accent); padding-left: 7px; }
   .pages-title { font-size: 11px; color: var(--ink-2); margin: 12px 0 6px; }
   .pages { display: flex; flex-wrap: wrap; gap: 6px; max-height: 320px; overflow: auto;
     background: var(--surface-2); padding: 6px; border: 1px solid var(--border); border-radius: 8px; }
   .page { height: 130px; width: auto; max-width: 230px; object-fit: contain; object-position: top left;
     image-rendering: pixelated; background: #fff; border: 1px solid var(--border-strong); border-radius: 4px;
     cursor: pointer; transition: border-color .12s, transform .12s; }
-  .page:hover { border-color: var(--flame); transform: translateY(-1px); }
+  .page:hover { border-color: var(--accent); transform: translateY(-1px); }
   .page.page-gone { width: 150px; height: 56px; background: var(--surface-2); border: 1px dashed var(--border-strong);
     color: var(--muted); font-size: 10px; cursor: default; }
 
   /* recent requests */
-  .row-view { color: var(--flame-ink); font-weight: 600; text-decoration: none; cursor: pointer; white-space: nowrap; }
+  .row-view { color: var(--accent-ink); font-weight: 600; text-decoration: none; cursor: pointer; white-space: nowrap; }
   .row-view:hover { text-decoration: underline; }
   table.rtable, table.dtable { width: 100%; border-collapse: collapse; font-size: 12px; }
   .rtable th, .dtable th { text-align: left; color: var(--muted); font-weight: 600; padding: 7px 8px;
@@ -1236,6 +1258,24 @@ const CSS = `
      they fit. The table keeps width:100% so it fills at wide widths. */
   #frag-recent, #frag-stats { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
   #frag-recent table, #frag-stats table { min-width: max-content; }
+  @media (max-width: 640px) {
+    #frag-recent { overflow: visible; }
+    #frag-recent table.rtable { min-width: 0; display: block; }
+    #frag-recent .rtable thead { display: none; }
+    #frag-recent .rtable tbody { display: grid; gap: 10px; }
+    #frag-recent .rtable tr { display: block; padding: 6px 10px; border: 1px solid var(--border);
+      border-radius: 12px; background: color-mix(in srgb, var(--surface) 94%, var(--accent-tint)); }
+    #frag-recent .rtable td { display: grid; grid-template-columns: minmax(92px, .8fr) minmax(0, 1.2fr);
+      gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border);
+      text-align: start; white-space: normal; overflow-wrap: anywhere; }
+    #frag-recent .rtable td:last-child { border-bottom: 0; }
+    #frag-recent .rtable td::before { content: attr(data-label); color: var(--muted);
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+    #frag-recent .rtable td.empty-cell { display: block; text-align: center; border: 0; padding: 16px 8px; }
+    #frag-recent .rtable td.empty-cell::before { content: none; }
+    #frag-recent .rtable td.recent-details { grid-template-columns: 1fr; }
+    #frag-recent .rtable td.recent-details::before { display: none; }
+  }
   #frag-latest { overflow: auto; scrollbar-width: thin; }
   th.num, td.num { text-align: right; }
   td.pos { color: var(--good); font-weight: 600; }
@@ -1255,9 +1295,9 @@ const CSS = `
 
   /* inspector */
   .viewer-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .mini-btn { font-size: 11px; background: var(--surface); color: var(--flame-ink); border: 1px solid var(--border-strong);
+  .mini-btn { font-size: 11px; background: var(--surface); color: var(--accent-ink); border: 1px solid var(--border-strong);
     border-radius: 7px; padding: 3px 9px; cursor: pointer; font-weight: 600; }
-  .mini-btn:hover { border-color: var(--flame); }
+  .mini-btn:hover { border-color: var(--accent); }
   .mini-label { font-size: 11px; color: var(--muted); }
   .frame { background: #fff; border: 1px solid var(--border-strong); border-radius: 8px; padding: 5px;
     overflow: auto; max-height: 360px; scrollbar-width: thin; }
@@ -1286,9 +1326,9 @@ const CSS = `
   .bar-track { flex: 1; min-width: 0; height: 16px; background: var(--surface-2); border-radius: 5px;
     overflow: hidden; border: 1px solid var(--border); }
   .bar-fill { height: 100%; border-radius: 5px 0 0 5px;
-    background: linear-gradient(90deg, #ffa766, var(--flame)); }
+    background: linear-gradient(90deg, #8fb1ff, var(--accent)); }
   .bar-val { width: 78px; flex: none; text-align: right; font-variant-numeric: tabular-nums;
-    color: var(--flame-ink); font-weight: 600; }
+    color: var(--accent-ink); font-weight: 600; }
   .bar-val.neg { color: var(--bad); }
   .axis { margin-top: 12px; color: var(--muted); font-size: 11px; }
   .empty { text-align: center; color: var(--muted); padding: 22px; font-size: 12px; }
@@ -1303,35 +1343,35 @@ const CSS = `
     line-height: 1; padding: 0; }
 `;
 
-// Client glue: window.pp (pin+source state) → hx-vals; preserves <details> open state across swaps; routes htmx errors to toast tray.
+// Client glue: window.fury (pin+source state) → hx-vals; preserves <details> open state across swaps; routes htmx errors to toast tray.
 const GLUE_JS = `
-  window.pp = { pin: null, src: false };
-  function ppPin(id) {
-    window.pp.pin = id;
-    htmx.trigger('#frag-latest', 'pp-refresh');
+  window.fury = { pin: null, src: false };
+  function furyPin(id) {
+    window.fury.pin = id;
+    htmx.trigger('#frag-latest', 'fury-refresh');
   }
-  function ppSource(on) {
-    window.pp.src = on;
-    htmx.trigger('#frag-latest', 'pp-refresh');
+  function furySource(on) {
+    window.fury.src = on;
+    htmx.trigger('#frag-latest', 'fury-refresh');
   }
   document.body.addEventListener('htmx:beforeSwap', function (ev) {
     const open = [];
     ev.detail.target.querySelectorAll('details[open][id]').forEach(function (d) { open.push(d.id); });
-    ev.detail.target.__ppOpen = open;
+    ev.detail.target.__furyOpen = open;
   });
   document.body.addEventListener('htmx:afterSwap', function (ev) {
-    (ev.detail.target.__ppOpen || []).forEach(function (id) {
+    (ev.detail.target.__furyOpen || []).forEach(function (id) {
       const d = document.getElementById(id);
       if (d) d.setAttribute('open', '');
     });
   });
   document.body.addEventListener('htmx:responseError', function (ev) {
-    window.dispatchEvent(new CustomEvent('pp-toast', {
+    window.dispatchEvent(new CustomEvent('fury-toast', {
       detail: { text: ev.detail.xhr.status + ' ' + ev.detail.requestConfig.path }
     }));
   });
   document.body.addEventListener('htmx:sendError', function (ev) {
-    window.dispatchEvent(new CustomEvent('pp-toast', {
+    window.dispatchEvent(new CustomEvent('fury-toast', {
       detail: { text: 'proxy unreachable: ' + ev.detail.requestConfig.path }
     }));
   });
@@ -1348,9 +1388,9 @@ const THEME_JS = `
         b.setAttribute('aria-label', b.dataset.toggleLabel || '');
       }
     }
-    window.ppTheme = function () {
+    window.furyTheme = function () {
       var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-      try { localStorage.setItem('pp-theme', next); } catch (e) {}
+      try { localStorage.setItem('furypipe-theme', next); } catch (e) {}
       apply(next);
     };
     apply(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
@@ -1385,52 +1425,53 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
   // Set theme before first paint (no flash): saved choice wins, else system preference.
   (function () {
     try {
-      var s = localStorage.getItem('pp-theme');
+      var s = localStorage.getItem('furypipe-theme');
       var dark = s ? s === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     } catch (e) { document.documentElement.dataset.theme = 'light'; }
   })();
-  window.ppLocale = ${JSON.stringify(activeLocale)};
+  window.furyLocale = ${JSON.stringify(activeLocale)};
   (function () {
     try {
       var params = new URLSearchParams(location.search);
       var requested = params.get('locale');
       var saved = localStorage.getItem('furypipe-locale');
-      if (!requested && saved && saved !== window.ppLocale) {
+      if (!requested && saved && saved !== window.furyLocale) {
         params.set('locale', saved);
         location.replace(location.pathname + '?' + params.toString() + location.hash);
         return;
       }
-      localStorage.setItem('furypipe-locale', window.ppLocale);
+      localStorage.setItem('furypipe-locale', window.furyLocale);
     } catch (e) {}
-    window.ppSetLocale = function (next) {
+    window.furySetLocale = function (next) {
       try { localStorage.setItem('furypipe-locale', next); } catch (e) {}
       var params = new URLSearchParams(location.search);
       params.set('locale', next);
       location.search = params.toString();
     };
     document.addEventListener('htmx:configRequest', function (event) {
-      if (event.detail && event.detail.parameters) event.detail.parameters.locale = window.ppLocale;
+      if (event.detail && event.detail.parameters) event.detail.parameters.locale = window.furyLocale;
     });
   })();
 </script>
 </head>
 <body>
+<div class="workspace">
 
 <header class="topbar">
   <div class="brand">
-    <span class="flame-dot"></span>
+    <span class="pulse-mark"></span>
     <div>
       <div class="wordmark-row">
-        <div class="wordmark">FuryPipe</div>
+        <div class="wordmark">FuryPipe <span class="brand-kicker">Control Plane</span></div>
         ${host ? `<span class="hostchip" title="${escapeHtml(t('dashboard.page.proxyHost'))}">${host}</span>` : ''}
       </div>
       <div class="tagline">${escapeHtml(dashboardT(activeLocale, 'dashboard.tagline'))}</div>
     </div>
   </div>
   <div class="controls">
-    <label class="hint">${escapeHtml(dashboardT(activeLocale, 'dashboard.language'))} <select class="mini-btn" onchange="ppSetLocale(this.value)">${languageOptions}</select></label>
-    <button type="button" id="theme-btn" class="theme-btn" onclick="ppTheme()"
+    <label class="hint">${escapeHtml(dashboardT(activeLocale, 'dashboard.language'))} <select class="mini-btn" onchange="furySetLocale(this.value)">${languageOptions}</select></label>
+    <button type="button" id="theme-btn" class="theme-btn" onclick="furyTheme()"
       data-dark-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeDark'))}"
       data-light-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeLight'))}"
       data-toggle-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeToggle'))}"
@@ -1440,13 +1481,21 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
   </div>
 </header>
 
-<details class="models-collapse">
+<nav class="command-nav" aria-label="${escapeHtml(t('dashboard.page.navLabel'))}">
+  <a href="#frag-session">${escapeHtml(t('dashboard.page.navOverview'))}</a>
+  <a href="#context">${escapeHtml(t('dashboard.page.navContext'))}</a>
+  <a href="#sessions">${escapeHtml(t('dashboard.page.navSessions'))}</a>
+  <a href="#control-plane">${escapeHtml(t('dashboard.page.navEvidence'))}</a>
+  <a href="#history">${escapeHtml(t('dashboard.page.navHistory'))}</a>
+</nav>
+
+<details class="connect-panel">
   <summary class="models-summary">${escapeHtml(t('dashboard.page.connectAgent'))} <span class="hint">${escapeHtml(t('dashboard.page.connectHint'))}</span></summary>
-  <p>${escapeHtml(t('dashboard.page.warpIntro'))}</p>
-  <pre>furypipe warp -- claude
-furypipe warp -- codex
-furypipe warp -- cursor-agent</pre>
-  <p>${escapeHtml(t('dashboard.page.aliasHelp'))}<br><code>furypipe warp -- pp</code> · <code>--route PATTERN=http://host:port</code> · <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code></p>
+  <p>${escapeHtml(t('dashboard.page.linkIntro'))}</p>
+  <pre>furypipe link claude
+furypipe link codex
+furypipe link cursor-agent</pre>
+  <p>${escapeHtml(t('dashboard.page.aliasHelp'))}<br><code>furypipe link pp</code> · <code>--route PATTERN=http://host:port</code> · <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code></p>
   <p>${escapeHtml(t('dashboard.page.pinIntro'))}</p>
   <pre>@furypipe pin be concise, no walls of text
 @furypipe unpin 2
@@ -1488,7 +1537,7 @@ npx furypipe</pre>
 
 <div id="frag-header" hx-get="/fragments/header" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
 
-<section class="section">
+<section class="section" id="context">
   <h2 class="section-head">${escapeHtml(t('dashboard.page.contextTitle'))} <span class="section-sub">${escapeHtml(t('dashboard.page.contextSub'))}</span></h2>
   <div class="xray">
     <div class="card">
@@ -1499,21 +1548,21 @@ npx furypipe</pre>
       <h3 class="card-head">${escapeHtml(t('dashboard.page.breakdown'))}</h3>
       <div id="frag-context-map" hx-get="/fragments/context-map" hx-trigger="load" hx-swap="innerHTML"></div>
       <h3 class="card-head spaced">${escapeHtml(t('dashboard.page.inspector'))}</h3>
-      <div id="frag-latest" hx-get="/fragments/latest" hx-trigger="load, every 2s, pp-refresh" hx-swap="innerHTML"
-           hx-vals='js:{pin: window.pp.pin == null ? "" : window.pp.pin, source: window.pp.src ? "1" : ""}'></div>
+      <div id="frag-latest" hx-get="/fragments/latest" hx-trigger="load, every 2s, fury-refresh" hx-swap="innerHTML"
+           hx-vals='js:{pin: window.fury.pin == null ? "" : window.fury.pin, source: window.fury.src ? "1" : ""}'></div>
     </div>
   </div>
 </section>
 
-<section class="section">
+<section class="section" id="sessions">
   <h2 class="section-head">${escapeHtml(t('dashboard.page.topSessions'))} <span class="section-sub">${escapeHtml(t('dashboard.page.bySaved'))}</span></h2>
   <div class="card">
     <div id="frag-sessions" hx-get="/fragments/sessions" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
   </div>
 </section>
 
-<section class="section">
-  <h2 class="section-head">Control Room V5 <span class="section-sub">${escapeHtml(t('dashboard.page.controlRoomSub'))}</span></h2>
+<section class="section" id="control-plane">
+  <h2 class="section-head">FuryPipe Control Plane <span class="section-sub">${escapeHtml(t('dashboard.page.controlRoomSub'))}</span></h2>
   <div class="card">
     <div id="frag-control-room" hx-get="/fragments/control-room" hx-trigger="load, every 5s" hx-swap="innerHTML">
       <div class="status">${escapeHtml(t('dashboard.page.loadingControlRoom'))}</div>
@@ -1521,15 +1570,17 @@ npx furypipe</pre>
   </div>
 </section>
 
-<section class="section">
-  <h2 class="section-head">Full history <span class="section-sub">every event on disk</span></h2>
+<section class="section" id="history">
+  <h2 class="section-head">${escapeHtml(t('dashboard.page.historyTitle'))} <span class="section-sub">${escapeHtml(t('dashboard.page.historySub'))}</span></h2>
   <div class="card">
     <div id="frag-stats" hx-get="/fragments/stats" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
   </div>
 </section>
 
+</div>
+
 <div class="tray" x-data="{ toasts: [], next: 1 }"
-     @pp-toast.window="const id = next++; toasts.push({ id, text: $event.detail.text }); setTimeout(() => toasts = toasts.filter(t => t.id !== id), 5000)">
+     @fury-toast.window="const id = next++; toasts.push({ id, text: $event.detail.text }); setTimeout(() => toasts = toasts.filter(t => t.id !== id), 5000)">
   <template x-for="t in toasts" :key="t.id">
     <div class="toast"><span x-text="t.text"></span><button type="button" @click="toasts = toasts.filter(x => x.id !== t.id)" aria-label="dismiss">&times;</button></div>
   </template>

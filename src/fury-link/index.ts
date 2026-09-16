@@ -1,30 +1,23 @@
 /**
- * `furypipe warp -- <agent-command>`
+ * FuryLink connects an AI CLI to the local FuryPipe Control Plane through a
+ * narrow loopback CONNECT bridge. Only provider inference routes selected by
+ * FuryPipe are re-originated; unrelated traffic remains direct.
  *
- * Runs the agent behind a CONNECT proxy that decrypts api.anthropic.com and
- * re-points only /v1/messages at the local FuryPipe proxy. The agent never sees a
- * custom ANTHROPIC_BASE_URL, so the client-side "firstParty" checks that hide
- * /remote-control (and disable claude.ai connectors) still pass, while FuryPipe
- * gets the one path it transforms.
- *
- * Compare the manual equivalent, which needs two extra tools and a CA trusted
- * process-wide:
- *
- *   mitmdump --map-remote '|^https://api\.anthropic\.com/v1/messages|http://127.0.0.1:48721/v1/messages'
- *   HTTPS_PROXY=http://127.0.0.1:8080 NODE_EXTRA_CA_CERTS=~/.mitmproxy/mitmproxy-ca-cert.pem claude
+ * The child keeps its normal provider-facing configuration while FuryPipe owns
+ * the context transformation, evidence and routing decisions.
  */
 
 import { spawn, spawnSync } from 'node:child_process';
 import { accessSync, constants, existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 
 import { CertificateAuthority } from './ca.js';
-import { createWarpHandlers } from './connect.js';
+import { createFuryLinkHandlers } from './connect.js';
 import { parseRoute, routeDestination, type Route } from './route.js';
 
-export interface WarpRuntimeOptions {
+export interface FuryLinkRuntimeOptions {
   /** Port the FuryPipe proxy is already serving on: where matches are sent. */
   port: number;
   /**
@@ -35,9 +28,55 @@ export interface WarpRuntimeOptions {
   routes?: readonly string[];
 }
 
-export interface WarpRuntime {
+export interface FuryLinkRuntime {
   /** Bind the child's proxy port, then spawn the child. */
   launch: (command: string[]) => void;
+}
+
+
+/**
+ * Read an environment variable without relying on Node's special
+ * case-insensitive `process.env` object on Windows.
+ *
+ * FuryLink intentionally clones process.env before adding child-scoped proxy
+ * variables. A spread copy is an ordinary object: `Path` no longer answers a
+ * `PATH` lookup. Windows runners and user shells commonly preserve `Path`,
+ * so executable discovery must normalize key casing explicitly.
+ */
+export function furyLinkEnvValue(
+  env: NodeJS.ProcessEnv,
+  key: string,
+): string | undefined {
+  const exact = env[key];
+  if (exact !== undefined) return exact;
+  const wanted = key.toLowerCase();
+  for (const [candidate, value] of Object.entries(env)) {
+    if (candidate.toLowerCase() === wanted) return value;
+  }
+  return undefined;
+}
+
+
+/**
+ * Return the filenames Windows itself considers runnable from PATH.
+ *
+ * Node distributions on Windows ship both `npm` (a POSIX shell shim) and
+ * `npm.cmd`. Merely checking whether the bare file exists selects the wrong
+ * one. For separator-free commands, Windows command discovery is PATHEXT-based;
+ * an explicit extension is preserved as-is.
+ */
+export function furyLinkPathCandidates(
+  name: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  if (platform !== 'win32') return [name];
+  const pathExt = (furyLinkEnvValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD')
+    .split(';')
+    .filter(Boolean);
+  const lower = name.toLowerCase();
+  const alreadyHasWindowsExt = pathExt.some((ext) => lower.endsWith(ext.toLowerCase()));
+  return alreadyHasWindowsExt ? [name] : pathExt.map((ext) => name + ext);
 }
 
 /**
@@ -57,7 +96,7 @@ function defaultRoutes(port: number): Route[] {
   ];
 }
 
-export function createWarpRuntime(options: WarpRuntimeOptions): WarpRuntime {
+export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLinkRuntime {
   const { port } = options;
   // Explicit rules first: an operator route for a specific host:port must win
   // over anything built in.
@@ -67,7 +106,7 @@ export function createWarpRuntime(options: WarpRuntimeOptions): WarpRuntime {
   ];
   const ca = CertificateAuthority.loadOrCreate(join(homedir(), '.furypipe'));
 
-  const handlers = createWarpHandlers({
+  const handlers = createFuryLinkHandlers({
     routes,
     ca,
     // The child inherits this terminal and Claude Code draws a full-screen TUI
@@ -76,92 +115,101 @@ export function createWarpRuntime(options: WarpRuntimeOptions): WarpRuntime {
     // silent when a human is looking at the agent. events.jsonl records the
     // request either way.
     onDivert: (host, path, target) => {
-      if (!process.stdout.isTTY) console.error(`[furypipe] warp: ${host}${path} → ${target}`);
+      if (!process.stdout.isTTY) console.error(`[furypipe] link: ${host}${path} → ${target}`);
     },
   });
 
-  // warp's own listener, and the only reason a port is involved at all: the
+  // FuryLink's child-facing listener, and the only reason a port is involved at all: the
   // child is configured through HTTPS_PROXY, which can only name a host:port.
   // The kernel picks it, nothing else needs to know it, so there is nothing to
   // collide with a FuryPipe already running.
   const proxy = createServer(handlers.handleAbsoluteForm);
   proxy.on('connect', handlers.handleConnect);
 
+  const hasPathSyntax = (name: string): boolean => name.includes('/') || name.includes('\\');
+
   /**
-   * Does the user's interactive shell consider this word an alias? Both zsh
-   * ("cc is an alias for ...") and bash ("cc is aliased to ...") answer through
-   * `type`, and only an interactive shell has sourced the rc file that defines
-   * one. Costs a single shell start at launch.
+   * Resolve a command without delegating correctness to a shell.
+   *
+   * Windows uses ';' as PATH delimiter and PATHEXT to expose npm-installed
+   * *.cmd launchers. The former implementation split PATH on ':' and then fell
+   * through to /bin/sh, which made common Windows agent commands impossible.
+   */
+  const resolveOnPath = (name: string, env: NodeJS.ProcessEnv): string | null => {
+    if (hasPathSyntax(name)) return existsSync(name) ? name : null;
+
+    const windows = process.platform === 'win32';
+    const candidates = furyLinkPathCandidates(name, env);
+
+    for (const dir of (furyLinkEnvValue(env, 'PATH') ?? '').split(delimiter)) {
+      if (!dir) continue;
+      for (const candidate of candidates) {
+        const full = join(dir, candidate);
+        try {
+          if (windows) {
+            if (existsSync(full)) return full;
+          } else {
+            accessSync(full, constants.X_OK);
+            return full;
+          }
+        } catch {
+          // not here, keep looking
+        }
+      }
+    }
+    return null;
+  };
+
+  /**
+   * POSIX-only alias probe. Windows aliases/functions are shell-host specific
+   * and FuryLink deliberately resolves concrete PATH launchers there.
    */
   const shellAliasTarget = (name: string, shell: string, env: NodeJS.ProcessEnv): string | null => {
-    if (name.includes('/')) return null;
+    if (process.platform === 'win32' || hasPathSyntax(name)) return null;
     const probe = spawnSync(shell, ['-ic', `type -- ${name}`], { encoding: 'utf8', env });
     const match = /\bis (?:an alias for|aliased to)\s+(.+)$/m.exec(probe.stdout ?? '');
     if (!match) return null;
-    // bash wraps the expansion in `backtick quote'; zsh leaves it bare.
     return match[1]!.trim().replace(/^`/, '').replace(/'$/, '');
   };
 
-  /** Minimal `which`: is this bare name an executable on PATH? */
-  const whichSync = (name: string, env: NodeJS.ProcessEnv): boolean => {
-    if (name.includes('/')) return false; // a path, already handled by existsSync
-    for (const dir of (env.PATH ?? '').split(':')) {
-      if (!dir) continue;
-      try {
-        accessSync(join(dir, name), constants.X_OK);
-        return true;
-      } catch {
-        // not here, keep looking
-      }
-    }
-    return false;
-  };
-
-  /** Can this word actually be executed: a path that exists, or a name on PATH. */
   const isRunnable = (word: string, env: NodeJS.ProcessEnv): boolean =>
-    word.includes('/') ? existsSync(word) : whichSync(word, env);
+    resolveOnPath(word, env) !== null;
 
   /** POSIX single-quote: safe for anything except a single quote itself. */
   const shellQuote = (arg: string): string => `'${arg.replaceAll("'", `'\\''`)}'`;
 
   /**
-   * Run the child, falling back to the user's interactive shell when the
-   * command is not an executable on PATH.
+   * Resolve and launch an agent on Windows, macOS and Linux.
    *
-   * spawn() is execvp, which only knows files. An alias like `cc` exists solely
-   * inside an interactive zsh, and `sh -c` will not find it either: aliases come
-   * from ~/.zshrc, which only an *interactive* shell sources. So the fallback is
-   * `$SHELL -ic`, which loads the rc file and expands the alias — including any
-   * env assignments baked into it, which no PATH lookup could have carried.
-   *
-   * Direct spawn stays the fast path: the shell is only involved when execvp
-   * would have failed outright.
+   * Windows npm shims are .cmd/.bat files and therefore need cmd.exe semantics;
+   * Node's shell mode is used only for those resolved launcher files. Native
+   * executables stay shell-free. POSIX keeps the interactive-shell alias
+   * fallback used by Claude aliases while preferring a concrete executable.
    */
   const spawnResolved = (command: string[], env: NodeJS.ProcessEnv) => {
     const direct = { stdio: 'inherit', env } as const;
+    const first = command[0]!;
+    const resolved = resolveOnPath(first, env);
+
+    if (process.platform === 'win32') {
+      if (resolved && /\.(?:cmd|bat)$/i.test(resolved)) {
+        return spawn(resolved, command.slice(1), { ...direct, shell: true });
+      }
+      return spawn(resolved ?? first, command.slice(1), direct);
+    }
+
     const shell = env.SHELL || '/bin/sh';
-    // An alias can shadow a real binary: `cc` is Apple clang on PATH and a
-    // Claude Code alias in the user's zsh, so PATH alone would silently run
-    // the wrong program. Ask the interactive shell what the word means first.
-    const alias = shellAliasTarget(command[0]!, shell, env);
-    // But a stale alias must not shadow a working binary either. An alias
-    // pointing at an uninstalled path (`claude` -> /opt/homebrew/bin/claude
-    // after a move to a node-managed install) would otherwise fail the launch
-    // outright, with a real claude sitting on PATH. An env-assignment prefix
-    // (`FOO=1 claude`) is unverifiable, so it is taken at its word.
+    const alias = shellAliasTarget(first, shell, env);
     const aliasWord = alias?.split(/\s+/)[0] ?? '';
     const aliasUsable = alias !== null && (aliasWord.includes('=') || isRunnable(aliasWord, env));
     if (alias !== null && !aliasUsable) {
-      console.error(`[furypipe] warp: ignoring stale alias ${command[0]} → ${aliasWord} (not executable)`);
+      console.error(`[furypipe] link: ignoring stale alias ${first} → ${aliasWord} (not executable)`);
     }
-    if (!aliasUsable && isRunnable(command[0]!, env)) {
-      return spawn(command[0]!, command.slice(1), direct);
+    if (!aliasUsable && resolved) {
+      return spawn(resolved, command.slice(1), direct);
     }
-    console.error(`[furypipe] warp: resolving ${command[0]} via interactive shell fallback`);
-    // The command word is deliberately left unquoted: a shell only expands
-    // aliases on unquoted words, so quoting it would defeat the entire point of
-    // this fallback. Arguments are still quoted — they are data, never aliases.
-    const script = [command[0]!, ...command.slice(1).map(shellQuote)].join(' ');
+    console.error(`[furypipe] link: resolving ${first} via interactive shell fallback`);
+    const script = [first, ...command.slice(1).map(shellQuote)].join(' ');
     return spawn(shell, ['-ic', script], direct);
   };
 
@@ -169,7 +217,7 @@ export function createWarpRuntime(options: WarpRuntimeOptions): WarpRuntime {
     const env = { ...process.env };
     // The agent must believe it is talking to api.anthropic.com. Both of these
     // would defeat that, and either may be left over in the user's shell from a
-    // previous non-warp session.
+    // previous non-FuryLink session.
     delete env.ANTHROPIC_BASE_URL;
     delete env.ANTHROPIC_UNIX_SOCKET;
     env.HTTP_PROXY = proxyUrl;
@@ -193,7 +241,7 @@ export function createWarpRuntime(options: WarpRuntimeOptions): WarpRuntime {
     env.REQUESTS_CA_BUNDLE = ca.bundlePath; // Python requests / httpx
 
     const child = spawnResolved(command, env);
-    // The child's proxy and CA point at this process. If warp dies for any
+    // The child's proxy and CA point at this process. If FuryLink exits for any
     // reason the child is reparented to init and keeps running against a closed
     // port, so every request fails and the agent looks hung instead of exiting.
     // Take it with us on every exit path, including a crash.
@@ -204,7 +252,7 @@ export function createWarpRuntime(options: WarpRuntimeOptions): WarpRuntime {
     process.on('exit', () => {
       if (childLive) child.kill('SIGTERM');
     });
-    // A connection dying is not a warp failure. The upstream resets, the proxy
+    // A connection dying is not a FuryLink failure. The upstream resets, the proxy
     // gets restarted, a keep-alive socket goes away between requests — all of
     // that arrives here as an errno on a socket nobody was listening to at that
     // instant. Exiting on it would take the agent down with us (see the exit
@@ -231,16 +279,16 @@ export function createWarpRuntime(options: WarpRuntimeOptions): WarpRuntime {
     const die = (err: unknown): void => {
       const code = (err as NodeJS.ErrnoException | undefined)?.code;
       if (typeof code === 'string' && NET_ERRNO.has(code)) {
-        console.error(`[furypipe] warp: connection error ${code} (continuing)`);
+        console.error(`[furypipe] link: connection error ${code} (continuing)`);
         return;
       }
-      console.error(`[furypipe] warp: ${err instanceof Error ? err.stack : String(err)}`);
+      console.error(`[furypipe] link: ${err instanceof Error ? err.stack : String(err)}`);
       process.exit(1);
     };
     process.on('uncaughtException', die);
     process.on('unhandledRejection', die);
     child.on('error', (err) => {
-      console.error(`[furypipe] warp: cannot run ${command[0]}: ${err.message}`);
+      console.error(`[furypipe] link: cannot run ${command[0]}: ${err.message}`);
       process.exit(127);
     });
     // SIGHUP and SIGQUIT matter as much as the interactive two: closing the
@@ -248,11 +296,11 @@ export function createWarpRuntime(options: WarpRuntimeOptions): WarpRuntime {
     // its proxy pointed at a port that is about to close.
     const forwarded = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'] as const;
     child.on('exit', (code, signal) => {
-      // Reproduce the child's own exit status so warp is transparent to callers.
+      // Reproduce the child's own exit status so FuryLink is transparent to callers.
       // Re-raising means routing the signal back through our own handlers, so
       // drop them first: Ctrl-C kills the child with SIGINT, and without this
       // the re-raise just re-enters the forwarder, kills an already-dead child
-      // and leaves warp running forever.
+      // and leaves FuryLink running forever.
       if (signal) {
         for (const s of forwarded) process.removeAllListeners(s);
         process.kill(process.pid, signal);
@@ -267,33 +315,35 @@ export function createWarpRuntime(options: WarpRuntimeOptions): WarpRuntime {
 
   const launch = (command: string[]): void => {
     if (command.length === 0) {
-      console.error('[furypipe] warp: nothing to run — usage: furypipe warp -- <command> [args...]');
+      console.error('[furypipe] link: nothing to run — usage: furypipe link <command> [args...]');
       process.exit(2);
     }
     // Startup banner goes to stderr: stdout belongs to the child, so a caller
     // piping the agent's output gets the agent's bytes and nothing of ours.
     for (const route of routes) {
-      console.error(`[furypipe] warp route → ${route.pattern} → ${routeDestination(route)}`);
+      console.error(`[furypipe] FuryLink route → ${route.pattern} → ${routeDestination(route)}`);
     }
-    console.error(`[furypipe] warp CA → ${ca.certPath}`);
+    console.error(`[furypipe] FuryLink CA → ${ca.certPath}`);
     if (ca.systemRootsPath) {
-      console.error(`[furypipe] warp CA bundle → ${ca.bundlePath} (+ system roots from ${ca.systemRootsPath})`);
+      console.error(`[furypipe] FuryLink CA bundle → ${ca.bundlePath} (+ system roots from ${ca.systemRootsPath})`);
+    } else if (ca.bundleIncludesPublicRoots) {
+      console.error(`[furypipe] FuryLink CA bundle → ${ca.bundlePath} (+ Node built-in public roots)`);
     } else {
       console.error(
-        `[furypipe] warp CA bundle → ${ca.bundlePath} (no system root bundle found; ` +
-          `non-FuryPipe HTTPS in the child may fail verification — set SSL_CERT_FILE to your OS bundle before warp)`,
+        `[furypipe] FuryLink CA bundle → ${ca.bundlePath} (no public root bundle available; ` +
+          `non-FuryPipe HTTPS in the child may fail verification)`,
       );
     }
-    console.error(`[furypipe] warp exec → ${command.join(' ')}`);
+    console.error(`[furypipe] FuryLink exec → ${command.join(' ')}`);
 
     proxy.on('error', (err) => {
-      console.error(`[furypipe] warp: proxy listener failed: ${err.message}`);
+      console.error(`[furypipe] link: proxy listener failed: ${err.message}`);
       process.exit(1);
     });
     proxy.listen(0, '127.0.0.1', () => {
       const address = proxy.address();
       const proxyUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
-      console.error(`[furypipe] warp proxy → ${proxyUrl} (child only)`);
+      console.error(`[furypipe] FuryLink proxy → ${proxyUrl} (child only)`);
       spawnChild(command, proxyUrl);
     });
   };

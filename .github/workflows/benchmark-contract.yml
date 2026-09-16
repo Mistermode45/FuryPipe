@@ -2,7 +2,7 @@ name: Benchmark Contract
 
 on:
   push:
-    branches: [v5-chatgpt-security, v5-production-hardening]
+    branches: [v5-codex-review-clean, v5-chatgpt-security, v5-production-hardening]
   pull_request:
   workflow_dispatch:
 

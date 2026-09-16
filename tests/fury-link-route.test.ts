@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { hostCouldMatch, matchRoute, parseRoute, rewriteUrl } from '../src/warp/route.js';
+import { hostCouldMatch, matchRoute, parseRoute, rewriteUrl } from '../src/fury-link/route.js';
 
-describe('warp route port selection', () => {
+describe('FuryLink route port selection', () => {
   const front = 'http://127.0.0.1:48721';
 
   it('matches a pattern with no port against any port', () => {

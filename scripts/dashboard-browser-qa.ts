@@ -363,7 +363,7 @@ async function runCase(browser, dashboard, testCase) {
 
     const theme = await cdp.evaluate(`(() => {
       const before = document.documentElement.dataset.theme;
-      window.ppTheme();
+      window.furyTheme();
       const after = document.documentElement.dataset.theme;
       return { before, after };
     })()`);

@@ -8,6 +8,7 @@ import {
   persistSetupLocale,
   readConfiguredSetupLocale,
   renderSetupScreen,
+  resolveSetupKey,
 } from '../src/setup-tui.js';
 
 const tempDirs: string[] = [];
@@ -33,12 +34,14 @@ describe('FuryPipe setup TUI', () => {
     });
 
     expect(rendered).toContain('FURYPIPE');
-    expect(rendered).toContain('GOVERNED AI WORKFLOWS');
-    expect(rendered).toContain('Bienvenue dans FuryPipe');
+    expect(rendered).toContain('CONTROL PLANE');
+    expect(rendered).toContain('FURYLINK');
+    expect(rendered).toContain('VISUAL');
+    expect(rendered).toContain('Choisissez votre environnement');
     expect(rendered).toContain('Français');
     expect(rendered).toContain('English');
-    expect(rendered).toContain('[1] Langue');
-    expect(rendered).toContain('[5] Terminé');
+    expect(rendered).toContain('[01 LANGUE]');
+    expect(rendered).toContain('[05 PRÊT]');
     expect(rendered).not.toContain('\x1b[');
   });
 
@@ -52,10 +55,10 @@ describe('FuryPipe setup TUI', () => {
       configFile: '/tmp/furypipe/config.json',
     });
 
-    expect(rendered).toContain('FuryPipe setup saved');
+    expect(rendered).toContain('ENVIRONMENT READY');
     expect(rendered).toContain('furypipe doctor');
     expect(rendered).toContain('furypipe start');
-    expect(rendered).toContain('READY // FuryPipe is configured.');
+    expect(rendered).toContain('READY  FuryPipe is configured.');
   });
 
   it('parses supported setup arguments and rejects unknown languages', () => {
@@ -68,6 +71,19 @@ describe('FuryPipe setup TUI', () => {
     });
     expect(() => parseSetupArgs(['--lang=de'])).toThrow(/unsupported setup language/);
     expect(() => parseSetupArgs(['--wat'])).toThrow(/unknown setup option/);
+  });
+
+  it('handles Windows special-key events that have no printable input', () => {
+    expect(resolveSetupKey(undefined, { name: 'enter' })).toBe('accept');
+    expect(resolveSetupKey(undefined, { name: 'up' })).toBe('fr');
+    expect(resolveSetupKey(undefined, { name: 'down' })).toBe('en');
+    expect(resolveSetupKey(undefined, { name: 'escape' })).toBe('cancel');
+    expect(resolveSetupKey(undefined, undefined)).toBeNull();
+  });
+
+  it('accepts printable shortcuts without depending on key metadata', () => {
+    expect(resolveSetupKey('F', undefined)).toBe('fr');
+    expect(resolveSetupKey('2', undefined)).toBe('en');
   });
 
   it('detects French and otherwise falls back to English', () => {

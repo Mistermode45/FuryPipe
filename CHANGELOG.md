@@ -11,7 +11,18 @@ behavioral changes, patch = fixes).
 
 ## Unreleased
 
-_No changes yet._
+### Changed
+
+- Introduced **FuryLink** as the FuryPipe-native agent connectivity surface. `furypipe link codex` and equivalent commands no longer require a `--` separator on Windows.
+- Reworked the dashboard into the **FuryPipe Control Plane** with a midnight navy/black dark palette and cream/ivory light palette, FuryPipe-native navigation and terminology.
+- Added a provider-priced **Visual Planner** that evaluates bounded render geometries and keeps the lowest estimated vision-token plan, with the incumbent geometry always retained as a candidate.
+- Switched PNG output to low-overhead adaptive lossless filtering: Average remains the baseline and repeated rows use Up/zero residuals, preserving byte-exact decoded pixels without the CPU regression of exhaustive five-filter scoring.
+
+### Fixed
+
+- Fixed the Windows interactive setup crash caused by keypress events whose printable input is undefined.
+- Fixed cross-platform agent command resolution so Windows `.cmd` / `.bat` npm shims and PATHEXT launchers are handled explicitly.
+- Preserved public TLS trust in FuryLink child processes on Windows by falling back to Node's built-in public root certificates when the OS exposes no PEM bundle; replacement trust variables no longer receive a FuryLink-CA-only bundle.
 
 ## 0.15.0 — 2026-09-16
 

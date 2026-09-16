@@ -331,7 +331,7 @@ async function runDashboardCase(
 
     const theme = await page.evaluate(() => {
       const before = document.documentElement.dataset.theme;
-      (window as Window & { ppTheme?: () => void }).ppTheme?.();
+      (window as Window & { furyTheme?: () => void }).furyTheme?.();
       return { before, after: document.documentElement.dataset.theme };
     });
     assert(theme.before !== theme.after, `${name}: theme toggle did not change theme`);

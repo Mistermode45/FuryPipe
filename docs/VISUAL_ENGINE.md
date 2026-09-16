@@ -1,0 +1,95 @@
+# FuryPipe Visual Engine
+
+The **FuryPipe Visual Engine** is the context-optimization layer that decides when eligible text should stay native and when a provider-priced visual representation is cheaper without violating the runtime's fidelity rules.
+
+It is not an unconditional text-to-image converter. A transformation must pass the same policy, exactness, provider-cap and profitability checks as the rest of FuryPipe.
+
+## Pipeline
+
+1. **Context classification**
+   - identify tool output, structured data, code, logs, markdown and ordinary text;
+   - preserve sensitivity / exactness evidence without retaining extracted secret values.
+
+2. **Exactness protection**
+   - ExactGuard and caller `keepSharp` rules run before lossy representation changes;
+   - protected identifiers, paths, hashes, versions and numbers can stay native or be represented by the adjacent exact-value factsheet / recovery path.
+
+3. **Lossless text compaction**
+   - remove trailing horizontal whitespace;
+   - collapse redundant blank-line runs while keeping indentation and content order.
+
+4. **Provider-priced Visual Planner**
+   - start from the model profile's validated font, maximum width and maximum page height;
+   - evaluate a bounded set of alternative column widths;
+   - price each candidate with that provider/model's image-token regime;
+   - keep the incumbent natural width as a candidate, so the planner never deliberately selects a plan with a higher estimated image-token cost;
+   - on equal cost, prefer fewer pages, then the wider layout for readability.
+
+5. **Profitability gate**
+   - compare the candidate image path against the text path;
+   - include cache warm-state penalties where evidence exists;
+   - pass through as text when the visual path is not profitable.
+
+6. **Deterministic rendering**
+   - model profiles select the measured font/geometry;
+   - Unicode misses are surfaced or escaped rather than silently invented;
+   - original hard line breaks remain represented by the visible reflow marker when reflow is active.
+
+7. **Fast adaptive lossless PNG encoding**
+   - keep the measured Average predictor as the default for glyph-bearing rows;
+   - switch byte-identical repeated rows to PNG Up, producing zero residuals without an exhaustive predictor search;
+   - pixels decoded from the PNG are byte-identical to the renderer framebuffer;
+   - the optimization is retained only when it does not trade wire size for a material render-latency regression.
+
+8. **Wire safety**
+   - account for caller-owned images before FuryPipe adds any;
+   - enforce provider image-count headroom and the configured decoded-image byte budget;
+   - admit semantic image groups atomically; if a group does not fit, keep its source text.
+
+9. **Evidence**
+   - emit gate, image-count, image-byte, cache-prefix and recovery telemetry;
+   - measured savings remain distinct from estimates and from unverified claims.
+
+## Model profiles
+
+Geometry and image-token pricing are model data, not hard-coded assumptions shared across providers.
+
+Examples already represented in the runtime include:
+
+- Claude / Anthropic patch-28 pricing and tier-specific resize limits;
+- Gemini measured flat image-token profiles;
+- OpenAI patch/tile profiles, including the dedicated GPT-5.6 Sol geometry;
+- additional provider profiles only where FuryPipe has an explicit cost/geometry basis.
+
+An unknown or misresolved provider family must not inherit another provider's optimistic pricing.
+
+## Fidelity modes
+
+The Visual Engine deliberately separates **density** from **legibility**.
+
+Some model profiles can read the dense Spleen geometry accurately; others use a larger JetBrains Mono profile where measured exact-recall evidence requires it. FuryPipe does not assume that one renderer is best for every model.
+
+The Visual Planner changes page width, not glyph scale. A narrower candidate wraps into more rows; it does not make glyphs smaller. The profitability calculation includes the resulting page count.
+
+## Safety invariants
+
+The following invariants are release blockers:
+
+- `ExactGuard` cannot be weakened to improve a benchmark.
+- Provider count/byte caps cannot be bypassed to force compression.
+- A Visual Planner candidate cannot be accepted on an invented provider cost.
+- PNG optimization must remain pixel-lossless.
+- `recommended != installed != connected != approved != executable != executed != verified`.
+- `released != deployed`.
+
+## Public surfaces
+
+The Visual Engine is controlled and inspected through:
+
+- `furypipe setup`
+- `furypipe doctor`
+- `furypipe start`
+- the FuryPipe Control Plane dashboard
+- FuryLink (`furypipe link <agent>`) for child-agent connectivity
+
+The runtime bypass switch disables visual transformation for comparison/debugging without changing the rest of FuryPipe's identity or provider routing.
