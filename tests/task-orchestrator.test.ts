@@ -5,7 +5,7 @@ import {
   BUILTIN_FURY_PLUGIN_BUNDLES,
   createFuryPluginBundleRegistry,
 } from '../src/plugin-bundles.js';
-import { prepareFuryTask, runPreparedFuryTask } from '../src/task-orchestrator.js';
+import { executeFuryTask, prepareFuryTask, runPreparedFuryTask } from '../src/task-orchestrator.js';
 import { createCapabilityRegistry } from '../src/ecosystem/registry.js';
 import { normalizeCapabilityCandidate } from '../src/ecosystem/normalize.js';
 import { evaluateFuryTrust } from '../src/fury-trust.js';
@@ -259,6 +259,43 @@ describe('FuryPipe Task Orchestrator', () => {
         invocation: 'automatic',
         status: 'executed',
         method: 'search',
+      }),
+    ]));
+  });
+
+  it('executeFuryTask performs planning plus real capability execution in one governed call', async () => {
+    const skills = createAgentSkillRegistry();
+    let executions = 0;
+    registerSkill(skills, 'one-call-repo-analysis', 'repository', 'research', () => { executions += 1; });
+
+    const execution = await executeFuryTask({
+      objective: 'Inspect the repository through the one-call governed path.',
+      furyPrompt: { sections: { task: 'Inspect repository.' } },
+      capability: {
+        skillRegistry: skills,
+        universalAnalyzer: {
+          analyze: async () => ({
+            domainId: 'repository-inspection',
+            requiredSkillCategories: ['repository'],
+            preferredSkillIds: ['one-call-repo-analysis'],
+          }),
+        },
+      },
+    }, {
+      executors: stageExecutors(),
+    });
+
+    expect(execution.format).toBe('furypipe-executed-task/v1');
+    expect(execution.prepared.autoInvokeSkillsByStage.research).toContain('one-call-repo-analysis');
+    expect(executions).toBe(1);
+    expect(execution.run.status).toBe('completed');
+    expect(execution.run.capabilityExecutions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'skill',
+        id: 'one-call-repo-analysis',
+        stage: 'research',
+        invocation: 'automatic',
+        status: 'executed',
       }),
     ]));
   });
