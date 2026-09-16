@@ -693,28 +693,29 @@ export function renderRecentFragment(p: RecentPayload, locale = 'en'): string {
                   readRate: CACHE_READ_RATE,
                 }))}">${escapeHtml(t('dashboard.recent.create'))}</span>`
               : '';
+            const savedLabel = escapeHtml(t('dashboard.recent.savedLost'));
             const savedCell = saved == null
-              ? `<td class="num muted">—</td>`
+              ? `<td class="num muted" data-label="${savedLabel}">—</td>`
               : saved > 0
-                ? `<td class="num pos">${numFmt(saved)}</td>`
+                ? `<td class="num pos" data-label="${savedLabel}">${numFmt(saved)}</td>`
                 : saved < 0
-                  ? `<td class="num neg">${numFmt(saved)}${createNote}</td>`
-                  : `<td class="num">0</td>`;
+                  ? `<td class="num neg" data-label="${savedLabel}">${numFmt(saved)}${createNote}</td>`
+                  : `<td class="num" data-label="${savedLabel}">0</td>`;
             const imaged = e.cc_added
               ? `<span class="badge badge-img">${escapeHtml(t('dashboard.recent.image'))}</span>`
               : `<span class="badge badge-txt">${escapeHtml(t('dashboard.recent.text'))}</span>`;
             return (
               `<tr>` +
-              `<td class="muted">${i + 1}</td>` +
-              `<td><span class="pill pill-${statusCls(e.status)}">${e.status}</span></td>` +
-              `<td class="endp">${escapeHtml(shortPath(e.path))}</td>` +
-              `<td>${e.model ? `<code>${escapeHtml(e.model)}</code>` : '<span class="muted">—</span>'}</td>` +
-              `<td>${imaged}</td>` +
-              `<td class="num">${e.cache_read != null ? numFmt(e.cache_read) : '—'}</td>` +
-              `<td class="num">${e.baseline_input != null ? numFmt(e.baseline_input) : '—'}</td>` +
-              `<td class="num">${e.actual_input != null ? numFmt(e.actual_input) : '—'}</td>` +
+              `<td class="muted" data-label="#">${i + 1}</td>` +
+              `<td data-label="${escapeHtml(t('dashboard.recent.result'))}"><span class="pill pill-${statusCls(e.status)}">${e.status}</span></td>` +
+              `<td class="endp" data-label="${escapeHtml(t('dashboard.recent.endpoint'))}">${escapeHtml(shortPath(e.path))}</td>` +
+              `<td data-label="${escapeHtml(t('dashboard.recent.model'))}">${e.model ? `<code>${escapeHtml(e.model)}</code>` : '<span class="muted">—</span>'}</td>` +
+              `<td data-label="${escapeHtml(t('dashboard.recent.sentAs'))}">${imaged}</td>` +
+              `<td class="num" data-label="${escapeHtml(t('dashboard.recent.cacheHits'))}">${e.cache_read != null ? numFmt(e.cache_read) : '—'}</td>` +
+              `<td class="num" data-label="${escapeHtml(t('dashboard.recent.asText'))}">${e.baseline_input != null ? numFmt(e.baseline_input) : '—'}</td>` +
+              `<td class="num" data-label="${escapeHtml(t('dashboard.recent.sent'))}">${e.actual_input != null ? numFmt(e.actual_input) : '—'}</td>` +
               savedCell +
-              `<td class="num">${viewLink}</td>` +
+              `<td class="num recent-details" data-label="${escapeHtml(t('dashboard.recent.details'))}">${viewLink}</td>` +
               `</tr>`
             );
           })
@@ -1257,6 +1258,24 @@ const CSS = `
      they fit. The table keeps width:100% so it fills at wide widths. */
   #frag-recent, #frag-stats { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
   #frag-recent table, #frag-stats table { min-width: max-content; }
+  @media (max-width: 560px) {
+    #frag-recent { overflow: visible; }
+    #frag-recent table.rtable { min-width: 0; display: block; }
+    #frag-recent .rtable thead { display: none; }
+    #frag-recent .rtable tbody { display: grid; gap: 10px; }
+    #frag-recent .rtable tr { display: block; padding: 6px 10px; border: 1px solid var(--border);
+      border-radius: 12px; background: color-mix(in srgb, var(--surface) 94%, var(--accent-tint)); }
+    #frag-recent .rtable td { display: grid; grid-template-columns: minmax(92px, .8fr) minmax(0, 1.2fr);
+      gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border);
+      text-align: start; white-space: normal; overflow-wrap: anywhere; }
+    #frag-recent .rtable td:last-child { border-bottom: 0; }
+    #frag-recent .rtable td::before { content: attr(data-label); color: var(--muted);
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+    #frag-recent .rtable td.empty-cell { display: block; text-align: center; border: 0; padding: 16px 8px; }
+    #frag-recent .rtable td.empty-cell::before { content: none; }
+    #frag-recent .rtable td.recent-details { grid-template-columns: 1fr; }
+    #frag-recent .rtable td.recent-details::before { display: none; }
+  }
   #frag-latest { overflow: auto; scrollbar-width: thin; }
   th.num, td.num { text-align: right; }
   td.pos { color: var(--good); font-weight: 600; }
