@@ -114,11 +114,13 @@ Depending on the input, export can produce artifacts such as `page-*.png`, `fact
 
 ### Default model policy
 
-Default model policy: **automatic vision-capable discovery**.
+Default policy: **dynamic discovery + evidence-first AUTO**.
 
-When `FURYPIPE_MODELS` is unset or empty, FuryPipe's Model Fabric resolves the observed model by proven image-input capability and visual-profile evidence instead of requiring its exact ID in a release-time chip list. The built-in family seed currently covers `claude`, `gemini`, `gpt-5`, `gpt-6` and `grok-4.6`; configured provider catalogs can add newly released vision models without a FuryPipe release.
+Model Fabric discovers/observes models independently from visual authorization. In `AUTO`, only quality-verified visual profiles transform without an explicit model override; the backward-compatible default scope remains `claude-fable-5,gemini`. Configured provider catalogs can surface newly released models without a FuryPipe release, but `discovered != vision-capable != quality-verified`.
 
-`FURYPIPE_MODELS` remains an explicit operator override. A CSV narrows the eligible model bases; `off` disables visual compression. Discovered does not mean verified: unprofiled vision readers remain visibly canary/unverified and still pass ExactGuard, image budgets and profitability gates.
+`FURYPIPE_VISUAL_POLICY=max_savings` broadens automatic eligibility to every model whose image-input capability is positively proven. ExactGuard, protocol-state protection, image/byte limits and profitability checks still apply. `safe_exact` keeps the conservative AUTO eligibility surface and `text_only` disables visual transformation globally.
+
+`FURYPIPE_MODELS` remains an explicit backward-compatible operator scope override. A CSV selects model bases; `off` disables visual compression.
 
 ---
 
@@ -511,11 +513,13 @@ Selon l’entrée, l’export peut produire des artefacts comme `page-*.png`, `f
 
 #### Politique modèles par défaut
 
-La politique par défaut utilise la **découverte automatique des modèles capables de lire des images**.
+La politique par défaut combine **découverte dynamique + AUTO evidence-first**.
 
-Quand `FURYPIPE_MODELS` est absent ou vide, le Model Fabric résout le modèle observé à partir de sa capacité image prouvée et de l'état de son profil visuel, au lieu d'exiger que son ID exact soit codé dans une release. Le seed intégré couvre actuellement `claude`, `gemini`, `gpt-5`, `gpt-6` et `grok-4.6`, puis les catalogues providers configurés peuvent ajouter de nouveaux modèles.
+Le Model Fabric découvre/observe les modèles indépendamment de l'autorisation de compression. En `AUTO`, seuls les profils visuels dont la qualité est vérifiée sont transformés sans surcharge explicite ; la portée rétrocompatible reste `claude-fable-5,gemini`. Les catalogues providers peuvent faire apparaître de nouveaux modèles sans nouvelle release, mais `découvert != vision-capable != qualité vérifiée`.
 
-`FURYPIPE_MODELS` reste une surcharge explicite : un CSV réduit la portée et `off` désactive la compression visuelle. Découvert ne signifie pas vérifié : les modèles vision non profilés restent canary/non vérifiés et passent toujours par ExactGuard, les budgets image et la gate de rentabilité.
+`FURYPIPE_VISUAL_POLICY=max_savings` élargit l'éligibilité automatique à tout modèle dont l'entrée image est positivement prouvée. ExactGuard, la protection de l'état protocolaire, les budgets image/octets et la rentabilité restent obligatoires. `safe_exact` conserve l'éligibilité prudente d'AUTO et `text_only` coupe globalement la transformation visuelle.
+
+`FURYPIPE_MODELS` reste une surcharge de portée rétrocompatible. Un CSV sélectionne les bases de modèles ; `off` désactive la compression visuelle.
 
 ---
 
