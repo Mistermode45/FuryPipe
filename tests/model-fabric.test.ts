@@ -281,4 +281,56 @@ describe('model fabric', () => {
       pricingEvidence: 'provider_profile',
     });
   });
+  it('does not route non-generative Gemini catalog entries into visual compression', () => {
+    const registry = createModelFabricRegistry();
+    registry.upsertMany(normalizeGeminiModelsPayload({
+      models: [
+        {
+          name: 'models/gemini-embedding-future',
+          baseModelId: 'gemini-embedding-future',
+          displayName: 'Gemini Embedding Future',
+          supportedGenerationMethods: ['embedContent'],
+        },
+        {
+          name: 'models/gemini-3.8-flash',
+          baseModelId: 'gemini-3.8-flash',
+          displayName: 'Gemini 3.8 Flash',
+          supportedGenerationMethods: ['generateContent', 'countTokens'],
+        },
+      ],
+    }));
+
+    expect(registry.resolveVisual('gemini-embedding-future')).toMatchObject({
+      imageInput: 'no',
+      mode: 'native',
+      reason: 'text_only',
+    });
+    expect(registry.resolveVisual('gemini-3.8-flash')).toMatchObject({
+      imageInput: 'yes',
+    });
+  });
+
+  it('does not mistake OpenAI embedding, audio or image-generation IDs for chat vision readers', () => {
+    const registry = createModelFabricRegistry();
+    registry.upsertMany(normalizeOpenAIModelsPayload({
+      data: [
+        { id: 'text-embedding-4-large' },
+        { id: 'gpt-image-2' },
+        { id: 'gpt-realtime-2.1' },
+        { id: 'gpt-6-astra' },
+      ],
+    }));
+
+    for (const id of ['text-embedding-4-large', 'gpt-image-2', 'gpt-realtime-2.1']) {
+      expect(registry.resolveVisual(id)).toMatchObject({
+        imageInput: 'no',
+        mode: 'native',
+        reason: 'text_only',
+      });
+    }
+    expect(registry.resolveVisual('gpt-6-astra')).toMatchObject({
+      imageInput: 'yes',
+    });
+  });
+
 });
