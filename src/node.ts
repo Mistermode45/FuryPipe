@@ -7,7 +7,8 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createWarpRuntime } from './warp/index.js';
+import { createFuryLinkRuntime } from './warp/index.js';
+import { FuryLinkUsageError, furyLinkHelp, parseFuryLinkInvocation } from './fury-link-cli.js';
 import { once } from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -284,7 +285,7 @@ function parseProvider(v: string | undefined): 'cloudflare-ai-gateway' | 'omniro
 }
 
 function printHelp(): void {
-  console.log(`FuryPipe — context compiler and token-saving proxy for Claude Code
+  console.log(`FuryPipe — governed context runtime for production AI workflows
 
 Usage:
   furypipe              run the proxy (no flags)
@@ -293,21 +294,19 @@ Usage:
   furypipe doctor [--json]
                         inspect the local runtime and available tools
   furypipe export [...] render files/diff to PNG pages + cost report (see furypipe export --help)
-  furypipe warp [--route PATTERN=TARGET]... -- CMD
-                        run CMD behind the proxy without a custom base URL, so
-                        client-side first-party gates (/remote-control,
-                        claude.ai connectors) keep working.
-                        api.anthropic.com/v1/messages is routed by default;
-                        --route adds rules for agents that talk to another
-                        base URL, e.g.
-                          --route '127.0.0.1:9090/v1/*=http://127.0.0.1:48721'
+  furypipe link [--route PATTERN=TARGET]... [--] CMD [args...]
+                        connect an agent through FuryLink. The '--' separator
+                        is optional, including on Windows PowerShell.
+                        Built-in provider routes cover Anthropic and Gemini;
+                        --route adds an explicit provider path when needed.
   furypipe stats [--json] [--file <p>]
                         summarize the events log offline (no server needed),
                         incl. measured savings; defaults to $FURYPIPE_LOG
 
-The proxy compresses eligible tools, schemas, reminders, tool_results,
-and history; tracks events to disk; and measures real saved_pct via
-/v1/messages/count_tokens. Dashboard controls can disable compression live.
+FuryPipe combines Context Fabric, adaptive visual compression, FuryLink,
+provider routing, MCP, memory and evidence-first telemetry. Eligible context
+is transformed only when the measured cost gate says the image path is useful.
+Dashboard controls can disable transformation live.
 
 Live sessions and cleanup tools live in the dashboard at
   http://127.0.0.1:<port>/  (default port 48721)
@@ -1191,49 +1190,47 @@ async function main(): Promise<void> {
   if (argv[0] === 'start') {
     argv.splice(0, 1);
   }
-  // `warp` runs an agent behind a CONNECT proxy and redirects its inference
-  // traffic into the FuryPipe instance already running. It starts no proxy of its own, so
-  // it exits through its own branch below rather than falling through here.
-  let warpCommand: string[] | undefined;
-  const warpRoutes: string[] = [];
+  // FuryLink connects an agent to the already-running FuryPipe instance.
+  // It accepts both `furypipe link codex` and `furypipe link -- codex` so
+  // Windows shells are never required to preserve a separator token.
+  let furyLinkCommand: string[] | undefined;
+  let furyLinkRoutes: string[] = [];
   let cliArgv = argv;
+
   if (argv[0] === 'warp') {
-    const sep = argv.indexOf('--');
-    warpCommand = sep < 0 ? [] : argv.slice(sep + 1);
-    // warp's own flags live before the `--`; parseCli accepts none of them, so
-    // they are consumed here rather than passed through.
-    const warpArgv = argv.slice(1, sep < 0 ? argv.length : sep);
-    const rest: string[] = [];
-    for (let i = 0; i < warpArgv.length; i += 1) {
-      const a = warpArgv[i]!;
-      if (a === '--route') {
-        const spec = warpArgv[i + 1];
-        if (spec === undefined) {
-          console.error('[furypipe] warp: --route needs PATTERN=TARGET');
-          process.exit(2);
-        }
-        warpRoutes.push(spec);
-        i += 1;
-        continue;
+    console.error('[furypipe] `warp` is not a FuryPipe command anymore.');
+    console.error('[furypipe] Use FuryLink instead: furypipe link <command> [args...]');
+    process.exit(2);
+  }
+
+  if (argv[0] === 'link') {
+    try {
+      const parsed = parseFuryLinkInvocation(argv.slice(1));
+      furyLinkCommand = [...parsed.command];
+      furyLinkRoutes = [...parsed.routes];
+      if (furyLinkCommand.length === 0) {
+        console.error(furyLinkHelp());
+        process.exit(2);
       }
-      if (a.startsWith('--route=')) {
-        warpRoutes.push(a.slice('--route='.length));
-        continue;
+    } catch (caught) {
+      if (caught instanceof FuryLinkUsageError && caught.message === 'help') {
+        console.log(furyLinkHelp());
+        return;
       }
-      rest.push(a);
+      console.error('[furypipe] link: ' + (caught as Error).message);
+      console.error(furyLinkHelp());
+      process.exit(2);
     }
-    cliArgv = rest;
+    cliArgv = [];
   }
   // Stats / sessions / cleanup tools live in the dashboard
   // (see http://127.0.0.1:${port}/).
   const opts = parseCli(cliArgv);
 
-  // warp only redirects traffic: it decrypts the agent's TLS and re-points the
-  // inference path at the FuryPipe instance already running, so that instance
-  // does the transforming, the tracking and the dashboard. Everything below —
-  // tracker, proxy pipeline, listener — belongs to that instance, not to us.
-  if (warpCommand) {
-    createWarpRuntime({ port: opts.port, routes: warpRoutes }).launch(warpCommand);
+  // FuryLink only redirects the child's provider traffic; the existing FuryPipe
+  // runtime remains the single transformation/tracking/dashboard authority.
+  if (furyLinkCommand) {
+    createFuryLinkRuntime({ port: opts.port, routes: furyLinkRoutes }).launch(furyLinkCommand);
     return;
   }
   // A/B harness passthrough switch (see the `transform` callback below).
