@@ -367,7 +367,7 @@ describe('Control Room live runtime collector', () => {
     });
 
     const agent = runtime.snapshot().sections.agent;
-    expect(agent.evidence).toEqual({
+    expect(agent.evidence).toMatchObject({
       runs: 2,
       completedRuns: 1,
       handoffRuns: 0,
@@ -375,6 +375,12 @@ describe('Control Room live runtime collector', () => {
       contextUsedTokens: 57,
       persistedMemory: 'NOT_AVAILABLE',
       distributedHandoff: 'NOT_AVAILABLE',
+      skillExecutions: 0,
+      mcpExecutions: 0,
+      subagentExecutions: 0,
+      automaticCapabilityExecutions: 0,
+      manualCapabilityExecutions: 0,
+      recentCapabilityExecutions: [],
     });
     expect(agent.status).toBe('PARTIAL');
   });
