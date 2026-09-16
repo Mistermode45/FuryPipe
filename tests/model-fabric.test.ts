@@ -329,6 +329,7 @@ describe('model fabric', () => {
         max_input_tokens: 1_000_000,
         max_tokens: 64_000,
         capabilities: { thinking: { supported: true } },
+        input_modalities: ['text', 'image'],
       }],
     }, '2026-09-16T00:00:00.000Z');
 
@@ -362,7 +363,7 @@ describe('model fabric', () => {
     expect(openai[0]).toMatchObject({
       provider: 'openai',
       id: 'gpt-6-astra',
-      modalities: { imageInput: 'yes' },
+      modalities: { imageInput: 'unknown' },
     });
   });
 
@@ -518,7 +519,9 @@ describe('model fabric', () => {
       reason: 'text_only',
     });
     expect(registry.resolveVisual('gemini-3.8-flash')).toMatchObject({
-      imageInput: 'yes',
+      imageInput: 'unknown',
+      mode: 'native',
+      reason: 'unknown_capability',
     });
   });
 
@@ -541,7 +544,9 @@ describe('model fabric', () => {
       });
     }
     expect(registry.resolveVisual('gpt-6-astra')).toMatchObject({
-      imageInput: 'yes',
+      imageInput: 'unknown',
+      mode: 'native',
+      reason: 'unknown_capability',
     });
   });
 
