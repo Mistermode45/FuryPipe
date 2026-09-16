@@ -41,7 +41,8 @@ It is not an unconditional text-to-image converter. A transformation must pass t
    - use 2-bit/4-bit only when every sample round-trips exactly; anti-aliased or otherwise non-representable pages remain 8-bit;
    - keep the measured Average predictor as the default for glyph-bearing rows;
    - switch byte-identical repeated rows to PNG Up, producing zero residuals without an exhaustive predictor search;
-   - RGB pages with at most 256 exact colors use indexed-color PNG (PLTE) at the smallest legal index depth instead of unconditional 24-bit truecolor;
+   - RGB pages whose channels are exactly equal are collapsed to native grayscale PNG before palette encoding, preserving every pixel while removing RGB/PLTE overhead;
+   - remaining RGB pages with at most 256 exact colors use indexed-color PNG (PLTE) at the smallest legal index depth instead of unconditional 24-bit truecolor;
    - decoded pixels remain byte-identical to the renderer framebuffer; no quantization is permitted.
 
 8. **Wire safety**
