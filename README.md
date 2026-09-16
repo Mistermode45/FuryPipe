@@ -260,6 +260,11 @@ Report vulnerabilities through GitHub private vulnerability reporting, **not** a
 
 ---
 
+### FuryPipe Control Plane
+
+FuryPipe is a governed context runtime rather than a single-purpose proxy. Its public surface combines Context Fabric, FuryLink agent connectivity, adaptive visual optimization, provider routing, MCP, memory, agent/skill orchestration and evidence-first runtime receipts behind one FuryPipe-native control plane.
+
+The visual engine uses provider-priced geometry planning and lossless rendering safeguards; transformations remain gated by profitability and fidelity checks rather than being applied blindly.
 ## CLI
 
 Common entry points:
@@ -270,7 +275,7 @@ furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
 furypipe stats [--json] [--file <path>]
 furypipe export [...]
-furypipe warp [...] -- <agent>
+furypipe link [--route PATTERN=TARGET]... [--] <agent> [args...]
 ```
 
 See [docs/CLI.md](docs/CLI.md) for the authoritative public CLI contract.
@@ -660,7 +665,7 @@ furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
 furypipe stats [--json] [--file <path>]
 furypipe export [...]
-furypipe warp [...] -- <agent>
+furypipe link [--route PATTERN=TARGET]... [--] <agent> [args...]
 ```
 
 Consultez [docs/CLI.md](docs/CLI.md) pour le contrat CLI public de référence.
