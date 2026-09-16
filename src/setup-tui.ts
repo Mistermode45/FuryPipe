@@ -62,14 +62,14 @@ interface ParsedSetupArgs {
 const A = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
-  cyan: '\x1b[38;5;45m',
-  blue: '\x1b[38;5;39m',
-  purple: '\x1b[38;5;141m',
+  cyan: '\x1b[38;5;39m',
+  blue: '\x1b[38;5;27m',
+  purple: '\x1b[38;5;51m',
   green: '\x1b[38;5;82m',
   yellow: '\x1b[38;5;220m',
   muted: '\x1b[38;5;245m',
   white: '\x1b[38;5;255m',
-  bgBlue: '\x1b[48;5;24m',
+  bgBlue: '\x1b[48;5;17m',
 } as const;
 
 const LOGO = [
@@ -227,12 +227,12 @@ export function renderSetupScreen(options: SetupRenderOptions): string {
 
   const header = [
     ...LOGO.map((line) => paint(color, A.cyan + A.bold, line)),
-    paint(color, A.cyan + A.bold, 'FURYPIPE // SETUP EXPERIENCE'),
+    paint(color, A.cyan + A.bold, 'FURYPIPE // CONTROL PLANE'),
     '',
-    paint(color, A.white + A.bold, 'GOVERNED AI WORKFLOWS') +
-      paint(color, A.muted, '  ·  context  ·  agents  ·  skills  ·  MCP  ·  providers  ·  memory'),
+    paint(color, A.white + A.bold, 'FURYPIPE RUNTIME') +
+      paint(color, A.muted, '  ·  context  ·  routing  ·  agents  ·  MCP  ·  memory  ·  evidence'),
     paint(color, A.purple + A.bold, 'FuryPipe ' + version) +
-      paint(color, A.muted, '  // one CLI, explicit execution, verifiable results'),
+      paint(color, A.muted, '  // native runtime · measured compression · explicit execution'),
     '',
   ];
 
