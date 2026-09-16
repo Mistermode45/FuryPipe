@@ -264,8 +264,14 @@ interface ProfileRule {
 const isMiniNanoPatch = (m: string): boolean =>
   /^(?:gpt-5(?:\.\d+)?|gpt-4\.1)-(?:mini|nano)/.test(m) || /^o4-mini/.test(m);
 
-/** Grok ids FuryPipe has a measured profile for. */
+/** Grok ids routed to the xAI render profile. */
 const isGrokModel = (m: string): boolean => /^grok-/.test(m);
+
+/** Grok variants for which FuryPipe has actual image-cost evidence.
+ * Keep this narrower than isGrokModel(): a future Grok id may share a family
+ * name while changing visual token accounting. */
+const isMeasuredGrokPricingId = (m: string): boolean =>
+  /^grok-4(?:\.(?:5|6))?(?:-|$)/.test(m);
 
 /** Qwen 3.8 27B ids — the only Qwen geometry FuryPipe has measured. Other Qwen
  *  variants deliberately do NOT match: the family-id guard below refuses them
@@ -431,6 +437,45 @@ function hasDeclaredProfile(m: string): boolean {
   const ids = candidateIds(m);
   for (const k of env.keys()) if (ids.some((id) => id.startsWith(k))) return true;
   return false;
+}
+
+export type FuryVisionPricingEvidence =
+  | 'operator_profile'
+  | 'provider_profile'
+  | 'conservative_openai'
+  | 'unknown';
+
+/**
+ * Tell applicability whether the profitability gate has a provider-appropriate
+ * image-token cost model for this ID.
+ *
+ * This is intentionally separate from "image input supported". A provider
+ * catalog can prove that Mistral/OpenRouter model X accepts images without
+ * proving that OpenAI tile pricing applies to it. Automatic MAX_SAVINGS must
+ * never turn that capability fact into fabricated economics.
+ */
+export function resolveVisionPricingEvidence(
+  model: string | null | undefined,
+): FuryVisionPricingEvidence {
+  const m = stripBracketedSegments((model ?? '').toLowerCase());
+  if (!m) return 'unknown';
+  if (hasDeclaredProfile(m)) return 'operator_profile';
+
+  const ids = candidateIds(m);
+  if (ids.some((id) => isClaudeModel(id))) return 'provider_profile';
+  if (ids.some((id) => hasGeminiMeasuredProfile(id))) return 'provider_profile';
+  if (ids.some((id) => isMeasuredGrokPricingId(id))) return 'provider_profile';
+  if (ids.some((id) => isQwenModel(id))) return 'provider_profile';
+
+  // DEFAULT_GPT_PROFILE is deliberately an OpenAI-only conservative fallback.
+  // These families may use it without pretending another provider follows
+  // OpenAI's tile formula.
+  if (ids.some((id) =>
+    /^(?:gpt-|chat-latest$|o(?:1|3|4)(?:-|$))/u.test(id))) {
+    return 'conservative_openai';
+  }
+
+  return 'unknown';
 }
 
 /**
