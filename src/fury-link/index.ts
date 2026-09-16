@@ -56,6 +56,29 @@ export function furyLinkEnvValue(
   return undefined;
 }
 
+
+/**
+ * Return the filenames Windows itself considers runnable from PATH.
+ *
+ * Node distributions on Windows ship both `npm` (a POSIX shell shim) and
+ * `npm.cmd`. Merely checking whether the bare file exists selects the wrong
+ * one. For separator-free commands, Windows command discovery is PATHEXT-based;
+ * an explicit extension is preserved as-is.
+ */
+export function furyLinkPathCandidates(
+  name: string,
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  if (platform !== 'win32') return [name];
+  const pathExt = (furyLinkEnvValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD')
+    .split(';')
+    .filter(Boolean);
+  const lower = name.toLowerCase();
+  const alreadyHasWindowsExt = pathExt.some((ext) => lower.endsWith(ext.toLowerCase()));
+  return alreadyHasWindowsExt ? [name] : pathExt.map((ext) => name + ext);
+}
+
 /**
  * Only the inference path is diverted. Everything else on the host — OAuth,
  * telemetry, the control plane — is re-originated untouched, which is what
@@ -116,13 +139,7 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
     if (hasPathSyntax(name)) return existsSync(name) ? name : null;
 
     const windows = process.platform === 'win32';
-    const pathExt = windows
-      ? (furyLinkEnvValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
-      : [''];
-    const alreadyHasWindowsExt = windows && pathExt.some((ext) => name.toLowerCase().endsWith(ext.toLowerCase()));
-    const candidates = windows && !alreadyHasWindowsExt
-      ? [name, ...pathExt.map((ext) => name + ext)]
-      : [name];
+    const candidates = furyLinkPathCandidates(name, env);
 
     for (const dir of (furyLinkEnvValue(env, 'PATH') ?? '').split(delimiter)) {
       if (!dir) continue;
