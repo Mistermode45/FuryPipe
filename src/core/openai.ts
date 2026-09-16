@@ -10,7 +10,6 @@ import {
   renderTextToPngs,
   reflow,
   neutralizeSentinel,
-  shrinkColsToContent,
   renderCellWidth,
   renderCellHeight,
   PAD_X,
