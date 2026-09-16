@@ -25,7 +25,7 @@ export interface SetupWizardOptions {
   readonly now?: () => Date;
 }
 
-interface Keypress {
+export interface Keypress {
   readonly name?: string;
   readonly ctrl?: boolean;
 }
@@ -38,17 +38,20 @@ interface ParsedSetupArgs {
   readonly help: boolean;
 }
 
+// FuryPipe terminal identity: midnight/navy surfaces, cobalt/ice accents and
+// warm-cream foregrounds. Windows Terminal, modern PowerShell, macOS Terminal
+// and the major Linux terminals support these true-color ANSI sequences.
 const A = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
-  cyan: '\x1b[38;5;45m',
-  blue: '\x1b[38;5;39m',
-  purple: '\x1b[38;5;141m',
-  green: '\x1b[38;5;82m',
-  yellow: '\x1b[38;5;220m',
-  muted: '\x1b[38;5;245m',
-  white: '\x1b[38;5;255m',
-  bgBlue: '\x1b[48;5;24m',
+  cyan: '\x1b[38;2;96;165;250m',
+  blue: '\x1b[38;2;59;130;246m',
+  purple: '\x1b[38;2;129;140;248m',
+  green: '\x1b[38;2;52;211;153m',
+  yellow: '\x1b[38;2;250;204;21m',
+  muted: '\x1b[38;2;148;163;184m',
+  white: '\x1b[38;2;248;245;237m',
+  bgBlue: '\x1b[48;2;23;37;84m',
 } as const;
 
 const LOGO = [
@@ -206,10 +209,10 @@ export function renderSetupScreen(options: SetupRenderOptions): string {
 
   const header = [
     ...LOGO.map((line) => paint(color, A.cyan + A.bold, line)),
-    paint(color, A.cyan + A.bold, 'FURYPIPE // SETUP EXPERIENCE'),
+    paint(color, A.cyan + A.bold, 'FURYPIPE // CONTROL PLANE'),
     '',
-    paint(color, A.white + A.bold, 'GOVERNED AI WORKFLOWS') +
-      paint(color, A.muted, '  ·  context  ·  agents  ·  skills  ·  MCP  ·  providers  ·  memory'),
+    paint(color, A.white + A.bold, 'CONTEXT INTELLIGENCE') +
+      paint(color, A.muted, '  ·  Context Fabric  ·  FuryLink  ·  Visual Engine  ·  MCP  ·  providers  ·  memory'),
     paint(color, A.purple + A.bold, 'FuryPipe ' + version) +
       paint(color, A.muted, '  // one CLI, explicit execution, verifiable results'),
     '',
@@ -376,6 +379,30 @@ function canUseRichTui(stdin: NodeJS.ReadStream, stdout: NodeJS.WriteStream, env
   return true;
 }
 
+export type SetupKeyAction = SetupLocale | 'accept' | 'cancel' | null;
+
+/**
+ * Normalize raw readline keypresses before the TUI acts on them.
+ *
+ * On Windows, readline can emit special-key events with an undefined `input`
+ * string (notably around Enter/navigation depending on the terminal host).
+ * Treat the printable input as optional; never call string methods on it until
+ * it has been narrowed. Keeping this pure also gives the package a deterministic
+ * regression test for the production crash reported on Node 26 + Windows.
+ */
+export function resolveSetupKey(
+  input: string | undefined,
+  key: Keypress | undefined,
+): SetupKeyAction {
+  const typed = typeof input === 'string' ? input.toLowerCase() : '';
+  const name = key?.name?.toLowerCase();
+  if ((key?.ctrl && name === 'c') || name === 'escape' || name === 'q') return 'cancel';
+  if (name === 'left' || name === 'up' || typed === '1' || typed === 'f') return 'fr';
+  if (name === 'right' || name === 'down' || typed === '2' || typed === 'e') return 'en';
+  if (name === 'return' || name === 'enter') return 'accept';
+  return null;
+}
+
 async function chooseLocale(
   initial: SetupLocale,
   stdin: NodeJS.ReadStream,
@@ -397,19 +424,19 @@ async function chooseLocale(
 
   try {
     return await new Promise<SetupLocale | null>((resolve) => {
-      const onKeypress = (input: string, key: Keypress): void => {
-        if ((key.ctrl && key.name === 'c') || key.name === 'escape' || key.name === 'q') {
+      const onKeypress = (input: string | undefined, key: Keypress | undefined): void => {
+        const action = resolveSetupKey(input, key);
+        if (action === 'cancel') {
           stdin.off('keypress', onKeypress);
           resolve(null);
           return;
         }
-        if (key.name === 'left' || key.name === 'up' || input === '1' || input.toLowerCase() === 'f') {
-          selected = 'fr'; redraw(); return;
+        if (action === 'fr' || action === 'en') {
+          selected = action;
+          redraw();
+          return;
         }
-        if (key.name === 'right' || key.name === 'down' || input === '2' || input.toLowerCase() === 'e') {
-          selected = 'en'; redraw(); return;
-        }
-        if (key.name === 'return' || key.name === 'enter') {
+        if (action === 'accept') {
           stdin.off('keypress', onKeypress);
           resolve(selected);
         }
