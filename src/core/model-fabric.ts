@@ -188,12 +188,15 @@ function inferredModalities(model: string, provider: ModelFabricProvider): Model
   let textOutput: ModelFabricCapability = 'yes';
 
   if (provider === 'anthropic') {
-    // Known Claude product families are multimodal. A bare "claude-" prefix is
-    // not evidence: future/fictional family names remain unknown until a
-    // provider catalog or operator profile proves image input.
-    imageInput = /^claude-(?:fable|opus|sonnet|haiku)-(?:\d|latest)/u.test(id)
-      ? 'yes'
-      : 'unknown';
+    // Current/recent Claude readers with documented multimodal support.
+    // Match exact release shapes, not arbitrary "claude-*" names: for example
+    // claude-fable-50 must remain unknown until provider metadata proves it.
+    const knownClaudeVisionReader =
+      /^claude-(?:fable|mythos|opus|sonnet)-5(?:-|$)/u.test(id)
+      || /^claude-opus-4-(?:8|7|6|5)(?:-|$)/u.test(id)
+      || /^claude-sonnet-4-(?:6|5)(?:-|$)/u.test(id)
+      || /^claude-haiku-4-5(?:-|$)/u.test(id);
+    imageInput = knownClaudeVisionReader ? 'yes' : 'unknown';
   } else if (provider === 'google') {
     // General Gemini families are multimodal; speech/transcription/TTS-only
     // endpoints are deliberately not promoted to visual compression by name.
@@ -234,10 +237,11 @@ function inferredProfile(model: string, provider: ModelFabricProvider): ModelVis
   // silently inherit another reader's exact-recall claim.
   if (provider === 'anthropic') {
     if (/^claude-fable-5(?:-|$)/u.test(id)) return 'quality_verified';
-    // Current non-Fable Claude readers have a measured legible 14px geometry,
-    // but broader multi-page recall evidence is weaker than the exact-value
-    // sweep. Geometry is therefore CALIBRATED without claiming quality verified.
-    return inferredModalities(id, provider).imageInput === 'yes' ? 'calibrated' : 'not_applicable';
+    // Opus ids below have measured FuryPipe legible-reader geometry. Other
+    // current Claude families are vision-capable but remain UNPROFILED until
+    // FuryPipe records model-specific recall/calibration evidence.
+    if (/^claude-opus-(?:5|4-(?:8|7|6|5))(?:-|$)/u.test(id)) return 'calibrated';
+    return inferredModalities(id, provider).imageInput === 'yes' ? 'unprofiled' : 'not_applicable';
   }
   if (provider === 'google') {
     return hasGeminiMeasuredProfile(id) ? 'quality_verified' : 'unprofiled';
