@@ -1104,8 +1104,8 @@ const CSS = `
   .model-name { min-width: 230px; }
   .model-id { display: block; margin-top: 2px; color: var(--ink-2); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
   .model-state { display: inline-block; padding: 2px 5px; border: 1px solid var(--border-strong); border-radius: 4px; color: var(--ink-2); font-size: 10px; font-weight: 600; }
-  .model-state-yes { color: var(--positive); }
-  .model-state-no { color: var(--negative); }
+  .model-state-yes { color: var(--good); }
+  .model-state-no { color: var(--bad); }
   .model-observed { white-space: nowrap; color: var(--ink-2); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
   .model-fabric-empty { padding: 10px 12px; border-left: 2px solid var(--border-strong); color: var(--ink-2); font-size: 12px; }
   @media (max-width: 640px) {
