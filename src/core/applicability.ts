@@ -219,9 +219,17 @@ export function resolveFuryPipeModelEligibility(
       });
     }
     const scoped = matchesExplicitScope(base);
+    if (scoped) {
+      return Object.freeze({
+        eligible: true,
+        reason: 'eligible',
+        source: 'operator_scope',
+        resolution,
+      });
+    }
     return Object.freeze({
-      eligible: scoped,
-      reason: scoped ? 'eligible' : 'unsupported_model',
+      eligible: false,
+      reason: 'unsupported_model',
       source: 'operator_scope',
       resolution,
     });
