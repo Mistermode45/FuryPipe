@@ -184,19 +184,58 @@ const H = GPT_MAX_HEIGHT_PX;
 const GPT5_PRICING = { cacheReadRate: 0.1, outputRate: 8 };
 
 /**
- * Conservative fallback for unrecognized models: tile 85/170 over-states cost,
- * which biases the gate toward pass-through (safe). Matches gpt-4o/4.1/4.5.
+ * Conservative visual fallback for unrecognized OpenAI-compatible readers.
+ *
+ * The previous fallback used the dense 5x8 atlas. That maximized packing but
+ * silently assumed every future vision model reads tiny glyphs as well as the
+ * best measured reader. Unknown/current readers now inherit the legible 14px
+ * geometry; the profitability gate can reject its higher image cost, but
+ * exactness is never traded away just to make a new model appear supported.
+ *
+ * The tile 85/170 vision cost remains an explicit conservative approximation
+ * for models without a provider-specific image-pricing profile.
  */
 export const DEFAULT_GPT_PROFILE: GptModelProfile = {
   vision: { regime: 'tile', base: 85, perTile: 170 },
   ...BASE_PRICING,
-  stripCols: C,
-  maxHeightPx: H,
+  stripCols: 84,
+  maxHeightPx: 1954,
   minCompressTokens: 500,
   factSheetFormat: 'full',
-  history: BASE_HISTORY,
-  style: BASE_STYLE,
+  history: {
+    ...NATIVE_14PX_HISTORY,
+    maxImages: 64,
+  },
+  style: {
+    ...BASE_STYLE,
+    font: 'jetbrains-mono-14',
+    cellWBonus: 0,
+    cellHBonus: 0,
+  },
 };
+
+const OPENAI_CURRENT_LEGIBLE_STYLE: GptRenderStyle = {
+  ...BASE_STYLE,
+  font: 'jetbrains-mono-14',
+  cellWBonus: 0,
+  cellHBonus: 0,
+};
+
+function currentOpenAIProfile(
+  vision: GptVisionCost,
+  pricing: { cacheReadRate: number; outputRate: number },
+): GptModelProfile {
+  return {
+    vision,
+    ...pricing,
+    stripCols: 84,
+    maxHeightPx: 1954,
+    minCompressTokens: 500,
+    factSheetFormat: 'full',
+    history: { ...NATIVE_14PX_HISTORY, maxImages: 64 },
+    style: { ...OPENAI_CURRENT_LEGIBLE_STYLE },
+  };
+}
 
 const GPT56_SOL_PROFILE: GptModelProfile = {
   // GPT-5.6 original detail bills the submitted 32px patches without a patch cap.
@@ -293,15 +332,27 @@ const BUILTIN_RULES: ProfileRule[] = [
     test: (m) => m === 'gpt-5.6-sol' || m.startsWith('gpt-5.6-sol-'),
     profile: GPT56_SOL_PROFILE,
   },
-  // 5.x flagship (gpt-5.4/5.5/…, no -mini/-nano): patch, multiplier 1, detail:original cap
+  // Current 6.x OpenAI readers are vision-capable. Until an exact image-token
+  // regime is source-bound per model, use the conservative fallback tile cost
+  // with the legible geometry. Text pricing ratios for Astra are 1.0/10.0
+  // cached/uncached and 50/10 output/input.
+  {
+    test: (m) => /^gpt-6(?:\.|-|$)/.test(m),
+    profile: currentOpenAIProfile({ regime: 'tile', base: 85, perTile: 170 }, {
+      cacheReadRate: 0.1,
+      outputRate: 5,
+    }),
+  },
+  // 5.x flagship (gpt-5.4/5.5/5.6 variants, no mini/nano). Keep the existing
+  // patch-cost regime but use the legible reader geometry for future variants.
   {
     test: (m) => /^gpt-5\.\d/.test(m),
-    profile: { vision: { regime: 'patch', multiplier: 1, patchCap: 10000 }, ...GPT5_PRICING, stripCols: C, maxHeightPx: H, minCompressTokens: 500, factSheetFormat: 'full', history: BASE_HISTORY, style: BASE_STYLE },
+    profile: currentOpenAIProfile({ regime: 'patch', multiplier: 1, patchCap: 10000 }, GPT5_PRICING),
   },
-  // gpt-5 / gpt-5-chat-latest: tile 70/140
+  // gpt-5 / gpt-5-chat-latest.
   {
     test: (m) => /^gpt-5/.test(m),
-    profile: { vision: { regime: 'tile', base: 70, perTile: 140 }, ...GPT5_PRICING, stripCols: C, maxHeightPx: H, minCompressTokens: 500, factSheetFormat: 'full', history: BASE_HISTORY, style: BASE_STYLE },
+    profile: currentOpenAIProfile({ regime: 'tile', base: 70, perTile: 140 }, GPT5_PRICING),
   },
   // o1 / o3 reasoning: tile 75/150
   {
