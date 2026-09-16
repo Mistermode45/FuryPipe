@@ -20,7 +20,7 @@ import {
   X509Certificate,
   type KeyObject,
 } from 'node:crypto';
-import { createSecureContext, type SecureContext } from 'node:tls';
+import { createSecureContext, rootCertificates, type SecureContext } from 'node:tls';
 import { isIP } from 'node:net';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -196,8 +196,10 @@ export class CertificateAuthority {
     readonly certPath: string,
     /** Our CA followed by the system roots; see {@link writeBundle}. */
     readonly bundlePath: string,
-    /** Null when no system root bundle was found and `bundlePath` is CA-only. */
+    /** Filesystem PEM source when one was found; null when Node's built-in roots were used. */
     readonly systemRootsPath: string | null,
+    /** Whether bundlePath contains public roots in addition to the FuryLink CA. */
+    readonly bundleIncludesPublicRoots: boolean,
   ) {}
 
   /**
@@ -205,20 +207,45 @@ export class CertificateAuthority {
    * that replace the trust store. Regenerated on every load: the system bundle
    * rotates underneath us and the cost is one file write.
    */
-  private static writeBundle(dir: string, certPem: string): { bundlePath: string; systemRootsPath: string | null } {
+  private static writeBundle(dir: string, certPem: string): {
+    bundlePath: string;
+    systemRootsPath: string | null;
+    bundleIncludesPublicRoots: boolean;
+  } {
     const bundlePath = join(dir, 'furylink-ca-bundle.pem');
     const systemRootsPath = findSystemRootBundle();
     let roots = '';
+    let rootsPath: string | null = null;
+
     if (systemRootsPath) {
       try {
         roots = readFileSync(systemRootsPath, 'utf8');
+        if (roots) rootsPath = systemRootsPath;
       } catch {
-        /* unreadable: fall back to CA-only, reported via systemRootsPath */
+        roots = '';
       }
     }
-    const sep = roots && !roots.endsWith('\n') ? '\n' : '';
-    writeFileSync(bundlePath, certPem + roots + sep, { mode: 0o644 });
-    return { bundlePath, systemRootsPath: roots ? systemRootsPath : null };
+
+    // Windows normally exposes public trust through the certificate store, not
+    // a PEM file. Node already ships the public Mozilla roots it uses for TLS;
+    // serialize those into the child-only replacement bundle rather than
+    // handing OpenSSL/curl/Python a FuryLink-CA-only trust store.
+    if (!roots && rootCertificates.length > 0) {
+      roots = rootCertificates.join('\n');
+    }
+
+    const needsJoinNewline = roots.length > 0 && !certPem.endsWith('\n');
+    const finalNewline = roots.length > 0 && !roots.endsWith('\n') ? '\n' : '';
+    writeFileSync(
+      bundlePath,
+      certPem + (needsJoinNewline ? '\n' : '') + roots + finalNewline,
+      { mode: 0o644 },
+    );
+    return {
+      bundlePath,
+      systemRootsPath: rootsPath,
+      bundleIncludesPublicRoots: roots.length > 0,
+    };
   }
 
   /**
@@ -248,6 +275,7 @@ export class CertificateAuthority {
           certPath,
           bundle.bundlePath,
           bundle.systemRootsPath,
+          bundle.bundleIncludesPublicRoots,
         );
       }
     } catch {
@@ -286,6 +314,7 @@ export class CertificateAuthority {
       certPath,
       bundle.bundlePath,
       bundle.systemRootsPath,
+      bundle.bundleIncludesPublicRoots,
     );
   }
 
