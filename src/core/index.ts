@@ -15,6 +15,7 @@ export {
   RUNTIME_MODEL_FABRIC,
   createModelFabricRegistry,
   inspectRuntimeModels,
+  normalizeAnthropicModelsPayload,
   normalizeGeminiModelsPayload,
   normalizeMistralModelsPayload,
   normalizeOpenAIModelsPayload,
