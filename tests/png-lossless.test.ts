@@ -69,4 +69,39 @@ describe('PNG encoder is lossless', () => {
     const one = await decode(await encodeGrayPng(new Uint8Array([137]), 1, 1));
     expect(one.data[0]).toBe(137);
   });
+  it('selects the smallest exact grayscale PNG bit depth without quantization', async () => {
+    const bitDepthAt = (png: Uint8Array): number => png[24]!;
+
+    const binary = new Uint8Array(W * H);
+    for (let i = 0; i < binary.length; i++) binary[i] = i % 3 === 0 ? 255 : 0;
+    const binaryPng = await encodeGrayPng(binary, W, H);
+    expect(bitDepthAt(binaryPng)).toBe(1);
+    const binaryDecoded = await decode(binaryPng);
+    for (let i = 0; i < binary.length; i++) expect(binaryDecoded.data[i * 4]).toBe(binary[i]);
+
+    const gray2 = new Uint8Array(W * H);
+    const palette2 = [0, 85, 170, 255];
+    for (let i = 0; i < gray2.length; i++) gray2[i] = palette2[i % palette2.length]!;
+    const gray2Png = await encodeGrayPng(gray2, W, H);
+    expect(bitDepthAt(gray2Png)).toBe(2);
+    const gray2Decoded = await decode(gray2Png);
+    for (let i = 0; i < gray2.length; i++) expect(gray2Decoded.data[i * 4]).toBe(gray2[i]);
+
+    const gray4 = new Uint8Array(W * H);
+    const palette4 = [0, 17, 34, 85, 153, 238, 255];
+    for (let i = 0; i < gray4.length; i++) gray4[i] = palette4[i % palette4.length]!;
+    const gray4Png = await encodeGrayPng(gray4, W, H);
+    expect(bitDepthAt(gray4Png)).toBe(4);
+    const gray4Decoded = await decode(gray4Png);
+    for (let i = 0; i < gray4.length; i++) expect(gray4Decoded.data[i * 4]).toBe(gray4[i]);
+
+    const gray8 = new Uint8Array(W * H);
+    const palette8 = [0, 31, 68, 119, 255];
+    for (let i = 0; i < gray8.length; i++) gray8[i] = palette8[i % palette8.length]!;
+    const gray8Png = await encodeGrayPng(gray8, W, H);
+    expect(bitDepthAt(gray8Png)).toBe(8);
+    const gray8Decoded = await decode(gray8Png);
+    for (let i = 0; i < gray8.length; i++) expect(gray8Decoded.data[i * 4]).toBe(gray8[i]);
+  });
+
 });
