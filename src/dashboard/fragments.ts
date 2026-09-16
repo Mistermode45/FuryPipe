@@ -97,32 +97,8 @@ export function renderToggleFragment(enabled: boolean, locale = 'en'): string {
 
 // ---- compress scope (which models get imaged) ----------------------------
 
-/** Chip catalog — UNION with env scope + active set, so env-var models stay toggleable. Labels are cosmetic. */
-const MODEL_CATALOG: ReadonlyArray<{ id: string; label: string }> = [
-  { id: 'claude-fable-5', label: 'Fable 5' },
-  { id: 'claude-opus-5', label: 'Opus 5' },
-];
-
-const GPT_MODEL_CATALOG: ReadonlyArray<{ id: string; label: string }> = [
-  { id: 'gpt-5.6-sol', label: 'GPT 5.6 Sol' },
-  { id: 'gpt-5.5', label: 'GPT 5.5' },
-];
-
-const GROK_MODEL_CATALOG: ReadonlyArray<{ id: string; label: string }> = [
-  { id: 'grok-4.6', label: 'Grok 4.6' },
-  { id: 'grok-4.5', label: 'Grok 4.5' },
-];
-
-const GEMINI_MODEL_CATALOG: ReadonlyArray<{ id: string; label: string }> = [
-  // `gemini` is the family base (default on): covers 3.6/3.7/3.8, Pro, 4, 5 and
-  // whatever ships next. The per-version chips are for narrowing scope after
-  // opting the family off.
-  { id: 'gemini', label: 'Gemini (all versions)' },
-  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' },
-  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
-  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
-];
-
+/** Manual scope controls are generated from runtime/provider observations.
+ * Model support is never represented by a release-time chip catalog. */
 export function renderModelsFragment(
   active: string[],
   configured: string[],
@@ -133,21 +109,19 @@ export function renderModelsFragment(
 ): string {
   const t = (key: string): string => dashboardT(locale, key);
   const on = new Set(active);
-  const labelOf = new Map(
-    [...MODEL_CATALOG, ...GPT_MODEL_CATALOG, ...GROK_MODEL_CATALOG, ...GEMINI_MODEL_CATALOG].map((m) => [m.id, m.label]),
-  );
-  // Union the catalog with env-configured + active ids so FURYPIPE_MODELS-enabled
-  // families always show as toggles, then split into chip rows (Claude /
-  // OpenAI Responses / Gemini) plus the FURYPIPE_MODELS CSV textbox that mirrors the scope.
+  const labelOf = new Map(discovered.map((model) => [
+    model.id,
+    model.displayName || model.id,
+  ] as const));
+  // Manual scope controls are the union of actual observed/discovered ids plus
+  // existing configured/active overrides. This deliberately avoids presenting
+  // a hard-coded chip list as if it were FuryPipe's compatibility catalog.
   const ids: string[] = [];
   const seen = new Set<string>();
   for (const id of [
-    ...MODEL_CATALOG.map((m) => m.id),
-    ...GPT_MODEL_CATALOG.map((m) => m.id),
-    ...GROK_MODEL_CATALOG.map((m) => m.id),
-    ...GEMINI_MODEL_CATALOG.map((m) => m.id),
     ...configured,
     ...active,
+    ...discovered.slice(0, 250).map((model) => model.id),
   ]) {
     if (id && !seen.has(id)) {
       seen.add(id);
@@ -163,14 +137,7 @@ export function renderModelsFragment(
       `hx-vals='${escapeHtml(`{"model":${JSON.stringify(id)},"on":${!lit}}`)}'>${escapeHtml(label)}${lit ? ' ✓' : ''}</button>`
     );
   };
-  const claudeChips = ids.filter((id) => id.startsWith('claude')).map(chipFor).join('');
-  const geminiChips = ids.filter((id) => id.includes('gemini')).map(chipFor).join('');
-  const gptChips = ids.filter((id) => id.startsWith('gpt')).map(chipFor).join('');
-  const grokChips = ids.filter((id) => id.startsWith('grok')).map(chipFor).join('');
-  const otherChips = ids
-    .filter((id) => !id.startsWith('claude') && !id.startsWith('gpt') && !id.startsWith('grok') && !id.includes('gemini'))
-    .map(chipFor)
-    .join('');
+  const scopeChips = ids.slice(0, 100).map(chipFor).join('');
   const moot = enabled
     ? ''
     : `<div class="models"><span class="hint">${escapeHtml(t('dashboard.models.offHint'))}</span></div>`;
@@ -212,25 +179,10 @@ export function renderModelsFragment(
       : `<div class="model-fabric-empty">No runtime/provider model catalog observation yet. Models appear here when traffic is observed or a configured provider catalog refresh succeeds.</div>`) +
     `</section>`;
 
-  return (
-    modelFabric +
-    moot +
+  const manualScope = `<details class="model-scope-override">` +
+    `<summary class="models-summary">${escapeHtml(t('dashboard.page.modelScope'))}</summary>` +
     `<div class="models">` +
-    `<span class="models-label">${escapeHtml(t('dashboard.models.claude'))}</span>` +
-    claudeChips +
-    `<span class="hint">${escapeHtml(t('dashboard.models.unlisted'))}</span>` +
-    `</div>` +
-    `<div class="models">` +
-    `<span class="models-label">${escapeHtml(t('dashboard.models.gemini'))}</span>` +
-    geminiChips +
-    `<span class="hint">${escapeHtml(t('dashboard.models.geminiHint'))}</span>` +
-    `</div>` +
-    `<div class="models">` +
-    `<span class="models-label">${escapeHtml(t('dashboard.models.openai'))}</span>` +
-    gptChips +
-    grokChips +
-    otherChips +
-    `<span class="hint">${escapeHtml(t('dashboard.models.openaiHint'))}</span>` +
+    (scopeChips || `<span class="hint">${escapeHtml(t('dashboard.models.unlisted'))}</span>`) +
     `</div>` +
     `<div class="models">` +
     `<span class="models-label">FURYPIPE_MODELS</span>` +
@@ -238,8 +190,9 @@ export function renderModelsFragment(
     `value="${escapeHtml(active.join(','))}" spellcheck="false" autocomplete="off" ` +
     `hx-post="/fragments/models" hx-target="#frag-models" hx-trigger="change">` +
     `<span class="hint">${escapeHtml(t('dashboard.models.csvHint'))}</span>` +
-    `</div>`
-  );
+    `</div></details>`;
+
+  return modelFabric + moot + manualScope;
 }
 
 // ---- session hero --------------------------------------------------------
