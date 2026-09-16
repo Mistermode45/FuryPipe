@@ -11,7 +11,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { DashboardState, dashboardPath, dashboardHostLabel } from '../src/dashboard.js';
-import { getAllowedModelBases, isFuryPipeSupportedModel, setAllowedModelBases } from '../src/core/applicability.js';
+import {
+  getAllowedModelBases,
+  getFuryPipeVisualPolicy,
+  isFuryPipeSupportedModel,
+  setAllowedModelBases,
+  setFuryPipeVisualPolicy,
+} from '../src/core/applicability.js';
 import {
   normalizeOpenAIModelsPayload,
   registerRuntimeModelCatalog,
@@ -113,6 +119,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   setAllowedModelBases(null);
+  setFuryPipeVisualPolicy(null);
+  delete process.env.FURYPIPE_VISUAL_POLICY;
   resetRuntimeModelFabricForTests();
   try {
     fs.rmSync(path.dirname(tmp.eventsFile), { recursive: true, force: true });
@@ -363,6 +371,41 @@ describe('serveFragment', () => {
       if (prev === undefined) delete process.env.FURYPIPE_MODELS;
       else process.env.FURYPIPE_MODELS = prev;
     }
+  });
+
+  it('renders observed Model Fabric entries and persists visual policy changes', async () => {
+    registerRuntimeModelCatalog(normalizeOpenAIModelsPayload({
+      data: [{ id: 'gpt-6-astra', owned_by: 'openai' }],
+    }, '2026-09-16T00:00:00.000Z'));
+
+    const saved: string[] = [];
+    const policyDash = new DashboardState(
+      tmp,
+      async () => new Map(),
+      undefined,
+      undefined,
+      (policy) => saved.push(policy),
+    );
+
+    const initial = await (await policyDash.serveFragment('models', url, 1234)).text();
+    expect(initial).toContain('Model Fabric');
+    expect(initial).toContain('gpt-6-astra');
+    expect(initial).toContain('IMAGE YES');
+    expect(initial).toContain('UNPROFILED');
+    expect(initial).toContain('<option value="auto" selected>AUTO</option>');
+
+    expect(policyDash.handleVisualPolicySet('max_savings')).toBe('max_savings');
+    expect(getFuryPipeVisualPolicy()).toBe('max_savings');
+    expect(saved).toEqual(['max_savings']);
+
+    const max = await (await policyDash.serveFragment('models', url, 1234)).text();
+    expect(max).toContain('<option value="max_savings" selected>MAX SAVINGS</option>');
+
+    // Invalid values fail closed to the conservative default rather than
+    // becoming an unrecognised permissive mode.
+    expect(policyDash.handleVisualPolicySet('anything')).toBe('auto');
+    expect(getFuryPipeVisualPolicy()).toBe('auto');
+    expect(saved).toEqual(['max_savings', 'auto']);
   });
 
   it('replaces the whole scope from the FURYPIPE_MODELS textbox CSV', async () => {
