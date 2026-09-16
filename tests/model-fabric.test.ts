@@ -186,7 +186,7 @@ describe('model fabric', () => {
     expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(true);
     expect(isFuryPipeSupportedModel('grok-4.6')).toBe(true);
-    expect(isFuryPipeSupportedModel('gpt-6-astra')).toBe(false);
+    expect(isFuryPipeSupportedModel('gpt-6-astra')).toBe(true);
 
     process.env.FURYPIPE_VISUAL_POLICY = 'safe_exact';
     expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(true);
