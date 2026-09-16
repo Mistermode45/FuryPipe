@@ -1,14 +1,14 @@
 /**
  * Smart-zone demo generator.
  *
- * Builds ONE large context that you feed to two Claude columns (plain vs pxpipe):
+ * Builds ONE large context that you feed to two Claude columns (plain vs FuryPipe):
  *  - context/filler-*.txt : inert, token-dense logs sized to flood the window.
  *  - context/needle.txt   : a few state-tracking facts with a deterministic
  *                           integer answer (small -> stays TEXT even through
- *                           pxpipe, so the pxpipe column reads it perfectly).
+ *                           FuryPipe, so the FuryPipe column reads it perfectly).
  *
  * The point: at large context the PLAIN column drowns in the filler and gets the
- * answer wrong (the "dumb zone"); the pxpipe column images the filler, keeps a
+ * answer wrong (the "dumb zone"); the FuryPipe column images the filler, keeps a
  * small active context, and answers correctly.
  *
  * Prints the prompt to paste and the expected answer. Re-run to change SIZE.
@@ -57,9 +57,9 @@ while (charCount < targetChars) { const ln = line(); lines.push(ln); charCount +
 
 // Sprinkle a rare, COUNTABLE marker into K random lines. The COUNT (not the
 // content) is the second half of the answer: plain reads text and counts K
-// exactly; pxpipe must count the token across the rendered PNGs. Visual
+// exactly; FuryPipe must count the token across the rendered PNGs. Visual
 // counting across hundreds of images is the hard case for imaged content —
-// this run MEASURES how close pxpipe gets (don't assume; read the log).
+// this run MEASURES how close FuryPipe gets (don't assume; read the log).
 const MARK = "AUDIT-ZX9";
 const markCount = ri(8, 16);
 const markLines = new Set();
@@ -73,9 +73,9 @@ for (const ln of lines) { if (buf.length + ln.length + 1 > FILE_CHARS) flush(); 
 flush();
 
 // Two-part forcing prompt. Part 1 (needle, TEXT): the ledger balance — both arms
-// read it exactly. Part 2 (marker, IMAGED on the pxpipe arm): COUNT the AUDIT-ZX9
+// read it exactly. Part 2 (marker, IMAGED on the FuryPipe arm): COUNT the AUDIT-ZX9
 // token across the filler. Grep is forbidden, so the agent must count from what's
-// in its context — plain from text (exact), pxpipe from the PNGs (the measured
+// in its context — plain from text (exact), FuryPipe from the PNGs (the measured
 // unknown). final = balance + count forces BOTH, so the 800k actually matters.
 const finalAnswer = answer + markCount;
 const prompt =
@@ -85,4 +85,4 @@ console.log(`generated context/: ${n} filler files (~${SIZE.toLocaleString()} to
 console.log(`\n--- paste this prompt in BOTH Claude columns ---\n${prompt}\n`);
 console.log(`--- expected answer (ground truth): ${finalAnswer} ---`);
 console.log(`breakdown: balance=${answer} + ${MARK}_count=${markCount} = final=${finalAnswer}`);
-console.log(`plain reads text -> count=${markCount} exact; pxpipe must count "${MARK}" across the rendered images -> THIS RUN MEASURES it.`);
+console.log(`plain reads text -> count=${markCount} exact; FuryPipe must count "${MARK}" across the rendered images -> THIS RUN MEASURES it.`);

@@ -1,7 +1,7 @@
 /**
  * Live dashboard for the Node host. Serves the main HTML page and JSON
  * polling endpoints. All "/api/*.json" endpoints recompute from disk on
- * every request — pxpipe doesn't have a query layer, but a 1.5 MB JSONL
+ * every request — FuryPipe doesn't have a query layer, but a 1.5 MB JSONL
  * streams in well under 100 ms.
  *
  * Legacy live-poll endpoints (left in place, the existing tick() loop uses
@@ -15,7 +15,7 @@
  * Session endpoints (read-only telemetry — no destructive operations):
  *
  *   GET  /api/sessions.json          → grouped sessions (sha8 + project + counts)
- *   GET  /api/stats.json             → full-history aggregate (formerly `pxpipe stats`)
+ *   GET  /api/stats.json             → full-history aggregate (formerly `FuryPipe stats`)
  *
  * Metric formulas and HTML shell originally ported from the Python reference
  * implementation (deleted after live cache-rate validation hit 98.7% by tokens).
@@ -34,6 +34,7 @@ import * as readline from 'node:readline';
 import type { ProxyEvent } from './core/proxy.js';
 import type { TrackEvent } from './core/tracker.js';
 import type { ControlRoomSnapshot } from './control-room/index.js';
+import { createControlPlaneSnapshot, type ControlPlaneSnapshot } from './control-plane.js';
 import {
   computeActualInputEffWithCacheTier,
   computeBaselineInputEffWithCacheTier,
@@ -46,6 +47,7 @@ import {
   openAIOutputRate,
 } from './core/openai-savings.js';
 import { renderCacheMaxBytes, renderCacheStats } from './core/render.js';
+import { inspectRuntimeModels } from './core/model-fabric.js';
 import {
   aggregateSessions,
   claudeCodeMap,
@@ -71,13 +73,17 @@ import {
   renderSessionsUnavailableFragment,
   renderStatsTableFragment,
   renderControlRoomFragment,
+  renderControlPlaneFragment,
   type ContextMapData,
 } from './dashboard/fragments.js';
 import {
   getAllowedModelBases,
   getConfiguredModelBases,
-  isPxpipeSupportedModel,
+  getFuryPipeVisualPolicy,
+  isFuryPipeSupportedModel,
   setAllowedModelBases,
+  setFuryPipeVisualPolicy,
+  type FuryPipeVisualPolicy,
 } from './core/applicability.js';
 import type {
   StatsPayload,
@@ -85,6 +91,7 @@ import type {
   SessionsPayload,
   FullStatsPayload,
   CurrentSessionPayload,
+  ModelRuntimeActivity,
 } from './dashboard/types.js';
 import { parseAcceptLanguage, resolveSupportedLocale } from './i18n/runtime.js';
 import { CORE_CATALOGS } from './i18n/catalogs.js';
@@ -134,6 +141,8 @@ export interface RecentRow {
   status: number;
   size_in?: number;
   compressed: boolean;
+  /** Exact passthrough/compression reason captured from the proxy event. */
+  reason?: string;
   cc_added?: number;
   input_tokens?: number;
   /** From /v1/messages `usage.output_tokens`. Identical with/without
@@ -172,7 +181,7 @@ export interface RecentRow {
  *      cold_tail = baseline_tokens − cacheable        (always-cold input on both paths)
  *      warm      = did THIS request read a warm cache? (cache_read > 0)
  *      The text counterfactual is WARMTH-AWARE and grounded in OBSERVED cache
- *      state: pxpipe images the cached prefix in place (moves the caller's
+ *      state: FuryPipe images the cached prefix in place (moves the caller's
  *      cache_control marker onto the image), so image and text share cache fate.
  *      cache_read>0 ⇒ a warm cache existed for both paths; cache_read===0 ⇒ cold
  *      for both, so text re-creates its prefix too (no phantom warm read on a
@@ -227,7 +236,7 @@ interface SessionTotals {
   // the headline; the weighted $ figures are diagnostics below it.
   rawActualTokens: number;
   rawBaselineTokens: number;
-  // Raw output tokens (the model's reply). pxpipe does NOT compress output, so
+  // Raw output tokens (the model's reply). FuryPipe does NOT compress output, so
   // the HONEST total reduction adds it to BOTH sides:
   //   1 − (rawActual + rawOutput) / (rawBaseline + rawOutput)
   // Headlining input-only would cherry-pick the part that compresses.
@@ -260,14 +269,14 @@ interface Totals {
    *  with a usage block. For measured rows: cache-aware baseline (what the
    *  unproxied path would have billed). For unmeasured/probe-failed rows:
    *  actual_input_eff (best available estimate — these rows didn't run
-   *  pxpipe or we can't measure what it would have cost, so the
+   *  FuryPipe or we can't measure what it would have cost, so the
    *  counterfactual ≈ actual).
    *
    *  This is the right denominator for "share of bill saved": dividing
    *  by what-you-would-have-paid is bounded at 100% (you can't save more
    *  than you would have spent). Dividing by what-you-DID-pay is not
    *  bounded — a single big cold-miss compressed request can make
-   *  saved/actual exceed 100% because pxpipe shrunk the actual to
+   *  saved/actual exceed 100% because FuryPipe shrunk the actual to
    *  near zero. */
   allBaselineEquivalentWeighted: number;
   /** Sum of weighted ACTUAL input tokens across the same all-rows set.
@@ -449,7 +458,7 @@ function googleEff(args: {
  *  cached subset (`cachedTokens`), there is no cache-create premium, the cached
  *  prefix reads at ~0.1×, and the baseline is the measured `baselineImagedTokens`
  *  (o200k text-token cost of the imaged content) vs the vision-token `imageTokens`
- *  pxpipe actually paid — not a count_tokens probe. No per-session warmth state:
+ *  FuryPipe actually paid — not a count_tokens probe. No per-session warmth state:
  *  OpenAI caching is automatic/prefix-based and the discount is already folded
  *  into the cached-input rate. See src/core/openai-savings.ts. */
 function gptEff(args: {
@@ -579,6 +588,8 @@ export class DashboardState {
    *  writes the `models` key of the config file so chip toggles survive a
    *  restart. Best-effort: failures are the hook's problem, never the API's. */
   private readonly persistModelBases: ((bases: readonly string[]) => void) | undefined;
+  /** Host-provided persistence hook for the global visual policy. */
+  private readonly persistVisualPolicy: ((policy: FuryPipeVisualPolicy) => void) | undefined;
   /** Optional metadata-only Control Room provider. Runtime subsystems own the
    * evidence; the dashboard only renders a pre-built snapshot. */
   private readonly controlRoomProvider: ControlRoomProvider | undefined;
@@ -588,11 +599,13 @@ export class DashboardState {
     ccMapFn?: () => Promise<Map<string, ClaudeCodeSessionRef>>,
     persistModelBases?: (bases: readonly string[]) => void,
     controlRoomProvider?: ControlRoomProvider,
+    persistVisualPolicy?: (policy: FuryPipeVisualPolicy) => void,
   ) {
     this.paths = paths;
     this.ccMapFn = ccMapFn ?? (() => claudeCodeMap());
     this.persistModelBases = persistModelBases;
     this.controlRoomProvider = controlRoomProvider;
+    this.persistVisualPolicy = persistVisualPolicy;
   }
 
   private totalsForModel(model: string | undefined): Totals {
@@ -608,7 +621,7 @@ export class DashboardState {
   private enabledTotals(): Totals {
     const combined = emptyTotals(this.startedAt);
     for (const [model, totals] of this.totalsByModel) {
-      if (!isPxpipeSupportedModel(model)) continue;
+      if (!isFuryPipeSupportedModel(model)) continue;
       for (const key of Object.keys(combined) as Array<keyof Totals>) {
         if (key !== 'startedAt') combined[key] += totals[key];
       }
@@ -772,7 +785,7 @@ export class DashboardState {
         ? computeActualInputEffWithCacheTier(inp, cc, cr, cc1h, cc5m)
         : 0;
 
-      // pxpipe only reduces input by imaging the static slab. An UNCOMPRESSED
+      // FuryPipe only reduces input by imaging the static slab. An UNCOMPRESSED
       // row had its body forwarded untouched, so its unproxied counterfactual
       // IS exactly what it paid — crediting the cache-modeled baseline there
       // (which prices the prefix at the cache-READ rate) fabricates savings on
@@ -780,7 +793,7 @@ export class DashboardState {
       // actually compressed AND we have a usable probe.
       creditSaving = haveBaseline && haveUsage && compressed;
 
-      // Cache-aware, server-observed baseline. INVARIANT: pxpipe is credited ONLY
+      // Cache-aware, server-observed baseline. INVARIANT: FuryPipe is credited ONLY
       // for the text it imaged away — NEVER for caching. The imagined text path
       // gets the same observed cache state as the actual request: cr>0 means warm
       // for both, cr===0 means cold for both. No wall-clock-only inference.
@@ -910,10 +923,10 @@ export class DashboardState {
       }
     }
     // All-rows COUNTERFACTUAL spend, ungated on the probe — the honest
-    // denominator for "did pxpipe move my real bill". Measured rows
+    // denominator for "did FuryPipe move my real bill". Measured rows
     // contribute their cache-aware baseline (what the unproxied path
     // would have billed); unmeasured/probe-failed/passthrough rows
-    // contribute their actual input (pxpipe either didn't run or we
+    // contribute their actual input (FuryPipe either didn't run or we
     // can't measure the counterfactual, so actual ≈ baseline). This
     // keeps the ratio bounded at 100% — you can't save more than you
     // would have paid.
@@ -1018,6 +1031,7 @@ export class DashboardState {
       model: ev.model,
       status: ev.status,
       compressed,
+      reason: info?.reason,
       cc_added: compressed ? 1 : undefined,
       input_tokens: haveUsage ? inp : undefined,
       output_tokens: haveUsage ? out : undefined,
@@ -1242,6 +1256,7 @@ export class DashboardState {
         model: t.model,
         status: t.status,
         compressed,
+        reason: t.reason,
         cc_added: compressed ? 1 : undefined,
         input_tokens: t.input_tokens,
         output_tokens: t.output_tokens,
@@ -1347,13 +1362,13 @@ export class DashboardState {
     // estimation), but the denominator MUST include every request the user
     // actually paid for — including passthrough rows, probe-failed rows,
     // and untransformed turns the gate said no to. Otherwise the headline
-    // answers "did pxpipe help on the rows where it ran" instead of
-    // "did pxpipe move my real bill". The first is a cherry-pick.
+    // answers "did FuryPipe help on the rows where it ran" instead of
+    // "did FuryPipe move my real bill". The first is a cherry-pick.
     const allBaselineEquiv = totals.allBaselineEquivalentWeighted;
     const allActual = totals.allActualInputWeighted;
     const allOutput = totals.allOutputWeighted;
     // Denominator = counterfactual all-rows bill: what the user would have
-    // paid with no pxpipe. Bounded ratio at 100%; a single cold-miss
+    // paid with no FuryPipe. Bounded ratio at 100%; a single cold-miss
     // compressed request on an otherwise empty session shows ~99% saved,
     // not 280%.
     const allCounterfactualBill = allBaselineEquiv + allOutput;
@@ -1410,7 +1425,7 @@ export class DashboardState {
       // Honest "share of total bill saved" — measured-rows numerator over
       // ALL paid requests in the denominator (compressed + passthrough +
       // probe-failed). This is the number users actually want when they
-      // ask "is pxpipe helping". Negative when flap-pollution from
+      // ask "is FuryPipe helping". Negative when flap-pollution from
       // passthrough turns exceeds the collapse win on measured turns.
       saved_pct_of_all_spend: round1(pctAllSpend),
       all_baseline_equivalent_weighted: Math.round(allBaselineEquiv),
@@ -1546,6 +1561,89 @@ export class DashboardState {
     }
   }
 
+  /** GET /api/control-plane.json — bounded, read-only V2 runtime projection.
+   * It only combines counters already held by this dashboard with the injected
+   * Control Room snapshot; it never scans, configures, or executes a capability. */
+  private async readControlPlaneSnapshot(port: number): Promise<ControlPlaneSnapshot> {
+    const stats = (await this.serveStats().json()) as StatsPayload;
+    const count = (value: number | undefined): number =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+    return createControlPlaneSnapshot({
+      generatedAt: Date.now(),
+      runtime: {
+        port,
+        uptimeSec: count(stats.uptime_sec),
+        requests: count(stats.requests),
+        compressedRequests: count(stats.compressed_requests),
+        passthroughRequests: count(stats.passthrough),
+        savedInputTokens: count(stats.saved_input_tokens),
+        savedUsd: Number.isFinite(stats.saved_usd) ? stats.saved_usd : 0,
+        compressionEnabled: this.compressionEnabled,
+        activeModels: getAllowedModelBases(),
+      },
+      controlRoom: await this.readControlRoomSnapshot(),
+    });
+  }
+
+  private modelRuntimeActivity(model: string): ModelRuntimeActivity {
+    const totals = this.totalsByModel.get(model);
+    const recent = this.recent.filter((row) => row.model === model);
+    const recentSkipReasons: Record<string, number> = {};
+    for (const row of recent) {
+      if (row.compressed || !row.reason) continue;
+      recentSkipReasons[row.reason] = (recentSkipReasons[row.reason] ?? 0) + 1;
+    }
+    const last = recent[recent.length - 1];
+    return Object.freeze({
+      requests: totals?.requests ?? recent.length,
+      compressedRequests: totals?.compressedRequests ?? recent.filter((row) => row.compressed).length,
+      passthroughRequests: Math.max(
+        0,
+        (totals?.requests ?? recent.length) - (totals?.compressedRequests ?? recent.filter((row) => row.compressed).length),
+      ),
+      recentSkipReasons: Object.freeze({ ...recentSkipReasons }),
+      ...(last?.reason === undefined ? {} : { lastReason: last.reason }),
+      ...(last === undefined || !Number.isFinite(last.ts)
+        ? {}
+        : { lastObservedAt: new Date(last.ts * 1000).toISOString() }),
+    });
+  }
+
+  private modelRuntimeActivityMap(): ReadonlyMap<string, ModelRuntimeActivity> {
+    const ids = new Set<string>([
+      ...inspectRuntimeModels().map((model) => model.id),
+      ...this.totalsByModel.keys(),
+      ...this.recent.flatMap((row) => row.model ? [row.model] : []),
+    ]);
+    const output = new Map<string, ModelRuntimeActivity>();
+    for (const id of [...ids].slice(0, 2_000)) output.set(id, this.modelRuntimeActivity(id));
+    return output;
+  }
+
+  /** GET /api/models.json — bounded, secret-free Model Fabric snapshot. */
+  serveModelsJson(): Response {
+    const all = inspectRuntimeModels();
+    const limit = 2_000;
+    const models = all.slice(0, limit);
+    const runtime = this.modelRuntimeActivityMap();
+    return new Response(JSON.stringify({
+      format: 'furypipe-model-catalog/v1',
+      total: all.length,
+      returned: models.length,
+      truncated: all.length > limit,
+      models: models.map((model) => ({
+        ...model,
+        runtime: runtime.get(model.id) ?? this.modelRuntimeActivity(model.id),
+      })),
+    }), {
+      status: 200,
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+      },
+    });
+  }
+
   /** GET /api/control-room.json — metadata-only V5 evidence snapshot. */
   async serveControlRoomJson(): Promise<Response> {
     const snapshot = await this.readControlRoomSnapshot();
@@ -1553,6 +1651,10 @@ export class DashboardState {
       return jsonResponse({ status: 'NOT_AVAILABLE' }, 503);
     }
     return jsonResponse(snapshot);
+  }
+
+  async serveControlPlaneJson(port: number): Promise<Response> {
+    return jsonResponse(await this.readControlPlaneSnapshot(port));
   }
 
   /** GET /fragments/<name> — server-rendered htmx fragments. Each one reuses
@@ -1570,6 +1672,9 @@ export class DashboardState {
             getConfiguredModelBases(),
             this.compressionEnabled,
             locale,
+            inspectRuntimeModels(),
+            getFuryPipeVisualPolicy(),
+            this.modelRuntimeActivityMap(),
           ),
         );
       case 'context-map': {
@@ -1633,6 +1738,29 @@ export class DashboardState {
           locale,
         ));
       }
+      case 'control-plane': {
+        return htmlResponse(renderControlPlaneFragment(
+          await this.readControlPlaneSnapshot(port),
+          locale,
+        ));
+      }
+      case 'control-plane-overview':
+      case 'control-plane-visual-engine':
+      case 'control-plane-capabilities':
+      case 'control-plane-topology':
+      case 'control-plane-evidence': {
+        const surface = name.slice('control-plane-'.length) as
+          | 'overview'
+          | 'visual-engine'
+          | 'capabilities'
+          | 'topology'
+          | 'evidence';
+        return htmlResponse(renderControlPlaneFragment(
+          await this.readControlPlaneSnapshot(port),
+          locale,
+          surface,
+        ));
+      }
       default:
         return new Response('unknown fragment', { status: 404 });
     }
@@ -1662,7 +1790,7 @@ export class DashboardState {
   }
 
   /** GET /api/stats.json — full-history aggregate. Migrated from the
-   *  former `pxpipe stats` CLI. */
+   *  former `FuryPipe stats` CLI. */
   async serveApiStats(): Promise<Response> {
     if (!this.paths) return notConfigured('stats');
     const result = await aggregateEventsFile(this.paths.eventsFile);
@@ -1688,11 +1816,27 @@ export class DashboardState {
     return jsonResponse({ compression_enabled: on });
   }
 
+  /** Update the global visual policy. Invalid values fail closed to AUTO. */
+  handleVisualPolicySet(value: unknown): FuryPipeVisualPolicy {
+    const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    const policy: FuryPipeVisualPolicy =
+      normalized === 'max_savings' || normalized === 'safe_exact' || normalized === 'text_only'
+        ? normalized
+        : 'auto';
+    setFuryPipeVisualPolicy(policy);
+    try {
+      this.persistVisualPolicy?.(policy);
+    } catch {
+      // Persistence is best-effort; the live runtime policy remains applied.
+    }
+    return policy;
+  }
+
   /** POST /fragments/models — add/remove ONE model (Claude or GPT) from the
    *  runtime compress scope. The model checks read this live. Persisted via
    *  the host's `persistModelBases` hook when provided (Node writes the
    *  config file); otherwise in-memory only and restart resets to the
-   *  PXPIPE_MODELS env / built-in default. */
+   *  FURYPIPE_MODELS env / built-in default. */
   handleModelsToggle(model: string, on: boolean): void {
     const next = new Set(getAllowedModelBases());
     if (on) next.add(model);
@@ -1701,7 +1845,7 @@ export class DashboardState {
   }
 
   /** POST /fragments/models with {list} — replace the WHOLE runtime compress
-   *  scope from the PXPIPE_MODELS textbox. Same CSV shape as the env var;
+   *  scope from the FURYPIPE_MODELS textbox. Same CSV shape as the env var;
    *  empty or off/false/0/no/none = compress nothing. Persistence as above. */
   handleModelsSet(csv: string): void {
     const trimmed = csv.trim();
@@ -1757,7 +1901,9 @@ export type DashboardRoute =
   | { kind: 'png' } // /proxy-latest-png
   | { kind: 'api-sessions' } // /api/sessions.json
   | { kind: 'api-stats' } // /api/stats.json
+  | { kind: 'api-models' } // /api/models.json
   | { kind: 'api-control-room' } // /api/control-room.json
+  | { kind: 'api-control-plane' } // /api/control-plane.json
   | { kind: 'current-session' } // /api/current-session.json
   | { kind: 'api-compression' } // /api/compression (POST {enabled}) — runtime kill switch
   | { kind: 'api-image-source' } // /api/image-source[?id=N] — source text behind a rendered PNG
@@ -1771,7 +1917,9 @@ export function dashboardPath(pathname: string): DashboardRoute | null {
   if (pathname === '/proxy-latest-png') return { kind: 'png' };
   if (pathname === '/api/sessions.json') return { kind: 'api-sessions' };
   if (pathname === '/api/stats.json') return { kind: 'api-stats' };
+  if (pathname === '/api/models.json') return { kind: 'api-models' };
   if (pathname === '/api/control-room.json') return { kind: 'api-control-room' };
+  if (pathname === '/api/control-plane.json') return { kind: 'api-control-plane' };
   if (pathname === '/api/current-session.json') return { kind: 'current-session' };
   if (pathname === '/api/compression') return { kind: 'api-compression' };
   if (pathname === '/api/image-source') return { kind: 'api-image-source' };
@@ -1782,11 +1930,11 @@ export function dashboardPath(pathname: string): DashboardRoute | null {
 }
 
 /** Name of the machine serving this dashboard, shown in the title and topbar.
- *  PXPIPE_DASH_LABEL overrides it for hosts whose system hostname says nothing
+ *  FURYPIPE_DASH_LABEL overrides it for hosts whose system hostname says nothing
  *  useful (containers, "localhost"); an explicitly empty label opts out and
  *  renders the unlabelled page. */
 export function dashboardHostLabel(): string {
-  const override = process.env.PXPIPE_DASH_LABEL;
+  const override = process.env.FURYPIPE_DASH_LABEL;
   if (override !== undefined) return override.trim();
   try {
     const h = os.hostname().trim();

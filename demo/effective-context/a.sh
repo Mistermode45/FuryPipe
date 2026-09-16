@@ -4,7 +4,7 @@
 # in the filler and answer WRONG. Run `bash demo/effective-context/setup.sh` first.
 set -uo pipefail
 
-DIR=/tmp/pp-ec-left
+DIR=/tmp/furypipe-ec-left
 [ -d "$DIR/context" ] || { echo "no $DIR — run: bash demo/effective-context/setup.sh"; exit 1; }
 
 # `claude` is usually a shell alias (not on PATH); resolve the real binary.
@@ -19,14 +19,14 @@ PROMPT='context/ has needle.txt plus filler-NNN.txt files. Using the Read tool o
 
 # Model (alias table: demo/models.sh). Defaults to whatever setup.sh armed, which is
 # what keeps this column comparable to b.sh — an A/B across two different models
-# measures nothing. Override with the first arg or $PXPIPE_DEMO_MODEL:
+# measures nothing. Override with the first arg or $FURYPIPE_DEMO_MODEL:
 #   ./a.sh              → the model setup.sh armed (same as b.sh)
 #   ./a.sh opus         → unique substring match against the shipping model list
-#   ./a.sh claude-...   → any full id, verbatim   (also: PXPIPE_DEMO_MODEL=... ./a.sh)
-# No scope check here: this column deliberately runs through the PXPIPE_DISABLE=1
+#   ./a.sh claude-...   → any full id, verbatim   (also: FURYPIPE_DEMO_MODEL=... ./a.sh)
+# No scope check here: this column deliberately runs through the FURYPIPE_DISABLE=1
 # passthrough proxy, so compress scope is irrelevant to it by design.
 DEMO_NAME=effective-context
-: "${PXPIPE_DEMO_VARIANT:=[1m]}"   # large-context variant; scope keys ignore [tags]
+: "${FURYPIPE_DEMO_VARIANT:=[1m]}"   # large-context variant; scope keys ignore [tags]
 . "$(dirname "$0")/../models.sh"
 demo_resolve_column_model "$DEMO_NAME" "${1:-}" || exit 1
 if [ -n "${DEMO_STATE_MODEL_ID:-}" ] && [ "$DEMO_MODEL_ID" != "$DEMO_STATE_MODEL_ID" ]; then

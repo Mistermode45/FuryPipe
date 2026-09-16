@@ -7,7 +7,7 @@
  * real marginal density is ~1.5 for dense content, so the constant under-counted
  * text cost and biased the gate toward passthrough — leaving savings on the table.
  *
- * This module learns CPT from the events pxpipe already logs. Model: a request's
+ * This module learns CPT from the events FuryPipe already logs. Model: a request's
  * TEXT token cost decomposes into a per-bucket marginal rate times that bucket's
  * char count,
  *

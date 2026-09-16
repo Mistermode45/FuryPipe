@@ -77,6 +77,30 @@ Un skill automatiquement exécuté :
 
 Le stage reçoit les résultats dans `autoSkillExecutions`.
 
+### Preuve d'exécution
+
+La sélection et l'exécution restent deux états distincts. `runAgent()` ne place une entrée dans
+`capabilityExecutions` qu'après le retour réussi du callback réel correspondant.
+
+Un receipt d'exécution contient notamment :
+
+- `kind` : `skill`, `mcp` ou `subagent` ;
+- l'ID de la capacité ;
+- le stage réel ;
+- `invocation` : `automatic` ou `manual` ;
+- `status: executed` ;
+- pour un skill/subagent, les tokens consommés et un digest des preuves ;
+- pour MCP, la méthode et un digest borné des paramètres.
+
+Les preuves brutes d'un skill ne sont pas recopiées dans le receipt : seul leur digest est exposé.
+Un skill simplement enregistré, recommandé ou sélectionné mais jamais appelé produit **zéro**
+receipt `executed`. Les appels identiques réutilisés dans le même stage ne sont pas comptés deux
+fois.
+
+Ainsi :
+
+`selected != executable != executed != verified`.
+
 ## Site web marketing
 
 Exemple :

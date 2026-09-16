@@ -51,10 +51,10 @@ await build({
   target: 'node20',
   format: 'esm',
   sourcemap: true,
-  // Inline the package version so `pxpipe --version` is correct for global/npx
+  // Inline the package version so `furypipe --version` is correct for global/npx
   // installs (see the note where `pkg` is read). esbuild replaces the bare
   // identifier with the string literal at every reference.
-  define: { __PXPIPE_VERSION__: JSON.stringify(pkg.version) },
+  define: { __FURYPIPE_VERSION__: JSON.stringify(pkg.version) },
   // Atlas is inlined as a base64 string in src/core/atlas.ts, so no external assets.
   external: [],
   banner: { js: '#!/usr/bin/env node' },

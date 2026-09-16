@@ -1,5 +1,5 @@
 /**
- * Core logic for `pxpipe export` — renders a source text to PNG pages, extracts
+ * Core logic for `furypipe export` — renders a source text to PNG pages, extracts
  * a verbatim factsheet, builds a manifest and paste-ready prompt, and returns a
  * token-cost report + list of artifacts to write.
  *
@@ -13,7 +13,7 @@ import {
   renderCellWidth,
 } from './render.js';
 // Dogfood the public SDK: render via the same `./transform` entry external
-// consumers import (pxpipe-proxy/transform → renderTextToImages), not the
+// consumers import (furypipe/transform → renderTextToImages), not the
 // internal leaf renderer.
 import { renderTextToImages } from './library.js';
 import { estimateImageCount, REPORT_CHARS_PER_TOKEN } from './transform.js';
@@ -377,7 +377,7 @@ export function buildPromptText(
         `   factsheet.txt is the authoritative source of truth for all exact strings.\n`;
 
   return (
-    `These ${pageCount} image${pageCount !== 1 ? 's' : ''} contain source code/text rendered as PNG pages by pxpipe.\n\n` +
+    `These ${pageCount} image${pageCount !== 1 ? 's' : ''} contain source code/text rendered as PNG pages by FuryPipe.\n\n` +
     fileSection +
     `Instructions for the reading agent:\n` +
     `1. Read the images in order: page-001.png through page-${lastPageStr}.png.\n` +

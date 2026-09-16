@@ -6,13 +6,13 @@
  * max image height. Unknown models preserve the conservative legacy fallback;
  * named profiles may deliberately select different fonts and geometry.
  *
- * Retune without a code change via the PXPIPE_GPT_PROFILES env var (JSON map of
+ * Retune without a code change via the FURYPIPE_GPT_PROFILES env var (JSON map of
  * model-id PREFIX -> partial profile; longest matching prefix wins, checked
  * BEFORE the built-in table). Partial fields fall back to the built-in match, so
  * you can override just one knob:
  *
- *   PXPIPE_GPT_PROFILES='{"gpt-5.6-sol":{"vision":{"regime":"patch","multiplier":1,"patchCap":12000},"stripCols":120,"maxHeightPx":1900}}'
- *   PXPIPE_GPT_PROFILES='{"gpt-5.6-sol":{"style":{"grid":true,"gridCols":4}}}'
+ *   FURYPIPE_GPT_PROFILES='{"gpt-5.6-sol":{"vision":{"regime":"patch","multiplier":1,"patchCap":12000},"stripCols":120,"maxHeightPx":1900}}'
+ *   FURYPIPE_GPT_PROFILES='{"gpt-5.6-sol":{"style":{"grid":true,"gridCols":4}}}'
  */
 
 /**
@@ -140,7 +140,7 @@ export interface GptModelProfile {
    *  columns overshoots the provider's no-resize width and is silently
    *  downscaled, which removes the legibility it was meant to buy. */
   historyStyle?: GptRenderStyle;
-  /** Maximum serialized provider request produced by pxpipe. Undefined leaves
+  /** Maximum serialized provider request produced by FuryPipe. Undefined leaves
    *  legacy behavior unchanged. Checked in the transform (which falls back to
    *  the original body when imaging would overshoot) and enforced again on the
    *  final wire body by the proxy, which answers 413.
@@ -151,9 +151,9 @@ export interface GptModelProfile {
    *  can impose its own body cap and answer with a provider-shaped
    *  `payload_too_large` naming ITS limit, for a request the provider never saw.
    *  Such a cap is also usually deployment config, not a model property, so it
-   *  belongs in `PXPIPE_GPT_PROFILES`, not here.
+   *  belongs in `FURYPIPE_GPT_PROFILES`, not here.
    *
-   *  A guessed cap makes pxpipe refuse to compress requests the provider would
+   *  A guessed cap makes FuryPipe refuse to compress requests the provider would
    *  have accepted, which is the opposite of the point. No family currently
    *  carries one. Largest body each provider has answered 200 for in local
    *  telemetry, as a lower bound (cacheable prefix already on the wire, so the
@@ -168,7 +168,7 @@ export interface GptModelProfile {
   /** Hard provider cap on TOTAL images in one request (slab + history +
    *  client-attached). When set, the history-collapse budget becomes dynamic:
    *  min(configured history cap, this cap − images already in the request), so
-   *  client-attached images consume the same headroom pxpipe's own images do
+   *  client-attached images consume the same headroom FuryPipe's own images do
    *  and the final request can never overshoot the provider's limit. Set only
    *  from a documented provider limit (Workers AI 3.8: 32). */
   providerImageCap?: number;
@@ -186,6 +186,11 @@ const GPT5_PRICING = { cacheReadRate: 0.1, outputRate: 8 };
 /**
  * Conservative fallback for unrecognized models: tile 85/170 over-states cost,
  * which biases the gate toward pass-through (safe). Matches gpt-4o/4.1/4.5.
+ *
+ * Do not use a high-density or model-specific geometry as the universal
+ * fallback: Model Fabric discovery is broader than visual-profile evidence.
+ * Newly discovered readers enter MAX_SAVINGS through explicit capability
+ * policy, while named canary profiles can select more legible geometry.
  */
 export const DEFAULT_GPT_PROFILE: GptModelProfile = {
   vision: { regime: 'tile', base: 85, perTile: 170 },
@@ -197,6 +202,29 @@ export const DEFAULT_GPT_PROFILE: GptModelProfile = {
   history: BASE_HISTORY,
   style: BASE_STYLE,
 };
+
+const OPENAI_CURRENT_LEGIBLE_STYLE: GptRenderStyle = {
+  ...BASE_STYLE,
+  font: 'jetbrains-mono-14',
+  cellWBonus: 0,
+  cellHBonus: 0,
+};
+
+function currentOpenAIProfile(
+  vision: GptVisionCost,
+  pricing: { cacheReadRate: number; outputRate: number },
+): GptModelProfile {
+  return {
+    vision,
+    ...pricing,
+    stripCols: 84,
+    maxHeightPx: 1954,
+    minCompressTokens: 500,
+    factSheetFormat: 'full',
+    history: { ...NATIVE_14PX_HISTORY, maxImages: 64 },
+    style: { ...OPENAI_CURRENT_LEGIBLE_STYLE },
+  };
+}
 
 const GPT56_SOL_PROFILE: GptModelProfile = {
   // GPT-5.6 original detail bills the submitted 32px patches without a patch cap.
@@ -236,10 +264,16 @@ interface ProfileRule {
 const isMiniNanoPatch = (m: string): boolean =>
   /^(?:gpt-5(?:\.\d+)?|gpt-4\.1)-(?:mini|nano)/.test(m) || /^o4-mini/.test(m);
 
-/** Grok ids pxpipe has a measured profile for. */
+/** Grok ids routed to the xAI render profile. */
 const isGrokModel = (m: string): boolean => /^grok-/.test(m);
 
-/** Qwen 3.8 27B ids — the only Qwen geometry pxpipe has measured. Other Qwen
+/** Grok variants for which FuryPipe has actual image-cost evidence.
+ * Keep this narrower than isGrokModel(): a future Grok id may share a family
+ * name while changing visual token accounting. */
+const isMeasuredGrokPricingId = (m: string): boolean =>
+  /^grok-4(?:\.(?:5|6))?(?:-|$)/.test(m);
+
+/** Qwen 3.8 27B ids — the only Qwen geometry FuryPipe has measured. Other Qwen
  *  variants deliberately do NOT match: the family-id guard below refuses them
  *  instead of gating an unmeasured model with this profile. */
 const isQwenModel = (m: string): boolean => /qwen3\.8-27b/i.test(m);
@@ -293,12 +327,26 @@ const BUILTIN_RULES: ProfileRule[] = [
     test: (m) => m === 'gpt-5.6-sol' || m.startsWith('gpt-5.6-sol-'),
     profile: GPT56_SOL_PROFILE,
   },
-  // 5.x flagship (gpt-5.4/5.5/…, no -mini/-nano): patch, multiplier 1, detail:original cap
+  // Current 6.x OpenAI readers are vision-capable, but FuryPipe does not yet
+  // have source-bound image-token economics for this family. Keep a legible
+  // geometry fallback for explicit/operator-owned experiments only; the
+  // applicability gate treats GPT-6 visual pricing as UNKNOWN until an
+  // operator profile or provider-backed pricing profile supplies evidence.
+  {
+    test: (m) => /^gpt-6(?:\.|-|$)/.test(m),
+    profile: currentOpenAIProfile({ regime: 'tile', base: 85, perTile: 170 }, {
+      cacheReadRate: 0.1,
+      outputRate: 5,
+    }),
+  },
+  // 5.x flagship (gpt-5.4/5.5/5.6 variants, no mini/nano): preserve
+  // the validated dense geometry. Only exact model profiles (for example Sol)
+  // may opt into a different reader geometry.
   {
     test: (m) => /^gpt-5\.\d/.test(m),
     profile: { vision: { regime: 'patch', multiplier: 1, patchCap: 10000 }, ...GPT5_PRICING, stripCols: C, maxHeightPx: H, minCompressTokens: 500, factSheetFormat: 'full', history: BASE_HISTORY, style: BASE_STYLE },
   },
-  // gpt-5 / gpt-5-chat-latest: tile 70/140
+  // gpt-5 / gpt-5-chat-latest.
   {
     test: (m) => /^gpt-5/.test(m),
     profile: { vision: { regime: 'tile', base: 70, perTile: 140 }, ...GPT5_PRICING, stripCols: C, maxHeightPx: H, minCompressTokens: 500, factSheetFormat: 'full', history: BASE_HISTORY, style: BASE_STYLE },
@@ -381,7 +429,7 @@ const FAMILY_ID_GUARDS: ReadonlyArray<{ mentions: RegExp; matches: (m: string) =
   { mentions: /qwen/, matches: isQwenModel },
 ];
 
-/** True when the operator declared this id in PXPIPE_GPT_PROFILES. The guards
+/** True when the operator declared this id in FURYPIPE_GPT_PROFILES. The guards
  *  above catch implicit fallback to another provider's formula; an explicit
  *  declaration supplies geometry and vision cost, so it clears them. */
 function hasDeclaredProfile(m: string): boolean {
@@ -392,10 +440,54 @@ function hasDeclaredProfile(m: string): boolean {
   return false;
 }
 
+export type FuryVisionPricingEvidence =
+  | 'operator_profile'
+  | 'provider_profile'
+  | 'conservative_openai'
+  | 'unknown';
+
+/**
+ * Tell applicability whether the profitability gate has a provider-appropriate
+ * image-token cost model for this ID.
+ *
+ * This is intentionally separate from "image input supported". A provider
+ * catalog can prove that Mistral/OpenRouter model X accepts images without
+ * proving that OpenAI tile pricing applies to it. Automatic MAX_SAVINGS must
+ * never turn that capability fact into fabricated economics.
+ */
+export function resolveVisionPricingEvidence(
+  model: string | null | undefined,
+): FuryVisionPricingEvidence {
+  const m = stripBracketedSegments((model ?? '').toLowerCase());
+  if (!m) return 'unknown';
+  if (hasDeclaredProfile(m)) return 'operator_profile';
+
+  const ids = candidateIds(m);
+  if (ids.some((id) => isClaudeModel(id))) return 'provider_profile';
+  if (ids.some((id) => hasGeminiMeasuredProfile(id))) return 'provider_profile';
+  if (ids.some((id) => isMeasuredGrokPricingId(id))) return 'provider_profile';
+  if (ids.some((id) => isQwenModel(id))) return 'provider_profile';
+
+  // GPT-6 is known as an OpenAI family, but family identity is not evidence for
+  // its image-token accounting. Do not turn the internal conservative geometry
+  // fallback into a profitability claim.
+  if (ids.some((id) => /^gpt-6(?:\.|-|$)/u.test(id))) return 'unknown';
+
+  // DEFAULT_GPT_PROFILE is deliberately an OpenAI-only conservative fallback
+  // for older/current families whose image-token regime FuryPipe already uses
+  // as an explicit compatibility contract.
+  if (ids.some((id) =>
+    /^(?:gpt-|chat-latest$|o(?:1|3|4)(?:-|$))/u.test(id))) {
+    return 'conservative_openai';
+  }
+
+  return 'unknown';
+}
+
 /**
  * True when an id NAMES a known provider family but does not match that
  * family's profile test — for example `gemini-3.6-pro`, when 3.6 Flash is the
- * only Gemini geometry pxpipe has measured. Such an id would fall through to
+ * only Gemini geometry FuryPipe has measured. Such an id would fall through to
  * DEFAULT_GPT_PROFILE and be gated with OpenAI's tile math, i.e. priced with
  * the wrong provider's formula, so applicability refuses it instead of
  * compressing against numbers that do not apply to it.
@@ -427,7 +519,7 @@ function resolveBuiltin(m: string): GptModelProfile {
   return DEFAULT_GPT_PROFILE;
 }
 
-// --- env override (PXPIPE_GPT_PROFILES) -----------------------------------
+// --- env override (FURYPIPE_GPT_PROFILES) -----------------------------------
 // Parsed lazily and memoized on the raw env string so tests can mutate
 // process.env and have it re-read, without re-parsing on every hot-path call.
 
@@ -587,7 +679,7 @@ function parseEnvProfiles(raw: string): Map<string, GptModelProfile> {
 }
 
 function envProfiles(): Map<string, GptModelProfile> {
-  const raw = (typeof process !== 'undefined' && process.env && process.env.PXPIPE_GPT_PROFILES) || '';
+  const raw = (typeof process !== 'undefined' && process.env && process.env.FURYPIPE_GPT_PROFILES) || '';
   if (raw !== envRaw) {
     envRaw = raw;
     envMap = parseEnvProfiles(raw);

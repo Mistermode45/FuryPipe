@@ -13,7 +13,7 @@ import type { TrackEvent } from '../src/core/tracker.js';
 
 /** Build a tmpdir with a fresh events.jsonl and 4xx-bodies/ for each test. */
 function makeTmp(): SessionsPaths {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxpipe-sessions-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'FuryPipe-sessions-'));
   const eventsFile = path.join(dir, 'events.jsonl');
   const sidecarDir = path.join(dir, '4xx-bodies');
   return { eventsFile, sidecarDir };
@@ -131,7 +131,7 @@ describe('aggregateSessions', () => {
 
   it('credits the real prefix compression (image prefix fewer tokens than text prefix)', async () => {
     writeEvents(tmp, [
-      // First TRACKED turn, but cr=100 > 0 ⇒ the cache was OBSERVABLY warm (pxpipe
+      // First TRACKED turn, but cr=100 > 0 ⇒ the cache was OBSERVABLY warm (FuryPipe
       //   started mid-session / the prefix was warmed before this process booted).
       //   Honest math prices the text counterfactual WARM too — not cold. With no
       //   fresh in-memory prior we assume the cacheable prefix was fully reused:
@@ -194,7 +194,7 @@ describe('aggregateSessions', () => {
         input_tokens: 5,
         cache_read_tokens: 90_000,
       }),
-      // Genuine loss turn: tiny body (2000) but pxpipe wrote 5000 cache_create.
+      // Genuine loss turn: tiny body (2000) but FuryPipe wrote 5000 cache_create.
       //   cr=0, so text is cold too and re-creates 1900 prefix at 1.25x:
       //   baseline = 1900*1.25 + 100 = 2475 ; actual = 3000 + 5000*1.25
       //   = 9250. saved = 2475 - 9250 = -6775. Honest formula, no clamp.
@@ -349,11 +349,11 @@ describe('aggregateSessions', () => {
 describe('filterSessions', () => {
   it('filters by project (substring match)', async () => {
     writeEvents(tmp, [
-      ev({ first_user_sha8: 'aaaaaaaa', cwd: '/Users/me/code/pxpipe' }),
+      ev({ first_user_sha8: 'aaaaaaaa', cwd: '/Users/me/code/FuryPipe' }),
       ev({ first_user_sha8: 'bbbbbbbb', cwd: '/Users/me/code/other' }),
     ]);
     const { sessions } = await aggregateSessions(tmp);
-    expect(filterSessions(sessions, { project: 'pxpipe' }).map((s) => s.id)).toEqual([
+    expect(filterSessions(sessions, { project: 'FuryPipe' }).map((s) => s.id)).toEqual([
       'aaaaaaaa',
     ]);
     expect(filterSessions(sessions, { project: 'other' }).map((s) => s.id)).toEqual([
@@ -396,7 +396,7 @@ describe('Claude Code session map', () => {
   /** Build a synthetic `~/.claude/projects/<proj>/<session>.jsonl` tree under
    *  a tmpdir and return the root path. */
   function makeCCRoot(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'pxpipe-ccmap-'));
+    return fs.mkdtempSync(path.join(os.tmpdir(), 'FuryPipe-ccmap-'));
   }
 
   it('returns an empty map when the directory does not exist', async () => {
@@ -406,7 +406,7 @@ describe('Claude Code session map', () => {
 
   it('fingerprints the first user message and maps to the session id', async () => {
     const root = makeCCRoot();
-    const proj = path.join(root, '-Users-me-code-pxpipe');
+    const proj = path.join(root, '-Users-me-code-FuryPipe');
     fs.mkdirSync(proj, { recursive: true });
     const firstUser = 'hello, this is the start of a conversation';
     const sessionFile = path.join(proj, 'abc-123.jsonl');
@@ -424,7 +424,7 @@ describe('Claude Code session map', () => {
     const ref = m.get(expectedSha);
     expect(ref).toBeDefined();
     expect(ref!.sessionId).toBe('abc-123');
-    expect(ref!.projectPath).toBe('/Users/me/code/pxpipe');
+    expect(ref!.projectPath).toBe('/Users/me/code/FuryPipe');
     expect(ref!.firstUserPreview).toContain('hello');
   });
 

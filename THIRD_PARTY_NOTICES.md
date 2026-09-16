@@ -1,10 +1,12 @@
-# Third-party notices — état local
+# Third-party notices
 
-Inventaire généré depuis le lockfile installé avec `pnpm licenses list --json` le 2026-09-14. Il décrit les packages présents dans l’environnement de build ; il ne remplace pas une revue juridique ni un SBOM de release.
+This file records third-party license and provenance notes relevant to the FuryPipe repository and build environment.
 
-## Comptage par licence
+The dependency inventory below was generated from the installed lockfile with `pnpm licenses list --json` on **2026-09-14**. It describes packages present in that build environment; it is **not** a substitute for legal review, a release SBOM or a signed provenance attestation.
 
-| Licence déclarée | Packages |
+## License counts from the recorded inventory
+
+| Declared license | Packages |
 |---|---:|
 | MIT | 61 |
 | Apache-2.0 | 9 |
@@ -15,16 +17,35 @@ Inventaire généré depuis le lockfile installé avec `pnpm licenses list --jso
 | CC0-1.0 | 1 |
 | BSD-3-Clause | 1 |
 
-## Notices à conserver
+## Notices that must remain visible
 
-- Le package racine upstream déclare MIT. Son fichier `LICENSE` contient toutefois le copyright `claude-image-proxy contributors`; l’attribution doit être clarifiée avant une publication FuryPipe.
-- Les assets présents doivent conserver leurs notices : `assets/JETBRAINS_MONO_LICENSE.txt`, `assets/SPLEEN_LICENSE.txt` et `assets/UNIFONT_LICENSE.txt`.
-- La dépendance `@img/sharp-win32-x64` déclare `Apache-2.0 AND LGPL-3.0-or-later`; cette obligation combinée doit rester visible dans tout bundle qui l’embarque.
-- `lightningcss` et son binding Windows déclarent MPL-2.0 ; `source-map-js` déclare BSD-3-Clause ; `@speed-highlight/core` déclare CC0-1.0.
-- `blake3-wasm` est présent transitivement et déclare MIT, mais n’est pas ajouté comme dépendance directe dans cette tranche.
-- `json5@2.2.3` déclare MIT et est la dépendance directe utilisée pour lire les configurations JSON5 OpenClaw ; son avis reste inclus dans l’inventaire du lockfile.
-- `playwright@1.63.0` et `playwright-core@1.63.0` déclarent Apache-2.0 ; Playwright est une dépendance directe de développement épinglée pour la QA navigateur multi-moteur. Les navigateurs Playwright sont des binaires de test téléchargés par cette version épinglée et ne sont pas inclus dans le package FuryPipe publié.
+- The repository `LICENSE` file is MIT and retains the upstream copyright attribution `claude-image-proxy contributors`. That attribution is intentionally preserved as upstream provenance and must not be removed without a legal/provenance review.
+- Bundled font/assets must retain their license files:
+  - `assets/JETBRAINS_MONO_LICENSE.txt`
+  - `assets/SPLEEN_LICENSE.txt`
+  - `assets/UNIFONT_LICENSE.txt`
+- `@img/sharp-win32-x64` declared `Apache-2.0 AND LGPL-3.0-or-later` in the recorded inventory; any redistribution that embeds it must preserve the applicable obligations.
+- `lightningcss` and its Windows binding declared MPL-2.0.
+- `source-map-js` declared BSD-3-Clause.
+- `@speed-highlight/core` declared CC0-1.0.
+- `blake3-wasm` appeared transitively and declared MIT.
+- `json5@2.2.3` declared MIT and is used to read JSON5 OpenClaw configuration.
+- `playwright@1.63.0` and `playwright-core@1.63.0` declared Apache-2.0. Playwright browser binaries are test dependencies and are not shipped as part of the FuryPipe npm package.
 
-## État release
+## Upstream provenance
 
-`pnpm audit --prod --audit-level high` était vert lors de l’inventaire local du 2026-09-14. Cet inventaire de licences n’est pas lui-même un SBOM source-bound ni une attestation signée. `npm view furypipe` retournait HTTP 404 lors du contrôle du 2026-09-14, ce qui n’est pas une réservation de nom. La publication reste interdite sans autorisation explicite du maintainer.
+FuryPipe derives from and studies upstream/open-source work documented in:
+
+- [UPSTREAM.md](UPSTREAM.md)
+- [SOURCE_LEDGER.md](SOURCE_LEDGER.md)
+- [SKILL_LICENSE_MATRIX.md](SKILL_LICENSE_MATRIX.md)
+
+Those files record source identity and integration decisions. They do not transfer ownership of third-party code or licenses.
+
+## Release state
+
+FuryPipe `v0.13.2` was publicly released on **2026-09-15** and `furypipe@0.13.2` is published on npm.
+
+The recorded 2026-09-14 license inventory predates that publication by one day. Release evidence, package digests and SBOM/provenance artifacts are tracked separately by the repository release workflows and release documentation.
+
+The local command `pnpm audit --prod --audit-level high` was green at the time of the 2026-09-14 inventory. That historical result must not be interpreted as a permanent vulnerability-free guarantee.

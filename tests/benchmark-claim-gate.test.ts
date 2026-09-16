@@ -21,10 +21,10 @@ function summary(median: number | null, known = 5, missing = 0) {
   };
 }
 
-function metric(raw: number, pxpipe: number, furypipe: number) {
+function metric(raw: number, upstream: number, furypipe: number) {
   return {
     raw: summary(raw),
-    pxpipe: summary(pxpipe),
+    upstream: summary(upstream),
     furypipe: summary(furypipe),
   };
 }
@@ -61,7 +61,7 @@ function suiteFixture() {
     },
     quality: {
       raw: summary(0.90),
-      pxpipe: summary(0.92),
+      upstream: summary(0.92),
       furypipe: summary(0.95),
     },
     exactness: {
@@ -83,7 +83,7 @@ describe('FuryPipe benchmark anti-regression gate', () => {
     expect(decision.status).toBe('PASS');
     expect(decision.qualityMedian).toEqual({
       raw: 0.90,
-      pxpipe: 0.92,
+      upstream: 0.92,
       furypipe: 0.95,
     });
     expect(decision.blockers).toEqual([]);
@@ -91,7 +91,7 @@ describe('FuryPipe benchmark anti-regression gate', () => {
     expect(decision.executionAuthorized).toBe(false);
   });
 
-  it('blocks an efficiency win that regresses quality against pxpipe', () => {
+  it('blocks an efficiency win that regresses quality against upstream', () => {
     const suite = suiteFixture();
     suite.quality.furypipe = summary(0.91);
 
@@ -99,14 +99,14 @@ describe('FuryPipe benchmark anti-regression gate', () => {
 
     expect(decision.status).toBe('BLOCKED');
     expect(decision.blockers).toContainEqual(expect.objectContaining({
-      code: 'quality-regression-vs-pxpipe',
+      code: 'quality-regression-vs-upstream',
     }));
   });
 
-  it('blocks quality regression against RAW independently of pxpipe', () => {
+  it('blocks quality regression against RAW independently of upstream', () => {
     const suite = suiteFixture();
     suite.quality.raw = summary(0.96);
-    suite.quality.pxpipe = summary(0.89);
+    suite.quality.upstream = summary(0.89);
     suite.quality.furypipe = summary(0.95);
 
     const decision = assessBenchmarkAntiRegression(suite);
@@ -202,7 +202,7 @@ describe('FuryPipe benchmark claim gate', () => {
     expect(decision.status).toBe('BLOCKED');
     expect(decision.blockers.map((entry) => entry.code)).toEqual(expect.arrayContaining([
       'quality-regression-vs-raw',
-      'quality-regression-vs-pxpipe',
+      'quality-regression-vs-upstream',
     ]));
   });
 
@@ -320,7 +320,7 @@ describe('FuryPipe benchmark claim gate', () => {
     const suite = suiteFixture();
     const decision = evaluateBenchmarkClaim({
       suite,
-      baseline: 'pxpipe',
+      baseline: 'upstream',
       metric: 'latency_ms',
       direction: 'LOWER_IS_BETTER',
     });

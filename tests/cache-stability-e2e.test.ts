@@ -9,7 +9,7 @@
  * the conversation grows turn-by-turn (the real Claude Code / OpenCode loop).
  *
  *   fake api  = the upstream output (canned responses + count_tokens probe)
- *   our input = pxpipe's transform of the request body
+ *   our input = FuryPipe's transform of the request body
  *
  * If a regression ever makes the rendered prefix non-deterministic (timestamp,
  * map ordering, re-imaging on every turn), the byte-identity assertions below go
@@ -23,14 +23,14 @@ import { countCacheControlMarkers } from '../src/core/measurement.js';
 import { HISTORY_SYNTHETIC_INTRO } from '../src/core/history.js';
 
 // Pin the model scope so these proxy-contract tests stay independent of the developer shell.
-let ambientPxpipeModels: string | undefined;
+let ambientFuryPipeModels: string | undefined;
 beforeAll(() => {
-  ambientPxpipeModels = process.env.PXPIPE_MODELS;
-  process.env.PXPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol';
+  ambientFuryPipeModels = process.env.FURYPIPE_MODELS;
+  process.env.FURYPIPE_MODELS = 'claude-fable-5,gpt-5.6-sol';
 });
 afterAll(() => {
-  if (ambientPxpipeModels === undefined) delete process.env.PXPIPE_MODELS;
-  else process.env.PXPIPE_MODELS = ambientPxpipeModels;
+  if (ambientFuryPipeModels === undefined) delete process.env.FURYPIPE_MODELS;
+  else process.env.FURYPIPE_MODELS = ambientFuryPipeModels;
 });
 
 // ---------------------------------------------------------------------------
@@ -385,7 +385,7 @@ describe('e2e cache alignment — Anthropic /v1/messages through the real proxy'
     expect(b).toEqual(a);
 
     // Not dropped: the section re-enters as plain system TEXT after the anchor,
-    // its original position. pxpipe does not relocate it into the message
+    // its original position. FuryPipe does not relocate it into the message
     // stream — doing so surfaced a <system-reminder> block in the conversation
     // as if the user had written it. Churn on these bytes costs prefix cache
     // reads; that is accepted rather than rewriting the caller's messages.
@@ -408,7 +408,7 @@ describe('e2e cache alignment — Anthropic /v1/messages through the real proxy'
     expect(lastUserText(cap2.main[0]!.body)).not.toContain('# Environment');
     expect(lastUserText(cap2.main[0]!.body)).not.toContain('modified: src/pricing.ts');
     expect(lastUserText(cap2.main[0]!.body)).not.toContain('<system-reminder>');
-    expect(lastUserText(cap2.main[0]!.body)).not.toContain('relocated by pxpipe');
+    expect(lastUserText(cap2.main[0]!.body)).not.toContain('relocated by FuryPipe');
   });
 
   it('FIRST COLLAPSE (turn-2 rewrite): no frozen chunk yet → anchor stays on the SLAB image', async () => {
@@ -444,7 +444,7 @@ describe('e2e cache alignment — Anthropic /v1/messages through the real proxy'
   });
 
   it('GATE: an out-of-scope model is forwarded byte-for-byte untouched (no images)', async () => {
-    // claude-3-5-sonnet is NOT in the default PXPIPE_MODELS scope → passthrough.
+    // claude-3-5-sonnet is NOT in the default FURYPIPE_MODELS scope → passthrough.
     const body = anthropicBody({ model: 'claude-3-5-sonnet', slabChars: 80_000, turns: turns(4, 20) });
     const cap = await driveAnthropic(body);
     cap.restore();

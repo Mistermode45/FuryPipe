@@ -204,7 +204,8 @@ describe('renderRecentFragment — billed delta presentation', () => {
     } satisfies RecentPayload);
 
     expect(html).toContain('Saved/lost');
-    expect(html).toContain('class="num neg">-61,908</td>');
+    // The mobile table uses its header as an accessible row label.
+    expect(html).toContain('class="num neg" data-label="Saved/lost">-61,908</td>');
     expect(html).not.toContain('class="num pos">—</td>');
   });
 });

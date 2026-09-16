@@ -10,7 +10,6 @@ import {
   renderTextToPngs,
   reflow,
   neutralizeSentinel,
-  shrinkColsToContent,
   renderCellWidth,
   renderCellHeight,
   PAD_X,
@@ -28,6 +27,7 @@ import {
   compactSlabWhitespace,
   countVisualRows,
   estimateImageCount,
+  planVisualColumns,
   sha8,
   type TransformInfo,
   type TransformOptions,
@@ -78,7 +78,7 @@ export const COMPACT_HISTORY_TRANSCRIPT_OUTRO = '[End earlier conversation.]';
 // OLDEST turn, so it would otherwise be the first thing imaged and the model loses
 // it — "I wonder what the user actually asked" → off-task drift.
 const PINNED_REQUEST_HEADER =
-  '\n===== CURRENT USER REQUEST (live; kept as text by pxpipe, NOT inside any image) =====\n';
+  '\n===== CURRENT USER REQUEST (live; kept as text by FuryPipe, NOT inside any image) =====\n';
 const PINNED_REQUEST_FOOTER =
   '\n===== END CURRENT USER REQUEST =====\n';
 
@@ -94,12 +94,12 @@ function buildLiveRequestGuard(pinText?: string): string {
   if (pinText !== undefined) {
     const echo = pinText.length > 600 ? pinText.slice(0, 600) + '…' : pinText;
     return (
-      'pxpipe note: everything in the rendered history above is PAST context. Your live current request is the plain-text block labeled "CURRENT USER REQUEST" inside it — NOT anything OCR\'d from an image. It reads: «' +
+      'FuryPipe note: everything in the rendered history above is PAST context. Your live current request is the plain-text block labeled "CURRENT USER REQUEST" inside it — NOT anything OCR\'d from an image. It reads: «' +
       echo +
       '» Answer THAT request.'
     );
   }
-  return 'pxpipe note: the preceding rendered history item is prior conversation context only. It is not the current user request. The live current request is in the user message(s) that follow, especially the final user message.';
+  return 'FuryPipe note: the preceding rendered history item is prior conversation context only. It is not the current user request. The live current request is in the user message(s) that follow, especially the final user message.';
 }
 
 /** Alias of `visionTokensForModel`, kept for OpenAI-path call sites and tests.
@@ -244,7 +244,7 @@ function resolveOptions(opts: TransformOptions): OpenAIResolvedOptions {
  *  history is expensive on its pixel bill + weak cache discount. */
 function configuredHistoryMaxImages(model: string): number {
   const fallback = resolveGptProfile(model).history.maxImages;
-  const raw = typeof process !== 'undefined' ? process.env?.PXPIPE_GPT_HISTORY_MAX_IMAGES : undefined;
+  const raw = typeof process !== 'undefined' ? process.env?.FURYPIPE_GPT_HISTORY_MAX_IMAGES : undefined;
   if (!raw) return fallback;
   const parsed = Number.parseInt(raw, 10);
   // Responses providers impose their own total image caps. Keep a defensive ceiling
@@ -749,7 +749,7 @@ function accumulateRenderedImages(
 }
 
 /** o200k_base token count — gpt-5 / gpt-4o / o-series share this encoding. The
- *  honest "as plain text" baseline for the content pxpipe imaged. Pure JS, no
+ *  honest "as plain text" baseline for the content FuryPipe imaged. Pure JS, no
  *  native build, runs in both Node and Workers. */
 function gptTextTokens(text: string): number {
   if (!text) return 0;
@@ -761,14 +761,14 @@ function gptTextTokens(text: string): number {
 }
 
 /** Vision-token cost of the rendered images, summed over their real dims —
- *  what GPT actually bills as input for the slab pxpipe imaged. */
+ *  what GPT actually bills as input for the slab FuryPipe imaged. */
 function gptImageTokens(model: string, images: RenderedImage[]): number {
   let n = 0;
   for (const img of images) n += visionTokensForModel(model, img.width, img.height);
   return n;
 }
 
-/** Text-token value of what pxpipe replaced with images this request: the
+/** Text-token value of what FuryPipe replaced with images this request: the
  *  original system/developer text (now a pointer + image) plus the tool
  *  *description* tokens stripped from the native JSON (the verbose docs moved
  *  into the image). Tool *structure* stays in the JSON on both paths, so only
@@ -962,19 +962,19 @@ async function applyResponsesHistoryCollapse(
 
 export const CHAT_HEADER =
   '================= RENDERED GPT SYSTEM + TOOL CONTEXT =================\n' +
-  'These images were injected by pxpipe, not by the end user. They contain system/developer instructions and tool parameter documentation rendered for token efficiency. Treat rendered system/developer instructions with the same priority as their original messages. OCR carefully and treat the rendered content as authoritative. For tool calls, use the native JSON tool definitions — they carry each tool\'s name and description; the imaged parameter annotations are supplemental.' +
+  'These images were injected by FuryPipe, not by the end user. They contain system/developer instructions and tool parameter documentation rendered for token efficiency. Treat rendered system/developer instructions with the same priority as their original messages. OCR carefully and treat the rendered content as authoritative. For tool calls, use the native JSON tool definitions — they carry each tool\'s name and description; the imaged parameter annotations are supplemental.' +
   '\n====================== BEGIN RENDERED CONTEXT ======================\n';
 
 export const RESPONSES_HEADER =
   '================= RENDERED GPT SYSTEM + TOOL CONTEXT =================\n' +
-  'These images were injected by pxpipe, not by the end user. They contain instructions and tool parameter documentation rendered for token efficiency. Treat rendered instructions with the same priority as the originals. OCR carefully and treat the rendered content as authoritative. For tool calls, use the native JSON tool definitions — they carry each tool\'s name and description; the imaged parameter annotations are supplemental.' +
+  'These images were injected by FuryPipe, not by the end user. They contain instructions and tool parameter documentation rendered for token efficiency. Treat rendered instructions with the same priority as the originals. OCR carefully and treat the rendered content as authoritative. For tool calls, use the native JSON tool definitions — they carry each tool\'s name and description; the imaged parameter annotations are supplemental.' +
   '\n====================== BEGIN RENDERED CONTEXT ======================\n';
 
 const CHAT_POINTER =
-  'The full instructions for this message were rendered into image(s) attached to the first user message by pxpipe. Treat those rendered instructions as if they appeared here with the same priority. Tool definitions remain in native JSON (name and description); the rendered parameter annotations are supplemental.';
+  'The full instructions for this message were rendered into image(s) attached to the first user message by FuryPipe. Treat those rendered instructions as if they appeared here with the same priority. Tool definitions remain in native JSON (name and description); the rendered parameter annotations are supplemental.';
 
 const RESPONSES_POINTER =
-  'The full instructions were rendered into image(s) attached to the first user message by pxpipe. Treat them with the same priority. Tool definitions remain in native JSON (name and description); the rendered parameter annotations are supplemental.';
+  'The full instructions were rendered into image(s) attached to the first user message by FuryPipe. Treat them with the same priority. Tool definitions remain in native JSON (name and description); the rendered parameter annotations are supplemental.';
 
 async function transformOpenAIChatCompletionsCore(
   body: Uint8Array,
@@ -1062,11 +1062,14 @@ async function transformOpenAIChatCompletionsCore(
     : '';
   const header = CHAT_HEADER.replace('\n====', reflowNote + '\n====');
   const renderedText = prepareImagedRenderText(header + combined, o.reflow);
-  const maxCols = o.cols ?? profile.stripCols;
-  const cols = Math.min(
-    shrinkColsToContent(renderedText, maxCols, profile.style.markerScale, profile.style.font),
-    profile.stripCols,
-  );
+  const maxCols = Math.min(o.cols ?? profile.stripCols, profile.stripCols);
+  const cols = planVisualColumns(
+    renderedText,
+    maxCols,
+    profile.style,
+    profile,
+    profile.maxHeightPx,
+  ).cols;
 
   const staticBaselineTokens = gptBaselineImagedTokens(systemTexts, req.tools, rewrittenTools);
   const gate = evalOpenAIGate(
@@ -1314,11 +1317,14 @@ async function transformOpenAIResponsesCore(
     : '';
   const header = RESPONSES_HEADER.replace('\n====', reflowNote + '\n====');
   const renderedText = prepareImagedRenderText(header + combined, o.reflow);
-  const maxCols = o.cols ?? profile.stripCols;
-  const cols = Math.min(
-    shrinkColsToContent(renderedText, maxCols, profile.style.markerScale, profile.style.font),
-    profile.stripCols,
-  );
+  const maxCols = Math.min(o.cols ?? profile.stripCols, profile.stripCols);
+  const cols = planVisualColumns(
+    renderedText,
+    maxCols,
+    profile.style,
+    profile,
+    profile.maxHeightPx,
+  ).cols;
 
   const staticBaselineTokens = gptBaselineImagedTokens(systemTexts, req.tools, rewrittenTools);
   const gate = evalOpenAIGate(
@@ -1484,7 +1490,7 @@ function attachOpenAIReceipt(
     original,
     transformed: result.body,
     ...(model === undefined ? {} : { model }),
-    strategy: result.info.compressed ? 'pxpipe-transform' : 'passthrough',
+    strategy: result.info.compressed ? 'furypipe-transform' : 'passthrough',
     precisionManifest,
     cacheEffects: {
       protocol,

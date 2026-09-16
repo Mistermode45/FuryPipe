@@ -1,5 +1,9 @@
 # Baseline pxpipe / FuryPipe — 2026-09-11
 
+> [!NOTE]
+> **Historical evidence snapshot.** This file records V5 hardening checkpoints at the time they were observed. It is not the current release-status page. For current public state, see [README.md](README.md), [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASE_SECURITY.md](docs/RELEASE_SECURITY.md).
+
+
 ## Identité
 
 - Commit upstream : `8ba82b713a1e823bc1c09b7a68e47f63caa7b426`

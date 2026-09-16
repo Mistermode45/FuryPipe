@@ -96,6 +96,23 @@ export interface AgentSubagentDefinition {
   readonly execute: (context: AgentSubagentExecutionContext) => Promise<AgentSubagentExecution>;
 }
 
+/**
+ * Plaintext-free proof that a capability callback actually returned
+ * successfully.  Selection/registration never creates a receipt.
+ */
+export interface AgentCapabilityExecutionReceipt {
+  readonly format: 'furypipe-agent-capability-execution/v1';
+  readonly kind: 'skill' | 'mcp' | 'subagent';
+  readonly id: string;
+  readonly stage: AgentFabricStageId;
+  readonly invocation: 'automatic' | 'manual';
+  readonly status: 'executed';
+  readonly consumedTokens?: number;
+  readonly method?: string;
+  readonly evidenceDigest?: string;
+  readonly paramsDigest?: string;
+}
+
 export interface AgentMemoryRecord {
   readonly format: 'furypipe-agent-memory-record/v1';
   readonly runId: string;
@@ -206,6 +223,8 @@ export interface AgentRunResult {
   readonly completedStages: readonly AgentFabricStageId[];
   readonly contextUsedTokens: number;
   readonly skillHealth: Readonly<Record<string, AgentSkillHealthStatus>>;
+  /** Actual successful capability executions; never populated by planning alone. */
+  readonly capabilityExecutions: readonly AgentCapabilityExecutionReceipt[];
   readonly snapshot?: AgentRunSnapshot;
   readonly failure?: AgentRunFailure;
 }
@@ -218,6 +237,12 @@ const MAX_EVIDENCE_LENGTH = 512;
 const DEFAULT_SUBAGENT_CONCURRENCY = 4;
 const MAX_SUBAGENT_CONCURRENCY = 8;
 const MAX_SUBAGENT_BATCH = 16;
+const MAX_CAPABILITY_EXECUTION_RECEIPTS = 512;
+const MAX_OBJECTIVE_BYTES = 1_048_576;
+const MAX_ALLOWED_WRITE_PATHS = 256;
+const MAX_SKILL_DEFINITIONS = 1_024;
+const MAX_MCP_SERVER_DEFINITIONS = 256;
+const MAX_SUBAGENT_DEFINITIONS = 512;
 
 function digest(value: string): string {
   return `afrun_${createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 24)}`;
@@ -225,6 +250,18 @@ function digest(value: string): string {
 
 function validSafeInteger(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0;
+}
+
+function executionDigest(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex');
+}
+
+function assertCapabilityReceiptCapacity(
+  receipts: readonly AgentCapabilityExecutionReceipt[],
+): void {
+  if (receipts.length >= MAX_CAPABILITY_EXECUTION_RECEIPTS) {
+    throw new Error('capability execution receipt limit exceeded');
+  }
 }
 
 function validateEvidence(evidence: unknown): evidence is readonly string[] {
@@ -261,7 +298,13 @@ function mcpCallKey(call: AgentMcpPlannedCall): string {
 }
 
 function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefined {
-  if (!request || typeof request !== 'object' || typeof request.objective !== 'string' || !request.objective.trim()) {
+  if (!request || typeof request !== 'object' || typeof request.objective !== 'string' || request.objective.length === 0) {
+    return { code: 'INVALID_REQUEST', reason: 'agent objective must not be empty' };
+  }
+  if (Buffer.byteLength(request.objective, 'utf8') > MAX_OBJECTIVE_BYTES) {
+    return { code: 'INVALID_REQUEST', reason: 'agent objective exceeds its byte bound' };
+  }
+  if (!/\S/u.test(request.objective)) {
     return { code: 'INVALID_REQUEST', reason: 'agent objective must not be empty' };
   }
   if (request.runId !== undefined && (typeof request.runId !== 'string' || request.runId.length === 0
@@ -276,13 +319,16 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
     return { code: 'INVALID_REQUEST', reason: 'scoped write mode requires at least one allowed path' };
   }
   if (request.allowedWritePaths !== undefined && (!Array.isArray(request.allowedWritePaths)
+    || request.allowedWritePaths.length > MAX_ALLOWED_WRITE_PATHS
     || request.allowedWritePaths.some((path) => typeof path !== 'string' || !path || path.length > 1024 || path.includes('\0')))) {
-    return { code: 'INVALID_REQUEST', reason: 'allowed write paths must be bounded non-empty strings' };
+    return { code: 'INVALID_REQUEST', reason: 'allowed write paths must be a bounded list of non-empty strings' };
   }
   if (!request.executors || typeof request.executors !== 'object') {
     return { code: 'INVALID_REQUEST', reason: 'agent stage executors are required' };
   }
-  if (request.skills !== undefined && !Array.isArray(request.skills)) return { code: 'INVALID_REQUEST', reason: 'agent skills must be an array' };
+  if (request.skills !== undefined && (!Array.isArray(request.skills) || request.skills.length > MAX_SKILL_DEFINITIONS)) {
+    return { code: 'INVALID_REQUEST', reason: `agent skills must be an array with at most ${MAX_SKILL_DEFINITIONS} definitions` };
+  }
   if (request.autoInvokeSkillsByStage !== undefined) {
     if (!request.autoInvokeSkillsByStage || typeof request.autoInvokeSkillsByStage !== 'object' || Array.isArray(request.autoInvokeSkillsByStage)) {
       return { code: 'INVALID_REQUEST', reason: 'autoInvokeSkillsByStage must be a stage map' };
@@ -314,8 +360,12 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
       }
     }
   }
-  if (request.mcpServers !== undefined && !Array.isArray(request.mcpServers)) return { code: 'INVALID_REQUEST', reason: 'agent MCP servers must be an array' };
-  if (request.subagents !== undefined && !Array.isArray(request.subagents)) return { code: 'INVALID_REQUEST', reason: 'agent subagents must be an array' };
+  if (request.mcpServers !== undefined && (!Array.isArray(request.mcpServers) || request.mcpServers.length > MAX_MCP_SERVER_DEFINITIONS)) {
+    return { code: 'INVALID_REQUEST', reason: `agent MCP servers must be an array with at most ${MAX_MCP_SERVER_DEFINITIONS} definitions` };
+  }
+  if (request.subagents !== undefined && (!Array.isArray(request.subagents) || request.subagents.length > MAX_SUBAGENT_DEFINITIONS)) {
+    return { code: 'INVALID_REQUEST', reason: `agent subagents must be an array with at most ${MAX_SUBAGENT_DEFINITIONS} definitions` };
+  }
   const subagentConcurrency = request.maxSubagentConcurrency ?? DEFAULT_SUBAGENT_CONCURRENCY;
   if (!Number.isSafeInteger(subagentConcurrency) || subagentConcurrency < 1 || subagentConcurrency > MAX_SUBAGENT_CONCURRENCY) {
     return { code: 'INVALID_REQUEST', reason: `maxSubagentConcurrency must be between 1 and ${MAX_SUBAGENT_CONCURRENCY}` };
@@ -629,10 +679,11 @@ function snapshotClaimDigest(snapshot: AgentRunSnapshot): string {
 export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentRunSnapshot): Promise<AgentRunResult> {
   const invalid = validateRequest(request);
   const skillHealth: Record<string, AgentSkillHealthStatus> = {};
+  const capabilityExecutions: AgentCapabilityExecutionReceipt[] = [];
   if (invalid) {
     return {
       format: 'furypipe-agent-run/v1', status: 'failed', runId: request?.runId ?? 'invalid', objectiveDigest: 'invalid',
-      completedStages: [], contextUsedTokens: 0, skillHealth, failure: invalid,
+      completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: invalid,
     };
   }
 
@@ -645,7 +696,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   } catch (caught) {
     return {
       format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-      completedStages: [], contextUsedTokens: 0, skillHealth,
+      completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
       failure: { code: 'INVALID_REQUEST', reason: `FuryPrompt compilation failed: ${caught instanceof Error ? caught.message : String(caught)}` },
     };
   }
@@ -653,30 +704,62 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   const furyPromptDigest = furyPrompt?.promptDigest;
   const skills = new Map<string, AgentSkillDefinition>();
   for (const skill of request.skills ?? []) {
-    if (!skill || typeof skill !== 'object' || typeof skill.id !== 'string' || !skill.id || typeof skill.execute !== 'function' || skills.has(skill.id)) {
+    const validStages = Array.isArray(skill?.stages)
+      && skill.stages.length <= AGENT_FABRIC_STAGE_ORDER.length
+      && skill.stages.every((stage) => AGENT_FABRIC_STAGE_ORDER.includes(stage))
+      && new Set(skill.stages).size === skill.stages.length;
+    if (!skill || typeof skill !== 'object'
+      || typeof skill.id !== 'string' || skill.id.length < 1 || skill.id.length > 256 || skill.id.includes('\0')
+      || typeof skill.version !== 'string' || skill.version.length > 256 || skill.version.includes('\0')
+      || !validStages
+      || (skill.permission !== undefined && !['read', 'scoped-write'].includes(skill.permission))
+      || (skill.network !== undefined && !['disabled', 'required'].includes(skill.network))
+      || (skill.health !== undefined && typeof skill.health !== 'function')
+      || typeof skill.execute !== 'function'
+      || skills.has(skill.id)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages: [], contextUsedTokens: 0, skillHealth, failure: { code: 'INVALID_REQUEST', reason: 'skill IDs must be unique and non-empty' },
+        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'skill definitions must use bounded unique IDs/versions, valid stages and supported permissions' },
       };
     }
     skills.set(skill.id, skill);
   }
   const mcpServers = new Map<string, AgentMcpServerDefinition>();
   for (const server of request.mcpServers ?? []) {
-    if (!server || typeof server !== 'object' || typeof server.id !== 'string' || !server.id || typeof server.execute !== 'function' || mcpServers.has(server.id)) {
+    const validMethods = Array.isArray(server?.allowedMethods)
+      && server.allowedMethods.length <= 64
+      && server.allowedMethods.every((method) =>
+        typeof method === 'string' && method.length > 0 && method.length <= 256 && !method.includes('\0'))
+      && new Set(server.allowedMethods).size === server.allowedMethods.length;
+    if (!server || typeof server !== 'object'
+      || typeof server.id !== 'string' || server.id.length < 1 || server.id.length > 256 || server.id.includes('\0')
+      || !validMethods
+      || (server.network !== undefined && !['disabled', 'required'].includes(server.network))
+      || typeof server.execute !== 'function'
+      || mcpServers.has(server.id)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages: [], contextUsedTokens: 0, skillHealth, failure: { code: 'INVALID_REQUEST', reason: 'MCP server IDs must be unique and non-empty' },
+        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'MCP server definitions must use bounded unique IDs/methods and supported network policy' },
       };
     }
     mcpServers.set(server.id, server);
   }
   const subagents = new Map<string, AgentSubagentDefinition>();
   for (const subagent of request.subagents ?? []) {
-    if (!subagent || typeof subagent !== 'object' || typeof subagent.id !== 'string' || !subagent.id || typeof subagent.execute !== 'function' || subagents.has(subagent.id)) {
+    const validStages = Array.isArray(subagent?.stages)
+      && subagent.stages.length <= AGENT_FABRIC_STAGE_ORDER.length
+      && subagent.stages.every((stage) => AGENT_FABRIC_STAGE_ORDER.includes(stage))
+      && new Set(subagent.stages).size === subagent.stages.length;
+    if (!subagent || typeof subagent !== 'object'
+      || typeof subagent.id !== 'string' || subagent.id.length < 1 || subagent.id.length > 256 || subagent.id.includes('\0')
+      || !validStages
+      || (subagent.permission !== undefined && !['read', 'scoped-write'].includes(subagent.permission))
+      || (subagent.network !== undefined && !['disabled', 'required'].includes(subagent.network))
+      || typeof subagent.execute !== 'function'
+      || subagents.has(subagent.id)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages: [], contextUsedTokens: 0, skillHealth, failure: { code: 'INVALID_REQUEST', reason: 'subagent IDs must be unique and non-empty' },
+        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'subagent definitions must use bounded unique IDs, valid stages and supported permissions' },
       };
     }
     subagents.set(subagent.id, subagent);
@@ -702,7 +785,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
       || resumeFrom.completedStages.some((stage, index) => AGENT_FABRIC_STAGE_ORDER[index] !== stage)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages: [], contextUsedTokens: 0, skillHealth,
+        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
         failure: { code: 'INVALID_SNAPSHOT', reason: 'agent handoff snapshot is invalid for this objective or budget' },
       };
     }
@@ -721,28 +804,28 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   } catch {
     return {
       format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-      completedStages, contextUsedTokens, skillHealth,
+      completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
       failure: { code: 'MEMORY_FAILED', reason: 'agent memory could not be opened' },
     };
   }
   if (resumeFrom === undefined && memoryRecords.length > 0) {
     return {
       format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-      completedStages: [], contextUsedTokens: 0, skillHealth,
+      completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
       failure: { code: 'INVALID_REQUEST', reason: 'agent run ID already has stage history; a valid handoff snapshot is required' },
     };
   }
   if (resumeFrom !== undefined && !historyMatchesSnapshot(memoryRecords, runId, resumeFrom)) {
     return {
       format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-      completedStages: [], contextUsedTokens: 0, skillHealth,
+      completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
       failure: { code: 'INVALID_SNAPSHOT', reason: 'agent handoff snapshot does not match persisted stage history or budget' },
     };
   }
   if (typeof memory.claimExecution !== 'function') {
     return {
       format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-      completedStages, contextUsedTokens, skillHealth,
+      completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
       failure: { code: 'MEMORY_FAILED', reason: 'agent memory does not support atomic one-time execution claims' },
     };
   }
@@ -754,20 +837,24 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   } catch {
     return {
       format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-      completedStages, contextUsedTokens, skillHealth,
+      completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
       failure: { code: 'MEMORY_FAILED', reason: 'agent execution claim could not be recorded' },
     };
   }
   if (!claimed) {
     return {
       format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-      completedStages: [], contextUsedTokens: 0, skillHealth,
+      completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
       failure: { code: resumeFrom === undefined ? 'INVALID_REQUEST' : 'INVALID_SNAPSHOT',
         reason: 'agent run or handoff snapshot has already been claimed' },
     };
   }
 
-  const invokeSkill = async (stage: AgentFabricStageId, skillId: string): Promise<AgentSkillExecution> => {
+  const invokeSkill = async (
+    stage: AgentFabricStageId,
+    skillId: string,
+    invocation: AgentCapabilityExecutionReceipt['invocation'] = 'manual',
+  ): Promise<AgentSkillExecution> => {
     const skill = skills.get(skillId);
     if (!skill || !skill.stages.includes(stage)) throw new Error(`skill is not available for stage: ${skillId}`);
     if (skill.network === 'required') throw new Error(`skill network access is disabled: ${skillId}`);
@@ -782,20 +869,50 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     }
     skillHealth[skill.id] = health.status;
     if (health.status === 'unhealthy') throw new Error(`skill health is unhealthy: ${skillId}`);
+    assertCapabilityReceiptCapacity(capabilityExecutions);
     const result = await skill.execute({
       runId, stage, objectiveDigest, permission,
       allowedWritePaths: permission === 'scoped-write' ? [...(request.allowedWritePaths ?? [])] : [],
       network: 'disabled', secrets: 'never_requested',
     });
     if (!result || !validateEvidence(result.evidence) || !validSafeInteger(result.consumedTokens)) throw new Error(`skill result is invalid: ${skillId}`);
+    capabilityExecutions.push(Object.freeze({
+      format: 'furypipe-agent-capability-execution/v1',
+      kind: 'skill',
+      id: skillId,
+      stage,
+      invocation,
+      status: 'executed',
+      consumedTokens: result.consumedTokens,
+      evidenceDigest: executionDigest(result.evidence),
+    }));
     return result;
   };
 
-  const invokeMcp = async (stage: AgentFabricStageId, serverId: string, method: string, params?: unknown): Promise<unknown> => {
+  const invokeMcp = async (
+    stage: AgentFabricStageId,
+    serverId: string,
+    method: string,
+    params?: unknown,
+    invocation: AgentCapabilityExecutionReceipt['invocation'] = 'manual',
+  ): Promise<unknown> => {
     const server = mcpServers.get(serverId);
     if (!server || !server.allowedMethods.includes(method)) throw new Error(`MCP method is not permitted: ${serverId}/${method}`);
     if (server.network === 'required') throw new Error(`MCP network access is disabled: ${serverId}`);
-    return server.execute(method, params, { runId, stage, objectiveDigest, network: 'disabled', secrets: 'never_requested' });
+    assertCapabilityReceiptCapacity(capabilityExecutions);
+    const result = await server.execute(method, params, { runId, stage, objectiveDigest, network: 'disabled', secrets: 'never_requested' });
+    if (!jsonBounded(result)) throw new Error(`MCP result is invalid or exceeds its bound: ${serverId}/${method}`);
+    capabilityExecutions.push(Object.freeze({
+      format: 'furypipe-agent-capability-execution/v1',
+      kind: 'mcp',
+      id: serverId,
+      stage,
+      invocation,
+      status: 'executed',
+      method,
+      paramsDigest: executionDigest(params ?? null),
+    }));
+    return result;
   };
 
   const invokeSubagent = async (stage: AgentFabricStageId, subagentId: string): Promise<AgentSubagentExecution> => {
@@ -806,12 +923,23 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     if (permission === 'scoped-write' && (request.allowWrites !== true || stage !== 'implement')) {
       throw new Error(`subagent write permission is not allowed at stage: ${subagentId}`);
     }
+    assertCapabilityReceiptCapacity(capabilityExecutions);
     const result = await subagent.execute({
       runId, parentStage: stage, objectiveDigest, permission,
       allowedWritePaths: permission === 'scoped-write' ? [...(request.allowedWritePaths ?? [])] : [],
       network: 'disabled', secrets: 'never_requested',
     });
     if (!result || !validateEvidence(result.evidence) || !validSafeInteger(result.consumedTokens)) throw new Error(`subagent result is invalid: ${subagentId}`);
+    capabilityExecutions.push(Object.freeze({
+      format: 'furypipe-agent-capability-execution/v1',
+      kind: 'subagent',
+      id: subagentId,
+      stage,
+      invocation: 'manual',
+      status: 'executed',
+      consumedTokens: result.consumedTokens,
+      evidenceDigest: executionDigest(result.evidence),
+    }));
     return result;
   };
 
@@ -821,7 +949,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     if (!executor) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages, contextUsedTokens, skillHealth,
+        completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
         failure: { code: 'MISSING_EXECUTOR', stage, reason: `no executor registered for stage: ${stage}` },
       };
     }
@@ -831,21 +959,29 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     try {
       const stageSkillCache = new Map<string, AgentSkillExecution>();
       const stageMcpCache = new Map<string, Promise<unknown>>();
-      const invokeSkillForStage = async (skillId: string): Promise<AgentSkillExecution> => {
+      const invokeSkillForStage = async (
+        skillId: string,
+        invocation: AgentCapabilityExecutionReceipt['invocation'] = 'manual',
+      ): Promise<AgentSkillExecution> => {
         const cached = stageSkillCache.get(skillId);
         if (cached) return cached;
-        const skillResult = await invokeSkill(stage, skillId);
+        const skillResult = await invokeSkill(stage, skillId, invocation);
         nestedConsumedTokens += skillResult.consumedTokens;
         stageSkillCache.set(skillId, skillResult);
         return skillResult;
       };
-      const invokeMcpForStage = async (serverId: string, method: string, params?: unknown): Promise<unknown> => {
+      const invokeMcpForStage = async (
+        serverId: string,
+        method: string,
+        params?: unknown,
+        invocation: AgentCapabilityExecutionReceipt['invocation'] = 'manual',
+      ): Promise<unknown> => {
         const call: AgentMcpPlannedCall = { serverId, method, ...(params === undefined ? {} : { params }) };
         if (!validatePlannedMcpCall(call)) throw new Error('MCP planned call is invalid');
         const key = mcpCallKey(call);
         const cached = stageMcpCache.get(key);
         if (cached) return cached;
-        const pending = invokeMcp(stage, serverId, method, params);
+        const pending = invokeMcp(stage, serverId, method, params, invocation);
         stageMcpCache.set(key, pending);
         try {
           return await pending;
@@ -873,17 +1009,17 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
       };
       const autoSkillExecutions: AgentSkillBatchItem[] = [];
       for (const skillId of request.autoInvokeSkillsByStage?.[stage] ?? []) {
-        const execution = await invokeSkillForStage(skillId);
+        const execution = await invokeSkillForStage(skillId, 'automatic');
         autoSkillExecutions.push(Object.freeze({ id: skillId, ...execution }));
       }
       const autoMcpExecutions: AgentMcpBatchItem[] = [];
       for (const call of request.autoInvokeMcpByStage?.[stage] ?? []) {
-        const mcpResult = await invokeMcpForStage(call.serverId, call.method, call.params);
+        const mcpResult = await invokeMcpForStage(call.serverId, call.method, call.params, 'automatic');
         autoMcpExecutions.push(Object.freeze({ ...call, result: mcpResult }));
       }
       result = await executor({
         runId, stage, objective: request.objective, prompt, objectiveDigest, permission,
-        allowedWritePaths: request.allowWrites === true ? [...(request.allowedWritePaths ?? [])] : [],
+        allowedWritePaths: permission === 'scoped-write' ? [...(request.allowedWritePaths ?? [])] : [],
         contextBudgetTokens: budget, contextUsedTokens, remainingContextTokens: budget - contextUsedTokens,
         network: 'disabled', secrets: 'never_requested', completedStages: [...completedStages],
         autoSkillExecutions: Object.freeze(autoSkillExecutions),
@@ -904,14 +1040,14 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
             : 'STAGE_FAILED';
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages, contextUsedTokens, skillHealth, failure: { code, stage, reason },
+        completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code, stage, reason },
       };
     }
     if (!result || typeof result !== 'object' || !validSafeInteger(result.consumedTokens)
       || !['completed', 'failed', 'handoff_required', undefined].includes(result.status)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages, contextUsedTokens, skillHealth,
+        completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
         failure: { code: 'STAGE_FAILED', stage, reason: 'agent stage returned an invalid result' },
       };
     }
@@ -919,7 +1055,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     if (!validSafeInteger(consumedTokens) || contextUsedTokens + consumedTokens > budget) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages, contextUsedTokens, skillHealth,
+        completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
         failure: { code: 'CONTEXT_BUDGET_EXCEEDED', stage, reason: 'agent context budget exceeded' },
       };
     }
@@ -927,14 +1063,14 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     if (!validateEvidence(result.evidence)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages, contextUsedTokens, skillHealth,
+        completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
         failure: { code: 'MISSING_EVIDENCE', stage, reason: 'each completed stage requires bounded evidence' },
       };
     }
     if (result.status === 'failed') {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages, contextUsedTokens, skillHealth,
+        completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
         failure: { code: 'STAGE_FAILED', stage, reason: result.summary ?? 'agent stage reported failure' },
       };
     }
@@ -949,14 +1085,14 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     } catch {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages, contextUsedTokens, skillHealth,
+        completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
         failure: { code: 'MEMORY_FAILED', stage, reason: 'agent stage result could not be recorded' },
       };
     }
     if (result.status === 'handoff_required') {
       return {
         format: 'furypipe-agent-run/v1', status: 'handoff_required', runId, objectiveDigest,
-        completedStages, contextUsedTokens, skillHealth,
+        completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
         snapshot: snapshotFor(runId, objectiveDigest, nextStageIndex, completedStages, contextUsedTokens, furyPromptDigest),
       };
     }
@@ -965,6 +1101,6 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
 
   return {
     format: 'furypipe-agent-run/v1', status: 'completed', runId, objectiveDigest,
-    completedStages, contextUsedTokens, skillHealth,
+    completedStages, contextUsedTokens, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]),
   };
 }

@@ -1,11 +1,10 @@
 {
   "name": "furypipe",
-  "version": "0.13.2",
+  "version": "0.15.0",
   "description": "FuryPipe — context, agents, skills, MCP, memory, provider routing and capability orchestration for production AI workflows.",
   "type": "module",
   "bin": {
     "furypipe": "bin/cli.js",
-    "pxpipe": "bin/cli.js",
     "furypipe-mcp": "bin/mcp.js",
     "furypipe-mcp-http": "bin/mcp-http.js"
   },
@@ -25,6 +24,14 @@
     "./applicability": {
       "types": "./dist/core/applicability.d.ts",
       "import": "./dist/core/applicability.js"
+    },
+    "./model-fabric": {
+      "types": "./dist/core/model-fabric.d.ts",
+      "import": "./dist/core/model-fabric.js"
+    },
+    "./model-catalog-node": {
+      "types": "./dist/model-catalog-node.d.ts",
+      "import": "./dist/model-catalog-node.js"
     },
     "./proxy": {
       "types": "./dist/core/proxy.d.ts",
@@ -161,6 +168,10 @@
     "./control-room-security-evidence": {
       "types": "./dist/control-room/security-ci-evidence.d.ts",
       "import": "./dist/control-room/security-ci-evidence.js"
+    },
+    "./control-plane": {
+      "types": "./dist/control-plane.d.ts",
+      "import": "./dist/control-plane.js"
     },
     "./doctor": {
       "types": "./dist/doctor.d.ts",
@@ -320,6 +331,8 @@
     "docs/SKILL_ECOSYSTEM_2026.md",
     "docs/PLUGIN_BUNDLES.md",
     "docs/CONTEXT_FABRIC.md",
+    "docs/CONTROL_PLANE.md",
+    "docs/VISUAL_ENGINE.md",
     "docs/PROVIDER_FABRIC.md",
     "docs/OMNIROUTE.md",
     "docs/OPENCLAW.md",

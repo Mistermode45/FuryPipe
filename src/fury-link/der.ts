@@ -4,7 +4,7 @@
  * Node can generate keys and sign bytes, but unlike Go's crypto/x509 it has no
  * certificate *issuer*: `new X509Certificate()` only parses. Everything here
  * exists to build the handful of structures in RFC 5280 that a leaf and a root
- * need, so warp can run its own CA without pulling in a dependency.
+ * need, so FuryLink can run its own CA without pulling in a dependency.
  *
  * Only the write path is implemented. Parsing is left to node:crypto's
  * X509Certificate, which is why nothing here reads DER back.

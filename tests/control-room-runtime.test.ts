@@ -367,7 +367,7 @@ describe('Control Room live runtime collector', () => {
     });
 
     const agent = runtime.snapshot().sections.agent;
-    expect(agent.evidence).toEqual({
+    expect(agent.evidence).toMatchObject({
       runs: 2,
       completedRuns: 1,
       handoffRuns: 0,
@@ -375,8 +375,87 @@ describe('Control Room live runtime collector', () => {
       contextUsedTokens: 57,
       persistedMemory: 'NOT_AVAILABLE',
       distributedHandoff: 'NOT_AVAILABLE',
+      skillExecutions: 0,
+      mcpExecutions: 0,
+      subagentExecutions: 0,
+      automaticCapabilityExecutions: 0,
+      manualCapabilityExecutions: 0,
+      recentCapabilityExecutions: [],
     });
     expect(agent.status).toBe('PARTIAL');
+  });
+
+  it('exposes only successful capability execution metadata from Agent receipts', () => {
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 4 });
+    runtime.observeAgentRun({
+      format: 'furypipe-agent-run/v1',
+      status: 'completed',
+      runId: 'run-capabilities',
+      objectiveDigest: 'PRIVATE_OBJECTIVE_DIGEST',
+      completedStages: ['research'],
+      contextUsedTokens: 12,
+      skillHealth: { 'secret-skill': 'healthy' },
+      capabilityExecutions: [
+        {
+          format: 'furypipe-agent-capability-execution/v1',
+          kind: 'skill',
+          id: 'repo-reader',
+          stage: 'research',
+          invocation: 'automatic',
+          status: 'executed',
+          consumedTokens: 2,
+          evidenceDigest: 'PRIVATE_EVIDENCE_DIGEST',
+        },
+        {
+          format: 'furypipe-agent-capability-execution/v1',
+          kind: 'mcp',
+          id: 'github',
+          stage: 'research',
+          invocation: 'manual',
+          status: 'executed',
+          method: 'search',
+          paramsDigest: 'PRIVATE_PARAMS_DIGEST',
+        },
+      ],
+    });
+
+    const agent = runtime.snapshot().sections.agent.evidence;
+    expect(agent.skillExecutions).toBe(1);
+    expect(agent.mcpExecutions).toBe(1);
+    expect(agent.subagentExecutions).toBe(0);
+    expect(agent.automaticCapabilityExecutions).toBe(1);
+    expect(agent.manualCapabilityExecutions).toBe(1);
+    expect(agent.recentCapabilityExecutions).toEqual([
+      { kind: 'skill', id: 'repo-reader', stage: 'research', invocation: 'automatic' },
+      { kind: 'mcp', id: 'github', stage: 'research', invocation: 'manual' },
+    ]);
+
+    const serialized = JSON.stringify(runtime.snapshot());
+    expect(serialized).not.toContain('PRIVATE_EVIDENCE_DIGEST');
+    expect(serialized).not.toContain('PRIVATE_PARAMS_DIGEST');
+    expect(serialized).not.toContain('PRIVATE_OBJECTIVE_DIGEST');
+  });
+
+  it('rejects forged Agent capability receipts before promoting execution evidence', () => {
+    const runtime = createControlRoomRuntime({ sourceCommit: SHA, now: () => 4 });
+    expect(() => runtime.observeAgentRun({
+      format: 'furypipe-agent-run/v1',
+      status: 'completed',
+      runId: 'run-forged-capability',
+      objectiveDigest: 'digest',
+      completedStages: [],
+      contextUsedTokens: 0,
+      skillHealth: {},
+      capabilityExecutions: [{
+        format: 'furypipe-agent-capability-execution/v1',
+        kind: 'skill',
+        id: '',
+        stage: 'research',
+        invocation: 'automatic',
+        status: 'executed',
+      }],
+    })).toThrow(/capability execution receipt/i);
+    expect(runtime.snapshot().sections.agent.evidence.runs).toBe(0);
   });
 
   it('tracks completed Learning cycles and unique lesson reuse without retaining lesson metadata', () => {

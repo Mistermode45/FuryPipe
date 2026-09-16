@@ -7,7 +7,8 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createWarpRuntime } from './warp/index.js';
+import { createFuryLinkRuntime } from './fury-link/index.js';
+import { FuryLinkUsageError, furyLinkHelp, parseFuryLinkInvocation } from './fury-link-cli.js';
 import { once } from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -16,7 +17,6 @@ import { isIP } from 'node:net';
 import { spawnSync } from 'node:child_process';
 import { createProxy, parseGatewayHeaders, type ProxyConfig } from './core/proxy.js';
 import { createOmniRouteProxyConfig } from './core/omniroute.js';
-import { furyEnvValue } from './core/env-compat.js';
 import {
   parseExportArgv,
   runExportCore,
@@ -37,6 +37,10 @@ import {
 } from './dashboard.js';
 import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
+import { runSetupWizard } from './setup-tui.js';
+import { refreshRuntimeModelCatalog } from './model-catalog-node.js';
+import { resolvePersistedModelScope } from './model-config.js';
+import { FURYPIPE_DEFAULT_HOST, FURYPIPE_DEFAULT_PORT, parseFuryPipePort } from './runtime-defaults.js';
 import { createControlRoomRuntime } from './control-room/runtime.js';
 import { loadControlRoomHostEvidence, type ControlRoomHostEvidence } from './control-room/evidence-file.js';
 import {
@@ -44,6 +48,7 @@ import {
   resolveControlRoomSecurityEvidence,
 } from './control-room/security-ci-evidence-file.js';
 import type { SecurityEvidence } from './control-room/index.js';
+import type { FuryPipeVisualPolicy } from './core/applicability.js';
 
 /** Runtime config. The core transform tuning comes from DEFAULTS in
  *  transform.ts; startup knobs cover deployment plus emergency GPT scope
@@ -76,20 +81,14 @@ interface RuntimeConfig {
 }
 
 const DEFAULT_CONFIG_FILE = path.join(os.homedir(), '.config', 'furypipe', 'config.json');
-const LEGACY_CONFIG_FILE = path.join(os.homedir(), '.config', 'pxpipe', 'config.json');
 const DEFAULT_EVENTS_FILE = path.join(os.homedir(), '.furypipe', 'events.jsonl');
-const LEGACY_EVENTS_FILE = path.join(os.homedir(), '.pxpipe', 'events.jsonl');
-
-function compatibilityDefault(primary: string, legacy: string): string {
-  return fs.existsSync(primary) || !fs.existsSync(legacy) ? primary : legacy;
-}
 
 function defaultConfigFile(): string {
-  return compatibilityDefault(DEFAULT_CONFIG_FILE, LEGACY_CONFIG_FILE);
+  return DEFAULT_CONFIG_FILE;
 }
 
 function defaultEventsFile(): string {
-  return compatibilityDefault(DEFAULT_EVENTS_FILE, LEGACY_EVENTS_FILE);
+  return DEFAULT_EVENTS_FILE;
 }
 
 function controlRoomSourceCommit(): string | undefined {
@@ -128,17 +127,8 @@ function controlRoomSecurityCiEvidence(sourceCommit: string | undefined): Securi
   }
 }
 
-function normalizeModelsConfig(value: unknown): string | undefined {
-  if (Array.isArray(value)) {
-    const models = value.map((v) => String(v).trim()).filter(Boolean);
-    return models.length > 0 ? models.join(',') : 'off';
-  }
-  if (typeof value === 'string') return value.trim() || 'off';
-  return undefined;
-}
-
 function applyConfigFileDefaults(): void {
-  const file = furyEnvValue(process.env.FURYPIPE_CONFIG, process.env.PXPIPE_CONFIG) ?? defaultConfigFile();
+  const file = process.env.FURYPIPE_CONFIG?.trim() || defaultConfigFile();
   if (!fs.existsSync(file)) return;
   let parsed: unknown;
   try {
@@ -152,9 +142,19 @@ function applyConfigFileDefaults(): void {
 
   // Env wins over file config. The dashboard can still override the scope at
   // runtime (in-memory) for an emergency live flip.
-  if (furyEnvValue(process.env.FURYPIPE_MODELS, process.env.PXPIPE_MODELS) === undefined) {
-    const models = normalizeModelsConfig(cfg.models);
-    if (models !== undefined) process.env.FURYPIPE_MODELS = models;
+  if (process.env.FURYPIPE_MODELS === undefined) {
+    const scope = resolvePersistedModelScope(cfg.models, cfg.modelScopeExplicit);
+    if (scope.mode === 'explicit' && scope.envValue !== undefined) {
+      process.env.FURYPIPE_MODELS = scope.envValue;
+    } else if (scope.migratedLegacyDefault) {
+      console.log('[furypipe] migrated legacy default model scope to automatic Model Fabric discovery');
+    }
+  }
+  if (process.env.FURYPIPE_VISUAL_POLICY === undefined && typeof cfg.visualPolicy === 'string') {
+    const policy = cfg.visualPolicy.trim().toLowerCase();
+    if (policy === 'auto' || policy === 'max_savings' || policy === 'safe_exact' || policy === 'text_only') {
+      process.env.FURYPIPE_VISUAL_POLICY = policy;
+    }
   }
 }
 
@@ -164,7 +164,7 @@ function applyConfigFileDefaults(): void {
  *  NOTE: on the next start an explicit FURYPIPE_MODELS env still wins over the
  *  persisted value (same precedence as every other config-file default). */
 function persistModelBasesToConfig(bases: readonly string[]): void {
-  const file = furyEnvValue(process.env.FURYPIPE_CONFIG, process.env.PXPIPE_CONFIG) ?? defaultConfigFile();
+  const file = process.env.FURYPIPE_CONFIG ?? defaultConfigFile();
   let cfg: Record<string, unknown> = {};
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
@@ -179,8 +179,10 @@ function persistModelBasesToConfig(bases: readonly string[]): void {
       return;
     }
   }
-  // Empty array round-trips as 'off' via normalizeModelsConfig on load.
+  // Empty array round-trips as 'off'. Mark current writes as explicit so a
+  // deliberate operator scope is never confused with the <=0.15 legacy default.
   cfg.models = [...bases];
+  cfg.modelScopeExplicit = true;
   const tmp = `${file}.tmp-${process.pid}`;
   try {
     const parentExists = fs.existsSync(path.dirname(file));
@@ -200,11 +202,50 @@ function persistModelBasesToConfig(bases: readonly string[]): void {
   }
 }
 
+function persistVisualPolicyToConfig(policy: FuryPipeVisualPolicy): void {
+  const file = process.env.FURYPIPE_CONFIG ?? defaultConfigFile();
+  let cfg: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      console.warn('[furypipe] could not persist visual policy: invalid config object');
+      return;
+    }
+    cfg = parsed as Record<string, unknown>;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn('[furypipe] could not persist visual policy: invalid config file');
+      return;
+    }
+  }
+  cfg.visualPolicy = policy;
+  const tmp = `${file}.tmp-${process.pid}`;
+  try {
+    const parentExists = fs.existsSync(path.dirname(file));
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    if (!parentExists) fs.chmodSync(path.dirname(file), 0o700);
+    fs.writeFileSync(tmp, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
+    fs.renameSync(tmp, file);
+    fs.chmodSync(file, 0o600);
+  } catch {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // The write may have failed before the temporary file was created.
+    }
+    console.warn('[furypipe] could not persist visual policy');
+  }
+}
+
 function parseCli(argv: string[]): RuntimeConfig {
-  // Only flags accepted are --help and --version. Anything else is an
-  // error — there is exactly ONE way to run FuryPipe and the dashboard
-  // exposes every metric the operator might want to inspect.
+  // The runtime has an explicit command surface. Once setup/doctor/export/stats,
+  // start and FuryLink have been dispatched, no positional command is valid.
   for (const a of argv) {
+    if (!a.startsWith('-')) {
+      console.error(`[furypipe] unknown command: ${a}`);
+      console.error('[furypipe] run `furypipe --help` for the FuryPipe command surface');
+      process.exit(2);
+    }
     if (a === '-h' || a === '--help') {
       printHelp();
       process.exit(0);
@@ -220,7 +261,7 @@ function parseCli(argv: string[]): RuntimeConfig {
     }
   }
   applyConfigFileDefaults();
-  const sharedUpstream = furyEnvValue(process.env.FURYPIPE_UPSTREAM, process.env.PXPIPE_UPSTREAM);
+  const sharedUpstream = process.env.FURYPIPE_UPSTREAM;
   const cfAccount = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
   const cfToken = process.env.CLOUDFLARE_API_TOKEN?.trim();
   const parseModels = (value: string | undefined): string[] | undefined => {
@@ -230,15 +271,22 @@ function parseCli(argv: string[]): RuntimeConfig {
   const cloudflareUpstream = cfAccount && cfToken
     ? `https://api.cloudflare.com/client/v4/accounts/${cfAccount}/ai/v1`
     : undefined;
-  const provider = parseProvider(furyEnvValue(process.env.FURYPIPE_PROVIDER, process.env.PXPIPE_PROVIDER));
-  const genericGatewayBaseUrl = furyEnvValue(process.env.FURYPIPE_GATEWAY_BASE_URL, process.env.PXPIPE_GATEWAY_BASE_URL);
+  const provider = parseProvider(process.env.FURYPIPE_PROVIDER);
+  const genericGatewayBaseUrl = process.env.FURYPIPE_GATEWAY_BASE_URL;
   const gatewayBaseUrl = provider === 'omniroute'
     ? process.env.OMNIROUTE_BASE_URL ?? genericGatewayBaseUrl
     : genericGatewayBaseUrl;
   return {
-    port: Number(process.env.PORT ?? 47821),
+    port: (() => {
+      try {
+        return parseFuryPipePort(process.env.FURYPIPE_PORT);
+      } catch (caught) {
+        console.error(`[furypipe] ${(caught as Error).message}`);
+        process.exit(2);
+      }
+    })(),
     // Loopback by default; opt into all-interfaces exposure explicitly via HOST.
-    host: process.env.HOST?.trim() || '127.0.0.1',
+    host: process.env.FURYPIPE_HOST?.trim() || FURYPIPE_DEFAULT_HOST,
     upstream: process.env.ANTHROPIC_UPSTREAM ?? sharedUpstream ?? 'https://api.anthropic.com',
     openAIUpstream: process.env.OPENAI_UPSTREAM ?? sharedUpstream ?? 'https://api.openai.com',
     openAIApiKey: process.env.OPENAI_API_KEY,
@@ -248,13 +296,13 @@ function parseCli(argv: string[]): RuntimeConfig {
     cloudflareModels: parseModels(process.env.CLOUDFLARE_MODELS),
     provider,
     gatewayBaseUrl,
-    gatewayHeaders: parseGatewayHeaders(furyEnvValue(process.env.FURYPIPE_GATEWAY_HEADERS, process.env.PXPIPE_GATEWAY_HEADERS)),
+    gatewayHeaders: parseGatewayHeaders(process.env.FURYPIPE_GATEWAY_HEADERS),
     omniRouteApiKey: process.env.OMNIROUTE_API_KEY,
-    eventsFile: furyEnvValue(process.env.FURYPIPE_LOG, process.env.PXPIPE_LOG) ?? defaultEventsFile(),
+    eventsFile: process.env.FURYPIPE_LOG ?? defaultEventsFile(),
     // Off by default: either side of a 4xx may hold prompts or secrets.
     // Opt in for debugging only. (issue #69)
-    captureErrorReqBody: furyEnvValue(process.env.FURYPIPE_DEBUG_CAPTURE_4XX, process.env.PXPIPE_DEBUG_CAPTURE_4XX) === '1',
-    maxRequestBytes: parseMaxRequestBytes(furyEnvValue(process.env.FURYPIPE_MAX_REQUEST_BYTES, process.env.PXPIPE_MAX_REQUEST_BYTES)),
+    captureErrorReqBody: process.env.FURYPIPE_DEBUG_CAPTURE_4XX === '1',
+    maxRequestBytes: parseMaxRequestBytes(process.env.FURYPIPE_MAX_REQUEST_BYTES),
   };
 }
 
@@ -282,41 +330,41 @@ function parseProvider(v: string | undefined): 'cloudflare-ai-gateway' | 'omniro
 }
 
 function printHelp(): void {
-  console.log(`FuryPipe — context compiler and token-saving proxy for Claude Code
+  console.log(`FuryPipe — governed context runtime for production AI workflows
 
 Usage:
-  furypipe              run the proxy (no flags)
+  furypipe              start the local FuryPipe runtime (same as start)
+  furypipe start         start the runtime and local Control Plane
+  furypipe setup [options]
+                        launch the interactive FuryPipe first-run setup
   furypipe doctor [--json]
                         inspect the local runtime and available tools
   furypipe export [...] render files/diff to PNG pages + cost report (see furypipe export --help)
-  furypipe warp [--route PATTERN=TARGET]... -- CMD
-                        run CMD behind the proxy without a custom base URL, so
-                        client-side first-party gates (/remote-control,
-                        claude.ai connectors) keep working.
-                        api.anthropic.com/v1/messages is routed by default;
-                        --route adds rules for agents that talk to another
-                        base URL, e.g.
-                          --route '127.0.0.1:9090/v1/*=http://127.0.0.1:47821'
+  furypipe link [--route PATTERN=TARGET]... [--] CMD [args...]
+                        connect an agent through FuryLink. The '--' separator
+                        is optional, including on Windows PowerShell.
+                        Built-in provider routes cover Anthropic and Gemini;
+                        --route adds an explicit provider path when needed.
   furypipe stats [--json] [--file <p>]
                         summarize the events log offline (no server needed),
                         incl. measured savings; defaults to $FURYPIPE_LOG
 
-The proxy compresses eligible tools, schemas, reminders, tool_results,
-and history; tracks events to disk; and measures real saved_pct via
-/v1/messages/count_tokens. Dashboard controls can disable compression live.
+FuryPipe combines Context Fabric, adaptive visual compression, FuryLink,
+provider routing, MCP, memory and evidence-first telemetry. Eligible context
+is transformed only when the measured cost gate says the image path is useful.
+Dashboard controls can disable transformation live.
 
 Live sessions and cleanup tools live in the dashboard at
-  http://127.0.0.1:<port>/  (default port 47821)
+  http://127.0.0.1:<port>/  (default port 48721)
 For after-the-fact analysis without the server running, use furypipe stats.
-The legacy \`pxpipe\` command remains an equivalent compatibility alias.
 
 Flags:
   -h, --help              show this help
       --version           show version
 
 Environment:
-  PORT                    listen port (default 47821)
-  HOST                    interface to bind (default 127.0.0.1, loopback only).
+  FURYPIPE_PORT           listen port (default 48721)
+  FURYPIPE_HOST           interface to bind (default 127.0.0.1, loopback only).
                           Non-loopback bindings expose only the proxy API;
                           dashboard routes remain loopback-only.
   FURYPIPE_UPSTREAM       upstream API base for every API family
@@ -335,9 +383,10 @@ Environment:
   FURYPIPE_GATEWAY_HEADERS extra gateway headers; OmniRoute rejects auth/cookie names
   OMNIROUTE_BASE_URL      OmniRoute root or /v1 URL; required for omniroute
   OMNIROUTE_API_KEY       optional OmniRoute Bearer API key; never logged
-  FURYPIPE_MODELS         comma-separated model bases to image (Claude/Gemini/GPT/Grok);
-                          default claude-fable-5,gemini (every Gemini; Sol/Opus/GPT-5.5/Grok opt-in);
-                          off disables
+  FURYPIPE_MODELS         explicit comma-separated model scope override;
+                          default compatibility seed claude-fable-5,gemini; off disables visual transformation
+  FURYPIPE_VISUAL_POLICY  auto (default), max_savings, safe_exact, or text_only;
+                          max_savings admits every model with positively proven image input
   FURYPIPE_CONFIG         JSON config path (default ~/.config/furypipe/config.json)
                           supports {"models": [...]} or {"models": "off"}
   FURYPIPE_LOG            JSONL events path (default ~/.furypipe/events.jsonl)
@@ -347,9 +396,9 @@ Environment:
   FURYPIPE_CONTROL_ROOM_SECURITY_CI_EVIDENCE
                           optional bounded Security CI evidence JSON; exact-source CI security
                           takes precedence over conflicting static host security with a warning
-  FURYPIPE_DUMP_DIR       debug: write every rendered PNG here (what the model
-                          sees); off unless set. Compress arm only.
-  FURYPIPE_RENDER_CACHE_BYTES max bytes of rendered pages to keep in memory
+  FURYPIPE_DUMP_DIR       debug: write every Visual Engine PNG here (exactly what
+                          the model sees); off unless set.
+  FURYPIPE_RENDER_CACHE_BYTES max bytes of Visual Engine pages to keep in memory
                           (default 64 MiB here; 8 MiB on Workers, where the
                           isolate has ~128 MiB for everything). Frozen history
                           chunks are byte-identical across turns, so
@@ -360,10 +409,10 @@ Environment:
                           context) to disk. Off by default.
 
 Use with Claude Code:
-  ANTHROPIC_BASE_URL=http://127.0.0.1:47821 claude
+  ANTHROPIC_BASE_URL=http://127.0.0.1:48721 claude
 
 Use with OpenAI-compatible GPT clients:
-  OPENAI_BASE_URL=http://127.0.0.1:47821/v1
+  OPENAI_BASE_URL=http://127.0.0.1:48721/v1
 `);
 }
 
@@ -371,13 +420,17 @@ Use with OpenAI-compatible GPT clients:
 // `define`. Under a non-bundled dev runner (tsx) the identifier is not defined;
 // `typeof` returns "undefined" instead of throwing (ECMA-262 §13.5.3), so the
 // guard is safe. `npm_package_version` is only a dev fallback: npm sets it just
-// inside its own run-script env, so for `npx pxpipe-proxy` or a global bin it is
+// inside its own run-script env, so for `npx furypipe` or a global bin it is
 // undefined (or reflects the *consumer's* package), never this tool's version.
-declare const __PXPIPE_VERSION__: string | undefined;
+declare const __FURYPIPE_VERSION__: string | undefined;
+
+function currentVersion(): string {
+  const injected = typeof __FURYPIPE_VERSION__ === 'string' ? __FURYPIPE_VERSION__ : undefined;
+  return injected ?? 'unknown';
+}
 
 function printVersion(): void {
-  const injected = typeof __PXPIPE_VERSION__ === 'string' ? __PXPIPE_VERSION__ : undefined;
-  console.log(injected ?? 'unknown');
+  console.log(currentVersion());
 }
 
 // ---- node:http <-> Web Request/Response bridge ---------------------------
@@ -623,9 +676,15 @@ async function dispatchDashboard(
     case 'api-stats':
       if (method !== 'GET') return undefined;
       return dashboard.serveApiStats();
+    case 'api-models':
+      if (method !== 'GET') return undefined;
+      return dashboard.serveModelsJson();
     case 'api-control-room':
       if (method !== 'GET') return undefined;
       return dashboard.serveControlRoomJson();
+    case 'api-control-plane':
+      if (method !== 'GET') return undefined;
+      return dashboard.serveControlPlaneJson(port);
     case 'current-session':
       if (method !== 'GET') return undefined;
       return dashboard.serveCurrentSessionJson();
@@ -655,22 +714,26 @@ async function dispatchDashboard(
         let model = '';
         let on = false;
         let list: string | null = null;
+        let policy: string | null = null;
         try {
           const raw = await readRequestBody(req);
           try {
-            const j = JSON.parse(raw) as { model?: unknown; on?: unknown; list?: unknown };
+            const j = JSON.parse(raw) as { model?: unknown; on?: unknown; list?: unknown; policy?: unknown };
             model = typeof j.model === 'string' ? j.model : '';
             on = j.on === true;
             if (typeof j.list === 'string') list = j.list;
+            if (typeof j.policy === 'string') policy = j.policy;
           } catch {
             const p = new URLSearchParams(raw);
             model = p.get('model') ?? '';
             on = p.get('on') === 'true';
             list = p.get('list');
+            policy = p.get('policy');
           }
         } catch {
           return new Response('bad request body', { status: 400 });
         }
+        if (policy !== null) dashboard.handleVisualPolicySet(policy);
         if (list !== null) dashboard.handleModelsSet(list);
         else if (model) dashboard.handleModelsToggle(model, on);
         return dashboard.serveFragment('models', url, port);
@@ -1145,6 +1208,11 @@ async function runExport(argv: string[]): Promise<void> {
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
+  if (argv[0] === 'setup') {
+    const code = await runSetupWizard({ argv: argv.slice(1), version: currentVersion() });
+    process.exitCode = code;
+    return;
+  }
   if (argv[0] === 'doctor') {
     const extra = argv.slice(1);
     const localeArg = extra.find((arg) => arg.startsWith('--locale='));
@@ -1170,7 +1238,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'stats') {
     // Offline log analysis — reads the events JSONL without a running proxy.
     // The live dashboard covers the same data while FuryPipe is up.
-    const defaultFile = furyEnvValue(process.env.FURYPIPE_LOG, process.env.PXPIPE_LOG) ?? defaultEventsFile();
+    const defaultFile = process.env.FURYPIPE_LOG ?? defaultEventsFile();
     const { code, out, err } = await runStats(argv.slice(1), defaultFile);
     if (out) process.stdout.write(out + '\n');
     if (err) process.stderr.write(err + '\n');
@@ -1179,53 +1247,45 @@ async function main(): Promise<void> {
   if (argv[0] === 'start') {
     argv.splice(0, 1);
   }
-  // `warp` runs an agent behind a CONNECT proxy and redirects its inference
-  // traffic into the FuryPipe instance already running. It starts no proxy of its own, so
-  // it exits through its own branch below rather than falling through here.
-  let warpCommand: string[] | undefined;
-  const warpRoutes: string[] = [];
+  // FuryLink connects an agent to the already-running FuryPipe instance.
+  // It accepts both `furypipe link codex` and `furypipe link -- codex` so
+  // Windows shells are never required to preserve a separator token.
+  let furyLinkCommand: string[] | undefined;
+  let furyLinkRoutes: string[] = [];
   let cliArgv = argv;
-  if (argv[0] === 'warp') {
-    const sep = argv.indexOf('--');
-    warpCommand = sep < 0 ? [] : argv.slice(sep + 1);
-    // warp's own flags live before the `--`; parseCli accepts none of them, so
-    // they are consumed here rather than passed through.
-    const warpArgv = argv.slice(1, sep < 0 ? argv.length : sep);
-    const rest: string[] = [];
-    for (let i = 0; i < warpArgv.length; i += 1) {
-      const a = warpArgv[i]!;
-      if (a === '--route') {
-        const spec = warpArgv[i + 1];
-        if (spec === undefined) {
-          console.error('[furypipe] warp: --route needs PATTERN=TARGET');
-          process.exit(2);
-        }
-        warpRoutes.push(spec);
-        i += 1;
-        continue;
+
+  if (argv[0] === 'link') {
+    try {
+      const parsed = parseFuryLinkInvocation(argv.slice(1));
+      furyLinkCommand = [...parsed.command];
+      furyLinkRoutes = [...parsed.routes];
+      if (furyLinkCommand.length === 0) {
+        console.error(furyLinkHelp());
+        process.exit(2);
       }
-      if (a.startsWith('--route=')) {
-        warpRoutes.push(a.slice('--route='.length));
-        continue;
+    } catch (caught) {
+      if (caught instanceof FuryLinkUsageError && caught.message === 'help') {
+        console.log(furyLinkHelp());
+        return;
       }
-      rest.push(a);
+      console.error('[furypipe] link: ' + (caught as Error).message);
+      console.error(furyLinkHelp());
+      process.exit(2);
     }
-    cliArgv = rest;
+    cliArgv = [];
   }
   // Stats / sessions / cleanup tools live in the dashboard
   // (see http://127.0.0.1:${port}/).
   const opts = parseCli(cliArgv);
 
-  // warp only redirects traffic: it decrypts the agent's TLS and re-points the
-  // inference path at the FuryPipe instance already running, so that instance
-  // does the transforming, the tracking and the dashboard. Everything below —
-  // tracker, proxy pipeline, listener — belongs to that instance, not to us.
-  if (warpCommand) {
-    createWarpRuntime({ port: opts.port, routes: warpRoutes }).launch(warpCommand);
+  // FuryLink only redirects the child's provider traffic; the existing FuryPipe
+  // runtime remains the single transformation/tracking/dashboard authority.
+  if (furyLinkCommand) {
+    createFuryLinkRuntime({ port: opts.port, routes: furyLinkRoutes }).launch(furyLinkCommand);
     return;
   }
   // A/B harness passthrough switch (see the `transform` callback below).
-  const forcePassthrough = /^(1|true|yes|on)$/i.test(furyEnvValue(process.env.FURYPIPE_DISABLE, process.env.PXPIPE_DISABLE) ?? '');
+  const forcePassthrough = /^(1|true|yes|on)$/i.test(process.env.FURYPIPE_DISABLE ?? '');
   if (forcePassthrough) {
     console.log('[furypipe] FURYPIPE_DISABLE set — passthrough mode (compress=false), still logging usage + baselines');
   }
@@ -1260,7 +1320,7 @@ async function main(): Promise<void> {
   // legibility audits, demo inspection). Best-effort — never affects requests.
   // Note: the FURYPIPE_DISABLE arm renders nothing, so only the compress proxy
   // produces files here.
-  let imageDumpDir: string | undefined = furyEnvValue(process.env.FURYPIPE_DUMP_DIR, process.env.PXPIPE_DUMP_DIR)?.trim() || undefined;
+  let imageDumpDir: string | undefined = process.env.FURYPIPE_DUMP_DIR?.trim() || undefined;
   let imageDumpSeq = 0;
   if (imageDumpDir) {
     try {
@@ -1330,6 +1390,7 @@ async function main(): Promise<void> {
     undefined,
     persistModelBasesToConfig,
     controlRoomRuntime === undefined ? undefined : () => controlRoomRuntime.snapshot(),
+    persistVisualPolicyToConfig,
   );
   // Seed the "recent requests" table from the JSONL log so a process restart
   // doesn't reset what you can see in the UI. Best-effort; ignored on error.
@@ -1515,7 +1576,7 @@ async function main(): Promise<void> {
       });
   });
 
-  // IPv6 literals need bracket notation to form a valid URL (http://[::1]:47821).
+  // IPv6 literals need bracket notation to form a valid URL.
   const displayHost = opts.host.includes(':') ? `[${opts.host}]` : opts.host;
   const isLoopbackHost =
     opts.host === '127.0.0.1' || opts.host === 'localhost' || opts.host === '::1';
@@ -1535,6 +1596,18 @@ async function main(): Promise<void> {
     }
   };
 
+  server.on('error', (caught: NodeJS.ErrnoException) => {
+    if (caught.code === 'EADDRINUSE') {
+      console.error(`[furypipe] cannot start: http://${displayHost}:${opts.port} is already in use`);
+      console.error('[furypipe] FuryPipe does not reuse another process. Set FURYPIPE_PORT to a free port and retry.');
+      process.exitCode = 1;
+      return;
+    }
+    const message = caught instanceof Error ? caught.message : String(caught);
+    console.error(`[furypipe] server error: ${message}`);
+    process.exitCode = 1;
+  });
+
   server.listen(opts.port, opts.host, () => {
     console.log(`[furypipe] listening on http://${displayHost}:${opts.port}`);
     if (!isLoopbackHost) {
@@ -1542,6 +1615,30 @@ async function main(): Promise<void> {
     }
     announce();
     console.log('[furypipe] dashboard available on loopback');
+
+    // Refresh configured provider catalogs outside the startup critical path.
+    // Missing credentials perform no network request; failures are diagnostic
+    // only and never disable proxying/runtime-observed model discovery.
+    if (!/^(0|false|no|off)$/i.test(process.env.FURYPIPE_MODEL_CATALOG_REFRESH ?? '')) {
+      void refreshRuntimeModelCatalog().then((report) => {
+        const refreshed = report.providers.filter((provider) => provider.status === 'refreshed');
+        const failed = report.providers.filter((provider) => provider.status === 'failed');
+        if (refreshed.length > 0) {
+          console.log(
+            `[furypipe] model catalog refreshed: ${report.registeredModels} model(s) from ` +
+            refreshed.map((provider) => provider.provider).join(', '),
+          );
+        }
+        for (const provider of failed) {
+          console.warn(
+            `[furypipe] model catalog refresh failed for ${provider.provider}: ${provider.reason ?? 'unknown'}` +
+            (provider.httpStatus === undefined ? '' : ` (HTTP ${provider.httpStatus})`),
+          );
+        }
+      }).catch(() => {
+        console.warn('[furypipe] model catalog refresh failed unexpectedly');
+      });
+    }
   });
 
   // server.close() only stops accepting new connections and waits for open

@@ -86,10 +86,10 @@ function summary(median: number) {
   };
 }
 
-function metric(raw: number, pxpipe: number, furypipe: number) {
+function metric(raw: number, upstream: number, furypipe: number) {
   return {
     raw: summary(raw),
-    pxpipe: summary(pxpipe),
+    upstream: summary(upstream),
     furypipe: summary(furypipe),
   };
 }
@@ -126,7 +126,7 @@ function benchmarkSuite(provider: string, model: string) {
     },
     quality: {
       raw: summary(0.90),
-      pxpipe: summary(0.92),
+      upstream: summary(0.92),
       furypipe: summary(0.95),
     },
     exactness: {

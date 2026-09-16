@@ -5,7 +5,7 @@ import {
   BUILTIN_FURY_PLUGIN_BUNDLES,
   createFuryPluginBundleRegistry,
 } from '../src/plugin-bundles.js';
-import { prepareFuryTask } from '../src/task-orchestrator.js';
+import { executeFuryTask, prepareFuryTask, runPreparedFuryTask } from '../src/task-orchestrator.js';
 import { createCapabilityRegistry } from '../src/ecosystem/registry.js';
 import { normalizeCapabilityCandidate } from '../src/ecosystem/normalize.js';
 import { evaluateFuryTrust } from '../src/fury-trust.js';
@@ -38,6 +38,17 @@ function registerSkill(
       return { evidence: [id + '-evidence'], consumedTokens: 1 };
     },
   });
+}
+
+
+function stageExecutors() {
+  return {
+    research: async () => ({ evidence: ['research-stage'], consumedTokens: 1 }),
+    plan: async () => ({ evidence: ['plan-stage'], consumedTokens: 1 }),
+    implement: async () => ({ evidence: ['implement-stage'], consumedTokens: 1 }),
+    review: async () => ({ evidence: ['review-stage'], consumedTokens: 1 }),
+    verify: async () => ({ evidence: ['verify-stage'], consumedTokens: 1 }),
+  } as const;
 }
 
 describe('FuryPipe Task Orchestrator', () => {
@@ -176,6 +187,117 @@ describe('FuryPipe Task Orchestrator', () => {
     expect(result.autoInvokeSkillsByStage.research).toContain('repo-analysis');
     expect(skillExecutions).toBe(0);
     expect(mcpExecutions).toBe(0);
+  });
+
+
+  it('executes the exact prepared Skill and MCP plan and returns execution receipts', async () => {
+    const skills = createAgentSkillRegistry();
+    let skillExecutions = 0;
+    let mcpExecutions = 0;
+    registerSkill(skills, 'repo-analysis', 'repository', 'research', () => { skillExecutions += 1; });
+
+    const mcpServer = {
+      id: 'local-readonly',
+      allowedMethods: ['search'],
+      execute: async () => {
+        mcpExecutions += 1;
+        return { hits: 2 };
+      },
+    } as const;
+
+    const prepared = await prepareFuryTask({
+      objective: 'Inspect a repository with the selected local capabilities.',
+      furyPrompt: { sections: { task: 'Inspect the repository.' } },
+      capability: {
+        skillRegistry: skills,
+        runtimeMcpServers: [mcpServer],
+        universalAnalyzer: {
+          analyze: async () => ({
+            domainId: 'repository-inspection',
+            requiredSkillCategories: ['repository'],
+            preferredSkillIds: ['repo-analysis'],
+            autoMcpCallsByStage: {
+              research: [{
+                serverId: 'local-readonly',
+                method: 'search',
+                params: { q: 'architecture' },
+              }],
+            },
+          }),
+        },
+      },
+    });
+
+    // Planning is side-effect free.
+    expect(skillExecutions).toBe(0);
+    expect(mcpExecutions).toBe(0);
+    expect(prepared.mcpServers).toEqual([mcpServer]);
+    expect(prepared.autoInvokeSkillsByStage.research).toContain('repo-analysis');
+    expect(prepared.autoInvokeMcpByStage.research).toEqual([{
+      serverId: 'local-readonly',
+      method: 'search',
+      params: { q: 'architecture' },
+    }]);
+
+    const result = await runPreparedFuryTask(prepared, { executors: stageExecutors() });
+
+    expect(result.status).toBe('completed');
+    expect(skillExecutions).toBe(1);
+    expect(mcpExecutions).toBe(1);
+    expect(result.capabilityExecutions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'skill',
+        id: 'repo-analysis',
+        stage: 'research',
+        invocation: 'automatic',
+        status: 'executed',
+      }),
+      expect.objectContaining({
+        kind: 'mcp',
+        id: 'local-readonly',
+        stage: 'research',
+        invocation: 'automatic',
+        status: 'executed',
+        method: 'search',
+      }),
+    ]));
+  });
+
+  it('executeFuryTask performs planning plus real capability execution in one governed call', async () => {
+    const skills = createAgentSkillRegistry();
+    let executions = 0;
+    registerSkill(skills, 'one-call-repo-analysis', 'repository', 'research', () => { executions += 1; });
+
+    const execution = await executeFuryTask({
+      objective: 'Inspect the repository through the one-call governed path.',
+      furyPrompt: { sections: { task: 'Inspect repository.' } },
+      capability: {
+        skillRegistry: skills,
+        universalAnalyzer: {
+          analyze: async () => ({
+            domainId: 'repository-inspection',
+            requiredSkillCategories: ['repository'],
+            preferredSkillIds: ['one-call-repo-analysis'],
+          }),
+        },
+      },
+    }, {
+      executors: stageExecutors(),
+    });
+
+    expect(execution.format).toBe('furypipe-executed-task/v1');
+    expect(execution.prepared.autoInvokeSkillsByStage.research).toContain('one-call-repo-analysis');
+    expect(executions).toBe(1);
+    expect(execution.run.status).toBe('completed');
+    expect(execution.run.capabilityExecutions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'skill',
+        id: 'one-call-repo-analysis',
+        stage: 'research',
+        invocation: 'automatic',
+        status: 'executed',
+      }),
+    ]));
   });
 
   it('exposes catalog recommendations without activating them in the runtime capability plan', async () => {

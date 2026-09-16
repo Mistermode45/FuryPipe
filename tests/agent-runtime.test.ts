@@ -153,6 +153,37 @@ describe('FuryPipe Agent runtime', () => {
     expect(skillCalled).toBe(true);
     expect(mcpCalled).toBe(true);
     expect(subagentCalled).toBe(true);
+    expect(result.capabilityExecutions).toEqual([
+      expect.objectContaining({
+        format: 'furypipe-agent-capability-execution/v1',
+        kind: 'skill',
+        id: 'repo-reader',
+        stage: 'research',
+        invocation: 'manual',
+        status: 'executed',
+        consumedTokens: 1,
+      }),
+      expect.objectContaining({
+        format: 'furypipe-agent-capability-execution/v1',
+        kind: 'mcp',
+        id: 'local-inspection',
+        stage: 'research',
+        invocation: 'manual',
+        status: 'executed',
+        method: 'list',
+      }),
+      expect.objectContaining({
+        format: 'furypipe-agent-capability-execution/v1',
+        kind: 'subagent',
+        id: 'research-helper',
+        stage: 'research',
+        invocation: 'manual',
+        status: 'executed',
+        consumedTokens: 2,
+      }),
+    ]);
+    expect(JSON.stringify(result.capabilityExecutions)).not.toContain('skill-evidence');
+    expect(JSON.stringify(result.capabilityExecutions)).not.toContain('subagent-evidence');
     expect(result.contextUsedTokens).toBe(53);
   });
 
@@ -191,6 +222,19 @@ describe('FuryPipe Agent runtime', () => {
     expect(result.status).toBe('completed');
     expect(executions).toEqual(['research-skill']);
     expect(result.skillHealth).toEqual({ 'research-skill': 'healthy' });
+    expect(result.capabilityExecutions).toEqual([
+      expect.objectContaining({
+        kind: 'skill',
+        id: 'research-skill',
+        stage: 'research',
+        invocation: 'automatic',
+        status: 'executed',
+        consumedTokens: 2,
+      }),
+    ]);
+    // The executor's repeated invokeSkill() reused the stage cache; a planned
+    // skill is therefore proven exactly once, not double-counted.
+    expect(result.capabilityExecutions).toHaveLength(1);
     expect(result.contextUsedTokens).toBe(45);
   });
 
@@ -227,6 +271,32 @@ describe('FuryPipe Agent runtime', () => {
 
     expect(result.status).toBe('completed');
     expect(calls).toBe(1);
+    expect(result.capabilityExecutions).toEqual([
+      expect.objectContaining({
+        kind: 'mcp',
+        id: 'local-research',
+        stage: 'research',
+        invocation: 'automatic',
+        status: 'executed',
+        method: 'search',
+      }),
+    ]);
+  });
+
+  it('does not claim a registered skill was executed when no stage invokes it', async () => {
+    const result = await runAgent({
+      objective: 'Keep unused capabilities observationally distinct.',
+      executors: stageExecutors([]),
+      skills: [{
+        id: 'registered-only',
+        version: '1.0.0',
+        stages: ['research'],
+        execute: async () => ({ evidence: ['must-not-run'], consumedTokens: 1 }),
+      }],
+    });
+    expect(result.status).toBe('completed');
+    expect(result.capabilityExecutions).toEqual([]);
+    expect(result.skillHealth).toEqual({});
   });
 
   it('shares an in-flight identical MCP call instead of executing concurrent effects twice', async () => {
@@ -435,6 +505,159 @@ describe('FuryPipe Agent runtime', () => {
     expect(seen.filter((stage) => stage === 'verify')).toHaveLength(1);
   });
 
+  it('exposes write paths only to the implement stage that actually owns scoped-write permission', async () => {
+    const seen: Array<{ stage: string; permission: string; paths: readonly string[] }> = [];
+    const observe = async (context: Parameters<NonNullable<AgentRuntimeRequest['executors']['research']>>[0]) => {
+      seen.push({ stage: context.stage, permission: context.permission, paths: context.allowedWritePaths });
+      return { evidence: [`${context.stage}-evidence`], consumedTokens: 1 };
+    };
+    const result = await runAgent({
+      objective: 'Keep write authority stage-local.',
+      allowWrites: true,
+      allowedWritePaths: ['/repo'],
+      executors: {
+        research: observe,
+        plan: observe,
+        implement: observe,
+        review: observe,
+        verify: observe,
+      },
+    });
+
+    expect(result.status).toBe('completed');
+    expect(seen).toEqual([
+      { stage: 'research', permission: 'read', paths: [] },
+      { stage: 'plan', permission: 'read', paths: [] },
+      { stage: 'implement', permission: 'scoped-write', paths: ['/repo'] },
+      { stage: 'review', permission: 'read', paths: [] },
+      { stage: 'verify', permission: 'read', paths: [] },
+    ]);
+  });
+
+  it('bounds objective, write scopes and capability registries before allocation-heavy execution', async () => {
+    const hugeObjective = await runAgent({
+      objective: 'x'.repeat(1_048_577),
+      executors: stageExecutors([]),
+    });
+    expect(hugeObjective).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+
+    const tooManyPaths = await runAgent({
+      objective: 'Bound write path cardinality.',
+      allowWrites: true,
+      allowedWritePaths: Array.from({ length: 257 }, (_, index) => `/repo/${index}`),
+      executors: stageExecutors([]),
+    });
+    expect(tooManyPaths).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+
+    const skill = {
+      id: 's',
+      version: '1.0.0',
+      stages: ['research'] as const,
+      execute: async () => ({ evidence: ['ok'], consumedTokens: 0 }),
+    };
+    const tooManySkills = await runAgent({
+      objective: 'Bound skill registry cardinality.',
+      executors: stageExecutors([]),
+      skills: Array.from({ length: 1_025 }, (_, index) => ({ ...skill, id: `s-${index}` })),
+    });
+    expect(tooManySkills).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+
+    const tooManyMcpServers = await runAgent({
+      objective: 'Bound MCP registry cardinality.',
+      executors: stageExecutors([]),
+      mcpServers: Array.from({ length: 257 }, (_, index) => ({
+        id: `mcp-${index}`,
+        allowedMethods: ['read'],
+        execute: async () => ({ ok: true }),
+      })),
+    });
+    expect(tooManyMcpServers).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+
+    const tooManySubagents = await runAgent({
+      objective: 'Bound subagent registry cardinality.',
+      executors: stageExecutors([]),
+      subagents: Array.from({ length: 513 }, (_, index) => ({
+        id: `sub-${index}`,
+        stages: ['research'] as const,
+        execute: async () => ({ evidence: ['ok'], consumedTokens: 0 }),
+      })),
+    });
+    expect(tooManySubagents).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+  });
+
+  it('rejects malformed capability definitions before any callback can execute', async () => {
+    let calls = 0;
+    const invalidMcp = await runAgent({
+      objective: 'Reject malformed MCP definitions.',
+      executors: stageExecutors([]),
+      mcpServers: [{
+        id: 'mcp',
+        allowedMethods: Array.from({ length: 65 }, (_, index) => `method-${index}`),
+        execute: async () => {
+          calls += 1;
+          return {};
+        },
+      }],
+    });
+    expect(invalidMcp).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+
+    const invalidSkill = await runAgent({
+      objective: 'Reject malformed skill definitions.',
+      executors: stageExecutors([]),
+      skills: [{
+        id: 'x'.repeat(257),
+        version: '1.0.0',
+        stages: ['research'],
+        execute: async () => {
+          calls += 1;
+          return { evidence: ['x'], consumedTokens: 1 };
+        },
+      }],
+    });
+    expect(invalidSkill).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+    expect(calls).toBe(0);
+  });
+
+  it('fails closed on oversized or non-serializable MCP results before emitting execution receipts', async () => {
+    const oversized = await runAgent({
+      objective: 'Reject oversized MCP output.',
+      executors: {
+        ...stageExecutors([]),
+        research: async (context) => {
+          await context.invokeMcp('mcp', 'read');
+          return { evidence: ['unreachable'], consumedTokens: 1 };
+        },
+      },
+      mcpServers: [{
+        id: 'mcp',
+        allowedMethods: ['read'],
+        execute: async () => ({ payload: 'x'.repeat(70_000) }),
+      }],
+    });
+    expect(oversized).toMatchObject({ status: 'failed', failure: { code: 'MCP_BLOCKED', stage: 'research' } });
+    expect(oversized.capabilityExecutions).toEqual([]);
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const unserializable = await runAgent({
+      objective: 'Reject cyclic MCP output.',
+      executors: {
+        ...stageExecutors([]),
+        research: async (context) => {
+          await context.invokeMcp('mcp', 'read');
+          return { evidence: ['unreachable'], consumedTokens: 1 };
+        },
+      },
+      mcpServers: [{
+        id: 'mcp',
+        allowedMethods: ['read'],
+        execute: async () => cyclic,
+      }],
+    });
+    expect(unserializable).toMatchObject({ status: 'failed', failure: { code: 'MCP_BLOCKED', stage: 'research' } });
+    expect(unserializable.capabilityExecutions).toEqual([]);
+  });
+
   it('denies unapproved MCP methods, network skills and unhealthy skills', async () => {
     const blockedMcp = await runAgent({
       objective: 'Deny an unapproved MCP call.',
@@ -474,6 +697,36 @@ describe('FuryPipe Agent runtime', () => {
       skills: [{ id: 'broken-skill', version: '1.0.0', stages: ['research'], health: async () => ({ status: 'unhealthy' }), execute: async () => ({ evidence: ['x'], consumedTokens: 1 }) }],
     });
     expect(unhealthySkill.failure?.code).toBe('SKILL_BLOCKED');
+  });
+
+  it('bounds capability execution receipts before invoking an unreceipted callback', async () => {
+    let calls = 0;
+    const result = await runAgent({
+      objective: 'Bound capability execution evidence.',
+      contextBudgetTokens: 16_000,
+      executors: {
+        ...stageExecutors([]),
+        research: async (context) => {
+          for (let i = 0; i < 513; i++) {
+            await context.invokeSubagent('bounded-helper');
+          }
+          return { evidence: ['unreachable'], consumedTokens: 1 };
+        },
+      },
+      subagents: [{
+        id: 'bounded-helper',
+        stages: ['research'],
+        execute: async () => {
+          calls += 1;
+          return { evidence: ['bounded-helper-evidence'], consumedTokens: 1 };
+        },
+      }],
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.capabilityExecutions).toHaveLength(512);
+    expect(calls).toBe(512);
+    expect(result.failure?.reason).toMatch(/capability execution receipt limit exceeded/);
   });
 
   it('compiles FuryPrompt once for stage callbacks and binds its digest to resume', async () => {

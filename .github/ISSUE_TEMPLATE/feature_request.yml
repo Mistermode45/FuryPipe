@@ -1,0 +1,65 @@
+name: Feature request
+description: Propose a focused FuryPipe capability or improvement
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or engineering problem should this solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the desired contract rather than only an implementation idea.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Context / ExactGuard
+        - Agent Runtime
+        - Skills / Capability Router
+        - MCP
+        - Providers / routing / streaming
+        - Memory / learning
+        - Policy / security
+        - Control Room / Web Studio
+        - CLI / developer experience
+        - Documentation
+        - Release / supply chain
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and trust-boundary impact
+      description: Does this add network, write, credential, persistence or execution capability?
+      placeholder: "None, or explain the new boundary and expected fail-closed behavior."
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Success criteria
+      description: What tests or evidence would prove this feature works?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: compatibility
+    attributes:
+      label: Compatibility
+      options:
+        - label: I considered whether this changes a public API, FURYPIPE_* setting or legacy pxpipe/PXPIPE_* fallback.
+          required: true

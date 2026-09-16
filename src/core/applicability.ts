@@ -1,16 +1,29 @@
-/** Applicability helpers for pxpipe's production-safe model scope. */
+/** Applicability helpers for FuryPipe's production-safe model scope. */
 
-import { isMisresolvedModelId } from './gpt-model-profiles.js';
+import {
+  isMisresolvedModelId,
+  resolveVisionPricingEvidence,
+  type FuryVisionPricingEvidence,
+} from './gpt-model-profiles.js';
+import {
+  resolveRuntimeVisualModel,
+  type ModelVisualResolution,
+} from './model-fabric.js';
 import { stripBracketedSegments } from './safe-string.js';
 
-export type PxpipeApplicabilityReason =
+export type FuryPipeApplicabilityReason =
   | 'eligible'
   | 'unsupported_model'
+  | 'vision_capability_unknown'
+  | 'visual_profile_unverified'
+  | 'text_only_model'
+  | 'visual_pricing_unknown'
+  | 'visual_profile_blocked'
   | 'unsupported_method'
   | 'unsupported_path'
   | 'empty_body';
 
-export interface PxpipeApplicabilityInput {
+export interface FuryPipeApplicabilityInput {
   readonly model?: string | null;
   readonly method?: string | null;
   readonly path?: string | null;
@@ -22,54 +35,75 @@ function baseModelId(model: string): string {
   return stripBracketedSegments(model);
 }
 
-/** Dashboard runtime override; null = fall back to PXPIPE_MODELS env / built-in default. In-memory only. */
+/** Dashboard runtime override; null = fall back to FURYPIPE_MODELS / automatic vision policy. */
 let runtimeModelBases: readonly string[] | null = null;
 
-/** Built-in default scope when PXPIPE_MODELS is unset: Fable 5, Gemini 3.6 Flash, and Gemini 3.7 Flash.
- *  Everything else is opt-in via dashboard chips or PXPIPE_MODELS:
- *  - Opus 4.7/4.8 — worse at reading imaged content (FINDINGS.md 2026-06-16:
- *    Opus 4.8 ~2pp arithmetic, 6/15 dense-hex vs Fable 100/100).
- *  - GPT 5.5 — degrades on imaged history/context.
- *  - GPT 5.6 Sol — 98/100 production arithmetic, but 79/93 completed gist,
- *    4/15 completed guard confabulations, and 0/15 dense hex.
- *  - Grok 4.5/4.6 — native 14px: 100/100 arithmetic, 97/98 gist, 17/18 state; hex 0/15.
- *  - Opus 5 — 2/15 exact recall on imaged context (DeepSWE v1.1 eval);
- *    task pass rate holds but dense recall does not.
- *  All remain available for explicit opt-in.
- *  Silently imaging weak or unvalidated readers is the wrong default. */
-/** Model bases imaged with no configuration at all.
+/**
+ * Human-readable zero-config policy seed.
  *
- *  Exported so documentation can be checked against it instead of restating it.
- *  The README and this list disagreed once already: Opus 5 was dropped here after
- *  a measured recall regression and stayed in the README's stated default, so a
- *  reader following the docs believed a model was being imaged that was not. */
-/*  `gemini` is a family base: the prefix match below covers `gemini-3.6-flash`,
- *  `gemini-4`, `gemini-pro`, ... so every Gemini id is on by default. Opting out
- *  is the ordinary path — drop `gemini` from FURYPIPE_MODELS or click the chip off —
- *  which only works because the Google gate in proxy.ts/dashboard.ts consults
- *  this list and nothing else. */
-export const DEFAULT_MODEL_BASES = ['claude-fable-5', 'gemini'];
+ * This is no longer FuryPipe's model catalog. It documents the current families
+ * that the built-in capability resolver can classify without a provider catalog.
+ * Provider-discovered vision models can also enter the Visual Engine without a
+ * FuryPipe release. FURYPIPE_MODELS remains an explicit operator override.
+ */
+export const DEFAULT_MODEL_BASES = Object.freeze([
+  'claude-fable-5',
+  'gemini',
+]);
+
+export type FuryPipeVisualPolicy = 'auto' | 'max_savings' | 'safe_exact' | 'text_only';
+
+let runtimeVisualPolicy: FuryPipeVisualPolicy | null = null;
+
+export function setFuryPipeVisualPolicy(policy: FuryPipeVisualPolicy | null): void {
+  runtimeVisualPolicy = policy;
+}
+
+/**
+ * Global automatic visual policy.
+ *
+ * AUTO is evidence-first but practical: quality-verified and calibrated
+ * reader profiles are transformed automatically. SAFE_EXACT accepts only
+ * quality-verified profiles. MAX_SAVINGS admits every model whose image-input
+ * capability is positively proven and whose image economics are known, while
+ * downstream ExactGuard, profitability, image-count and byte-budget gates still
+ * apply. TEXT_ONLY is a hard kill switch for visual transformation.
+ */
+export function getFuryPipeVisualPolicy(): FuryPipeVisualPolicy {
+  if (runtimeVisualPolicy !== null) return runtimeVisualPolicy;
+  if (typeof process === 'undefined') return 'auto';
+  const raw = process.env?.FURYPIPE_VISUAL_POLICY?.trim().toLowerCase();
+  if (raw === 'max_savings' || raw === 'safe_exact' || raw === 'text_only' || raw === 'auto') return raw;
+  return 'auto';
+}
 
 function falsey(v: string): boolean {
   return /^(0|false|no|off|none)$/i.test(v.trim());
 }
 
-/** FURYPIPE_MODELS env / built-in default, ignoring the runtime override.
- *  PXPIPE_MODELS remains a compatibility fallback only when FURYPIPE_MODELS is absent.
- *  One CSV controls every family (Claude + GPT). Resolution (read per-call so scope flips LIVE):
- *  - unset or empty        → built-in default (Fable 5 + every Gemini)
- *  - `off`/`0`/`false`/... → compress nothing
- *  - CSV of model bases    → exactly those families (e.g. `claude-fable-5,gpt-5.6-sol`) */
+function rawModelScope(): string | undefined {
+  return typeof process !== 'undefined' ? process.env?.FURYPIPE_MODELS : undefined;
+}
+
+/** True only when an operator deliberately supplied a non-empty model policy. */
+function hasExplicitEnvironmentScope(): boolean {
+  const raw = rawModelScope();
+  return raw !== undefined && raw.trim().length > 0;
+}
+
+/** FURYPIPE_MODELS env / automatic policy seed, ignoring the runtime override.
+ *
+ * - unset or empty          → automatic vision-capable policy
+ * - off/0/false/no/none     → compress nothing
+ * - CSV model bases         → exactly those bases
+ */
 function envOrDefaultBases(): string[] {
-  // Edge-safe: `process` is undefined off-Node; `typeof` avoids a ReferenceError.
-  const raw = typeof process !== 'undefined'
-    ? (process.env?.FURYPIPE_MODELS ?? process.env?.PXPIPE_MODELS)
-    : undefined;
+  const raw = rawModelScope();
   if (raw === undefined) return [...DEFAULT_MODEL_BASES];
   const trimmed = raw.trim();
   if (!trimmed) return [...DEFAULT_MODEL_BASES];
   if (falsey(trimmed)) return [];
-  return trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+  return trimmed.split(',').map((model) => model.trim()).filter(Boolean);
 }
 
 function allowedModelBases(): string[] {
@@ -77,69 +111,234 @@ function allowedModelBases(): string[] {
   return envOrDefaultBases();
 }
 
-/** Current effective allowed-model scope (Claude + GPT). */
+/** Current effective operator-facing model scope. Dynamic catalog entries are separate. */
 export function getAllowedModelBases(): string[] {
   return allowedModelBases();
 }
 
-/** FURYPIPE_MODELS env / default scope, independent of runtime override.
- *  PXPIPE_MODELS is accepted only as a legacy compatibility fallback.
- *  Dashboard unions this into its chip set so env-enabled models are always shown as toggles. */
+/** Configured policy seed, not a complete model catalog. */
 export function getConfiguredModelBases(): string[] {
   return envOrDefaultBases();
 }
 
-/** Set the dashboard runtime override. Empty array = compress nothing; null = clear override. Not persisted. */
+/** Set the dashboard runtime override. Empty array = compress nothing; null = automatic/default policy. */
 export function setAllowedModelBases(list: readonly string[] | null): void {
   runtimeModelBases = list === null ? null : list.map((s) => s.trim()).filter(Boolean);
 }
 
-/** Gateways qualify ids with routing segments:
- *
- *    google/gemini-3.6-flash
- *    workers-ai/@cf/moonshotai/kimi-k3
- *
- *  The vendor picks the upstream, not the reader, so scope matching also
- *  compares the segment after the last slash. Otherwise PXPIPE_MODELS entries
- *  never match behind a gateway. */
+/** Gateway/provider prefixes select an upstream, not a visual reader profile. */
 function unqualifiedModelId(base: string): string | null {
   const slash = base.lastIndexOf('/');
   return slash >= 0 ? base.slice(slash + 1) : null;
 }
 
-/** Membership test against the single allowed scope. Matches exact base or `-suffix`
- *  alias; [variant] tags stripped first. */
-function isAllowed(model: string | null | undefined): boolean {
-  if (typeof model !== 'string') return false;
-  const base = baseModelId(model).toLowerCase();
-  // Never compress an id that would be priced with another provider's formula
-  // (e.g. an unmeasured Gemini sibling falling through to the OpenAI fallback).
-  // Which ids those are is profile-table knowledge, not a rule maintained here.
-  if (isMisresolvedModelId(base)) return false;
+function matchesExplicitScope(base: string): boolean {
   const unqualified = unqualifiedModelId(base);
-  return allowedModelBases().some((b) => {
-    const target = b.toLowerCase();
+  return allowedModelBases().some((entry) => {
+    const target = entry.toLowerCase();
     const hit = (id: string): boolean => id === target || id.startsWith(`${target}-`);
     return hit(base) || (unqualified !== null && hit(unqualified));
   });
 }
 
-/** True when pxpipe may transform this Anthropic model. */
-export function isPxpipeSupportedModel(model: string | null | undefined): boolean {
-  return isAllowed(model);
+type FuryPipeModelEligibilityFailureReason = Exclude<
+  Extract<
+    FuryPipeApplicabilityReason,
+    'eligible' | 'unsupported_model' | 'vision_capability_unknown' | 'visual_profile_unverified' | 'text_only_model' | 'visual_pricing_unknown' | 'visual_profile_blocked'
+  >,
+  'eligible'
+>;
+
+export type FuryPipeModelEligibility =
+  | {
+      readonly eligible: true;
+      readonly reason: 'eligible';
+      readonly resolution?: ModelVisualResolution;
+      readonly pricingEvidence?: FuryVisionPricingEvidence;
+      readonly source: 'operator_scope' | 'automatic_model_fabric';
+    }
+  | {
+      readonly eligible: false;
+      readonly reason: FuryPipeModelEligibilityFailureReason;
+      readonly resolution?: ModelVisualResolution;
+      readonly pricingEvidence?: FuryVisionPricingEvidence;
+      readonly source: 'operator_scope' | 'automatic_model_fabric';
+    };
+
+/**
+ * Resolve model eligibility without equating "unknown model name" with
+ * "unsupported".  In automatic mode, the Model Fabric admits proven
+ * vision-capable readers, including newly discovered provider models.  An
+ * explicit FURYPIPE_MODELS/runtime override remains authoritative.
+ */
+export function resolveFuryPipeModelEligibility(
+  model: string | null | undefined,
+): FuryPipeModelEligibility {
+  if (typeof model !== 'string' || !model.trim()) {
+    return Object.freeze({
+      eligible: false,
+      reason: 'unsupported_model',
+      source: 'automatic_model_fabric',
+    });
+  }
+
+  const base = baseModelId(model).toLowerCase();
+  const visualPolicy = getFuryPipeVisualPolicy();
+
+  if (visualPolicy === 'text_only') {
+    return Object.freeze({
+      eligible: false,
+      reason: 'visual_profile_blocked',
+      source: 'automatic_model_fabric',
+      resolution: resolveRuntimeVisualModel(base),
+    });
+  }
+
+  // A runtime dashboard override is always explicit, even when it is [].
+  // A non-empty FURYPIPE_MODELS value is also explicit; "off" therefore stays
+  // a hard kill switch instead of being bypassed by capability discovery.
+  if (runtimeModelBases !== null || hasExplicitEnvironmentScope()) {
+    const resolution = resolveRuntimeVisualModel(base);
+    if (isMisresolvedModelId(base) || resolution.reason === 'blocked_profile') {
+      return Object.freeze({
+        eligible: false,
+        reason: 'visual_profile_blocked',
+        source: 'operator_scope',
+        resolution,
+      });
+    }
+    // A positive provider capability denial cannot be overridden into an
+    // image request by a stale CSV. Unknown capability remains operator-forced
+    // for backward compatibility, but proven text-only always fails closed.
+    if (resolution.imageInput === 'no') {
+      return Object.freeze({
+        eligible: false,
+        reason: 'text_only_model',
+        source: 'operator_scope',
+        resolution,
+      });
+    }
+    const scoped = matchesExplicitScope(base);
+    if (scoped) {
+      // FURYPIPE_MODELS is a scope/authorization override, not pricing
+      // evidence. It must not silently authorize profitability decisions using
+      // another model/provider's fallback economics.
+      const pricingEvidence = resolveVisionPricingEvidence(base);
+      if (pricingEvidence === 'unknown') {
+        return Object.freeze({
+          eligible: false,
+          reason: 'visual_pricing_unknown',
+          source: 'operator_scope',
+          resolution,
+          pricingEvidence,
+        });
+      }
+      return Object.freeze({
+        eligible: true,
+        reason: 'eligible',
+        source: 'operator_scope',
+        resolution,
+        pricingEvidence,
+      });
+    }
+    return Object.freeze({
+      eligible: false,
+      reason: 'unsupported_model',
+      source: 'operator_scope',
+      resolution,
+    });
+  }
+
+  // Automatic mode is capability-driven but evidence-aware. Discovery proves
+  // existence, capability metadata proves image input, and quality evidence
+  // decides whether AUTO may transform. MAX_SAVINGS is the explicit broad mode
+  // requested by operators who prefer coverage/savings over conservative
+  // quality rollout; it still requires positively proven image input.
+  const resolution = resolveRuntimeVisualModel(base);
+  if (isMisresolvedModelId(base)) {
+    return Object.freeze({
+      eligible: false,
+      reason: 'visual_profile_blocked',
+      source: 'automatic_model_fabric',
+      resolution,
+    });
+  }
+  if (resolution.imageInput === 'no') {
+    return Object.freeze({
+      eligible: false,
+      reason: 'text_only_model',
+      source: 'automatic_model_fabric',
+      resolution,
+    });
+  }
+  if (resolution.imageInput !== 'yes' || resolution.mode === 'native') {
+    return Object.freeze({
+      eligible: false,
+      reason: resolution.reason === 'blocked_profile' ? 'visual_profile_blocked' : 'vision_capability_unknown',
+      source: 'automatic_model_fabric',
+      resolution,
+    });
+  }
+
+  const broadVisual = visualPolicy === 'max_savings';
+  const qualityVerified = resolution.profile === 'quality_verified';
+  const calibrated = resolution.profile === 'calibrated';
+  const pricingEvidence = resolveVisionPricingEvidence(base);
+
+  // AUTO is deliberately conservative about reader quality: a model must have
+  // earned either CALIBRATED or QUALITY_VERIFIED status before automatic visual
+  // transformation is allowed. Provider discovery plus pricing evidence alone
+  // is not reader-quality evidence. MAX_SAVINGS is the explicit policy that can
+  // admit positively proven but still UNPROFILED vision readers.
+  const policyAllowsProfile = visualPolicy === 'safe_exact'
+    ? qualityVerified
+    : visualPolicy === 'auto'
+      ? (qualityVerified || calibrated)
+      : broadVisual;
+
+  if (!policyAllowsProfile) {
+    return Object.freeze({
+      eligible: false,
+      reason: resolution.imageInput === 'yes' ? 'visual_profile_unverified' : 'vision_capability_unknown',
+      source: 'automatic_model_fabric',
+      resolution,
+      pricingEvidence,
+    });
+  }
+
+  // Dynamic discovery can prove "accepts image input" before FuryPipe has a
+  // provider-appropriate cost profile. AUTO/MAX_SAVINGS both remain native in
+  // that case rather than fabricating another provider's image-token economics.
+  if ((broadVisual || visualPolicy === 'auto') && pricingEvidence === 'unknown') {
+    return Object.freeze({
+      eligible: false,
+      reason: 'visual_pricing_unknown',
+      source: 'automatic_model_fabric',
+      resolution,
+      pricingEvidence,
+    });
+  }
+
+  return Object.freeze({
+    eligible: true,
+    reason: 'eligible',
+    source: 'automatic_model_fabric',
+    resolution,
+    pricingEvidence,
+  });
 }
 
-/** True when pxpipe may transform this GPT model. Shares the single PXPIPE_MODELS scope. */
-export function isPxpipeSupportedGptModel(model: string | null | undefined): boolean {
-  return isAllowed(model);
+/** True when FuryPipe may transform this Anthropic/OpenAI-compatible model. */
+export function isFuryPipeSupportedModel(model: string | null | undefined): boolean {
+  return resolveFuryPipeModelEligibility(model).eligible;
 }
 
-/** Canonical set of Anthropic Messages routes pxpipe transforms. Shared with
- *  createProxy (src/core/proxy.ts) so the public applicability helper and the
- *  proxy router can never disagree on which paths are eligible — they did: the
- *  proxy accepts /anthropic/messages, but the helper's old `endsWith` check
- *  rejected it (and would have wrongly accepted /foo/v1/messages). Exact matches
- *  only, so /v1/messages/count_tokens stays unsupported. */
+/** True when FuryPipe may transform this GPT/OpenAI-compatible model. */
+export function isFuryPipeSupportedGptModel(model: string | null | undefined): boolean {
+  return resolveFuryPipeModelEligibility(model).eligible;
+}
+
+/** Canonical Anthropic Messages paths that FuryPipe transforms. */
 export function isAnthropicMessagesPath(pathname: string): boolean {
   return pathname === '/v1/messages'
     || pathname === '/anthropic/v1/messages'
@@ -147,8 +346,8 @@ export function isAnthropicMessagesPath(pathname: string): boolean {
 }
 
 export function shouldTransformAnthropicMessages(
-  input: PxpipeApplicabilityInput,
-): { eligible: boolean; reason: PxpipeApplicabilityReason } {
+  input: FuryPipeApplicabilityInput,
+): { eligible: boolean; reason: FuryPipeApplicabilityReason } {
   if (input.method !== undefined && input.method !== null && input.method.toUpperCase() !== 'POST') {
     return { eligible: false, reason: 'unsupported_method' };
   }
@@ -158,8 +357,6 @@ export function shouldTransformAnthropicMessages(
   if (input.bodyBytes !== undefined && input.bodyBytes !== null && input.bodyBytes <= 0) {
     return { eligible: false, reason: 'empty_body' };
   }
-  if (!isPxpipeSupportedModel(input.model)) {
-    return { eligible: false, reason: 'unsupported_model' };
-  }
-  return { eligible: true, reason: 'eligible' };
+  const eligibility = resolveFuryPipeModelEligibility(input.model);
+  return { eligible: eligibility.eligible, reason: eligibility.reason };
 }

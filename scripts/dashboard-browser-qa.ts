@@ -21,14 +21,22 @@ function assert(condition, message) {
 function findChrome() {
   const candidates = [
     process.env.CHROME_BIN,
+    ...(process.platform === 'win32' ? [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files\\Chromium\\Application\\chrome.exe',
+    ] : []),
     'google-chrome-stable',
     'google-chrome',
     'chromium',
     'chromium-browser',
   ].filter(Boolean);
   for (const candidate of candidates) {
-    if (candidate.includes('/')) return candidate;
-    const found = spawnSync('which', [candidate], { encoding: 'utf8' });
+    if (candidate.includes('/') || candidate.includes('\\')) {
+      if (spawnSync(candidate, ['--version'], { encoding: 'utf8' }).status === 0) return candidate;
+      continue;
+    }
+    const found = spawnSync(process.platform === 'win32' ? 'where.exe' : 'which', [candidate], { encoding: 'utf8' });
     if (found.status === 0 && found.stdout.trim()) return found.stdout.trim();
   }
   throw new Error('No Chromium/Chrome executable found. Set CHROME_BIN explicitly.');
@@ -265,7 +273,12 @@ async function closeTarget(debugPort, targetId) {
 }
 
 const BREAKPOINT_WIDTHS = [
-  { id: 'desktop', width: 1440, height: 1000 },
+  { id: 'fhd', width: 1920, height: 1080 },
+  { id: 'desktop', width: 1440, height: 900 },
+  { id: 'laptop', width: 1366, height: 768 },
+  { id: 'tablet', width: 1024, height: 768 },
+  { id: 'tablet-portrait', width: 768, height: 1024 },
+  { id: 'mobile-wide', width: 640, height: 960 },
   { id: 'above-1000', width: 1001, height: 900 },
   { id: 'at-1000', width: 1000, height: 900 },
   { id: 'above-860', width: 861, height: 900 },
@@ -276,6 +289,13 @@ const BREAKPOINT_WIDTHS = [
 ];
 
 const CASES = [
+  ...BREAKPOINT_WIDTHS.map((viewport) => ({
+    name: `en-${viewport.id}`,
+    locale: 'en',
+    direction: 'ltr',
+    width: viewport.width,
+    height: viewport.height,
+  })),
   ...BREAKPOINT_WIDTHS.map((viewport) => ({
     name: `fr-${viewport.id}`,
     locale: 'fr',
@@ -304,14 +324,17 @@ async function runCase(browser, dashboard, testCase) {
       width: testCase.width,
       height: testCase.height,
       deviceScaleFactor: 1,
-      mobile: testCase.width <= 500,
+      // Responsive layout is defined by CSS pixels. Do not enable device
+      // emulation here: Chromium can expose a scaled layout viewport, making
+      // the requested width non-deterministic across engines.
+      mobile: false,
     });
 
     const pageUrl = `http://${HOST}:${dashboard.port}/?locale=${encodeURIComponent(testCase.locale)}`;
     await cdp.send('Page.navigate', { url: pageUrl });
     await cdp.waitFor('document.readyState === "complete"', 'document.readyState=complete');
     await cdp.waitFor(
-      'document.querySelector("#frag-toggle")?.children.length > 0 && document.querySelector("#frag-recent")?.children.length > 0 && document.querySelector("#frag-control-room")?.children.length > 0',
+      'document.querySelector("#frag-toggle")?.children.length > 0 && document.querySelector("#frag-recent")?.children.length > 0 && document.querySelector("#frag-control-room")?.children.length > 0 && !!document.querySelector("#frag-cp-overview .cp-runtime-lane") && !!document.querySelector("#frag-cp-capabilities [data-cp-root]")',
       'initial HTMX fragments',
       12_000,
     );
@@ -330,7 +353,11 @@ async function runCase(browser, dashboard, testCase) {
       theme: document.documentElement.dataset.theme,
       selectValue: document.querySelector('select.mini-btn')?.value ?? null,
       topbarVisible: !!document.querySelector('.topbar') && getComputedStyle(document.querySelector('.topbar')).display !== 'none',
-      sectionCount: document.querySelectorAll('section.section').length,
+      sectionCount: document.querySelectorAll('main.cp-shell > section, main.cp-shell > details.cp-disclosure').length,
+      controlPlaneLoaded: !!document.querySelector('#frag-cp-overview .cp-runtime-lane') && !!document.querySelector('#frag-cp-capabilities [data-cp-root]'),
+      openShellDisclosures: [...document.querySelectorAll('details.cp-disclosure[open]')].map((detail) => detail.id),
+      shellWidths: [...document.querySelectorAll('.workspace, .topbar, .command-nav, .cp-shell, .cp-shell-overview')]
+        .map((element) => ({ selector: element.className || element.id, width: element.getBoundingClientRect().width, scrollWidth: element.scrollWidth })),
       overflowElements: [...document.querySelectorAll('*')]
         .map((element) => {
           const rect = element.getBoundingClientRect();
@@ -357,13 +384,27 @@ async function runCase(browser, dashboard, testCase) {
     assert(base.localeStored === testCase.locale, `${testCase.name}: locale persistence mismatch`);
     assert(base.selectValue === testCase.locale, `${testCase.name}: locale selector mismatch`);
     assert(base.topbarVisible === true, `${testCase.name}: topbar is not visible`);
-    assert(base.sectionCount >= 4, `${testCase.name}: expected dashboard sections`);
-    assert(base.scrollWidth <= base.clientWidth + 1, `${testCase.name}: root horizontal overflow ${base.scrollWidth} > ${base.clientWidth}; offenders=${JSON.stringify(base.overflowElements)}`);
+    assert(base.sectionCount === 7, `${testCase.name}: expected the seven Control Plane shell surfaces, got ${base.sectionCount}`);
+    assert(base.controlPlaneLoaded, `${testCase.name}: Control Plane V2 fragment did not load`);
+    if (testCase.width <= 640) {
+      assert(base.openShellDisclosures.length === 1 && base.openShellDisclosures[0] === 'observe',
+        `${testCase.name}: mobile must retain a single progressive-disclosure surface, got ${JSON.stringify(base.openShellDisclosures)}`);
+    }
+    assert(base.scrollWidth <= base.clientWidth + 1, `${testCase.name}: root horizontal overflow ${base.scrollWidth} > ${base.clientWidth}; shell=${JSON.stringify(base.shellWidths)}; offenders=${JSON.stringify(base.overflowElements)}`);
     assert(base.bodyScrollWidth <= base.clientWidth + 1, `${testCase.name}: body horizontal overflow ${base.bodyScrollWidth} > ${base.clientWidth}`);
+
+    const initialScreenshot = await cdp.send('Page.captureScreenshot', {
+      format: 'png',
+      captureBeyondViewport: false,
+      fromSurface: true,
+    });
+    const initialTheme = base.theme === 'dark' ? 'dark' : 'light';
+    const initialScreenshotPath = join(REPORT_DIR, `${testCase.name}-${initialTheme}.png`);
+    await writeFile(initialScreenshotPath, Buffer.from(initialScreenshot.data, 'base64'));
 
     const theme = await cdp.evaluate(`(() => {
       const before = document.documentElement.dataset.theme;
-      window.ppTheme();
+      window.furyTheme();
       const after = document.documentElement.dataset.theme;
       return { before, after };
     })()`);
@@ -424,7 +465,7 @@ async function runCase(browser, dashboard, testCase) {
       captureBeyondViewport: false,
       fromSurface: true,
     });
-    const screenshotPath = join(REPORT_DIR, `${testCase.name}.png`);
+    const screenshotPath = join(REPORT_DIR, `${testCase.name}-${theme.after === 'dark' ? 'dark' : 'light'}.png`);
     await writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'));
 
     const fragmentRequests = dashboard.fragmentRequests.slice(requestStart);
@@ -444,7 +485,10 @@ async function runCase(browser, dashboard, testCase) {
       base,
       tooltipOverflow,
       expanded,
-      screenshot: screenshotPath.replace(process.cwd() + '/', ''),
+      screenshots: [
+        initialScreenshotPath.replace(process.cwd() + '/', ''),
+        screenshotPath.replace(process.cwd() + '/', ''),
+      ],
       runtimeExceptions: [...cdp.exceptions],
     };
   } finally {

@@ -229,7 +229,7 @@ describe('truncateForBudget', () => {
     // Output should fit in the 10-image budget (count visual rows).
     expect(estimateImageCount(out, COLS)).toBeLessThanOrEqual(10);
     // Marker present
-    expect(out).toContain('pxpipe paging:');
+    expect(out).toContain('FuryPipe paging:');
     // Head + tail format: marker mentions both first and last lines
     expect(out).toMatch(/Showing first \d+ lines and last \d+ lines/);
     // Both ends visible: first log entry and last log entry survive
@@ -252,7 +252,7 @@ describe('truncateForBudget', () => {
     expect(omittedChars).toBeGreaterThan(0);
     expect(estimateImageCount(out, COLS)).toBeLessThanOrEqual(10);
     // Marker present
-    expect(out).toContain('pxpipe paging:');
+    expect(out).toContain('FuryPipe paging:');
     // Tail-only format: marker says "tail elided", NOT head+tail
     expect(out).toContain('tail elided');
     expect(out).not.toMatch(/Showing first \d+ lines and last \d+ lines/);
@@ -275,7 +275,7 @@ describe('truncateForBudget', () => {
     expect(truncated).toBe(true);
     expect(omittedChars).toBeGreaterThan(0);
     expect(estimateImageCount(out, COLS)).toBeLessThanOrEqual(10);
-    expect(out).toContain('pxpipe paging:');
+    expect(out).toContain('FuryPipe paging:');
     // Default prose gets head+tail (not tail-only)
     expect(out).toMatch(/Showing first \d+ lines and last \d+ lines/);
   });
@@ -350,7 +350,7 @@ describe('truncateForBudget', () => {
     // that single line. Verify behavior is sane (doesn't crash, marker
     // present somewhere if truncated).
     if (truncated) {
-      expect(out).toContain('pxpipe paging:');
+      expect(out).toContain('FuryPipe paging:');
     }
   });
 });

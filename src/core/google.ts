@@ -10,12 +10,11 @@ import {
   neutralizeSentinel,
   reflow,
   renderTextToPngs,
-  shrinkColsToContent,
   type RenderedImage,
 } from './render.js';
 import { geminiVisionTokens, hasGeminiMeasuredProfile, resolveGeminiProfile } from './gemini-model-profiles.js';
 import { bytesToBase64 } from './png.js';
-import { classifyContent, compactSlabWhitespace, type TransformInfo } from './transform.js';
+import { classifyContent, compactSlabWhitespace, planVisualColumns, type TransformInfo } from './transform.js';
 import {
   prepareImagedRenderText,
   droppedCodepointsTop,
@@ -35,6 +34,11 @@ export interface GooglePart {
   inlineData?: {
     mimeType: string;
     data: string;
+  };
+  /** Gemini 3 per-part media tokenization. Dense FuryPipe text pages require
+   *  HIGH so the provider does not silently down-budget OCR/detail quality. */
+  mediaResolution?: {
+    level: 'MEDIA_RESOLUTION_LOW' | 'MEDIA_RESOLUTION_MEDIUM' | 'MEDIA_RESOLUTION_HIGH' | 'MEDIA_RESOLUTION_ULTRA_HIGH';
   };
   functionCall?: {
     name?: string;
@@ -390,7 +394,7 @@ async function compressGoogleToolResults(
       const packed = options.reflow !== false ? reflow(safe) ?? safe : safe;
       const rendered = prepareImagedRenderText(
         `================= RENDERED TOOL RESULT: ${name} =================\n` +
-        'pxpipe rendered this completed tool result into image pages to reduce input tokens. Read it as the exact result returned by the tool.\n' +
+        'FuryPipe rendered this completed tool result into image pages to reduce input tokens. Read it as the exact result returned by the tool.\n' +
         packed,
         false,
       );
@@ -593,6 +597,11 @@ function imagePart(image: RenderedImage): GooglePart {
       mimeType: 'image/png',
       data: bytesToBase64(image.png),
     },
+    // FuryPipe pages are intentionally dense text. Gemini 3 exposes per-part
+    // media resolution; requesting HIGH makes the provider-side vision budget
+    // match the ~1120-token high-resolution cost modeled by the shipped Gemini
+    // profile instead of relying on a model-dependent default.
+    mediaResolution: { level: 'MEDIA_RESOLUTION_HIGH' },
   };
 }
 
@@ -723,11 +732,14 @@ export async function transformGoogleGenerateContent(
     const header = CHAT_HEADER.replace('\n====', reflowNote + '\n====');
     renderedText = prepareImagedRenderText(header + combined, options.reflow !== false);
 
-    const maxCols = options.cols ?? profile.stripCols;
-    const cols = Math.min(
-      shrinkColsToContent(renderedText, maxCols, profile.style.markerScale, profile.style.font),
-      profile.stripCols,
-    );
+    const maxCols = Math.min(options.cols ?? profile.stripCols, profile.stripCols);
+    const cols = planVisualColumns(
+      renderedText,
+      maxCols,
+      profile.style,
+      profile,
+      profile.maxHeightPx,
+    ).cols;
 
     staticImages = await renderTextToPngs(renderedText, cols, profile.style, profile.maxHeightPx);
     imageTokens = staticImages.reduce(

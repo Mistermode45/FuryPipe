@@ -65,7 +65,7 @@ export interface FuryContextOptimizerProfileQualification {
   readonly measuredTokenImprovement: number;
   readonly measuredTokenImprovementRatio: number | null;
   readonly rawQualityMedian: number;
-  readonly pxpipeQualityMedian: number;
+  readonly upstreamQualityMedian: number;
   readonly candidateQualityMedian: number;
   readonly exactnessMismatches: 0;
   readonly benchmarkErrors: 0;
@@ -340,7 +340,7 @@ function qualificationValidationError(
     boundedText(qualification.provider, 'qualification provider', MAX_SCOPE_CHARS);
     boundedText(qualification.model, 'qualification model', MAX_SCOPE_CHARS);
     boundedText(qualification.workloadId, 'qualification workloadId', MAX_SCOPE_CHARS);
-    if (qualification.baseline !== 'raw' && qualification.baseline !== 'pxpipe') {
+    if (qualification.baseline !== 'raw' && qualification.baseline !== 'upstream') {
       return 'qualification baseline is invalid';
     }
     if (qualification.comparability !== 'VERIFIED') return 'qualification comparability must be VERIFIED';
@@ -366,7 +366,7 @@ function qualificationValidationError(
       return 'qualification measuredTokenImprovementRatio must be finite and non-negative or null';
     }
     boundedUnit(qualification.rawQualityMedian, 'qualification rawQualityMedian');
-    boundedUnit(qualification.pxpipeQualityMedian, 'qualification pxpipeQualityMedian');
+    boundedUnit(qualification.upstreamQualityMedian, 'qualification upstreamQualityMedian');
     boundedUnit(qualification.candidateQualityMedian, 'qualification candidateQualityMedian');
     if (qualification.exactnessMismatches !== 0) return 'qualification exactnessMismatches must be zero';
     if (qualification.benchmarkErrors !== 0) return 'qualification benchmarkErrors must be zero';
@@ -403,7 +403,7 @@ function qualificationBlockReason(
   if (qualification.repetitions < MIN_REPETITIONS) return 'insufficient-repetitions';
   if (
     qualification.candidateQualityMedian < qualification.rawQualityMedian
-    || qualification.candidateQualityMedian < qualification.pxpipeQualityMedian
+    || qualification.candidateQualityMedian < qualification.upstreamQualityMedian
   ) {
     return 'quality-regression';
   }
@@ -426,8 +426,8 @@ export function qualifyContextOptimizerProfile(
     'context optimizer qualification benchmarkSuiteSha256',
   );
   const baseline = record.baseline === undefined ? 'raw' : record.baseline;
-  if (baseline !== 'raw' && baseline !== 'pxpipe') {
-    throw new Error('context optimizer qualification baseline must be raw or pxpipe');
+  if (baseline !== 'raw' && baseline !== 'upstream') {
+    throw new Error('context optimizer qualification baseline must be raw or upstream');
   }
 
   const claim = evaluateBenchmarkClaim({
@@ -482,9 +482,9 @@ export function qualifyContextOptimizerProfile(
   }
 
   const rawQualityMedian = claim.antiRegression.qualityMedian.raw;
-  const pxpipeQualityMedian = claim.antiRegression.qualityMedian.pxpipe;
+  const upstreamQualityMedian = claim.antiRegression.qualityMedian.upstream;
   const candidateQualityMedian = claim.antiRegression.qualityMedian.furypipe;
-  if (rawQualityMedian === null || pxpipeQualityMedian === null || candidateQualityMedian === null) {
+  if (rawQualityMedian === null || upstreamQualityMedian === null || candidateQualityMedian === null) {
     return Object.freeze({
       ...decisionBase,
       status: 'BLOCKED' as const,
@@ -516,7 +516,7 @@ export function qualifyContextOptimizerProfile(
     measuredTokenImprovement: claim.measuredImprovement,
     measuredTokenImprovementRatio: claim.measuredImprovementRatio,
     rawQualityMedian,
-    pxpipeQualityMedian,
+    upstreamQualityMedian,
     candidateQualityMedian,
     exactnessMismatches: 0 as const,
     benchmarkErrors: 0 as const,

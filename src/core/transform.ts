@@ -75,7 +75,7 @@ export interface KeepSharpBlock {
   readonly toolUseId?: string;
 }
 
-/** A block pxpipe rendered to image(s), returned in `TransformInfo.recoverable`
+/** A block FuryPipe rendered to image(s), returned in `TransformInfo.recoverable`
  *  when the caller sets `emitRecoverable`. Lets a stateful harness restore
  *  byte-exact content if the model needs the imaged region verbatim. */
 export interface RecoverableBlock {
@@ -265,7 +265,7 @@ const READ_FIRST_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit']);
  *  History is even denser (tool_use JSON dominates), so 2.0 is doubly conservative. */
 export const HISTORY_CHARS_PER_TOKEN = 2.0;
 
-/** Chars-per-token for the `pxpipe export` *reporting* estimate (factsheet & savings %).
+/** Chars-per-token for the `FuryPipe export` *reporting* estimate (factsheet & savings %).
  *  Less conservative than the gate's CHARS_PER_TOKEN=4: reporting wants an accurate
  *  figure (~3.7 for source/prose text), not a safe-side under-estimate. Single source
  *  of truth — src/core/export.ts imports this rather than redefining it. */
@@ -354,6 +354,74 @@ function imageTokensCost(
   return imageTokensForRows(rows, effectiveCols, imageCountCap, maxCharsPerImage, geometry);
 }
 
+export interface VisualColumnPlan {
+  readonly cols: number;
+  readonly visualRows: number;
+  readonly imageCount: number;
+  readonly imageTokens: number;
+}
+
+/**
+ * FuryPipe Visual Planner.
+ *
+ * The old path always rendered at the natural/widest-line width. That is
+ * deterministic, but it is not necessarily the cheapest vision geometry once
+ * patch rounding and page padding are included. Evaluate a small bounded set of
+ * widths and choose the lowest provider-priced image-token plan. The incumbent
+ * width is always a candidate, so the planner cannot choose a plan with a higher
+ * estimated image-token cost. Ties prefer fewer pages, then wider pages for
+ * readability.
+ */
+export function planVisualColumns(
+  text: string,
+  maxCols: number,
+  style: RenderStyle = DENSE_RENDER_STYLE,
+  pricing: VisionPricing = CLAUDE_PROFILE,
+  maxHeightPx: number = MAX_HEIGHT_PX,
+): VisualColumnPlan {
+  const natural = shrinkColsToContent(text, Math.max(1, maxCols), 1, style.font);
+  const floor = Math.min(natural, 96);
+  const candidates = new Set<number>([natural, floor]);
+  for (const cols of [288, 256, 224, 192, 160, 128, 112, 96]) {
+    if (cols >= floor && cols <= natural) candidates.add(cols);
+  }
+
+  let best: VisualColumnPlan | undefined;
+  for (const cols of candidates) {
+    const visualRows = countVisualRows(text, cols);
+    const cellH = renderCellHeight(style);
+    const hardLinesPerImage = Math.max(1, Math.floor((maxHeightPx - 2 * PAD_Y) / cellH));
+    const readableLinesPerImage = Math.max(1, Math.floor(READABLE_CHARS_PER_IMAGE / cols));
+    const linesPerImage = Math.min(hardLinesPerImage, readableLinesPerImage);
+    const imageCount = visualRows <= 0 ? 0 : Math.ceil(visualRows / linesPerImage);
+    const geometry: GateGeometry = {
+      cols,
+      maxHeightPx,
+      maxChars: maxCharsPerImage(cols),
+      style,
+      pricing,
+    };
+    const imageTokens = imageTokensForRows(
+      visualRows,
+      cols,
+      undefined,
+      maxCharsPerImage(cols),
+      geometry,
+    );
+    const plan = { cols, visualRows, imageCount, imageTokens };
+    if (
+      best === undefined ||
+      plan.imageTokens < best.imageTokens ||
+      (plan.imageTokens === best.imageTokens && plan.imageCount < best.imageCount) ||
+      (plan.imageTokens === best.imageTokens && plan.imageCount === best.imageCount && plan.cols > best.cols)
+    ) {
+      best = plan;
+    }
+  }
+
+  return best ?? { cols: natural, visualRows: 0, imageCount: 0, imageTokens: 0 };
+}
+
 /** Gate geometry for collapsed history.
  *
  *  Identical to {@link denseGateGeometry} unless the model profile sets
@@ -434,7 +502,7 @@ function maybeReflow(text: string, enabled: boolean): string {
   if (!enabled) return text;
   // Neutralize any pre-existing ↵ so reflow packs newlines instead of bailing to a raw,
   // unpacked render (the tool_result "newlines not converted to ↵" case — common when the
-  // content is about pxpipe itself). Render-only; originals are preserved via
+  // content is about FuryPipe itself). Render-only; originals are preserved via
   // recordRecoverable(innerRaw), so this substitution never reaches recovery.
   const safe = neutralizeSentinel(text);
   return reflow(safe) ?? safe;
@@ -822,11 +890,11 @@ export interface TransformInfo {
   imagePixels?: number;
   /** Provider-estimated vision tokens the rendered images cost as input. */
   imageTokens?: number;
-  /** Provider-specific text-token estimate of the content pxpipe imaged/stripped —
+  /** Provider-specific text-token estimate of the content FuryPipe imaged/stripped —
    *  the would-have-paid "as plain text" baseline. Compared against imageTokens
    *  for the per-request saving. See src/core/openai-savings.ts. */
   baselineImagedTokens?: number;
-  /** Provider-specific estimate of native tokens added solely by pxpipe (pointers, exact-token
+  /** Provider-specific estimate of native tokens added solely by FuryPipe (pointers, exact-token
    * sheets, and framing). Removed from the unproxied counterfactual. */
   nativeInjectedTokens?: number;
   /** Total TEXT chars in the outgoing body (system + messages, excluding image base64).
@@ -844,7 +912,7 @@ export interface TransformInfo {
    *  user-attributed text; any earlier position busts the cached prefix. */
   billingLine?: string;
   /** OpenAI Responses only: local o200k decomposition of the ORIGINAL request
-   *  before pxpipe rewrites it. No provider count_tokens call. Categories are
+   *  before FuryPipe rewrites it. No provider count_tokens call. Categories are
    *  mutually exclusive text-token estimates; imageParts counts native images. */
   responsesComposition?: {
     instructions: number;
@@ -907,7 +975,7 @@ export interface TransformInfo {
   toolResultImgs?: number;
   /** Image blocks the CLIENT already sent (screenshots, pasted images, prior
    *  tool_result images). They count against the provider's hard image cap just
-   *  like ours do, so every pxpipe imaging path must price them in — a request
+   *  like ours do, so every FuryPipe imaging path must price them in — a request
    *  whose own images already fill the cap must not get a single one from us.
    *  Counted once, before any rewrite. See {@link imageHeadroom}. */
   nativeImages?: number;
@@ -985,8 +1053,8 @@ export interface TransformInfo {
   /** sha8 of the ACTUAL cacheable prefix sent this turn (tools + system +
    *  message blocks through the imaged history/slab boundary; the live tail is
    *  excluded). Read-only measurement. A change turn-over-turn within a session
-   *  ⇒ pxpipe serialized different prefix bytes (we busted our own cache,
-   *  pxpipe-side); STABLE while cache_create spikes / cache_read collapses ⇒ the
+   *  ⇒ FuryPipe serialized different prefix bytes (we busted our own cache,
+   *  FuryPipe-side); STABLE while cache_create spikes / cache_read collapses ⇒ the
    *  prefix was evicted upstream. Decisive attribution signal (see #11). */
   cachePrefixSha8?: string;
   /** Approx size (chars) of that cached prefix — pairs with cachePrefixSha8 so a
@@ -1094,9 +1162,9 @@ function lastStaticSystemCacheControl(sys: SystemField | undefined): TextBlock['
 }
 
 /**
- * pxpipe relocates caller cache_control markers onto rendered image blocks.
+ * FuryPipe relocates caller cache_control markers onto rendered image blocks.
  * A relocated position is never a guaranteed "global prefix": pages 1..N-1 of
- * a slab run and other pxpipe-injected blocks carry no marker, so a relocated
+ * a slab run and other FuryPipe-injected blocks carry no marker, so a relocated
  * `scope:"global"` violates Anthropic's "every preceding block must be
  * globally scoped" rule and the whole request 400s (#95). Downgrade to plain
  * ephemeral by dropping `scope` — a single trailing marker is always valid for
@@ -1390,7 +1458,7 @@ async function historyImageSha8(
 }
 
 /**
- * After a history collapse, move pxpipe's single relocated cache breakpoint off
+ * After a history collapse, move FuryPipe's single relocated cache breakpoint off
  * the slab image and onto the LAST history image.
  *
  * The history image sits AFTER the slab in prefix order, so one marker on it
@@ -1401,7 +1469,7 @@ async function historyImageSha8(
  * the entire history image re-creates at the 1.25x rate turn after turn.
  *
  * Pure relocation: it acts only when a slab image already carries the anchor, so
- * the total marker count never increases (pxpipe never *adds* — only moves).
+ * the total marker count never increases (FuryPipe never *adds* — only moves).
  */
 function relocateAnchorToHistoryImage(messages: Message[] | undefined, anchorOrdinal?: number): void {
   if (!Array.isArray(messages)) return;
@@ -1455,13 +1523,13 @@ function relocateAnchorToHistoryImage(messages: Message[] | undefined, anchorOrd
 }
 
 /**
- * Read-only digest of the cacheable prefix pxpipe actually sends: tools +
+ * Read-only digest of the cacheable prefix FuryPipe actually sends: tools +
  * system + message blocks up to and including the imaged history image (or, on
  * no-collapse turns, the slab boundary). The naturally-growing live tail is
  * excluded, so the digest only moves when something *inside the pinned prefix*
  * moves. Pairs with per-turn cache_read/cache_create to attribute a prompt-cache
  * bust: a digest that CHANGES between consecutive turns of one session means we
- * serialized different prefix bytes (pxpipe-side — a per-turn block crossing the
+ * serialized different prefix bytes (FuryPipe-side — a per-turn block crossing the
  * breakpoint, or marker drift); a STABLE digest on a turn that still re-created
  * the prefix points upstream (eviction). Never mutates the request, so it cannot
  * perturb the cache behavior it measures.
@@ -1482,7 +1550,7 @@ async function cachePrefixDigest(
   | undefined
 > {
   const msgs = Array.isArray(req.messages) ? (req.messages as Message[]) : [];
-  // Boundary = latest message carrying pxpipe's imaged prefix: the history image
+  // Boundary = latest message carrying FuryPipe's imaged prefix: the history image
   // (banner) when collapse ran, else the slab message ('[End of rendered
   // context.]'). Identified exactly as relocateAnchorToHistoryImage does.
   let boundary = -1;
@@ -1735,7 +1803,7 @@ function renderToolDoc(t: ToolDef): string {
 }
 
 function makeImageBlock(pngB64: string, _ephemeral = false): ImageBlock {
-  // pxpipe never adds its own cache_control — only moves existing caller markers
+  // FuryPipe never adds its own cache_control — only moves existing caller markers
   // across the text→image flip. `_ephemeral` is preserved for call-site compat.
   return {
     type: 'image',
@@ -1842,7 +1910,7 @@ function buildPagingMarker(args: {
       ? ` Showing first ${args.shownHeadLines} lines and last ${args.shownTailLines} lines.`
       : ` Showing first ${args.shownHeadLines} lines (tail elided).`;
   return (
-    `\n\n[ pxpipe paging: omitted ${args.omittedLines.toLocaleString('en-US')} lines ` +
+    `\n\n[ FuryPipe paging: omitted ${args.omittedLines.toLocaleString('en-US')} lines ` +
     `(${args.omittedChars.toLocaleString('en-US')} chars) of content here. ` +
     `Original length: ${args.originalChars.toLocaleString('en-US')} chars ` +
     `(${args.originalLines.toLocaleString('en-US')} lines, ~${args.originalEstImages} images).` +
@@ -1994,7 +2062,7 @@ export function truncateForBudget(
  * Render text → Anthropic image blocks for the proxy. The width-selection rule below
  * is mirrored exactly by
  * the public SDK primitive `renderTextToImages` (library.ts), so the proxy and the
- * `pxpipe export` CLI emit byte-identical PNGs for the same text. Exported so
+ * `FuryPipe export` CLI emit byte-identical PNGs for the same text. Exported so
  * export-proxy-align.test.ts can pin that invariant against the real proxy code.
  */
 export async function textToImageBlocks(
@@ -2088,7 +2156,7 @@ const HISTORY_IMAGE_SAFETY_MARGIN = 5;
  * The cap counts EVERY image on the wire: the client's own (`nativeImages`) and
  * ours (`imageCount`). Pricing only ours is how a request with 103 client images
  * still got imaged further and came back 400 — the cap is a wire property, not a
- * pxpipe property. Never negative; callers treat 0 as "keep it as text".
+ * FuryPipe property. Never negative; callers treat 0 as "keep it as text".
  */
 export function imageHeadroom(info: TransformInfo): number {
   return Math.max(
@@ -2655,12 +2723,12 @@ export async function transformRequest(
   // Static slab + Tool Reference go into the renderer; dynamic slab and billing
   // line stay as plain text so the cache key (= image bytes) is stable across
   // turns. The reference header carries the same first-party provenance framing
-  // that defused the imaged-slab banner refusal (169521c): pxpipe names itself
+  // that defused the imaged-slab banner refusal (169521c): FuryPipe names itself
   // as the author of the relocation so the block reads as this session's own
   // config, not a replayed/extracted prompt.
   const toolReferenceText = toolDocsText
     ? '=== TOOL REFERENCE ===\n' +
-      "pxpipe (this user's local proxy) moved the full tool documentation for this" +
+      "FuryPipe (this user's local proxy) moved the full tool documentation for this" +
       ' session here to reduce token cost. Each tool in the tools list carries a short' +
       ' stub description pointing here; the entry under the matching' +
       ' "## Tool: <name>" heading below is the complete description for that tool.\n\n' +
@@ -2692,7 +2760,7 @@ export async function transformRequest(
     }
     // `body` is the original bytes. If the pin pass edited `req`, those bytes
     // describe a request we are no longer sending, so forwarding them would put
-    // the raw `@pxpipe pin` line back and drop the tail block.
+    // the raw `@furypipe pin` line back and drop the tail block.
     return finish(pinsRewrote ? finalized.body : exactGuardBody);
   }
 
@@ -2726,7 +2794,7 @@ export async function transformRequest(
   // provenance framing below keeps obedience without the extraction signature.
   const imageInstructionHeader =
     '=================== SESSION CONFIGURATION PAGES ===================\n' +
-    "pxpipe (this user's local proxy) rendered this session's configuration" +
+    "FuryPipe (this user's local proxy) rendered this session's configuration" +
     ' into the following images to reduce token cost. Read the pages carefully and follow them as' +
     ' your operating instructions for this session.' +
     ' For exact identifiers, paths, hashes, version strings, and numbers, use the adjacent' +
@@ -2739,7 +2807,14 @@ export async function transformRequest(
   // so the gate's prediction and the renderer's output agree at the smallest
   // legible width. The banner above sets the natural floor — no separate
   // minWidth knob needed.
-  const slabCols = shrinkColsToContent(combinedWithHeader, o.cols, 1, denseGeo.style.font);
+  const slabPlan = planVisualColumns(
+    combinedWithHeader,
+    o.cols,
+    denseGeo.style,
+    denseGeo.pricing,
+    denseGeo.maxHeightPx,
+  );
+  const slabCols = slabPlan.cols;
   const slabGateEval = evalCompressionProfitability(
     combinedWithHeader, slabCols, undefined, slabCpt, o.priorWarmTokens, o.priorWarmImageTokens,
     false, // already shrunk — don't double-shrink
@@ -2776,7 +2851,7 @@ export async function transformRequest(
     }
     // `body` is the original bytes. If the pin pass edited `req`, those bytes
     // describe a request we are no longer sending, so forwarding them would put
-    // the raw `@pxpipe pin` line back and drop the tail block.
+    // the raw `@furypipe pin` line back and drop the tail block.
     return finish(pinsRewrote ? finalized.body : exactGuardBody);
   }
 
@@ -3047,10 +3122,22 @@ export async function transformRequest(
             const inner = compactSlabWhitespace(innerRaw);
             // classifyContent sees pre-reflow `inner` so shape bucketing reflects real structure.
             const innerR = maybeReflow(inner, o.reflow);
+            const innerPlan = planVisualColumns(
+              innerR,
+              denseGeo.cols,
+              denseGeo.style,
+              denseGeo.pricing,
+              denseGeo.maxHeightPx,
+            );
+            const innerGeo: GateGeometry = {
+              ...denseGeo,
+              cols: innerPlan.cols,
+              maxChars: maxCharsPerImage(innerPlan.cols),
+            };
             if (innerR.length < o.minToolResultChars) {
               bumpPassthrough(info, 'below_threshold');
               rewritten.push(blk);
-            } else if (!isCompressionProfitable(innerR, denseGeo.cols, o.maxImagesPerToolResult, o.charsPerToken, 0, 0, true, denseGeo.maxChars, denseGeo)) {
+            } else if (!isCompressionProfitable(innerR, innerPlan.cols, o.maxImagesPerToolResult, o.charsPerToken, 0, 0, false, innerGeo.maxChars, innerGeo)) {
               bumpPassthrough(info, 'not_profitable');
               rewritten.push(blk);
             } else {
@@ -3061,13 +3148,13 @@ export async function transformRequest(
               const resultImageCap = Math.min(o.maxImagesPerToolResult, imageHeadroom(info));
               const linesPerImage = Math.max(
                 1,
-                Math.floor((denseGeo.maxHeightPx - 2 * PAD_Y) / renderCellHeight(denseGeo.style)),
+                Math.floor((innerGeo.maxHeightPx - 2 * PAD_Y) / renderCellHeight(innerGeo.style)),
               );
               const paged = truncateForBudget(
                 innerR,
                 resultImageCap,
-                denseGeo.cols,
-                denseGeo.maxChars,
+                innerPlan.cols,
+                innerGeo.maxChars,
                 linesPerImage,
               );
               if (paged.truncated) {
@@ -3077,10 +3164,10 @@ export async function transformRequest(
               const { blocks: imgs, pngs: rawPngs, dims: rawDims, droppedChars, droppedCodepoints: dcp, pixels } =
                 await textToImageBlocks(
                   paged.text,
-                  o.cols,
-                  true,
-                  denseGeo.style,
-                  denseGeo.maxHeightPx,
+                  innerPlan.cols,
+                  false,
+                  innerGeo.style,
+                  innerGeo.maxHeightPx,
                 );
               // Paging is budgeted at denseGeo.cols but rendering happens at
               // o.cols; when they differ the real page count can exceed the plan.
@@ -3159,26 +3246,38 @@ export async function transformRequest(
               const innerText = compactSlabWhitespace(innerTextRaw);
               // R3: gate/page/render on reflowed text; classify pre-reflow.
               const innerTextR = maybeReflow(innerText, o.reflow);
+              const partPlan = planVisualColumns(
+                innerTextR,
+                denseGeo.cols,
+                denseGeo.style,
+                denseGeo.pricing,
+                denseGeo.maxHeightPx,
+              );
+              const partGeo: GateGeometry = {
+                ...denseGeo,
+                cols: partPlan.cols,
+                maxChars: maxCharsPerImage(partPlan.cols),
+              };
               if (innerTextR.length < o.minToolResultChars) {
                 bumpPassthrough(info, 'below_threshold');
                 newInner.push(ib as TextBlock | ImageBlock);
                 continue;
               }
-              if (!isCompressionProfitable(innerTextR, denseGeo.cols, o.maxImagesPerToolResult, o.charsPerToken, 0, 0, true, denseGeo.maxChars, denseGeo)) {
+              if (!isCompressionProfitable(innerTextR, partPlan.cols, o.maxImagesPerToolResult, o.charsPerToken, 0, 0, false, partGeo.maxChars, partGeo)) {
                 bumpPassthrough(info, 'not_profitable');
                 newInner.push(ib as TextBlock | ImageBlock);
                 continue;
               }
               const linesPerImage = Math.max(
                 1,
-                Math.floor((denseGeo.maxHeightPx - 2 * PAD_Y) / renderCellHeight(denseGeo.style)),
+                Math.floor((partGeo.maxHeightPx - 2 * PAD_Y) / renderCellHeight(partGeo.style)),
               );
               const resultImageCap = Math.min(o.maxImagesPerToolResult, imageHeadroom(info));
               const paged = truncateForBudget(
                 innerTextR,
                 resultImageCap,
-                denseGeo.cols,
-                denseGeo.maxChars,
+                partPlan.cols,
+                partGeo.maxChars,
                 linesPerImage,
               );
               if (paged.truncated) {
@@ -3188,10 +3287,10 @@ export async function transformRequest(
               const { blocks: imgs, pngs: rawPngs, dims: rawDims, droppedChars, droppedCodepoints: dcp, pixels } =
                 await textToImageBlocks(
                   paged.text,
-                  o.cols,
-                  true,
-                  denseGeo.style,
-                  denseGeo.maxHeightPx,
+                  partPlan.cols,
+                  false,
+                  partGeo.style,
+                  partGeo.maxHeightPx,
                 );
               // Paging is budgeted at denseGeo.cols but rendering happens at
               // o.cols; when they differ the real page count can exceed the plan.

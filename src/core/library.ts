@@ -1,4 +1,4 @@
-import { isPxpipeSupportedModel } from './applicability.js';
+import { resolveFuryPipeModelEligibility } from './applicability.js';
 import { countCacheControlMarkers } from './measurement.js';
 import {
   renderTextToPngsWithCharLimit,
@@ -25,7 +25,7 @@ export type { KeepSharpBlock, RecoverableBlock };
 
 export type BytesLike = Uint8Array | ArrayBuffer | ArrayBufferView;
 
-export interface PxpipeOptions
+export interface FuryPipeOptions
   extends Pick<
     TransformOptions,
     'charsPerToken' | 'historyAmortizationHorizon' | 'keepSharp' | 'emitRecoverable' | 'emitReceipt' | 'exactGuard' | 'recoveryStore'
@@ -34,18 +34,23 @@ export interface PxpipeOptions
   readonly compress?: boolean;
 }
 
-export interface PxpipeTransformInput {
+export interface FuryPipeTransformInput {
   readonly body: BytesLike;
   /** Resolved upstream model when available; aliases are accepted for applicability checks. */
   readonly model?: string | null;
   readonly requestId?: string;
-  readonly options?: PxpipeOptions;
+  readonly options?: FuryPipeOptions;
 }
 
-export type PxpipeReason =
+export type FuryPipeReason =
   | 'applied'
   | 'externalized'
   | 'unsupported_model'
+  | 'vision_capability_unknown'
+  | 'visual_profile_unverified'
+  | 'text_only_model'
+  | 'visual_pricing_unknown'
+  | 'visual_profile_blocked'
   | 'parse_error'
   | 'below_min_chars'
   | 'below_min_tokens'
@@ -55,10 +60,10 @@ export type PxpipeReason =
   | 'transform_error'
   | 'passthrough';
 
-export interface PxpipeTransformResult {
+export interface FuryPipeTransformResult {
   readonly body: Uint8Array;
   readonly applied: boolean;
-  readonly reason: PxpipeReason;
+  readonly reason: FuryPipeReason;
   readonly detail?: string;
   readonly info: TransformInfo;
   readonly cache: {
@@ -90,7 +95,7 @@ function emptyInfo(reason: string): TransformInfo {
   };
 }
 
-function classifyReason(info: TransformInfo): PxpipeReason {
+function classifyReason(info: TransformInfo): FuryPipeReason {
   if (info.exactGuard?.action === 'externalize') return 'externalized';
   if (info.compressed) return 'applied';
   const r = info.reason ?? '';
@@ -104,7 +109,7 @@ function classifyReason(info: TransformInfo): PxpipeReason {
 }
 
 function buildReceipt(
-  input: PxpipeTransformInput,
+  input: FuryPipeTransformInput,
   original: Uint8Array,
   transformed: Uint8Array,
   strategy: CompressionReceipt['strategy'],
@@ -142,17 +147,18 @@ function buildReceipt(
  * reasons, and cache_control ownership flag (prevents hosts stacking a second injector).
  */
 export async function transformAnthropicMessages(
-  input: PxpipeTransformInput,
-): Promise<PxpipeTransformResult> {
+  input: FuryPipeTransformInput,
+): Promise<FuryPipeTransformResult> {
   const original = toUint8Array(input.body);
-  if (!isPxpipeSupportedModel(input.model)) {
+  const eligibility = resolveFuryPipeModelEligibility(input.model);
+  if (!eligibility.eligible) {
     const markerCount = countCacheControlMarkers(original);
     return {
       body: original,
       applied: false,
-      reason: 'unsupported_model',
+      reason: eligibility.reason,
       detail: input.model ?? undefined,
-      info: emptyInfo('unsupported_model'),
+      info: emptyInfo(eligibility.reason),
       cache: { ownsCacheControl: false, markerCount },
       receipt: buildReceipt(input, original, original, 'passthrough', markerCount, false),
     };
@@ -178,7 +184,7 @@ export async function transformAnthropicMessages(
         body,
         info.exactGuard?.action === 'externalize'
           ? 'externalize'
-          : info.compressed ? 'pxpipe-transform' : 'passthrough',
+          : info.compressed ? 'furypipe-transform' : 'passthrough',
         markerCount,
         info.compressed && markerCount > 0,
         info.exactGuard?.recoveryHandles,
@@ -212,7 +218,7 @@ export interface RenderTextToImagesOptions {
   readonly shrink?: boolean;
   /** Reflow the text before rendering (minify + join hard newlines with the ↵ sentinel so
    *  short lines pack into full-width rows). This is the proxy's dense history format and is
-   *  what `pxpipe export` uses. Default false (raw one-line-per-row). */
+   *  what `furypipe export` uses. Default false (raw one-line-per-row). */
   readonly reflow?: boolean;
   /** Max source chars per page. Default DENSE_CONTENT_CHARS_PER_IMAGE. */
   readonly maxCharsPerImage?: number;

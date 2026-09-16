@@ -1,6 +1,20 @@
 /**
- * Minimal PNG encoder (grayscale + RGB, 8-bit, filter=Average, single IDAT).
- * Pure Uint8Array — uses CompressionStream (Node 18+, Workers, browsers); no Buffer/node:zlib.
+ * Minimal PNG encoder (lossless grayscale + RGB, adaptive bit depth, fast
+ * Average/Up filtering, single IDAT).
+ *
+ * Pure Uint8Array — uses CompressionStream (Node 18+, Workers, browsers); no
+ * Buffer/node:zlib.
+ *
+ * Grayscale text pages often contain only exact black/white pixels. Encoding
+ * those as legal PNG bit-depth 1 rather than always bit-depth 8 reduces the raw
+ * scanline surface by up to 8× before DEFLATE without changing one decoded
+ * pixel. 2-bit/4-bit grayscale are also selected only when every sample is
+ * exactly representable at that depth; anti-aliased pages remain 8-bit.
+ *
+ * RGB pages that are exactly grayscale are losslessly collapsed to the native
+ * grayscale encoder first, avoiding PLTE/truecolor overhead. Remaining RGB
+ * pages with <=256 exact colors are encoded as indexed PNGs (PLTE) at the
+ * smallest legal index depth. These choices never change decoded pixels.
  */
 
 // ---- CRC32 ---------------------------------------------------------------
@@ -78,37 +92,111 @@ async function deflateZlib(input: Uint8Array): Promise<Uint8Array> {
 const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 /**
- * Prepend scanline filter bytes using PNG's Average filter (type 3):
- *   Filt(x) = Orig(x) − floor((Recon(a) + Recon(b)) / 2)
- * where `a` is the same channel of the pixel to the left (x − bpp) and `b` the byte directly
- * above. Encoding may read the ORIGINAL bytes for a/b because the decoder reconstructs those
- * positions exactly before it needs them — the transform is bit-exact reversible, so decoded
- * pixels are byte-identical to `pixels`. Nothing about the image the model sees changes.
+ * Fast adaptive filtering for FuryPipe's text pages.
  *
- * Chosen over filter=None (the previous behavior): residuals of 5×8 bitmap glyphs on a flat
- * background collapse to mostly zeros, which deflate encodes in both less space and less time —
- * ~34% smaller IDAT at roughly half the compression cost on a representative dense page. That
- * matters because every image is re-uploaded on every turn, so IDAT size is a per-request
- * bandwidth cost. Filtering is pure JS ahead of the compressor, so it stays portable to
- * Workers unlike a deflate-level change (see the CompressionStream note above).
+ * Average (PNG filter 3) stays the production default because it was already
+ * measured as a strong fit for anti-aliased glyphs. The only adaptive branch is
+ * evidence-cheap and deterministic: when a row is byte-identical to the row
+ * above, switch that row to Up (filter 2), whose residual becomes all zeroes.
+ * Text pages contain many repeated paper/background rows, so this gives deflate
+ * an easier stream without evaluating all five PNG predictors for every byte.
+ *
+ * This deliberately replaced the exhaustive five-filter scorer: CI showed that
+ * variant roughly doubled render-heavy test time and did not reliably reduce
+ * wire bytes. The fast path is one pass per row plus an occasional zero-fill,
+ * while decoded pixels remain byte-identical to the framebuffer.
  */
-function filterAverage(pixels: Uint8Array, width: number, height: number, bpp: number): Uint8Array {
-  const rowBytes = width * bpp;
+function filterAdaptive(pixels: Uint8Array, rowBytes: number, height: number, bpp: number): Uint8Array {
+  if (pixels.length !== rowBytes * height) {
+    throw new Error('filterAdaptive: packed scanline length mismatch');
+  }
   const stride = rowBytes + 1;
   const out = new Uint8Array(stride * height);
+
   for (let y = 0; y < height; y++) {
     const src = y * rowBytes;
     const dst = y * stride;
-    out[dst] = 3; // filter: Average
+    let sameAsAbove = y > 0;
+
+    // Default to Average, preserving the proven baseline byte-for-byte on every
+    // non-repeated row.
+    out[dst] = 3;
     for (let x = 0; x < rowBytes; x++) {
-      // Off-image neighbors are defined as zero by the spec, not clamped/wrapped.
-      const a = x >= bpp ? pixels[src + x - bpp]! : 0;
-      const b = y > 0 ? pixels[src - rowBytes + x]! : 0;
-      // a + b ≤ 510 so the shift is exact; only the result wraps to a byte.
-      out[dst + 1 + x] = (pixels[src + x]! - ((a + b) >> 1)) & 0xff;
+      const value = pixels[src + x]!;
+      const left = x >= bpp ? pixels[src + x - bpp]! : 0;
+      const up = y > 0 ? pixels[src - rowBytes + x]! : 0;
+      if (sameAsAbove && value !== up) sameAsAbove = false;
+      out[dst + 1 + x] = (value - ((left + up) >> 1)) & 0xff;
+    }
+
+    if (sameAsAbove) {
+      // Up on an identical row is exactly zero for every byte. Zero-fill is
+      // cheaper than running another predictor pass and compresses extremely
+      // well across blank/paper bands.
+      out[dst] = 2;
+      out.fill(0, dst + 1, dst + 1 + rowBytes);
     }
   }
+
   return out;
+}
+
+
+type GrayBitDepth = 1 | 2 | 4 | 8;
+
+function grayBitDepth(pixels: Uint8Array): GrayBitDepth {
+  let fits1 = true;
+  let fits2 = true;
+  let fits4 = true;
+
+  for (let i = 0; i < pixels.length; i++) {
+    const value = pixels[i]!;
+    if (value !== 0 && value !== 255) fits1 = false;
+    if (value % 85 !== 0) fits2 = false;
+    if (value % 17 !== 0) fits4 = false;
+    if (!fits4) return 8;
+  }
+
+  if (fits1) return 1;
+  if (fits2) return 2;
+  if (fits4) return 4;
+  return 8;
+}
+
+function packGraySamples(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  bitDepth: GrayBitDepth,
+): { readonly packed: Uint8Array; readonly rowBytes: number } {
+  if (bitDepth === 8) {
+    return { packed: pixels, rowBytes: width };
+  }
+
+  const samplesPerByte = 8 / bitDepth;
+  const rowBytes = Math.ceil(width / samplesPerByte);
+  const packed = new Uint8Array(rowBytes * height);
+  const maxSample = (1 << bitDepth) - 1;
+
+  for (let y = 0; y < height; y++) {
+    const srcRow = y * width;
+    const dstRow = y * rowBytes;
+    for (let x = 0; x < width; x++) {
+      const value = pixels[srcRow + x]!;
+      const sample = Math.round((value * maxSample) / 255);
+      // grayBitDepth() already proved exact representability. Keep the guard
+      // local so this packing helper cannot silently quantize if reused later.
+      if (Math.round((sample * 255) / maxSample) !== value) {
+        throw new Error('packGraySamples: sample is not exactly representable');
+      }
+      const slot = x % samplesPerByte;
+      const shift = 8 - bitDepth * (slot + 1);
+      const dst = dstRow + Math.floor(x / samplesPerByte);
+      packed[dst] = (packed[dst] ?? 0) | (sample << shift);
+    }
+  }
+
+  return { packed, rowBytes };
 }
 
 /** Encode a single-channel (grayscale) buffer as PNG bytes. pixels is row-major, length = width × height. */
@@ -117,14 +205,20 @@ export async function encodeGrayPng(pixels: Uint8Array, width: number, height: n
     throw new Error(`encodeGrayPng: pixels.length=${pixels.length} != ${width}×${height}=${width * height}`);
   }
 
-  // IHDR: width(4) height(4) bitDepth=8 colorType=0(gray) compress=0 filter=0 interlace=0
+  const bitDepth = grayBitDepth(pixels);
+  const { packed, rowBytes } = packGraySamples(pixels, width, height, bitDepth);
+
+  // IHDR: width(4) height(4) bitDepth={1,2,4,8} colorType=0(gray)
+  // compress=0 filter=0 interlace=0.
   const ihdr = new Uint8Array(13);
   ihdr.set(u32be(width), 0);
   ihdr.set(u32be(height), 4);
-  ihdr[8] = 8;
+  ihdr[8] = bitDepth;
   ihdr[9] = 0; // colorType 0 = grayscale; bytes 10-12 already zero
 
-  const compressed = await deflateZlib(filterAverage(pixels, width, height, 1));
+  // For packed grayscale (<8-bit), PNG filtering operates on packed bytes and
+  // bytes-per-pixel rounds up to one byte per the PNG specification.
+  const compressed = await deflateZlib(filterAdaptive(packed, rowBytes, height, 1));
 
   return concat([
     PNG_SIGNATURE,
@@ -134,10 +228,115 @@ export async function encodeGrayPng(pixels: Uint8Array, width: number, height: n
   ]);
 }
 
-/** Encode an RGB (3 bytes/pixel, R,G,B) buffer as PNG bytes (colorType 2 = truecolor). length = width × height × 3. */
+
+function paletteBitDepth(size: number): GrayBitDepth {
+  if (size <= 2) return 1;
+  if (size <= 4) return 2;
+  if (size <= 16) return 4;
+  return 8;
+}
+
+function packPaletteIndices(
+  indices: Uint8Array,
+  width: number,
+  height: number,
+  bitDepth: GrayBitDepth,
+): { readonly packed: Uint8Array; readonly rowBytes: number } {
+  if (bitDepth === 8) return { packed: indices, rowBytes: width };
+
+  const samplesPerByte = 8 / bitDepth;
+  const rowBytes = Math.ceil(width / samplesPerByte);
+  const packed = new Uint8Array(rowBytes * height);
+
+  for (let y = 0; y < height; y++) {
+    const srcRow = y * width;
+    const dstRow = y * rowBytes;
+    for (let x = 0; x < width; x++) {
+      const sample = indices[srcRow + x]!;
+      const slot = x % samplesPerByte;
+      const shift = 8 - bitDepth * (slot + 1);
+      const dst = dstRow + Math.floor(x / samplesPerByte);
+      packed[dst] = (packed[dst] ?? 0) | (sample << shift);
+    }
+  }
+
+  return { packed, rowBytes };
+}
+
+function indexRgbPalette(
+  pixels: Uint8Array,
+): {
+  readonly palette: Uint8Array;
+  readonly indices: Uint8Array;
+  readonly bitDepth: GrayBitDepth;
+} | undefined {
+  const pixelCount = pixels.length / 3;
+  const indices = new Uint8Array(pixelCount);
+  const colors = new Map<number, number>();
+  const palette: number[] = [];
+
+  for (let i = 0, pixel = 0; i < pixels.length; i += 3, pixel += 1) {
+    const r = pixels[i]!;
+    const g = pixels[i + 1]!;
+    const b = pixels[i + 2]!;
+    const key = (r << 16) | (g << 8) | b;
+    let index = colors.get(key);
+    if (index === undefined) {
+      if (colors.size >= 256) return undefined;
+      index = colors.size;
+      colors.set(key, index);
+      palette.push(r, g, b);
+    }
+    indices[pixel] = index;
+  }
+
+  return {
+    palette: Uint8Array.from(palette),
+    indices,
+    bitDepth: paletteBitDepth(colors.size),
+  };
+}
+
+function exactRgbToGray(pixels: Uint8Array): Uint8Array | undefined {
+  const gray = new Uint8Array(pixels.length / 3);
+  for (let i = 0, pixel = 0; i < pixels.length; i += 3, pixel += 1) {
+    const r = pixels[i]!;
+    if (pixels[i + 1] !== r || pixels[i + 2] !== r) return undefined;
+    gray[pixel] = r;
+  }
+  return gray;
+}
+
+/** Encode an RGB (3 bytes/pixel, R,G,B) buffer as PNG bytes.
+ *
+ * Exact grayscale RGB is collapsed to color type 0 first; otherwise limited
+ * palettes use indexed color. Both paths are pixel-lossless.
+ */
 export async function encodeRgbPng(pixels: Uint8Array, width: number, height: number): Promise<Uint8Array> {
   if (pixels.length !== width * height * 3) {
     throw new Error(`encodeRgbPng: pixels.length=${pixels.length} != ${width}×${height}×3=${width * height * 3}`);
+  }
+
+  const gray = exactRgbToGray(pixels);
+  if (gray !== undefined) return encodeGrayPng(gray, width, height);
+
+  const indexed = indexRgbPalette(pixels);
+  if (indexed !== undefined) {
+    const { packed, rowBytes } = packPaletteIndices(indexed.indices, width, height, indexed.bitDepth);
+    const ihdr = new Uint8Array(13);
+    ihdr.set(u32be(width), 0);
+    ihdr.set(u32be(height), 4);
+    ihdr[8] = indexed.bitDepth;
+    ihdr[9] = 3; // colorType 3 = indexed-color; PLTE follows IHDR.
+
+    const compressed = await deflateZlib(filterAdaptive(packed, rowBytes, height, 1));
+    return concat([
+      PNG_SIGNATURE,
+      chunk('IHDR', ihdr),
+      chunk('PLTE', indexed.palette),
+      chunk('IDAT', compressed),
+      chunk('IEND', new Uint8Array(0)),
+    ]);
   }
 
   const ihdr = new Uint8Array(13);
@@ -146,7 +345,7 @@ export async function encodeRgbPng(pixels: Uint8Array, width: number, height: nu
   ihdr[8] = 8; // bit depth per channel
   ihdr[9] = 2; // colorType 2 = truecolor RGB; bytes 10-12 already zero
 
-  const compressed = await deflateZlib(filterAverage(pixels, width, height, 3));
+  const compressed = await deflateZlib(filterAdaptive(pixels, width * 3, height, 3));
 
   return concat([
     PNG_SIGNATURE,

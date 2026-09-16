@@ -1,11 +1,11 @@
 /**
- * Routes re-point a matching request at a different upstream, so pxpipe can
+ * Routes re-point a matching request at a different upstream, so FuryPipe can
  * transform it without the agent ever seeing a non-first-party base URL.
  *
  * That indirection is the whole point. Claude Code hides /remote-control the
  * moment ANTHROPIC_BASE_URL is custom (and gates connectors on the same
- * "firstParty" check), so pointing the agent at pxpipe directly costs you the
- * feature. Under warp the agent still talks to api.anthropic.com; only the one
+ * "firstParty" check), so pointing the agent at FuryPipe directly costs you the
+ * feature. Under FuryLink the agent still talks to api.anthropic.com; only the one
  * path we rewrite is diverted, and auth, telemetry and the control plane go to
  * the real host untouched.
  *
@@ -24,7 +24,7 @@ export interface Route {
   readonly hostRe: RegExp;
   /**
    * Whether the pattern named a port. Loopback targets make the port the only
-   * thing distinguishing two hosts (127.0.0.1:9090 vs 127.0.0.1:47821), so a
+   * thing distinguishing two hosts (127.0.0.1:9090 vs 127.0.0.1:48721), so a
    * pattern that names one must be matched against "host:port" and a pattern
    * that does not must keep matching any port.
    */
@@ -56,8 +56,8 @@ function compilePattern(pattern: string): RegExp {
 /**
  * parseRoute reads one PATTERN=TARGET rule:
  *
- *   api.anthropic.com/v1/messages*=http://127.0.0.1:47821
- *   re:^api\.anthropic\.com/v1/messages(/.*)?$=http://127.0.0.1:47821
+ *   api.anthropic.com/v1/messages*=http://127.0.0.1:48721
+ *   re:^api\.anthropic\.com/v1/messages(/.*)?$=http://127.0.0.1:48721
  *
  * PATTERN matches "host/path" with no scheme and no query. TARGET is
  * scheme://host[:port][/prefix]; the original path and query ride along.

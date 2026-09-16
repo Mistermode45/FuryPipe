@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
+import { FURYPIPE_DEFAULT_HOST, FURYPIPE_DEFAULT_PORT, parseFuryPipePort } from './runtime-defaults.js';
 import { discoverOpenClaw, type OpenClawDiscovery } from './openclaw.js';
 import { createI18n } from './i18n/index.js';
 import { CORE_CATALOGS } from './i18n/catalogs.js';
@@ -100,7 +101,12 @@ function safeUpstream(value: string | undefined): string {
 /** Collect local platform facts only. Credentials and header values are never read. */
 export function collectDoctorReport(): DoctorReport {
   const home = os.homedir();
-  const port = Number(process.env.PORT ?? 47821);
+  let port = FURYPIPE_DEFAULT_PORT;
+  try {
+    port = parseFuryPipePort(process.env.FURYPIPE_PORT);
+  } catch {
+    port = FURYPIPE_DEFAULT_PORT;
+  }
   const openclaw = discoverOpenClaw();
   return {
     platform: {
@@ -116,13 +122,13 @@ export function collectDoctorReport(): DoctorReport {
       pnpm: commandVersion('pnpm'),
     },
     network: {
-      host: process.env.HOST?.trim() || '127.0.0.1',
-      port: Number.isSafeInteger(port) && port > 0 && port <= 65535 ? port : 47821,
-      upstream: safeUpstream(process.env.ANTHROPIC_UPSTREAM ?? process.env.PXPIPE_UPSTREAM),
+      host: process.env.FURYPIPE_HOST?.trim() || FURYPIPE_DEFAULT_HOST,
+      port,
+      upstream: safeUpstream(process.env.ANTHROPIC_UPSTREAM ?? process.env.FURYPIPE_UPSTREAM),
     },
     paths: {
-      config: process.env.PXPIPE_CONFIG ?? path.join(home, '.config', 'pxpipe', 'config.json'),
-      events: process.env.PXPIPE_LOG ?? path.join(home, '.pxpipe', 'events.jsonl'),
+      config: process.env.FURYPIPE_CONFIG ?? path.join(home, '.config', 'furypipe', 'config.json'),
+      events: process.env.FURYPIPE_LOG ?? path.join(home, '.furypipe', 'events.jsonl'),
     },
     tools: {
       docker: commandVersion('docker'),

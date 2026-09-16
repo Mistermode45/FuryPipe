@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { encodeGrayPng, encodeRgbPng } from '../src/core/png.js';
 
 /**
- * The encoder applies PNG's Average scanline filter, which must be bit-exact
- * reversible: the model has to see the pixels the renderer drew, not an
- * approximation. Verified with skia (@napi-rs/canvas) rather than a hand-rolled
+ * The encoder adaptively selects among PNG's five lossless scanline filters.
+ * Every selection must remain bit-exact reversible: the model has to see the
+ * pixels the renderer drew, not an approximation. Verified with skia (@napi-rs/canvas) rather than a hand-rolled
  * decoder, so a bug in the filter can't be masked by the same bug in the check.
  *
  * `loadImage` awaits the decode. `new Image()` + `.src` does NOT, and silently
@@ -25,7 +25,7 @@ const H = 131;
 
 describe('PNG encoder is lossless', () => {
   it('round-trips grayscale pixels bit-for-bit', async () => {
-    // Includes 0 and 255 (the filter residual wraps past both) and the mid greys
+    // Includes 0 and 255 (filter residuals wrap past both) and the mid greys
     // the antialiased atlas actually emits.
     const pixels = new Uint8Array(W * H);
     const palette = [0, 31, 68, 119, 255, 1, 254, 128];
@@ -69,4 +69,110 @@ describe('PNG encoder is lossless', () => {
     const one = await decode(await encodeGrayPng(new Uint8Array([137]), 1, 1));
     expect(one.data[0]).toBe(137);
   });
+  it('selects the smallest exact grayscale PNG bit depth without quantization', async () => {
+    const bitDepthAt = (png: Uint8Array): number => png[24]!;
+
+    const binary = new Uint8Array(W * H);
+    for (let i = 0; i < binary.length; i++) binary[i] = i % 3 === 0 ? 255 : 0;
+    const binaryPng = await encodeGrayPng(binary, W, H);
+    expect(bitDepthAt(binaryPng)).toBe(1);
+    const binaryDecoded = await decode(binaryPng);
+    for (let i = 0; i < binary.length; i++) expect(binaryDecoded.data[i * 4]).toBe(binary[i]);
+
+    const gray2 = new Uint8Array(W * H);
+    const palette2 = [0, 85, 170, 255];
+    for (let i = 0; i < gray2.length; i++) gray2[i] = palette2[i % palette2.length]!;
+    const gray2Png = await encodeGrayPng(gray2, W, H);
+    expect(bitDepthAt(gray2Png)).toBe(2);
+    const gray2Decoded = await decode(gray2Png);
+    for (let i = 0; i < gray2.length; i++) expect(gray2Decoded.data[i * 4]).toBe(gray2[i]);
+
+    const gray4 = new Uint8Array(W * H);
+    const palette4 = [0, 17, 34, 85, 153, 238, 255];
+    for (let i = 0; i < gray4.length; i++) gray4[i] = palette4[i % palette4.length]!;
+    const gray4Png = await encodeGrayPng(gray4, W, H);
+    expect(bitDepthAt(gray4Png)).toBe(4);
+    const gray4Decoded = await decode(gray4Png);
+    for (let i = 0; i < gray4.length; i++) expect(gray4Decoded.data[i * 4]).toBe(gray4[i]);
+
+    const gray8 = new Uint8Array(W * H);
+    const palette8 = [0, 31, 68, 119, 255];
+    for (let i = 0; i < gray8.length; i++) gray8[i] = palette8[i % palette8.length]!;
+    const gray8Png = await encodeGrayPng(gray8, W, H);
+    expect(bitDepthAt(gray8Png)).toBe(8);
+    const gray8Decoded = await decode(gray8Png);
+    for (let i = 0; i < gray8.length; i++) expect(gray8Decoded.data[i * 4]).toBe(gray8[i]);
+  });
+
+  it('collapses exact grayscale RGB pages to native grayscale without changing pixels', async () => {
+    const pixels = new Uint8Array(W * H * 3);
+    const shades = [0, 255] as const;
+    for (let i = 0; i < W * H; i++) {
+      const shade = shades[i % shades.length]!;
+      pixels[i * 3] = shade;
+      pixels[i * 3 + 1] = shade;
+      pixels[i * 3 + 2] = shade;
+    }
+
+    const png = await encodeRgbPng(pixels, W, H);
+    expect(png[24]).toBe(1); // exact black/white -> one-bit grayscale
+    expect(png[25]).toBe(0); // grayscale, not indexed RGB
+
+    const out = await decode(png);
+    for (let i = 0; i < W * H; i++) {
+      expect(out.data[i * 4]).toBe(pixels[i * 3]);
+      expect(out.data[i * 4 + 1]).toBe(pixels[i * 3 + 1]);
+      expect(out.data[i * 4 + 2]).toBe(pixels[i * 3 + 2]);
+    }
+  });
+
+  it('uses an indexed palette for limited-color RGB pages without changing pixels', async () => {
+    const pixels = new Uint8Array(W * H * 3);
+    const palette = [
+      [255, 255, 255],
+      [0, 0, 0],
+      [79, 124, 255],
+    ] as const;
+
+    for (let i = 0; i < W * H; i++) {
+      const color = palette[i % palette.length]!;
+      pixels[i * 3] = color[0];
+      pixels[i * 3 + 1] = color[1];
+      pixels[i * 3 + 2] = color[2];
+    }
+
+    const png = await encodeRgbPng(pixels, W, H);
+    expect(png[24]).toBe(2); // smallest legal depth for three palette entries
+    expect(png[25]).toBe(3); // indexed-color
+
+    const out = await decode(png);
+    for (let i = 0; i < W * H; i++) {
+      expect(out.data[i * 4]).toBe(pixels[i * 3]);
+      expect(out.data[i * 4 + 1]).toBe(pixels[i * 3 + 1]);
+      expect(out.data[i * 4 + 2]).toBe(pixels[i * 3 + 2]);
+    }
+  });
+
+  it('falls back to truecolor when an RGB page needs more than 256 exact colors', async () => {
+    const width = 300;
+    const height = 1;
+    const pixels = new Uint8Array(width * 3);
+    for (let i = 0; i < width; i++) {
+      pixels[i * 3] = i & 0xff;
+      pixels[i * 3 + 1] = (i >>> 8) & 0xff;
+      pixels[i * 3 + 2] = (i * 17) & 0xff;
+    }
+
+    const png = await encodeRgbPng(pixels, width, height);
+    expect(png[24]).toBe(8);
+    expect(png[25]).toBe(2);
+
+    const out = await decode(png);
+    for (let i = 0; i < width; i++) {
+      expect(out.data[i * 4]).toBe(pixels[i * 3]);
+      expect(out.data[i * 4 + 1]).toBe(pixels[i * 3 + 1]);
+      expect(out.data[i * 4 + 2]).toBe(pixels[i * 3 + 2]);
+    }
+  });
+
 });

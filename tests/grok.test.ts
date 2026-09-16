@@ -10,14 +10,14 @@ const enc = new TextEncoder();
 const dec = new TextDecoder();
 const BIG_INSTRUCTIONS = 'These are detailed instructions. '.repeat(600);
 
-let ambientPxpipeModels: string | undefined;
+let ambientFuryPipeModels: string | undefined;
 beforeEach(() => {
-  ambientPxpipeModels = process.env.PXPIPE_MODELS;
-  delete process.env.PXPIPE_MODELS;
+  ambientFuryPipeModels = process.env.FURYPIPE_MODELS;
+  delete process.env.FURYPIPE_MODELS;
 });
 afterEach(() => {
-  if (ambientPxpipeModels === undefined) delete process.env.PXPIPE_MODELS;
-  else process.env.PXPIPE_MODELS = ambientPxpipeModels;
+  if (ambientFuryPipeModels === undefined) delete process.env.FURYPIPE_MODELS;
+  else process.env.FURYPIPE_MODELS = ambientFuryPipeModels;
 });
 
 describe('resolveGptProfile (Grok)', () => {
@@ -190,8 +190,8 @@ describe('Grok history compression under default gate', () => {
   });
 
   it('passes through when an env-configured byte cap would be overshot', async () => {
-    const prev = process.env.PXPIPE_GPT_PROFILES;
-    process.env.PXPIPE_GPT_PROFILES = JSON.stringify({
+    const prev = process.env.FURYPIPE_GPT_PROFILES;
+    process.env.FURYPIPE_GPT_PROFILES = JSON.stringify({
       'grok-4.5': { maxSerializedRequestBytes: 128 * 1024 },
     });
     try {
@@ -214,8 +214,8 @@ describe('Grok history compression under default gate', () => {
       expect(result.info.reason).toBe('serialized_request_limit');
       expect(result.body.byteLength).toBe(body.byteLength);
     } finally {
-      if (prev !== undefined) process.env.PXPIPE_GPT_PROFILES = prev;
-      else delete process.env.PXPIPE_GPT_PROFILES;
+      if (prev !== undefined) process.env.FURYPIPE_GPT_PROFILES = prev;
+      else delete process.env.FURYPIPE_GPT_PROFILES;
     }
   });
 

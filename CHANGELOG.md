@@ -1,23 +1,91 @@
 # Changelog
 
-All notable changes to pxpipe are documented here. This project adheres to
+All notable changes to FuryPipe are documented here. This project follows
 [Semantic Versioning](https://semver.org/) (pre-1.0: minor = features /
 behavioral changes, patch = fixes).
+
+> Historical entries inherited from the pre-FuryPipe pxpipe codebase intentionally
+> retain legacy names such as `pxpipe` and `PXPIPE_*` when they describe the
+> behavior or interface that existed at that point in history. New public
+> interfaces use `furypipe` and `FURYPIPE_*`.
 
 ## Unreleased
 
 ### Changed
+
+- Introduced **FuryLink** as the FuryPipe-native agent connectivity surface. `furypipe link codex` and equivalent commands no longer require a `--` separator on Windows.
+- Reworked the dashboard into the **FuryPipe Control Plane** with a midnight navy/black dark palette and cream/ivory light palette, FuryPipe-native navigation and terminology.
+- Made the **Control Plane the dashboard shell**: Overview, Observe,
+  Capabilities, Visual Engine, Topology, Evidence and Settings now absorb the
+  retained dashboard observations instead of appearing below a parallel legacy
+  page. Mobile uses progressive disclosure for secondary surfaces.
+- Added a provider-priced **Visual Planner** that evaluates bounded render geometries and keeps the lowest estimated vision-token plan, with the incumbent geometry always retained as a candidate.
+- Switched PNG output to low-overhead adaptive lossless filtering: Average remains the baseline and repeated rows use Up/zero residuals, preserving byte-exact decoded pixels without the CPU regression of exhaustive five-filter scoring.
+
+### Fixed
+
+- Fixed the Windows interactive setup crash caused by keypress events whose printable input is undefined.
+- Fixed cross-platform agent command resolution so Windows `.cmd` / `.bat` npm shims and PATHEXT launchers are handled explicitly.
+- Fixed FuryLink on Windows when a resolved batch launcher lives under a path
+  containing spaces (for example Node's default `Program Files` installation).
+  The child now starts through an explicit hardened `cmd.exe` boundary instead
+  of Node's deprecated implicit `shell: true` mode.
+- Preserved public TLS trust in FuryLink child processes on Windows by falling back to Node's built-in public root certificates when the OS exposes no PEM bundle; replacement trust variables no longer receive a FuryLink-CA-only bundle.
+
+## 0.15.0 — 2026-09-16
+
+### Changed
+- **FuryPipe runtime identity is now fully independent.** The runtime no longer
+  exposes the historical CLI alias, consumes no historical environment-variable
+  namespace, falls back to no historical config/event paths, and uses the
+  FuryPipe-specific default listener `FURYPIPE_HOST=127.0.0.1` /
+  `FURYPIPE_PORT=48721`.
+- **Runtime protocol names are FuryPipe-native.** Worker authentication,
+  bypass/pin commands, generated identifiers, model/profile environment
+  variables, transform receipts, dashboard copy and internal/public API names
+  use FuryPipe terminology only. Historical names remain only in provenance,
+  licensing and immutable historical records.
+- **Port conflicts now fail closed with a FuryPipe-owned diagnostic.**
+  `furypipe start` never reuses or attaches to another process that already
+  owns the selected port. `furypipe setup`, `doctor`, `export` and
+  `stats` remain offline and do not bind the runtime listener.
+- **The npm executable surface is FuryPipe-only.** The installed package exposes
+  `furypipe`, `furypipe-mcp` and `furypipe-mcp-http`; the historical CLI
+  alias is no longer published.
+- Added CI/package-smoke contracts that fail if the legacy runtime identity or
+  old default port re-enters active source/public CLI surfaces, and that prove
+  setup remains offline while another process owns a listener port.
+
+## 0.14.0 — 2026-09-15
+
+### Added
+- **Custom `furypipe setup` terminal onboarding.** FuryPipe includes a
+  dependency-free, bilingual FR/EN setup TUI with FuryPipe branding, keyboard
+  navigation, persisted locale preference, safe atomic config writes and a
+  plain-text fallback for CI, pipes, narrow terminals and other non-interactive
+  environments. The command remains explicit rather than running from an npm
+  lifecycle hook, so package installation never blocks waiting for input.
+
+### Changed
 - **Gemini is on by default for every version, and opt-out works again.** The
-  built-in scope is now `PXPIPE_MODELS=claude-fable-5,gemini`; the `gemini`
+  built-in scope is now `FURYPIPE_MODELS=claude-fable-5,gemini`; the `gemini`
   family base matches `gemini-3.6-flash`, `gemini-4`, `gemini-pro`, and future
   ids through the ordinary prefix rule. The Google gate in the proxy and the
-  dashboard totals previously admitted any measured Gemini model whenever the
-  allowlist was non-empty, which made `PXPIPE_MODELS=claude-fable-5` (and the
-  dashboard chip) unable to turn Gemini off. That bypass is removed; the
-  allowlist is the only gate. Dashboard: one "Gemini (all versions)" chip plus
-  per-version chips for narrowing.
+  dashboard totals no longer bypass the allowlist; the allowlist is the only
+  gate. Dashboard exposes one “Gemini (all versions)” chip plus per-version
+  chips for narrowing.
 
-## 0.13.2 — 2026-08-18
+## 0.13.2 — 2026-09-15
+
+### FuryPipe public release
+- First public npm publication of `furypipe@0.13.2` and GitHub Release `v0.13.2`.
+- FuryPipe is the public package/CLI identity; the `pxpipe` binary and selected
+  `PXPIPE_*` variables remain only as legacy compatibility fallbacks.
+- V5 release hardening combines source-bound CI/security evidence, release
+  readiness, governed provider execution, modern MCP surfaces, agent/context
+  orchestration, Continuous Memory, Control Room and Web Studio.
+- Package publication remains distinct from production deployment and from
+  optional external-integration verification.
 
 ### Added
 - `createProviderRouter`: explicit `/providers/<id>/<upstream-path>`

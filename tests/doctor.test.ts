@@ -8,7 +8,7 @@ const report: DoctorReport = {
     npm: { status: 'available', value: '11.14.1' },
     pnpm: { status: 'available', value: '12.3.4' },
   },
-  network: { host: '127.0.0.1', port: 47821, upstream: 'https://api.example.test' },
+  network: { host: '127.0.0.1', port: 48721, upstream: 'https://api.example.test' },
   paths: { config: 'C:\\Users\\test\\config.json', events: 'C:\\Users\\test\\events.jsonl' },
   tools: {
     docker: { status: 'unavailable' },
@@ -30,14 +30,14 @@ describe('furypipe doctor renderer', () => {
 
   it('supports machine-readable output', () => {
     const parsed = JSON.parse(renderDoctorReport(report, true)) as DoctorReport;
-    expect(parsed.network.port).toBe(47821);
+    expect(parsed.network.port).toBe(48721);
     expect(parsed.runtime.pnpm.value).toBe('12.3.4');
   });
 
   it('wires the locale option into human-readable output while keeping protocol values intact', () => {
     const output = renderDoctorReport(report, false, 'fr-FR');
     expect(output).toContain('Configuration: C:\\Users\\test\\config.json');
-    expect(output).toContain('Écoute: 127.0.0.1:47821');
+    expect(output).toContain('Écoute: 127.0.0.1:48721');
     expect(output).toContain('Node: 26.8.2');
   });
 

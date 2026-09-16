@@ -1,10 +1,10 @@
 /**
- * warp's local certificate authority.
+ * FuryLink's local certificate authority.
  *
  * On first use it generates a self-signed P-256 root, persists it under
- * ~/.pxpipe, and mints leaf certs per SNI host on demand so the CONNECT proxy
+ * ~/.furypipe, and mints leaf certs per SNI host on demand so the CONNECT proxy
  * can terminate (and therefore route) the agent's TLS. Only the child process
- * trusts it: warp points the child's NODE_EXTRA_CA_CERTS at the root, so
+ * trusts it: FuryLink points the child's NODE_EXTRA_CA_CERTS at the root, so
  * nothing is installed in the system keychain and no other process on the
  * machine is affected.
  *
@@ -20,7 +20,7 @@ import {
   X509Certificate,
   type KeyObject,
 } from 'node:crypto';
-import { createSecureContext, type SecureContext } from 'node:tls';
+import { createSecureContext, rootCertificates, type SecureContext } from 'node:tls';
 import { isIP } from 'node:net';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -50,8 +50,8 @@ const OID_EXT_KEY_USAGE = '2.5.29.37';
 const OID_SUBJECT_ALT_NAME = '2.5.29.17';
 const OID_SERVER_AUTH = '1.3.6.1.5.5.7.3.1';
 
-const CA_COMMON_NAME = 'pxpipe warp local CA';
-const CA_ORGANIZATION = 'pxpipe';
+const CA_COMMON_NAME = 'FuryPipe FuryLink local CA';
+const CA_ORGANIZATION = 'FuryPipe';
 
 /** ecdsa-with-SHA256 takes no parameters, so the AlgorithmIdentifier is bare. */
 const SIG_ALGORITHM = seq(oid(OID_ECDSA_SHA256));
@@ -163,7 +163,7 @@ function privateKeyPem(key: KeyObject): string {
 /**
  * Where the OS keeps its public root bundle. `SSL_CERT_FILE`,
  * `CURL_CA_BUNDLE` and `REQUESTS_CA_BUNDLE` REPLACE the trust store rather
- * than extend it, so a file holding only our CA would make every non-pxpipe
+ * than extend it, so a file holding only our CA would make every non-FuryPipe
  * HTTPS call in the child fail verification (gcloud, gws, pip: #245). The
  * first path that exists wins; none found means the bundle is CA-only and the
  * caller is told so.
@@ -179,8 +179,8 @@ export function findSystemRootBundle(candidates: readonly string[] = SYSTEM_ROOT
   const fromEnv = process.env.SSL_CERT_FILE;
   // An operator-supplied bundle is the trust store the child would have had
   // without us; prefer it over the platform guess. Skip it if it is already
-  // one of our own files, or the bundle would nest on every warp restart.
-  if (fromEnv && existsSync(fromEnv) && !/warp-ca(-bundle)?\.pem$/.test(fromEnv)) return fromEnv;
+  // one of our own files, or the bundle would nest on every FuryLink restart.
+  if (fromEnv && existsSync(fromEnv) && !/furylink-ca(-bundle)?\.pem$/.test(fromEnv)) return fromEnv;
   for (const p of candidates) if (existsSync(p)) return p;
   return null;
 }
@@ -196,29 +196,56 @@ export class CertificateAuthority {
     readonly certPath: string,
     /** Our CA followed by the system roots; see {@link writeBundle}. */
     readonly bundlePath: string,
-    /** Null when no system root bundle was found and `bundlePath` is CA-only. */
+    /** Filesystem PEM source when one was found; null when Node's built-in roots were used. */
     readonly systemRootsPath: string | null,
+    /** Whether bundlePath contains public roots in addition to the FuryLink CA. */
+    readonly bundleIncludesPublicRoots: boolean,
   ) {}
 
   /**
-   * Write `warp-ca-bundle.pem` = our CA + the system roots, for the env vars
+   * Write `furylink-ca-bundle.pem` = our CA + the system roots, for the env vars
    * that replace the trust store. Regenerated on every load: the system bundle
    * rotates underneath us and the cost is one file write.
    */
-  private static writeBundle(dir: string, certPem: string): { bundlePath: string; systemRootsPath: string | null } {
-    const bundlePath = join(dir, 'warp-ca-bundle.pem');
+  private static writeBundle(dir: string, certPem: string): {
+    bundlePath: string;
+    systemRootsPath: string | null;
+    bundleIncludesPublicRoots: boolean;
+  } {
+    const bundlePath = join(dir, 'furylink-ca-bundle.pem');
     const systemRootsPath = findSystemRootBundle();
     let roots = '';
+    let rootsPath: string | null = null;
+
     if (systemRootsPath) {
       try {
         roots = readFileSync(systemRootsPath, 'utf8');
+        if (roots) rootsPath = systemRootsPath;
       } catch {
-        /* unreadable: fall back to CA-only, reported via systemRootsPath */
+        roots = '';
       }
     }
-    const sep = roots && !roots.endsWith('\n') ? '\n' : '';
-    writeFileSync(bundlePath, certPem + roots + sep, { mode: 0o644 });
-    return { bundlePath, systemRootsPath: roots ? systemRootsPath : null };
+
+    // Windows normally exposes public trust through the certificate store, not
+    // a PEM file. Node already ships the public Mozilla roots it uses for TLS;
+    // serialize those into the child-only replacement bundle rather than
+    // handing OpenSSL/curl/Python a FuryLink-CA-only trust store.
+    if (!roots && rootCertificates.length > 0) {
+      roots = rootCertificates.join('\n');
+    }
+
+    const needsJoinNewline = roots.length > 0 && !certPem.endsWith('\n');
+    const finalNewline = roots.length > 0 && !roots.endsWith('\n') ? '\n' : '';
+    writeFileSync(
+      bundlePath,
+      certPem + (needsJoinNewline ? '\n' : '') + roots + finalNewline,
+      { mode: 0o644 },
+    );
+    return {
+      bundlePath,
+      systemRootsPath: rootsPath,
+      bundleIncludesPublicRoots: roots.length > 0,
+    };
   }
 
   /**
@@ -229,8 +256,8 @@ export class CertificateAuthority {
    */
   static loadOrCreate(dir: string): CertificateAuthority {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const certPath = join(dir, 'warp-ca.pem');
-    const keyPath = join(dir, 'warp-ca-key.pem');
+    const certPath = join(dir, 'furylink-ca.pem');
+    const keyPath = join(dir, 'furylink-ca-key.pem');
 
     try {
       const certPem = readFileSync(certPath, 'utf8');
@@ -248,6 +275,7 @@ export class CertificateAuthority {
           certPath,
           bundle.bundlePath,
           bundle.systemRootsPath,
+          bundle.bundleIncludesPublicRoots,
         );
       }
     } catch {
@@ -286,6 +314,7 @@ export class CertificateAuthority {
       certPath,
       bundle.bundlePath,
       bundle.systemRootsPath,
+      bundle.bundleIncludesPublicRoots,
     );
   }
 

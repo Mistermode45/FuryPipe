@@ -12,7 +12,7 @@ export const CACHE_READ_RATE = 0.1;
 /** Effective cache-write rate for this request. Older usage payloads do not
  * expose the tier split; preserve the historical/conservative 5-minute rate
  * in that case. The text counterfactual uses the same observed tier mix as
- * the transformed request because pxpipe relocates, rather than invents, the
+ * the transformed request because FuryPipe relocates, rather than invents, the
  * caller's cache-control markers. */
 function cacheCreateRate(cc: number, cc5m?: number, cc1h?: number): number {
   if (!(cc > 0)) return CACHE_CREATE_RATE;
@@ -107,7 +107,7 @@ export function deriveBaselineWarmth(
  *   warm turn (a prior turn cached the prefix within TTL):
  *     text append-caches ⇒ reused×CACHE_READ_RATE + grown×CACHE_CREATE_RATE + coldTail×1.0
  *     where reused = min(prevCacheable, cacheable), grown = cacheable − reused.
- *     This is what TEXT pays regardless of whether pxpipe's image busted its
+ *     This is what TEXT pays regardless of whether FuryPipe's image busted its
  *     own cache on a growth turn — so the real growth loss is preserved.
  *
  * Saving = baseline_eff − actual_eff; can be negative (honestly reported, not floored).
@@ -166,7 +166,7 @@ export function computeBaselineInputEffWithCacheTier(
   return cacheable * createRate + coldTail * 1.0;
 }
 
-/** Weighted input cost pxpipe actually paid this turn. */
+/** Weighted input cost FuryPipe actually paid this turn. */
 export function computeActualInputEff(
   inputTokens: number,
   cc: number,

@@ -128,7 +128,7 @@ describe('stats aggregator', () => {
       );
     }
     const out = renderTextReport(s);
-    expect(out).toContain('pxpipe stats');
+    expect(out).toContain('furypipe stats');
     expect(out).toContain('compressed');
     expect(out).toContain('cache hit rate');
     expect(out).toContain('/Users/x/code/pp');
@@ -173,7 +173,7 @@ describe('stats aggregator', () => {
   });
 
   it('runStats reads a log offline and reports savings; errors when absent', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxpipe-stats-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'FuryPipe-stats-'));
     const file = path.join(dir, 'events.jsonl');
     try {
       const rows = [
