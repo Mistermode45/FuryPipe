@@ -104,4 +104,53 @@ describe('PNG encoder is lossless', () => {
     for (let i = 0; i < gray8.length; i++) expect(gray8Decoded.data[i * 4]).toBe(gray8[i]);
   });
 
+  it('uses an indexed palette for limited-color RGB pages without changing pixels', async () => {
+    const pixels = new Uint8Array(W * H * 3);
+    const palette = [
+      [255, 255, 255],
+      [0, 0, 0],
+      [79, 124, 255],
+    ] as const;
+
+    for (let i = 0; i < W * H; i++) {
+      const color = palette[i % palette.length]!;
+      pixels[i * 3] = color[0];
+      pixels[i * 3 + 1] = color[1];
+      pixels[i * 3 + 2] = color[2];
+    }
+
+    const png = await encodeRgbPng(pixels, W, H);
+    expect(png[24]).toBe(2); // smallest legal depth for three palette entries
+    expect(png[25]).toBe(3); // indexed-color
+
+    const out = await decode(png);
+    for (let i = 0; i < W * H; i++) {
+      expect(out.data[i * 4]).toBe(pixels[i * 3]);
+      expect(out.data[i * 4 + 1]).toBe(pixels[i * 3 + 1]);
+      expect(out.data[i * 4 + 2]).toBe(pixels[i * 3 + 2]);
+    }
+  });
+
+  it('falls back to truecolor when an RGB page needs more than 256 exact colors', async () => {
+    const width = 300;
+    const height = 1;
+    const pixels = new Uint8Array(width * 3);
+    for (let i = 0; i < width; i++) {
+      pixels[i * 3] = i & 0xff;
+      pixels[i * 3 + 1] = (i >>> 8) & 0xff;
+      pixels[i * 3 + 2] = (i * 17) & 0xff;
+    }
+
+    const png = await encodeRgbPng(pixels, width, height);
+    expect(png[24]).toBe(8);
+    expect(png[25]).toBe(2);
+
+    const out = await decode(png);
+    for (let i = 0; i < width; i++) {
+      expect(out.data[i * 4]).toBe(pixels[i * 3]);
+      expect(out.data[i * 4 + 1]).toBe(pixels[i * 3 + 1]);
+      expect(out.data[i * 4 + 2]).toBe(pixels[i * 3 + 2]);
+    }
+  });
+
 });
