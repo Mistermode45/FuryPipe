@@ -104,6 +104,28 @@ describe('PNG encoder is lossless', () => {
     for (let i = 0; i < gray8.length; i++) expect(gray8Decoded.data[i * 4]).toBe(gray8[i]);
   });
 
+  it('collapses exact grayscale RGB pages to native grayscale without changing pixels', async () => {
+    const pixels = new Uint8Array(W * H * 3);
+    const shades = [0, 255] as const;
+    for (let i = 0; i < W * H; i++) {
+      const shade = shades[i % shades.length]!;
+      pixels[i * 3] = shade;
+      pixels[i * 3 + 1] = shade;
+      pixels[i * 3 + 2] = shade;
+    }
+
+    const png = await encodeRgbPng(pixels, W, H);
+    expect(png[24]).toBe(1); // exact black/white -> one-bit grayscale
+    expect(png[25]).toBe(0); // grayscale, not indexed RGB
+
+    const out = await decode(png);
+    for (let i = 0; i < W * H; i++) {
+      expect(out.data[i * 4]).toBe(pixels[i * 3]);
+      expect(out.data[i * 4 + 1]).toBe(pixels[i * 3 + 1]);
+      expect(out.data[i * 4 + 2]).toBe(pixels[i * 3 + 2]);
+    }
+  });
+
   it('uses an indexed palette for limited-color RGB pages without changing pixels', async () => {
     const pixels = new Uint8Array(W * H * 3);
     const palette = [
