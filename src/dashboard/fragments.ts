@@ -4,6 +4,7 @@
 import { HTMX_JS, ALPINE_JS } from './vendor.js';
 import { CACHE_CREATE_RATE, CACHE_READ_RATE } from '../core/baseline.js';
 import type { ControlRoomSnapshot } from '../control-room/index.js';
+import type { ModelFabricEntry } from '../core/model-fabric.js';
 import { createI18n } from '../i18n/index.js';
 import { CORE_CATALOGS } from '../i18n/catalogs.js';
 import type {
@@ -126,6 +127,7 @@ export function renderModelsFragment(
   configured: string[],
   enabled: boolean,
   locale = 'en',
+  discovered: readonly ModelFabricEntry[] = [],
 ): string {
   const t = (key: string): string => dashboardT(locale, key);
   const on = new Set(active);
@@ -170,7 +172,37 @@ export function renderModelsFragment(
   const moot = enabled
     ? ''
     : `<div class="models"><span class="hint">${escapeHtml(t('dashboard.models.offHint'))}</span></div>`;
+
+  const discoveredRows = discovered.slice(0, 250).map((model) => {
+    const imageState = model.modalities.imageInput.toUpperCase();
+    const profile = model.visual.profile.toUpperCase();
+    const policy = model.visual.policy.toUpperCase();
+    const lifecycle = model.lifecycle.toUpperCase();
+    const observed = model.lastObservedAt ? model.lastObservedAt.replace('T', ' ').replace(/\.\d{3}Z$/u, 'Z') : '—';
+    return `<tr>` +
+      `<td class="model-name"><strong>${escapeHtml(model.displayName || model.id)}</strong><span class="model-id">${escapeHtml(model.id)}</span></td>` +
+      `<td>${escapeHtml(model.provider)}</td>` +
+      `<td><span class="model-state model-state-${escapeHtml(model.modalities.imageInput)}">IMAGE ${escapeHtml(imageState)}</span></td>` +
+      `<td><span class="model-state">${escapeHtml(profile)}</span></td>` +
+      `<td><span class="model-state">${escapeHtml(policy)}</span></td>` +
+      `<td>${escapeHtml(lifecycle)}</td>` +
+      `<td class="model-observed">${escapeHtml(observed)}</td>` +
+      `</tr>`;
+  }).join('');
+
+  const modelFabric = `<section class="model-fabric" aria-labelledby="model-fabric-title">` +
+    `<div class="model-fabric-head"><div><strong id="model-fabric-title">Model Fabric</strong>` +
+    `<span class="hint">discovered/observed runtime catalog · discovered ≠ verified ≠ executed</span></div>` +
+    `<a class="mini-btn" href="/api/models.json" target="_blank" rel="noopener">JSON</a></div>` +
+    (discoveredRows
+      ? `<div class="model-fabric-scroll"><table class="model-fabric-table"><thead><tr>` +
+        `<th>Model</th><th>Provider</th><th>Vision</th><th>Profile</th><th>Policy</th><th>Lifecycle</th><th>Last observed</th>` +
+        `</tr></thead><tbody>${discoveredRows}</tbody></table></div>`
+      : `<div class="model-fabric-empty">No runtime/provider model catalog observation yet. Models appear here when traffic is observed or a configured provider catalog refresh succeeds.</div>`) +
+    `</section>`;
+
   return (
+    modelFabric +
     moot +
     `<div class="models">` +
     `<span class="models-label">${escapeHtml(t('dashboard.models.claude'))}</span>` +
@@ -1061,6 +1093,30 @@ const CSS = `
     border: 1px solid var(--border-strong); border-radius: 6px; padding: 4px 8px;
     font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
   .models-csv:focus { outline: none; border-color: var(--accent-ink); }
+  .model-fabric { margin: 0 0 18px; padding: 12px 0 4px; border-top: 1px solid var(--border); }
+  .model-fabric-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
+  .model-fabric-head > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+  .model-fabric-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  .model-fabric-table { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 12px; }
+  .model-fabric-table th, .model-fabric-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+  .model-fabric-table th { color: var(--ink-2); font-weight: 600; background: var(--surface-2); position: sticky; top: 0; }
+  .model-fabric-table tbody tr:last-child td { border-bottom: 0; }
+  .model-name { min-width: 230px; }
+  .model-id { display: block; margin-top: 2px; color: var(--ink-2); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+  .model-state { display: inline-block; padding: 2px 5px; border: 1px solid var(--border-strong); border-radius: 4px; color: var(--ink-2); font-size: 10px; font-weight: 600; }
+  .model-state-yes { color: var(--positive); }
+  .model-state-no { color: var(--negative); }
+  .model-observed { white-space: nowrap; color: var(--ink-2); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+  .model-fabric-empty { padding: 10px 12px; border-left: 2px solid var(--border-strong); color: var(--ink-2); font-size: 12px; }
+  @media (max-width: 640px) {
+    .model-fabric-table { min-width: 0; }
+    .model-fabric-table thead { display: none; }
+    .model-fabric-table, .model-fabric-table tbody, .model-fabric-table tr, .model-fabric-table td { display: block; width: 100%; }
+    .model-fabric-table tr { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .model-fabric-table td { padding: 3px 0; border: 0; }
+    .model-fabric-table td:not(.model-name):not(.model-observed) { display: inline-block; width: auto; margin-right: 8px; }
+    .model-observed { margin-top: 4px; }
+  }
   .models-routing { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 18px; }
   #routing-help { border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface);
     color: var(--ink); max-width: 600px; padding: 16px 20px; }
