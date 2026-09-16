@@ -507,17 +507,21 @@ describe('FuryPipe Agent runtime', () => {
 
   it('exposes write paths only to the implement stage that actually owns scoped-write permission', async () => {
     const seen: Array<{ stage: string; permission: string; paths: readonly string[] }> = [];
+    const observe = async (context: Parameters<NonNullable<AgentRuntimeRequest['executors']['research']>>[0]) => {
+      seen.push({ stage: context.stage, permission: context.permission, paths: context.allowedWritePaths });
+      return { evidence: [`${context.stage}-evidence`], consumedTokens: 1 };
+    };
     const result = await runAgent({
       objective: 'Keep write authority stage-local.',
       allowWrites: true,
       allowedWritePaths: ['/repo'],
-      executors: Object.fromEntries(AGENT_FABRIC_STAGE_ORDER.map((stage) => [
-        stage,
-        async (context: AgentStageExecutionContext) => {
-          seen.push({ stage: context.stage, permission: context.permission, paths: context.allowedWritePaths });
-          return { evidence: [`${context.stage}-evidence`], consumedTokens: 1 };
-        },
-      ])) as AgentRuntimeRequest['executors'],
+      executors: {
+        research: observe,
+        plan: observe,
+        implement: observe,
+        review: observe,
+        verify: observe,
+      },
     });
 
     expect(result.status).toBe('completed');
