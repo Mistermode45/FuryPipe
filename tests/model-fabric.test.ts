@@ -251,10 +251,19 @@ describe('model fabric', () => {
     });
   });
 
-  it('keeps known-family pricing evidence through gateway-qualified ids', () => {
+  it('keeps known-family pricing evidence through provider-qualified model ids', () => {
+    registerRuntimeModelCatalog(normalizeOpenRouterModelsPayload({
+      data: [{
+        id: 'anthropic/claude-opus-5',
+        architecture: {
+          input_modalities: ['text', 'image'],
+          output_modalities: ['text'],
+        },
+      }],
+    }));
     process.env.FURYPIPE_VISUAL_POLICY = 'max_savings';
 
-    expect(resolveFuryPipeModelEligibility('openrouter/claude-opus-5')).toMatchObject({
+    expect(resolveFuryPipeModelEligibility('anthropic/claude-opus-5')).toMatchObject({
       eligible: true,
       pricingEvidence: 'provider_profile',
     });
