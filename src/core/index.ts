@@ -259,6 +259,7 @@ export {
   createRecoveryAgentMemoryStore,
   createInMemoryAgentMemoryStore,
   runAgent,
+  type AgentCapabilityExecutionReceipt,
   type AgentMemoryRecord,
   type AgentMemoryStore,
   type AgentMcpExecutionContext,
