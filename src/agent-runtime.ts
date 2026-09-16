@@ -298,11 +298,14 @@ function mcpCallKey(call: AgentMcpPlannedCall): string {
 }
 
 function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefined {
-  if (!request || typeof request !== 'object' || typeof request.objective !== 'string' || !request.objective.trim()) {
+  if (!request || typeof request !== 'object' || typeof request.objective !== 'string' || request.objective.length === 0) {
     return { code: 'INVALID_REQUEST', reason: 'agent objective must not be empty' };
   }
   if (Buffer.byteLength(request.objective, 'utf8') > MAX_OBJECTIVE_BYTES) {
     return { code: 'INVALID_REQUEST', reason: 'agent objective exceeds its byte bound' };
+  }
+  if (!/\S/u.test(request.objective)) {
+    return { code: 'INVALID_REQUEST', reason: 'agent objective must not be empty' };
   }
   if (request.runId !== undefined && (typeof request.runId !== 'string' || request.runId.length === 0
     || request.runId.length > MAX_AGENT_MEMORY_RUN_ID || request.runId.includes('\0'))) {
@@ -702,13 +705,12 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   const skills = new Map<string, AgentSkillDefinition>();
   for (const skill of request.skills ?? []) {
     const validStages = Array.isArray(skill?.stages)
-      && skill.stages.length > 0
       && skill.stages.length <= AGENT_FABRIC_STAGE_ORDER.length
       && skill.stages.every((stage) => AGENT_FABRIC_STAGE_ORDER.includes(stage))
       && new Set(skill.stages).size === skill.stages.length;
     if (!skill || typeof skill !== 'object'
       || typeof skill.id !== 'string' || skill.id.length < 1 || skill.id.length > 256 || skill.id.includes('\0')
-      || typeof skill.version !== 'string' || skill.version.length < 1 || skill.version.length > 256 || skill.version.includes('\0')
+      || typeof skill.version !== 'string' || skill.version.length > 256 || skill.version.includes('\0')
       || !validStages
       || (skill.permission !== undefined && !['read', 'scoped-write'].includes(skill.permission))
       || (skill.network !== undefined && !['disabled', 'required'].includes(skill.network))
@@ -725,7 +727,6 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   const mcpServers = new Map<string, AgentMcpServerDefinition>();
   for (const server of request.mcpServers ?? []) {
     const validMethods = Array.isArray(server?.allowedMethods)
-      && server.allowedMethods.length > 0
       && server.allowedMethods.length <= 64
       && server.allowedMethods.every((method) =>
         typeof method === 'string' && method.length > 0 && method.length <= 256 && !method.includes('\0'))
@@ -746,7 +747,6 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   const subagents = new Map<string, AgentSubagentDefinition>();
   for (const subagent of request.subagents ?? []) {
     const validStages = Array.isArray(subagent?.stages)
-      && subagent.stages.length > 0
       && subagent.stages.length <= AGENT_FABRIC_STAGE_ORDER.length
       && subagent.stages.every((stage) => AGENT_FABRIC_STAGE_ORDER.includes(stage))
       && new Set(subagent.stages).size === subagent.stages.length;

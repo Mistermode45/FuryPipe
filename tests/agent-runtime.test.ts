@@ -592,7 +592,7 @@ describe('FuryPipe Agent runtime', () => {
       executors: stageExecutors([]),
       mcpServers: [{
         id: 'mcp',
-        allowedMethods: [],
+        allowedMethods: Array.from({ length: 65 }, (_, index) => `method-${index}`),
         execute: async () => {
           calls += 1;
           return {};
