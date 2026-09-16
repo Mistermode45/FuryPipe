@@ -33,6 +33,13 @@ export interface RecoveryEvidence {
   readonly multiProcess: ControlRoomEvidenceStatus;
 }
 
+export interface AgentCapabilityExecutionEvidence {
+  readonly kind: 'skill' | 'mcp' | 'subagent';
+  readonly id: string;
+  readonly stage: 'research' | 'plan' | 'implement' | 'review' | 'verify';
+  readonly invocation: 'automatic' | 'manual';
+}
+
 export interface AgentEvidence {
   readonly runs: number;
   readonly completedRuns: number;
@@ -41,6 +48,14 @@ export interface AgentEvidence {
   readonly contextUsedTokens: number;
   readonly persistedMemory: ControlRoomEvidenceStatus;
   readonly distributedHandoff: ControlRoomEvidenceStatus;
+  /** Successful callbacks observed from authentic AgentRunResult receipts. */
+  readonly skillExecutions?: number;
+  readonly mcpExecutions?: number;
+  readonly subagentExecutions?: number;
+  readonly automaticCapabilityExecutions?: number;
+  readonly manualCapabilityExecutions?: number;
+  /** Bounded metadata only: never includes prompts, params or evidence plaintext. */
+  readonly recentCapabilityExecutions?: readonly AgentCapabilityExecutionEvidence[];
 }
 
 export interface LearningEvidence {
@@ -250,6 +265,11 @@ function validateInput(input: ControlRoomInput): void {
     'agent.completedRuns': input.agent.completedRuns,
     'agent.handoffRuns': input.agent.handoffRuns,
     'agent.failedRuns': input.agent.failedRuns,
+    ...(input.agent.skillExecutions === undefined ? {} : { 'agent.skillExecutions': input.agent.skillExecutions }),
+    ...(input.agent.mcpExecutions === undefined ? {} : { 'agent.mcpExecutions': input.agent.mcpExecutions }),
+    ...(input.agent.subagentExecutions === undefined ? {} : { 'agent.subagentExecutions': input.agent.subagentExecutions }),
+    ...(input.agent.automaticCapabilityExecutions === undefined ? {} : { 'agent.automaticCapabilityExecutions': input.agent.automaticCapabilityExecutions }),
+    ...(input.agent.manualCapabilityExecutions === undefined ? {} : { 'agent.manualCapabilityExecutions': input.agent.manualCapabilityExecutions }),
     'learning.humanTopics': input.learning.humanTopics,
     'learning.agentLessons': input.learning.agentLessons,
     'learning.reusedLessons': input.learning.reusedLessons,
