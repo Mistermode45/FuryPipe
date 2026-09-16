@@ -22,7 +22,9 @@ Context Optimizer
 Prepared FuryPrompt + skills + MCP schedule + quality gates
 ```
 
-The V1 orchestrator is planning-only. It does not execute skills, MCP methods, subagents, providers, filesystem writes, deployments, or external side effects.
+Planning remains side-effect free: `prepareFuryTask()` never executes a Skill, MCP method, subagent, provider, filesystem write, deployment, or external side effect.
+
+When the host explicitly chooses to execute the prepared plan, `runPreparedFuryTask()` bridges that exact plan into Agent Runtime. Agent Runtime then re-applies health, provenance-derived availability, network, stage, write-permission, context-budget and evidence gates.
 
 ## Why
 
@@ -58,6 +60,7 @@ A prepared task contains:
 - the Context Optimizer plan;
 - the final FuryPrompt input;
 - selected skill definitions;
+- the exact runtime MCP inventory used while planning;
 - automatic skill schedules by Agent Fabric stage;
 - automatic MCP schedules by Agent Fabric stage;
 - plugin activation truth states;
@@ -122,15 +125,17 @@ A later trust-gated activation contract may connect these states, but it must do
 
 ## Planning is not execution
 
-Calling `prepareFuryTask()` can perform the normal capability-resolution checks and host-owned semantic analysis configured by the caller, but it does not call:
+Calling `prepareFuryTask()` can perform the normal capability-resolution checks and host-owned semantic analysis configured by the caller, but it does not call Skill/MCP/subagent/stage executors.
 
-- skill `execute()`;
-- MCP server `execute()`;
-- Agent Runtime stage executors;
-- subagents;
-- deployment actions.
+Execution is an explicit second step through `runPreparedFuryTask(prepared, options)`. That function forwards the prepared Skills, automatic Skill schedule, automatic MCP schedule and exact MCP inventory unchanged into `runAgent()`.
 
-Execution remains the responsibility of the existing governed runtimes.
+A successful callback creates an `AgentCapabilityExecutionReceipt` in the final `AgentRunResult.capabilityExecutions`. Merely registering, recommending, selecting or scheduling a capability does **not** create a receipt. The receipt contains bounded metadata/digests rather than raw Skill evidence or MCP parameters.
+
+This preserves the lifecycle boundary:
+
+`selected != executable != executed != verified`.
+
+The host still supplies the stage executors and must explicitly opt into scoped writes.
 
 ## Example
 
@@ -178,13 +183,14 @@ V1 explicitly preserves these boundaries:
 
 ## Non-goals
 
-V1 does not:
+Task Orchestrator does not:
 
 - auto-activate Catalog Resolver recommendations;
 - auto-install third-party integrations;
 - download marketplace skills;
 - trust arbitrary MCP servers;
-- perform side effects;
+- execute anything during planning;
+- grant write authority by preparing a task;
 - publish or deploy;
 - synthesize summaries on its own;
 - persist transcripts;
