@@ -64,7 +64,7 @@ describe('parseArgs', () => {
   });
 
   it('rejects unknown arguments with exit code 2', () => {
-    expect(() => parseArgs(['--port', '47899'])).toThrow(RestartError);
+    expect(() => parseArgs(['--port', '48799'])).toThrow(RestartError);
     try {
       parseArgs(['--port']);
     } catch (err) {
@@ -75,30 +75,30 @@ describe('parseArgs', () => {
 
 describe('resolveTarget', () => {
   it('falls back to the defaults in src/node.ts', () => {
-    expect(resolveTarget({})).toEqual({ port: 47821, host: '127.0.0.1' });
+    expect(resolveTarget({})).toEqual({ port: 48721, host: '127.0.0.1' });
   });
 
-  it('honours PORT and HOST', () => {
-    expect(resolveTarget({ PORT: '47899', HOST: '0.0.0.0' })).toEqual({
-      port: 47899,
+  it('honours FURYPIPE_PORT and FURYPIPE_HOST', () => {
+    expect(resolveTarget({ FURYPIPE_PORT: '48799', FURYPIPE_HOST: '0.0.0.0' })).toEqual({
+      port: 48799,
       host: '0.0.0.0',
     });
   });
 
-  it('rejects a non-numeric or out-of-range PORT', () => {
+  it('rejects a non-numeric or out-of-range FURYPIPE_PORT', () => {
     // Also guards the PowerShell snippet in describePortHolder, which
     // interpolates the port into a command string.
-    expect(() => resolveTarget({ PORT: 'not-a-port' })).toThrow(RestartError);
-    expect(() => resolveTarget({ PORT: '70000' })).toThrow(RestartError);
-    expect(() => resolveTarget({ PORT: '0' })).toThrow(RestartError);
+    expect(() => resolveTarget({ FURYPIPE_PORT: 'not-a-port' })).toThrow(RestartError);
+    expect(() => resolveTarget({ FURYPIPE_PORT: '70000' })).toThrow(RestartError);
+    expect(() => resolveTarget({ FURYPIPE_PORT: '0' })).toThrow(RestartError);
   });
 });
 
 describe('process matching', () => {
   it('matches proxy command lines with either path separator', () => {
-    expect(matchesProxyCommand('node /home/u/pxpipe/bin/cli.js')).toBe(true);
+    expect(matchesProxyCommand('node /home/u/furypipe/bin/cli.js')).toBe(true);
     expect(
-      matchesProxyCommand('"C:\\Program Files\\nodejs\\node.exe" "D:\\pxpipe\\bin\\cli.js"'),
+      matchesProxyCommand('"C:\\Program Files\\nodejs\\node.exe" "D:\\furypipe\\bin\\cli.js"'),
     ).toBe(true);
   });
 
@@ -190,7 +190,7 @@ describe('runRestart', () => {
   });
 
   it('rejects unknown arguments without starting anything', async () => {
-    const { calls, run } = harness({ argv: ['--no-build', '--port', '47899'] });
+    const { calls, run } = harness({ argv: ['--no-build', '--port', '48799'] });
     expect(await run()).toBe(2);
     expect(calls).not.toContain('start');
     expect(calls).not.toContain('build');
