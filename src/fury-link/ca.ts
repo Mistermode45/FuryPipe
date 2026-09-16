@@ -179,8 +179,8 @@ export function findSystemRootBundle(candidates: readonly string[] = SYSTEM_ROOT
   const fromEnv = process.env.SSL_CERT_FILE;
   // An operator-supplied bundle is the trust store the child would have had
   // without us; prefer it over the platform guess. Skip it if it is already
-  // one of our own files, or the bundle would nest on every warp restart.
-  if (fromEnv && existsSync(fromEnv) && !/warp-ca(-bundle)?\.pem$/.test(fromEnv)) return fromEnv;
+  // one of our own files, or the bundle would nest on every FuryLink restart.
+  if (fromEnv && existsSync(fromEnv) && !/furylink-ca(-bundle)?\.pem$/.test(fromEnv)) return fromEnv;
   for (const p of candidates) if (existsSync(p)) return p;
   return null;
 }
@@ -230,7 +230,7 @@ export class CertificateAuthority {
   static loadOrCreate(dir: string): CertificateAuthority {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const certPath = join(dir, 'furylink-ca.pem');
-    const keyPath = join(dir, 'warp-ca-key.pem');
+    const keyPath = join(dir, 'furylink-ca-key.pem');
 
     try {
       const certPem = readFileSync(certPath, 'utf8');
