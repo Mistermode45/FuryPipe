@@ -79,6 +79,57 @@ export function furyLinkPathCandidates(
   return alreadyHasWindowsExt ? [name] : pathExt.map((ext) => name + ext);
 }
 
+export interface FuryLinkWindowsLaunchPlan {
+  /** Native executable to spawn. `.cmd` / `.bat` routes explicitly through cmd. */
+  readonly file: string;
+  /** Native argv values, or one validated cmd command line for a batch launcher. */
+  readonly args: readonly string[];
+  readonly usesCommandInterpreter: boolean;
+  readonly windowsVerbatimArguments: boolean;
+}
+
+/**
+ * Select the Windows process boundary without relying on Node's implicit shell
+ * mode. Batch launchers require cmd.exe, but native `.exe` / `.com` programs
+ * stay direct. Native launchers keep discrete argv values; batch launchers use
+ * one strictly validated command line because that is the contract of
+ * `cmd.exe /c`. This prevents the old `shell: true` path from splitting a
+ * resolved executable such as `C:\\Program Files\\nodejs\\npm.cmd`.
+ */
+export function furyLinkWindowsLaunchPlan(
+  resolved: string,
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+): FuryLinkWindowsLaunchPlan {
+  const values = [resolved, ...args];
+  if (values.some((value) => /[\u0000\r\n]/u.test(value))) {
+    throw new Error('FuryLink refuses Windows command values containing NUL or a line break');
+  }
+  if (/\.(?:cmd|bat)$/iu.test(resolved)) {
+    // A batch launcher commonly relays `%*` through another cmd parse. Node
+    // can preserve argv until cmd.exe, but it cannot make an arbitrary third-
+    // party batch file safe when it expands `&`, `|`, `(`, `)`, `^`, `%`, `!`
+    // or a literal quote again. Reject rather than pretend these values have
+    // an escaping contract across every launcher. Ordinary spaces and Unicode
+    // stay supported, including the standard Program Files npm launcher.
+    if (values.some((value) => /["&|()^%!]/u.test(value))) {
+      throw new Error('FuryLink refuses shell-significant values for Windows batch launchers');
+    }
+    const cmdCommand = `"${[`"${resolved}"`, ...args.map((value) => `"${value}"`)].join(' ')}"`;
+    return {
+      file: furyLinkEnvValue(env, 'ComSpec') ?? 'cmd.exe',
+      // /d disables AutoRun and /v:off blocks delayed `!VAR!` expansion. The
+      // /s gives cmd.exe one explicitly quoted command string, which keeps a
+      // Program Files batch target intact. Its user-derived portions have
+      // already crossed the strict batch-character boundary above.
+      args: ['/d', '/v:off', '/s', '/c', cmdCommand],
+      usesCommandInterpreter: true,
+      windowsVerbatimArguments: true,
+    };
+  }
+  return { file: resolved, args: [...args], usesCommandInterpreter: false, windowsVerbatimArguments: false };
+}
+
 /**
  * Only the inference path is diverted. Everything else on the host — OAuth,
  * telemetry, the control plane — is re-originated untouched, which is what
@@ -182,8 +233,8 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
    * Resolve and launch an agent on Windows, macOS and Linux.
    *
    * Windows npm shims are .cmd/.bat files and therefore need cmd.exe semantics;
-   * Node's shell mode is used only for those resolved launcher files. Native
-   * executables stay shell-free. POSIX keeps the interactive-shell alias
+   * FuryLink starts that interpreter explicitly with discrete argv values.
+   * Native executables stay shell-free. POSIX keeps the interactive-shell alias
    * fallback used by Claude aliases while preferring a concrete executable.
    */
   const spawnResolved = (command: string[], env: NodeJS.ProcessEnv) => {
@@ -192,10 +243,8 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
     const resolved = resolveOnPath(first, env);
 
     if (process.platform === 'win32') {
-      if (resolved && /\.(?:cmd|bat)$/i.test(resolved)) {
-        return spawn(resolved, command.slice(1), { ...direct, shell: true });
-      }
-      return spawn(resolved ?? first, command.slice(1), direct);
+      const plan = furyLinkWindowsLaunchPlan(resolved ?? first, command.slice(1), env);
+      return spawn(plan.file, plan.args, { ...direct, windowsVerbatimArguments: plan.windowsVerbatimArguments });
     }
 
     const shell = env.SHELL || '/bin/sh';

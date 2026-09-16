@@ -1672,6 +1672,23 @@ export class DashboardState {
           locale,
         ));
       }
+      case 'control-plane-overview':
+      case 'control-plane-visual-engine':
+      case 'control-plane-capabilities':
+      case 'control-plane-topology':
+      case 'control-plane-evidence': {
+        const surface = name.slice('control-plane-'.length) as
+          | 'overview'
+          | 'visual-engine'
+          | 'capabilities'
+          | 'topology'
+          | 'evidence';
+        return htmlResponse(renderControlPlaneFragment(
+          await this.readControlPlaneSnapshot(port),
+          locale,
+          surface,
+        ));
+      }
       default:
         return new Response('unknown fragment', { status: 404 });
     }

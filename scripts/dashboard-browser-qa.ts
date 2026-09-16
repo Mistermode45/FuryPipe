@@ -21,14 +21,22 @@ function assert(condition, message) {
 function findChrome() {
   const candidates = [
     process.env.CHROME_BIN,
+    ...(process.platform === 'win32' ? [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files\\Chromium\\Application\\chrome.exe',
+    ] : []),
     'google-chrome-stable',
     'google-chrome',
     'chromium',
     'chromium-browser',
   ].filter(Boolean);
   for (const candidate of candidates) {
-    if (candidate.includes('/')) return candidate;
-    const found = spawnSync('which', [candidate], { encoding: 'utf8' });
+    if (candidate.includes('/') || candidate.includes('\\')) {
+      if (spawnSync(candidate, ['--version'], { encoding: 'utf8' }).status === 0) return candidate;
+      continue;
+    }
+    const found = spawnSync(process.platform === 'win32' ? 'where.exe' : 'which', [candidate], { encoding: 'utf8' });
     if (found.status === 0 && found.stdout.trim()) return found.stdout.trim();
   }
   throw new Error('No Chromium/Chrome executable found. Set CHROME_BIN explicitly.');
@@ -326,7 +334,7 @@ async function runCase(browser, dashboard, testCase) {
     await cdp.send('Page.navigate', { url: pageUrl });
     await cdp.waitFor('document.readyState === "complete"', 'document.readyState=complete');
     await cdp.waitFor(
-      'document.querySelector("#frag-toggle")?.children.length > 0 && document.querySelector("#frag-recent")?.children.length > 0 && document.querySelector("#frag-control-room")?.children.length > 0 && !!document.querySelector("#frag-control-plane .cp-runtime-lane")',
+      'document.querySelector("#frag-toggle")?.children.length > 0 && document.querySelector("#frag-recent")?.children.length > 0 && document.querySelector("#frag-control-room")?.children.length > 0 && !!document.querySelector("#frag-cp-overview .cp-runtime-lane") && !!document.querySelector("#frag-cp-capabilities [data-cp-root]")',
       'initial HTMX fragments',
       12_000,
     );
@@ -345,8 +353,11 @@ async function runCase(browser, dashboard, testCase) {
       theme: document.documentElement.dataset.theme,
       selectValue: document.querySelector('select.mini-btn')?.value ?? null,
       topbarVisible: !!document.querySelector('.topbar') && getComputedStyle(document.querySelector('.topbar')).display !== 'none',
-      sectionCount: document.querySelectorAll('section.section').length,
-      controlPlaneLoaded: !!document.querySelector('#frag-control-plane .cp-runtime-lane'),
+      sectionCount: document.querySelectorAll('main.cp-shell > section, main.cp-shell > details.cp-disclosure').length,
+      controlPlaneLoaded: !!document.querySelector('#frag-cp-overview .cp-runtime-lane') && !!document.querySelector('#frag-cp-capabilities [data-cp-root]'),
+      openShellDisclosures: [...document.querySelectorAll('details.cp-disclosure[open]')].map((detail) => detail.id),
+      shellWidths: [...document.querySelectorAll('.workspace, .topbar, .command-nav, .cp-shell, .cp-shell-overview')]
+        .map((element) => ({ selector: element.className || element.id, width: element.getBoundingClientRect().width, scrollWidth: element.scrollWidth })),
       overflowElements: [...document.querySelectorAll('*')]
         .map((element) => {
           const rect = element.getBoundingClientRect();
@@ -373,9 +384,13 @@ async function runCase(browser, dashboard, testCase) {
     assert(base.localeStored === testCase.locale, `${testCase.name}: locale persistence mismatch`);
     assert(base.selectValue === testCase.locale, `${testCase.name}: locale selector mismatch`);
     assert(base.topbarVisible === true, `${testCase.name}: topbar is not visible`);
-    assert(base.sectionCount >= 4, `${testCase.name}: expected dashboard sections`);
+    assert(base.sectionCount === 7, `${testCase.name}: expected the seven Control Plane shell surfaces, got ${base.sectionCount}`);
     assert(base.controlPlaneLoaded, `${testCase.name}: Control Plane V2 fragment did not load`);
-    assert(base.scrollWidth <= base.clientWidth + 1, `${testCase.name}: root horizontal overflow ${base.scrollWidth} > ${base.clientWidth}; offenders=${JSON.stringify(base.overflowElements)}`);
+    if (testCase.width <= 640) {
+      assert(base.openShellDisclosures.length === 1 && base.openShellDisclosures[0] === 'observe',
+        `${testCase.name}: mobile must retain a single progressive-disclosure surface, got ${JSON.stringify(base.openShellDisclosures)}`);
+    }
+    assert(base.scrollWidth <= base.clientWidth + 1, `${testCase.name}: root horizontal overflow ${base.scrollWidth} > ${base.clientWidth}; shell=${JSON.stringify(base.shellWidths)}; offenders=${JSON.stringify(base.overflowElements)}`);
     assert(base.bodyScrollWidth <= base.clientWidth + 1, `${testCase.name}: body horizontal overflow ${base.bodyScrollWidth} > ${base.clientWidth}`);
 
     const initialScreenshot = await cdp.send('Page.captureScreenshot', {

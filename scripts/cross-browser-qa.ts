@@ -305,7 +305,8 @@ async function runDashboardCase(
       document.querySelector('#frag-toggle')?.children.length > 0
       && document.querySelector('#frag-recent')?.children.length > 0
       && document.querySelector('#frag-control-room')?.children.length > 0
-      && !!document.querySelector('#frag-control-plane .cp-runtime-lane'),
+      && !!document.querySelector('#frag-cp-overview .cp-runtime-lane')
+      && !!document.querySelector('#frag-cp-capabilities [data-cp-root]'),
     undefined, { timeout: 12_000 });
 
     const base = await page.evaluate(() => {
@@ -322,8 +323,11 @@ async function runDashboardCase(
         selectValue: document.querySelector<HTMLSelectElement>('select.mini-btn')?.value ?? null,
         topbarVisible: !!document.querySelector('.topbar')
           && getComputedStyle(document.querySelector('.topbar') as HTMLElement).display !== 'none',
-        sectionCount: document.querySelectorAll('section.section').length,
-        controlPlaneLoaded: !!document.querySelector('#frag-control-plane .cp-runtime-lane'),
+        sectionCount: document.querySelectorAll('main.cp-shell > section, main.cp-shell > details.cp-disclosure').length,
+        controlPlaneLoaded: !!document.querySelector('#frag-cp-overview .cp-runtime-lane')
+          && !!document.querySelector('#frag-cp-capabilities [data-cp-root]'),
+        openShellDisclosures: [...document.querySelectorAll<HTMLDetailsElement>('details.cp-disclosure[open]')]
+          .map((detail) => detail.id),
         overflowElements: [...document.querySelectorAll('*')]
           .map((element) => {
             const rect = element.getBoundingClientRect();
@@ -345,8 +349,12 @@ async function runDashboardCase(
     assert(base.dir === direction && base.computedDirection === direction, `${name}: direction mismatch`);
     assert(base.innerWidth === viewport.width, `${name}: viewport width mismatch`);
     assert(base.localeStored === locale && base.selectValue === locale, `${name}: locale persistence/selector mismatch`);
-    assert(base.topbarVisible && base.sectionCount >= 4, `${name}: dashboard structure missing`);
+    assert(base.topbarVisible && base.sectionCount === 7, `${name}: expected the seven Control Plane shell surfaces`);
     assert(base.controlPlaneLoaded, `${name}: Control Plane V2 fragment did not load`);
+    if (viewport.width <= 640) {
+      assert(base.openShellDisclosures.length === 1 && base.openShellDisclosures[0] === 'observe',
+        `${name}: mobile progressive disclosure missing: ${JSON.stringify(base.openShellDisclosures)}`);
+    }
     assert(base.scrollWidth <= base.clientWidth + 1 && base.bodyScrollWidth <= base.clientWidth + 1,
       `${name}: horizontal overflow (${base.scrollWidth}/${base.clientWidth}, body ${base.bodyScrollWidth}); offenders=${JSON.stringify(base.overflowElements)}`);
 

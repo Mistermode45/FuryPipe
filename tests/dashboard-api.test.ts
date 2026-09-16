@@ -298,6 +298,30 @@ describe('serveFragment', () => {
     expect(dashboardPath('/fragments/latest')).toEqual({ kind: 'fragment', name: 'latest' });
     expect(dashboardPath('/fragments/control-room')).toEqual({ kind: 'fragment', name: 'control-room' });
     expect(dashboardPath('/fragments/control-plane')).toEqual({ kind: 'fragment', name: 'control-plane' });
+    expect(dashboardPath('/fragments/control-plane-overview')).toEqual({ kind: 'fragment', name: 'control-plane-overview' });
+    expect(dashboardPath('/fragments/control-plane-capabilities')).toEqual({ kind: 'fragment', name: 'control-plane-capabilities' });
+  });
+
+  it('renders each converged Control Plane surface from the source-bound snapshot', async () => {
+    const withControlRoom = new DashboardState(tmp, async () => new Map(), undefined, controlRoomSnapshot);
+    const surfaces = [
+      ['control-plane-overview', 'Rail runtime'],
+      ['control-plane-visual-engine', 'Lens de décision'],
+      ['control-plane-capabilities', 'Explorateur de capacités'],
+      ['control-plane-topology', 'Fury Graph'],
+      ['control-plane-evidence', 'Sécurité et preuves'],
+    ] as const;
+    for (const [name, marker] of surfaces) {
+      const html = await (await withControlRoom.serveFragment(
+        name,
+        new URL(`http://localhost/fragments/${name}?locale=fr`),
+        48721,
+      )).text();
+      expect(html, name).toContain(marker);
+      if (name === 'control-plane-overview' || name === 'control-plane-evidence') {
+        expect(html, name).toContain('aaaaaaaaaaaa');
+      }
+    }
   });
 
   it('renders the toggle fragment reflecting compression state', async () => {
@@ -642,6 +666,23 @@ describe('dashboard locale surface', () => {
     expect(html).toContain('OPENAI_MODELS');
     expect(html).toContain('ANTHROPIC_BASE_URL');
     expect(html).not.toContain('Connect an agent');
+  });
+
+  it('uses the Control Plane as the only page shell and moves retained legacy observations into it', () => {
+    const html = renderPage(48721);
+    expect(html).toContain('id="frag-cp-overview"');
+    expect(html).toContain('id="frag-cp-capabilities"');
+    expect(html).toContain('id="frag-cp-visual-engine"');
+    expect(html).toContain('id="frag-cp-topology"');
+    expect(html).toContain('id="frag-cp-evidence"');
+    expect(html).toContain('<details class="cp-disclosure" id="observe" open>');
+    expect(html).toContain('id="frag-sessions"');
+    expect(html).toContain('id="frag-control-room"');
+    expect(html).toContain('id="frag-stats"');
+    expect(html).toContain('id="frag-toggle"');
+    expect(html).not.toContain('id="frag-session"');
+    expect(html).not.toContain('id="control-plane"');
+    expect(html).not.toContain('id="history"');
   });
 
   it('marks the bidi pseudo-locale RTL and falls back safely for invalid tags', () => {

@@ -124,4 +124,18 @@ describe('Control Plane V2 snapshot', () => {
     expect(html).toContain('control-room-unavailable');
     expect(renderControlPlaneFragment(value, 'fr')).toContain('Panneau d’instrumentation Fury');
   });
+
+  it('splits the shell surfaces without widening the observation contract', () => {
+    const value = createControlPlaneSnapshot({ generatedAt: 1, runtime, controlRoom: null });
+    const overview = renderControlPlaneFragment(value, 'en', 'overview');
+    const capabilities = renderControlPlaneFragment(value, 'en', 'capabilities');
+    const evidence = renderControlPlaneFragment(value, 'en', 'evidence');
+
+    expect(overview).toContain('cp-runtime-lane');
+    expect(overview).not.toContain('data-cp-row');
+    expect(capabilities).toContain('data-cp-root');
+    expect(capabilities).toContain('data-cp-inspector');
+    expect(evidence).toContain('Source SHA');
+    expect(evidence).not.toContain('data-cp-row');
+  });
 });

@@ -900,7 +900,25 @@ export function renderControlRoomFragment(snapshot: ControlRoomSnapshot | null, 
 
 // ---- Control Plane V2 -----------------------------------------------------
 
-export function renderControlPlaneFragment(snapshot: ControlPlaneSnapshot, locale = 'en'): string {
+export type ControlPlaneFragmentSurface =
+  | 'all'
+  | 'overview'
+  | 'visual-engine'
+  | 'capabilities'
+  | 'topology'
+  | 'evidence';
+
+/**
+ * Render one bounded Control Plane surface from the exact same snapshot
+ * contract. The legacy `all` surface remains available to API consumers; the
+ * page shell composes the smaller surfaces so the Control Plane owns the page
+ * structure rather than being appended below the legacy dashboard.
+ */
+export function renderControlPlaneFragment(
+  snapshot: ControlPlaneSnapshot,
+  locale = 'en',
+  surface: ControlPlaneFragmentSurface = 'all',
+): string {
   const t = (
     key: string,
     params?: Readonly<Record<string, string | number | boolean>>,
@@ -971,26 +989,40 @@ export function renderControlPlaneFragment(snapshot: ControlPlaneSnapshot, local
   const bindings = snapshot.domains.map((domain) => (
     `<li><span>${escapeHtml(labels[domain.id])}</span><span aria-hidden="true">→</span><code>${escapeHtml(domain.source)}</code></li>`
   )).join('');
-  return (
-    `<section class="cp-runtime-lane" id="visual-engine" aria-labelledby="cp-runtime-title">` +
+  const overview =
+    `<section class="cp-runtime-lane" aria-labelledby="cp-runtime-title">` +
     `<div class="fury-core" aria-hidden="true"><span></span><i></i><b></b></div>` +
     `<div class="cp-runtime-copy"><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.instrumentPanel'))}</span><h2 id="cp-runtime-title">${escapeHtml(t('dashboard.controlPlane.runtimeLane'))}</h2><p>${escapeHtml(t('dashboard.controlPlane.runtimeHealthy'))} · <code>${numFmt(snapshot.runtime.port)}</code> · ${escapeHtml(t('dashboard.controlPlane.requests'))} <strong>${numFmt(snapshot.runtime.requests)}</strong></p></div>` +
     `<dl class="cp-metrics"><div><dt>${escapeHtml(t('dashboard.controlPlane.saved'))}</dt><dd>${numFmt(snapshot.runtime.savedInputTokens)}</dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.models'))}</dt><dd>${escapeHtml(models)}</dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.sourceSha'))}</dt><dd><code>${escapeHtml(source.slice(0, 12))}</code></dd></div></dl>` +
-    `</section>` +
-    `<section class="cp-decision-lens" aria-labelledby="cp-decision-title"><div><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.visualEngine'))}</span><h2 id="cp-decision-title">${escapeHtml(t('dashboard.controlPlane.decisionLens'))}</h2><p>${escapeHtml(decisionDescription)}</p></div><div class="cp-decision-state"><span class="cp-state cp-state-${decisionStatus.toLowerCase()}">${escapeHtml(decisionStatus)}</span><span>${escapeHtml(t('dashboard.controlPlane.decisionReason'))}: ${escapeHtml(t('dashboard.controlPlane.decisionUnavailable'))}</span></div></section>` +
-    `<section class="cp-explorer instrument-section" id="capabilities" aria-labelledby="cp-explorer-title">` +
+    `</section>`;
+  const visualEngine =
+    `<section class="cp-decision-lens" aria-labelledby="cp-decision-title"><div><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.visualEngine'))}</span><h2 id="cp-decision-title">${escapeHtml(t('dashboard.controlPlane.decisionLens'))}</h2><p>${escapeHtml(decisionDescription)}</p></div><div class="cp-decision-state"><span class="cp-state cp-state-${decisionStatus.toLowerCase()}">${escapeHtml(decisionStatus)}</span><span>${escapeHtml(t('dashboard.controlPlane.decisionReason'))}: ${escapeHtml(t('dashboard.controlPlane.decisionUnavailable'))}</span></div></section>`;
+  const capabilities =
+    `<section class="cp-explorer instrument-section" data-cp-root aria-labelledby="cp-explorer-title">` +
     `<div class="instrument-section-head"><div><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.instrumentPanel'))}</span><h2 id="cp-explorer-title">${escapeHtml(t('dashboard.controlPlane.explorer'))}</h2></div><output data-cp-result-count data-cp-result-label="${escapeHtml(t('dashboard.controlPlane.observedDomains'))}">${escapeHtml(t('dashboard.controlPlane.resultCount', { count: snapshot.domains.length }))}</output></div>` +
     `<div class="cp-tools">` +
     `<label>${escapeHtml(t('dashboard.controlPlane.search'))}<input data-cp-search-input type="search" placeholder="${escapeHtml(t('dashboard.controlPlane.searchPlaceholder'))}" /></label>` +
     `<label>${escapeHtml(t('dashboard.controlPlane.filter'))}<select data-cp-filter><option value="ALL">${escapeHtml(t('dashboard.controlPlane.filterAll'))}</option>${[...new Set(snapshot.domains.map((domain) => domain.status))].map((status) => `<option value="${escapeHtml(status)}">${escapeHtml(status)}</option>`).join('')}</select></label>` +
     `<label>${escapeHtml(t('dashboard.controlPlane.sort'))}<select data-cp-sort><option value="name">${escapeHtml(t('dashboard.controlPlane.sortName'))}</option><option value="status">${escapeHtml(t('dashboard.controlPlane.sortStatus'))}</option></select></label>` +
     `</div><div class="cp-list" role="list">${rows}</div>` +
-    `<aside class="cp-inspector" id="cp-inspector" data-cp-inspector data-no-warnings="${escapeHtml(t('dashboard.controlPlane.noWarnings'))}" aria-live="polite"><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.inspector'))}</span><h3 data-cp-inspector-title>${escapeHtml(t('dashboard.controlPlane.inspector'))}</h3><p data-cp-inspector-empty>${escapeHtml(t('dashboard.controlPlane.inspectorEmpty'))}</p><dl hidden data-cp-inspector-details><div><dt>${escapeHtml(t('dashboard.controlPlane.status'))}</dt><dd data-cp-inspector-status></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.inspectorSource'))}</dt><dd><code data-cp-inspector-source></code></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.lifecycle'))}</dt><dd data-cp-inspector-lifecycle></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.inspectorWarnings'))}</dt><dd data-cp-inspector-warnings></dd></div></dl><details hidden data-cp-inspector-raw><summary>${escapeHtml(t('dashboard.controlPlane.inspectorRaw'))}</summary><pre data-cp-inspector-json></pre></details></aside></section>` +
-    `<section class="cp-topology instrument-section" id="topology" aria-labelledby="cp-topology-title"><div class="instrument-section-head"><div><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.instrumentPanel'))}</span><h2 id="cp-topology-title">${escapeHtml(t('dashboard.controlPlane.sourceBindings'))}</h2><p>${escapeHtml(t('dashboard.controlPlane.sourceBindingsSub'))}</p></div></div><ol class="cp-bindings">${bindings}</ol></section>` +
-    `<section class="cp-evidence-lens instrument-section" id="evidence" aria-labelledby="cp-evidence-title"><div class="instrument-section-head"><div><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.instrumentPanel'))}</span><h2 id="cp-evidence-title">${escapeHtml(t('dashboard.controlPlane.evidenceTitle'))}</h2></div></div><div class="table-wrap"><table class="dtable cp-evidence"><thead><tr>` +
+    `<aside class="cp-inspector" id="cp-inspector" data-cp-inspector data-no-warnings="${escapeHtml(t('dashboard.controlPlane.noWarnings'))}" aria-live="polite"><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.inspector'))}</span><h3 data-cp-inspector-title>${escapeHtml(t('dashboard.controlPlane.inspector'))}</h3><p data-cp-inspector-empty>${escapeHtml(t('dashboard.controlPlane.inspectorEmpty'))}</p><dl hidden data-cp-inspector-details><div><dt>${escapeHtml(t('dashboard.controlPlane.status'))}</dt><dd data-cp-inspector-status></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.inspectorSource'))}</dt><dd><code data-cp-inspector-source></code></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.lifecycle'))}</dt><dd data-cp-inspector-lifecycle></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.inspectorWarnings'))}</dt><dd data-cp-inspector-warnings></dd></div></dl><details hidden data-cp-inspector-raw><summary>${escapeHtml(t('dashboard.controlPlane.inspectorRaw'))}</summary><pre data-cp-inspector-json></pre></details></aside></section>`;
+  const topology =
+    `<section class="cp-topology instrument-section" aria-labelledby="cp-topology-title"><div class="instrument-section-head"><div><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.instrumentPanel'))}</span><h2 id="cp-topology-title">${escapeHtml(t('dashboard.controlPlane.sourceBindings'))}</h2><p>${escapeHtml(t('dashboard.controlPlane.sourceBindingsSub'))}</p></div></div><ol class="cp-bindings">${bindings}</ol></section>`;
+  const evidenceSurface =
+    `<section class="cp-evidence-lens instrument-section" aria-labelledby="cp-evidence-title"><div class="instrument-section-head"><div><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.instrumentPanel'))}</span><h2 id="cp-evidence-title">${escapeHtml(t('dashboard.controlPlane.evidenceTitle'))}</h2></div></div><div class="table-wrap"><table class="dtable cp-evidence"><thead><tr>` +
     `<th>${escapeHtml(t('dashboard.controlPlane.evidence'))}</th><th>${escapeHtml(t('dashboard.controlPlane.status'))}</th><th>${escapeHtml(t('dashboard.controlPlane.sourceSha'))}</th><th>${escapeHtml(t('dashboard.controlPlane.evidenceSha'))}</th><th>${escapeHtml(t('dashboard.controlPlane.runId'))}</th><th>${escapeHtml(t('dashboard.controlPlane.evidenceFreshness'))}</th>` +
-    `</tr></thead><tbody>${evidence}</tbody></table></div></section>`
-  );
+    `</tr></thead><tbody>${evidence}</tbody></table></div></section>`;
+
+  const surfaces: Readonly<Record<Exclude<ControlPlaneFragmentSurface, 'all'>, string>> = {
+    overview,
+    'visual-engine': visualEngine,
+    capabilities,
+    topology,
+    evidence: evidenceSurface,
+  };
+  return surface === 'all'
+    ? overview + visualEngine + capabilities + topology + evidenceSurface
+    : surfaces[surface];
 }
 
 // ---- full-history stats table --------------------------------------------
@@ -1424,17 +1456,17 @@ const CSS = `
   .cp-details { margin-top: 7px; color: var(--muted); font-size: 10px; }
   .cp-details summary { cursor: pointer; color: var(--accent-ink); }
   @media (max-width: 640px) {
-    #frag-control-plane .table-wrap { overflow: visible; }
-    #frag-control-plane .cp-evidence { min-width: 0; display: block; }
-    #frag-control-plane .cp-evidence thead { display: none; }
-    #frag-control-plane .cp-evidence tbody { display: grid; gap: 10px; }
-    #frag-control-plane .cp-evidence tr { display: block; padding: 6px 10px; border: 1px solid var(--border);
+    #frag-control-plane .table-wrap, #frag-cp-evidence .table-wrap { overflow: visible; }
+    #frag-control-plane .cp-evidence, #frag-cp-evidence .cp-evidence { min-width: 0; display: block; }
+    #frag-control-plane .cp-evidence thead, #frag-cp-evidence .cp-evidence thead { display: none; }
+    #frag-control-plane .cp-evidence tbody, #frag-cp-evidence .cp-evidence tbody { display: grid; gap: 10px; }
+    #frag-control-plane .cp-evidence tr, #frag-cp-evidence .cp-evidence tr { display: block; padding: 6px 10px; border: 1px solid var(--border);
       border-radius: 0; background: color-mix(in srgb, var(--surface) 94%, var(--accent-tint)); }
-    #frag-control-plane .cp-evidence td { display: grid; grid-template-columns: minmax(92px, .8fr) minmax(0, 1.2fr);
+    #frag-control-plane .cp-evidence td, #frag-cp-evidence .cp-evidence td { display: grid; grid-template-columns: minmax(92px, .8fr) minmax(0, 1.2fr);
       gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border);
       text-align: start; white-space: normal; overflow-wrap: anywhere; }
-    #frag-control-plane .cp-evidence td:last-child { border-bottom: 0; }
-    #frag-control-plane .cp-evidence td::before { content: attr(data-label); color: var(--muted);
+    #frag-control-plane .cp-evidence td:last-child, #frag-cp-evidence .cp-evidence td:last-child { border-bottom: 0; }
+    #frag-control-plane .cp-evidence td::before, #frag-cp-evidence .cp-evidence td::before { content: attr(data-label); color: var(--muted);
       font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
   }
   .bars { display: flex; flex-direction: column; gap: 8px; }
@@ -1479,7 +1511,8 @@ const CSS = `
   body { background: var(--canvas); color: var(--ink-2); }
   body::before { content: ''; position: fixed; inset: 0 auto 0 0; width: 3px; background: var(--accent); pointer-events: none; z-index: 200; }
   .workspace { width: min(1440px, calc(100% - 48px)); }
-  .topbar { margin: 0; padding: 18px 0 14px; gap: 14px; background: var(--canvas); backdrop-filter: none; }
+  .topbar { min-width: 0; margin: 0; padding: 18px 0 14px; gap: 14px; background: var(--canvas); backdrop-filter: none; }
+  .brand, .wordmark-row, .wordmark, .tagline { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
   .pulse-mark { width: 30px; height: 30px; border-radius: 2px; background: var(--surface); box-shadow: none; }
   .pulse-mark::before, .pulse-mark::after { border-radius: 0; box-shadow: none; }
   .wordmark { font-size: 20px; letter-spacing: -.025em; }
@@ -1519,14 +1552,14 @@ const CSS = `
   .live-dot { animation: none; }
   .pill, .badge, .tag, .switch-state, .cp-life { border-radius: 2px; }
   .pill, .badge, .tag { padding-inline: 6px; }
-  .cp-runtime-lane { display: grid; grid-template-columns: 76px minmax(0, 1fr) minmax(260px, .7fr); gap: 20px; align-items: center; padding: 20px 0; border-top: 2px solid var(--accent); border-bottom: 1px solid var(--border); scroll-margin-top: 112px; }
+  .cp-runtime-lane { display: grid; min-width: 0; max-width: 100%; grid-template-columns: 76px minmax(0, 1fr) minmax(260px, .7fr); gap: 20px; align-items: center; padding: 20px 0; border-top: 2px solid var(--accent); border-bottom: 1px solid var(--border); scroll-margin-top: 112px; }
   .fury-core { width: 64px; height: 64px; display: grid; place-items: center; position: relative; border: 1px solid var(--border-strong); border-radius: 50%; }
   .fury-core::before, .fury-core::after { content: ''; position: absolute; border: 1px solid var(--accent); border-radius: 50%; }
   .fury-core::before { inset: 10px; } .fury-core::after { inset: 21px; border-color: var(--ink); }
   .fury-core span, .fury-core i, .fury-core b { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
   .fury-core span { top: 8px; } .fury-core i { right: 8px; background: var(--ink); } .fury-core b { bottom: 8px; background: var(--txt); }
   .eyebrow { display: block; color: var(--muted); font: 700 10px/1.2 var(--mono); letter-spacing: .11em; text-transform: uppercase; margin-bottom: 7px; }
-  .cp-runtime-copy h2, .instrument-section h2, .cp-decision-lens h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.2; letter-spacing: -.01em; }
+  .cp-runtime-copy { min-width: 0; overflow-wrap: anywhere; }.cp-runtime-copy h2, .instrument-section h2, .cp-decision-lens h2 { margin: 0; color: var(--ink); font-size: 18px; line-height: 1.2; letter-spacing: -.01em; }
   .cp-runtime-copy p, .cp-decision-lens p, .instrument-section-head p { margin: 7px 0 0; font-size: 12px; color: var(--ink-2); }
   .cp-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 0; border-left: 1px solid var(--border); }
   .cp-metrics div { min-width: 0; padding: 0 12px; border-right: 1px solid var(--border); }
@@ -1566,13 +1599,39 @@ const CSS = `
   .cp-evidence-lens { scroll-margin-top: 112px; }.cp-evidence { margin-top: 0; }.cp-evidence td, .cp-evidence th { padding-block: 10px; }.cp-evidence tr:hover { background: var(--raised); }
   #frag-control-room { border-top: 1px solid var(--border); padding-top: 14px; }.control-room-lane { margin-top: 32px; }
   #frag-stats, #frag-sessions { border-top: 1px solid var(--border); }
+  /* Control Plane convergence: one shell, no legacy dashboard stacked ahead of
+     it. Structural borders identify a navigation layer; content itself stays
+     flat and evidence-led rather than becoming another card grid. */
+  .cp-shell { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 0; margin-bottom: 48px; }
+  .cp-shell-overview { min-width: 0; padding: 8px 0 30px; border-bottom: 2px solid var(--accent); scroll-margin-top: 112px; }
+  .cp-shell-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, .55fr); gap: 10px 28px; align-items: end; margin: 4px 0 4px; }
+  .cp-shell-heading .eyebrow { grid-column: 1 / -1; margin-bottom: 0; }
+  .cp-shell-heading h1 { margin: 0; color: var(--ink); font-size: clamp(25px, 3vw, 39px); line-height: 1; letter-spacing: -.045em; }
+  .cp-shell-heading p { margin: 0 0 2px; color: var(--ink-2); font-size: 12px; text-wrap: balance; }
+  .cp-efficiency { margin-top: 16px; border-top: 1px solid var(--border); }
+  .cp-efficiency .strip { margin: 0; }
+  .cp-disclosure { margin: 0; padding: 0; border: 0; border-bottom: 1px solid var(--border-strong); scroll-margin-top: 112px; }
+  .cp-disclosure > summary { display: grid; grid-template-columns: 30px minmax(130px, .5fr) minmax(0, 1.5fr) 24px; gap: 14px; align-items: baseline; min-height: 68px; padding: 18px 4px; color: var(--ink); cursor: pointer; list-style: none; }
+  .cp-disclosure > summary::-webkit-details-marker { display: none; }
+  .cp-disclosure > summary::after { content: '+'; justify-self: end; color: var(--accent-ink); font: 500 22px/1 var(--mono); }
+  .cp-disclosure[open] > summary::after { content: '−'; }
+  .cp-disclosure > summary > span { color: var(--muted); font: 700 10px/1.2 var(--mono); letter-spacing: .08em; }
+  .cp-disclosure > summary > strong { font-size: 16px; letter-spacing: -.015em; }
+  .cp-disclosure > summary > small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .cp-disclosure > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .cp-disclosure-body { padding: 4px 0 30px; }
+  .cp-disclosure .instrument-section { padding-top: 4px; }
+  .cp-observe-sessions, .cp-history { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .cp-settings-body { display: grid; gap: 12px; max-width: 920px; }
+  .cp-settings-body > #frag-toggle { justify-self: start; }
+  .cp-settings-body .connect-panel, .cp-settings-body .models-collapse { margin: 0; }
   dialog#command-palette { width: min(620px, calc(100% - 32px)); padding: 0; border: 1px solid var(--border-strong); border-radius: 2px; background: var(--surface); color: var(--ink); box-shadow: none; }
   dialog#command-palette::backdrop { background: rgba(3,6,12,.56); }.command-palette-head { display: grid; gap: 8px; padding: 14px; border-bottom: 1px solid var(--border); }.command-palette-head label { color: var(--muted); font: 700 10px/1.2 var(--mono); text-transform: uppercase; }.command-palette-head input { min-height: 36px; border: 1px solid var(--border-strong); border-radius: 2px; background: transparent; color: var(--ink); padding: 7px 9px; font: 14px inherit; }.command-results { display: grid; padding: 8px; }.command-results a { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 9px; color: var(--ink); text-decoration: none; border-left: 2px solid transparent; }.command-results a:hover, .command-results a:focus-visible { background: var(--raised); border-left-color: var(--accent); outline: 0; }.command-results small { color: var(--muted); font: 10px/1.3 var(--mono); }.command-palette-foot { margin: 0; padding: 10px 14px; color: var(--muted); border-top: 1px solid var(--border); font-size: 11px; }
   .skip-link { position: absolute; left: 8px; top: -50px; z-index: 100; padding: 8px; background: var(--surface); color: var(--ink); border: 2px solid var(--accent); }.skip-link:focus { top: 8px; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (max-width: 1000px) { .cp-runtime-lane { grid-template-columns: 68px minmax(0, 1fr); }.cp-metrics { grid-column: 1 / -1; border-left: 0; }.xray { grid-template-columns: 1fr; }.xray > .card + .card { border-left: 0; border-top: 1px solid var(--border); padding: 24px 0 0; }.cp-bindings { grid-template-columns: 1fr; } }
   @media (max-width: 760px) { .cp-explorer { grid-template-columns: 1fr; }.cp-explorer > .instrument-section-head, .cp-explorer > .cp-tools, .cp-explorer > .cp-list, .cp-inspector { grid-column: 1; }.cp-inspector { grid-row: auto; position: static; } }
-  @media (max-width: 640px) { .workspace { width: min(100% - 24px, 1440px); }.topbar { position: static; }.command-nav { top: 0; margin-inline: -12px; padding-inline: 12px; }.command-nav a { padding-inline: 9px; }.command-trigger { display: none; }.strip { grid-template-columns: repeat(2, 1fr); }.tile:nth-child(2) { border-right: 0; }.tile:nth-child(-n+2) { border-bottom: 1px solid var(--border); }.cp-runtime-lane { grid-template-columns: 50px minmax(0, 1fr); gap: 12px; }.fury-core { width: 44px; height: 44px; }.fury-core::before { inset: 7px; }.fury-core::after { inset: 15px; }.fury-core span { top: 5px; }.fury-core i { right: 5px; }.fury-core b { bottom: 5px; }.cp-metrics { grid-template-columns: 1fr; gap: 7px; }.cp-metrics div { padding: 0; border-right: 0; }.cp-decision-lens { grid-template-columns: 1fr; gap: 12px; }.instrument-section-head { align-items: start; flex-direction: column; }.cp-tools { grid-template-columns: 1fr; }.cp-row { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }.cp-row-source, .cp-row-life { grid-column: 1 / -1; }.cp-row-source { white-space: normal; }.cp-inspector { position: static; }.cp-inspector dl { grid-template-columns: 1fr; }.cp-bindings li { grid-template-columns: minmax(90px, .75fr) auto minmax(0, 1.25fr); }.cp-evidence tr { border-radius: 0 !important; background: transparent !important; }.cp-evidence td { grid-template-columns: minmax(105px, .8fr) minmax(0, 1.2fr) !important; }.hero { padding-left: 12px; } }
+  @media (max-width: 640px) { .workspace { width: min(100% - 24px, 1440px); }.topbar { position: static; }.command-nav { top: 0; margin-inline: -12px; padding-inline: 12px; }.command-nav a { padding-inline: 9px; }.command-trigger { display: none; }.strip { grid-template-columns: repeat(2, 1fr); }.tile:nth-child(2) { border-right: 0; }.tile:nth-child(-n+2) { border-bottom: 1px solid var(--border); }.cp-runtime-lane { grid-template-columns: 50px minmax(0, 1fr); gap: 12px; }.fury-core { width: 44px; height: 44px; }.fury-core::before { inset: 7px; }.fury-core::after { inset: 15px; }.fury-core span { top: 5px; }.fury-core i { right: 5px; }.fury-core b { bottom: 5px; }.cp-metrics { grid-template-columns: 1fr; gap: 7px; }.cp-metrics div { padding: 0; border-right: 0; }.cp-decision-lens { grid-template-columns: 1fr; gap: 12px; }.instrument-section-head { align-items: start; flex-direction: column; }.cp-tools { grid-template-columns: 1fr; }.cp-row { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }.cp-row-source, .cp-row-life { grid-column: 1 / -1; }.cp-row-source { white-space: normal; }.cp-inspector { position: static; }.cp-inspector dl { grid-template-columns: 1fr; }.cp-bindings li { grid-template-columns: minmax(90px, .75fr) auto minmax(0, 1.25fr); }.cp-evidence tr { border-radius: 0 !important; background: transparent !important; }.cp-evidence td { grid-template-columns: minmax(105px, .8fr) minmax(0, 1.2fr) !important; }.hero { padding-left: 12px; }.cp-shell-heading { grid-template-columns: 1fr; gap: 8px; }.cp-shell-overview { padding-top: 0; }.cp-disclosure > summary { grid-template-columns: 24px minmax(0, 1fr) 20px; gap: 9px; min-height: 60px; padding-block: 14px; }.cp-disclosure > summary > small { grid-column: 2 / -1; }.cp-disclosure-body { padding-bottom: 22px; }.cp-disclosure:not([open]) { border-bottom-color: var(--border); } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; } }
 `;
 
@@ -1597,7 +1656,7 @@ const GLUE_JS = `
       const d = document.getElementById(id);
       if (d) d.setAttribute('open', '');
     });
-    if (ev.detail.target && ev.detail.target.id === 'frag-control-plane') furyRefreshControlPlane(ev.detail.target);
+    if (ev.detail.target && ev.detail.target.id === 'frag-cp-capabilities') furyRefreshControlPlane(ev.detail.target);
   });
   function furyRefreshControlPlane(root) {
     if (!root) return;
@@ -1676,13 +1735,28 @@ const GLUE_JS = `
     document.querySelectorAll('[data-command-item]').forEach(function (item) { item.hidden = item.dataset.commandSearch.indexOf(query) === -1; });
   });
   document.addEventListener('DOMContentLoaded', function () {
-    var root = document.getElementById('frag-control-plane');
+    var root = document.getElementById('frag-cp-capabilities');
     if (root) furyRefreshControlPlane(root);
     try {
       var inspect = new URLSearchParams(location.search).get('inspect');
       if (inspect && /^domain:[a-z-]+$/u.test(inspect)) window.fury.cpId = inspect.slice('domain:'.length);
     } catch (e) {}
   });
+  (function () {
+    function revealHashTarget() {
+      var id = location.hash.slice(1);
+      var target = id ? document.getElementById(id) : null;
+      if (target && target.matches && target.matches('details.cp-disclosure')) target.open = true;
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+      if (!matchMedia('(max-width: 640px)').matches) return;
+      document.querySelectorAll('details.cp-disclosure').forEach(function (detail) {
+        detail.open = detail.id === 'observe';
+      });
+      revealHashTarget();
+    });
+    window.addEventListener('hashchange', revealHashTarget);
+  })();
   document.body.addEventListener('htmx:responseError', function (ev) {
     window.dispatchEvent(new CustomEvent('fury-toast', {
       detail: { text: ev.detail.xhr.status + ' ' + ev.detail.requestConfig.path }
@@ -1796,7 +1870,6 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
       data-toggle-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeToggle'))}"
       aria-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeToggle'))}"
       title="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeToggle'))}">☾ ${escapeHtml(dashboardT(activeLocale, 'dashboard.themeDark'))}</button>
-    <div id="frag-toggle" hx-get="/fragments/toggle" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
   </div>
 </header>
 
@@ -1828,28 +1901,6 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
   <p class="command-palette-foot">${escapeHtml(t('dashboard.page.commandHint'))}</p>
 </dialog>
 
-<details class="connect-panel">
-  <summary class="models-summary">${escapeHtml(t('dashboard.page.connectAgent'))} <span class="hint">${escapeHtml(t('dashboard.page.connectHint'))}</span></summary>
-  <p>${escapeHtml(t('dashboard.page.linkIntro'))}</p>
-  <pre>furypipe link claude
-furypipe link codex
-furypipe link cursor-agent</pre>
-  <p>${escapeHtml(t('dashboard.page.aliasHelp'))}<br><code>furypipe link pp</code> · <code>--route PATTERN=http://host:port</code> · <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code></p>
-  <p>${escapeHtml(t('dashboard.page.pinIntro'))}</p>
-  <pre>@furypipe pin be concise, no walls of text
-@furypipe unpin 2
-@furypipe unpin all</pre>
-  <p>${escapeHtml(t('dashboard.page.pinList'))}</p>
-  <p>${escapeHtml(t('dashboard.page.pinFileHelp'))} <code>CLAUDE.md</code> / <code>AGENTS.md</code></p>
-</details>
-
-<details class="models-collapse" id="settings">
-  <summary class="models-summary">${escapeHtml(t('dashboard.page.modelScope'))} <span class="hint">${escapeHtml(t('dashboard.page.modelScopeHint'))}</span></summary>
-  <div class="models-warning">⚠ ${escapeHtml(t('dashboard.page.modelScopeWarning'))}</div>
-  <div id="frag-models" hx-get="/fragments/models" hx-trigger="load, every 2s [!document.activeElement || document.activeElement.id !== 'models-csv']" hx-swap="innerHTML"></div>
-  <div class="models-routing"><span class="hint">${escapeHtml(t('dashboard.page.routingHint'))}</span> <button class="mini-btn" type="button" onclick="document.getElementById('routing-help').showModal()">${escapeHtml(t('dashboard.page.routingHelp'))}</button></div>
-</details>
-
 <dialog id="routing-help" onclick="if (event.target === this) this.close()">
   <h3>${escapeHtml(t('dashboard.page.routingTitle'))}</h3>
   <p>${escapeHtml(t('dashboard.page.routingIntro'))}</p>
@@ -1870,59 +1921,62 @@ npx furypipe</pre>
   <button class="mini-btn" type="button" onclick="this.closest('dialog').close()">${escapeHtml(t('dashboard.page.close'))}</button>
 </dialog>
 
-<main id="instrument-panel">
-<section class="section" id="overview">
-  <div id="frag-session" hx-get="/fragments/session-summary" hx-trigger="load, every 2s" hx-swap="innerHTML">
-    <div class="hero hero-empty"><div class="hero-headline">${escapeHtml(t('dashboard.page.connecting'))}</div></div>
-  </div>
-  <div id="frag-header" hx-get="/fragments/header" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
-</section>
-
-<section class="section" id="observe">
-  <h2 class="section-head">${escapeHtml(t('dashboard.page.contextTitle'))} <span class="section-sub">${escapeHtml(t('dashboard.page.contextSub'))}</span></h2>
-  <div class="xray">
-    <div class="card">
-      <h3 class="card-head">${escapeHtml(t('dashboard.page.recent'))}</h3>
-      <div id="frag-recent" hx-get="/fragments/recent" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
+<main id="instrument-panel" class="cp-shell">
+  <section class="cp-shell-overview" id="overview" aria-labelledby="overview-title">
+    <div class="cp-shell-heading"><span class="eyebrow">FURYPIPE / LIVE</span><h1 id="overview-title">${escapeHtml(t('dashboard.page.navOverview'))}</h1><p>${escapeHtml(t('dashboard.controlPlane.subtitle'))}</p></div>
+    <div id="frag-cp-overview" hx-get="/fragments/control-plane-overview" hx-trigger="load, every 5s" hx-swap="innerHTML"><div class="status">${escapeHtml(t('dashboard.controlPlane.loading'))}</div></div>
+    <div class="cp-efficiency" aria-label="${escapeHtml(t('dashboard.controlPlane.runtimeLane'))}">
+      <div id="frag-header" hx-get="/fragments/header" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
     </div>
-    <div class="card">
-      <h3 class="card-head">${escapeHtml(t('dashboard.page.breakdown'))}</h3>
-      <div id="frag-context-map" hx-get="/fragments/context-map" hx-trigger="load" hx-swap="innerHTML"></div>
-      <h3 class="card-head spaced">${escapeHtml(t('dashboard.page.inspector'))}</h3>
-      <div id="frag-latest" hx-get="/fragments/latest" hx-trigger="load, every 2s, fury-refresh" hx-swap="innerHTML"
-           hx-vals='js:{pin: window.fury.pin == null ? "" : window.fury.pin, source: window.fury.src ? "1" : ""}'></div>
+  </section>
+
+  <details class="cp-disclosure" id="observe" open>
+    <summary><span>02</span><strong>${escapeHtml(t('dashboard.page.navObserve'))}</strong><small>${escapeHtml(t('dashboard.page.contextSub'))}</small></summary>
+    <div class="cp-disclosure-body">
+      <div class="xray">
+        <div class="card"><h2 class="card-head">${escapeHtml(t('dashboard.page.recent'))}</h2><div id="frag-recent" hx-get="/fragments/recent" hx-trigger="load, every 2s" hx-swap="innerHTML"></div></div>
+        <div class="card"><h2 class="card-head">${escapeHtml(t('dashboard.page.breakdown'))}</h2><div id="frag-context-map" hx-get="/fragments/context-map" hx-trigger="load" hx-swap="innerHTML"></div><h2 class="card-head spaced">${escapeHtml(t('dashboard.page.inspector'))}</h2><div id="frag-latest" hx-get="/fragments/latest" hx-trigger="load, every 2s, fury-refresh" hx-swap="innerHTML" hx-vals='js:{pin: window.fury.pin == null ? "" : window.fury.pin, source: window.fury.src ? "1" : ""}'></div></div>
+      </div>
+      <div class="cp-observe-sessions"><h2 class="card-head">${escapeHtml(t('dashboard.page.topSessions'))} <span class="section-sub">${escapeHtml(t('dashboard.page.bySaved'))}</span></h2><div id="frag-sessions" hx-get="/fragments/sessions" hx-trigger="load, every 5s" hx-swap="innerHTML"></div></div>
     </div>
-  </div>
-</section>
+  </details>
 
-<section class="section observe-sessions" id="sessions">
-  <h2 class="section-head">${escapeHtml(t('dashboard.page.topSessions'))} <span class="section-sub">${escapeHtml(t('dashboard.page.bySaved'))}</span></h2>
-  <div class="card">
-    <div id="frag-sessions" hx-get="/fragments/sessions" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
-  </div>
-</section>
+  <details class="cp-disclosure" id="capabilities" open>
+    <summary><span>03</span><strong>${escapeHtml(t('dashboard.page.navCapabilities'))}</strong><small>${escapeHtml(t('dashboard.controlPlane.subtitle'))}</small></summary>
+    <div class="cp-disclosure-body"><div id="frag-cp-capabilities" hx-get="/fragments/control-plane-capabilities" hx-trigger="load, every 5s" hx-swap="innerHTML"><div class="status">${escapeHtml(t('dashboard.controlPlane.loading'))}</div></div></div>
+  </details>
 
-<section class="section" id="control-plane">
-  <h2 class="section-head">${escapeHtml(t('dashboard.controlPlane.title'))} <span class="section-sub">${escapeHtml(t('dashboard.controlPlane.subtitle'))}</span></h2>
-  <div class="instrument-host">
-    <div id="frag-control-plane" hx-get="/fragments/control-plane" hx-trigger="load, every 5s" hx-swap="innerHTML">
-      <div class="status">${escapeHtml(t('dashboard.controlPlane.loading'))}</div>
+  <details class="cp-disclosure" id="visual-engine" open>
+    <summary><span>04</span><strong>${escapeHtml(t('dashboard.page.navVisualEngine'))}</strong><small>${escapeHtml(t('dashboard.controlPlane.decisionLens'))}</small></summary>
+    <div class="cp-disclosure-body"><div id="frag-cp-visual-engine" hx-get="/fragments/control-plane-visual-engine" hx-trigger="load, every 5s" hx-swap="innerHTML"><div class="status">${escapeHtml(t('dashboard.controlPlane.loading'))}</div></div></div>
+  </details>
+
+  <details class="cp-disclosure" id="topology" open>
+    <summary><span>05</span><strong>${escapeHtml(t('dashboard.page.navTopology'))}</strong><small>${escapeHtml(t('dashboard.controlPlane.sourceBindingsSub'))}</small></summary>
+    <div class="cp-disclosure-body"><div id="frag-cp-topology" hx-get="/fragments/control-plane-topology" hx-trigger="load, every 5s" hx-swap="innerHTML"><div class="status">${escapeHtml(t('dashboard.controlPlane.loading'))}</div></div></div>
+  </details>
+
+  <details class="cp-disclosure" id="evidence" open>
+    <summary><span>06</span><strong>${escapeHtml(t('dashboard.page.navEvidence'))}</strong><small>${escapeHtml(t('dashboard.controlPlane.evidenceTitle'))}</small></summary>
+    <div class="cp-disclosure-body">
+      <div id="frag-cp-evidence" hx-get="/fragments/control-plane-evidence" hx-trigger="load, every 5s" hx-swap="innerHTML"><div class="status">${escapeHtml(t('dashboard.controlPlane.loading'))}</div></div>
+      <div class="control-room-lane"><div id="frag-control-room" hx-get="/fragments/control-room" hx-trigger="load, every 5s" hx-swap="innerHTML"><div class="status">${escapeHtml(t('dashboard.page.loadingControlRoom'))}</div></div></div>
+      <div class="cp-history"><h2 class="card-head">${escapeHtml(t('dashboard.page.historyTitle'))} <span class="section-sub">${escapeHtml(t('dashboard.page.historySub'))}</span></h2><div id="frag-stats" hx-get="/fragments/stats" hx-trigger="load, every 5s" hx-swap="innerHTML"></div></div>
     </div>
-  </div>
-  <div class="control-room-lane">
-    <div id="frag-control-room" hx-get="/fragments/control-room" hx-trigger="load, every 5s" hx-swap="innerHTML">
-      <div class="status">${escapeHtml(t('dashboard.page.loadingControlRoom'))}</div>
+  </details>
+
+  <details class="cp-disclosure" id="settings" open>
+    <summary><span>07</span><strong>${escapeHtml(t('dashboard.page.navSettings'))}</strong><small>${escapeHtml(t('dashboard.page.modelScopeHint'))}</small></summary>
+    <div class="cp-disclosure-body cp-settings-body">
+      <div id="frag-toggle" hx-get="/fragments/toggle" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
+      <details class="connect-panel"><summary class="models-summary">${escapeHtml(t('dashboard.page.connectAgent'))} <span class="hint">${escapeHtml(t('dashboard.page.connectHint'))}</span></summary><p>${escapeHtml(t('dashboard.page.linkIntro'))}</p><pre>furypipe link claude
+furypipe link codex
+furypipe link cursor-agent</pre><p>${escapeHtml(t('dashboard.page.aliasHelp'))}<br><code>furypipe link pp</code> · <code>--route PATTERN=http://host:port</code> · <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code></p><p>${escapeHtml(t('dashboard.page.pinIntro'))}</p><pre>@furypipe pin be concise, no walls of text
+@furypipe unpin 2
+@furypipe unpin all</pre><p>${escapeHtml(t('dashboard.page.pinList'))}</p><p>${escapeHtml(t('dashboard.page.pinFileHelp'))} <code>CLAUDE.md</code> / <code>AGENTS.md</code></p></details>
+      <details class="models-collapse"><summary class="models-summary">${escapeHtml(t('dashboard.page.modelScope'))} <span class="hint">${escapeHtml(t('dashboard.page.modelScopeHint'))}</span></summary><div class="models-warning">⚠ ${escapeHtml(t('dashboard.page.modelScopeWarning'))}</div><div id="frag-models" hx-get="/fragments/models" hx-trigger="load, every 2s [!document.activeElement || document.activeElement.id !== 'models-csv']" hx-swap="innerHTML"></div><div class="models-routing"><span class="hint">${escapeHtml(t('dashboard.page.routingHint'))}</span> <button class="mini-btn" type="button" onclick="document.getElementById('routing-help').showModal()">${escapeHtml(t('dashboard.page.routingHelp'))}</button></div></details>
     </div>
-  </div>
-</section>
-
-<section class="section" id="history">
-  <h2 class="section-head">${escapeHtml(t('dashboard.page.historyTitle'))} <span class="section-sub">${escapeHtml(t('dashboard.page.historySub'))}</span></h2>
-  <div class="card">
-    <div id="frag-stats" hx-get="/fragments/stats" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
-  </div>
-</section>
-
+  </details>
 </main>
 
 </div>

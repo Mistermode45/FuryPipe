@@ -136,3 +136,73 @@ The responsive layout changes composition rather than scaling a desktop card
 grid: capability rows and source bindings become stacked reading order, the
 inspector stops being sticky, and evidence tables preserve their labelled
 mobile representation. Collections remain bounded by the V2 contract.
+
+## V5 convergence — the Control Plane is the shell
+
+The dashboard no longer renders a historical dashboard followed by a Control
+Plane section. `renderPage()` now composes one Control Plane shell with exactly
+these navigation surfaces:
+
+1. **Overview** — Fury Core, live runtime lane and existing aggregate
+   efficiency counters.
+2. **Observe** — retained request records, context breakdown, source inspector
+   and sessions. It is not called a trace explorer because the current runtime
+   does not retain a span hierarchy, timings or provider attempt graph.
+3. **Capabilities** — bounded source-bound domains and the inert inspector.
+4. **Visual Engine** — enabled/disabled and executed/executable state only.
+   Per-request reason codes, ExactGuard decisions and budget deltas remain
+   explicitly unavailable until they have a safe runtime source.
+5. **Topology** — observed `domain -> source` bindings, not a simulated graph.
+6. **Evidence** — the V2 Evidence Lens, Control Room metadata and retained
+   aggregate history.
+7. **Settings** — the pre-existing explicit runtime toggle, agent connection
+   guidance and model-scope controls. No new mutation was introduced.
+
+| Previous page block | Convergence disposition | New shell owner |
+|---|---|---|
+| Session warm-up hero | Removed; it duplicated the runtime lane and implied a global state | Overview runtime lane |
+| Header savings strip | Kept as a source-backed aggregate | Overview efficiency row |
+| Recent / context / image source | Kept without changing its data source | Observe |
+| Sessions | Kept without changing its data source | Observe |
+| Control Plane + Control Room section | Split into its own seven-surface shell | Overview, Capabilities, Visual Engine, Topology, Evidence |
+| Historical full-history table | Kept as aggregate evidence, not a second dashboard | Evidence |
+| FuryLink guide, model scope, existing toggle | Kept; made subordinate to the shell | Settings |
+
+The full `GET /fragments/control-plane` response remains a backwards-compatible
+localized composite. The shell uses independently refreshable, read-only
+fragments for `control-plane-overview`, `control-plane-visual-engine`,
+`control-plane-capabilities`, `control-plane-topology` and
+`control-plane-evidence`. Each is built from the same bounded snapshot contract;
+opening or refreshing one cannot execute a capability or mutate configuration.
+
+### Mobile composition
+
+At 640 CSS pixels and below, the shell changes from an always-expanded desktop
+reading surface to progressive disclosure. Observe is the only secondary
+surface open on initial load; a hash target (for example `#evidence`) is opened
+when the user explicitly navigates to it. Fragment refreshes still occur and
+are bounded, but hidden sections do not create an unbounded vertical stack.
+
+### FuryLink Windows launch boundary
+
+Windows `.cmd` and `.bat` launchers require a command interpreter. FuryLink
+therefore launches the configured `ComSpec` explicitly with `/d /v:off /s /c`.
+Native `.exe` and `.com` programs remain direct with discrete argv values.
+Batch launchers use one command line only after strict validation; FuryLink
+does not use Node `shell: true`. NUL, CR and LF are rejected at this command
+boundary.
+Because an arbitrary third-party batch file can re-parse `%*`, FuryLink also
+rejects literal quotes and `& | ( ) ^ % !` for `.cmd` / `.bat` launchers rather
+than claiming a universal escaping contract. Paths with spaces and ordinary
+Unicode arguments remain supported, including
+`C:\\Program Files\\nodejs\\npm.cmd`. The requested command is still
+intentionally executed by the explicit `furypipe link` action.
+
+### Validation boundary
+
+The browser harness now asserts the seven-shell structure, locale retention,
+no horizontal overflow, inert explorer interactions and mobile progressive
+disclosure. It checks Chromium locally across EN/FR/RTL and all declared
+breakpoints. Cross-engine proof is separate and must be attached to the exact
+committed source SHA; a development-worktree run is never promoted to hosted
+or release evidence.
