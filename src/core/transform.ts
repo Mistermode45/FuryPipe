@@ -3122,10 +3122,22 @@ export async function transformRequest(
             const inner = compactSlabWhitespace(innerRaw);
             // classifyContent sees pre-reflow `inner` so shape bucketing reflects real structure.
             const innerR = maybeReflow(inner, o.reflow);
+            const innerPlan = planVisualColumns(
+              innerR,
+              denseGeo.cols,
+              denseGeo.style,
+              denseGeo.pricing,
+              denseGeo.maxHeightPx,
+            );
+            const innerGeo: GateGeometry = {
+              ...denseGeo,
+              cols: innerPlan.cols,
+              maxChars: maxCharsPerImage(innerPlan.cols),
+            };
             if (innerR.length < o.minToolResultChars) {
               bumpPassthrough(info, 'below_threshold');
               rewritten.push(blk);
-            } else if (!isCompressionProfitable(innerR, denseGeo.cols, o.maxImagesPerToolResult, o.charsPerToken, 0, 0, true, denseGeo.maxChars, denseGeo)) {
+            } else if (!isCompressionProfitable(innerR, innerPlan.cols, o.maxImagesPerToolResult, o.charsPerToken, 0, 0, false, innerGeo.maxChars, innerGeo)) {
               bumpPassthrough(info, 'not_profitable');
               rewritten.push(blk);
             } else {
@@ -3136,13 +3148,13 @@ export async function transformRequest(
               const resultImageCap = Math.min(o.maxImagesPerToolResult, imageHeadroom(info));
               const linesPerImage = Math.max(
                 1,
-                Math.floor((denseGeo.maxHeightPx - 2 * PAD_Y) / renderCellHeight(denseGeo.style)),
+                Math.floor((innerGeo.maxHeightPx - 2 * PAD_Y) / renderCellHeight(innerGeo.style)),
               );
               const paged = truncateForBudget(
                 innerR,
                 resultImageCap,
-                denseGeo.cols,
-                denseGeo.maxChars,
+                innerPlan.cols,
+                innerGeo.maxChars,
                 linesPerImage,
               );
               if (paged.truncated) {
@@ -3152,10 +3164,10 @@ export async function transformRequest(
               const { blocks: imgs, pngs: rawPngs, dims: rawDims, droppedChars, droppedCodepoints: dcp, pixels } =
                 await textToImageBlocks(
                   paged.text,
-                  o.cols,
-                  true,
-                  denseGeo.style,
-                  denseGeo.maxHeightPx,
+                  innerPlan.cols,
+                  false,
+                  innerGeo.style,
+                  innerGeo.maxHeightPx,
                 );
               // Paging is budgeted at denseGeo.cols but rendering happens at
               // o.cols; when they differ the real page count can exceed the plan.
@@ -3234,26 +3246,38 @@ export async function transformRequest(
               const innerText = compactSlabWhitespace(innerTextRaw);
               // R3: gate/page/render on reflowed text; classify pre-reflow.
               const innerTextR = maybeReflow(innerText, o.reflow);
+              const partPlan = planVisualColumns(
+                innerTextR,
+                denseGeo.cols,
+                denseGeo.style,
+                denseGeo.pricing,
+                denseGeo.maxHeightPx,
+              );
+              const partGeo: GateGeometry = {
+                ...denseGeo,
+                cols: partPlan.cols,
+                maxChars: maxCharsPerImage(partPlan.cols),
+              };
               if (innerTextR.length < o.minToolResultChars) {
                 bumpPassthrough(info, 'below_threshold');
                 newInner.push(ib as TextBlock | ImageBlock);
                 continue;
               }
-              if (!isCompressionProfitable(innerTextR, denseGeo.cols, o.maxImagesPerToolResult, o.charsPerToken, 0, 0, true, denseGeo.maxChars, denseGeo)) {
+              if (!isCompressionProfitable(innerTextR, partPlan.cols, o.maxImagesPerToolResult, o.charsPerToken, 0, 0, false, partGeo.maxChars, partGeo)) {
                 bumpPassthrough(info, 'not_profitable');
                 newInner.push(ib as TextBlock | ImageBlock);
                 continue;
               }
               const linesPerImage = Math.max(
                 1,
-                Math.floor((denseGeo.maxHeightPx - 2 * PAD_Y) / renderCellHeight(denseGeo.style)),
+                Math.floor((partGeo.maxHeightPx - 2 * PAD_Y) / renderCellHeight(partGeo.style)),
               );
               const resultImageCap = Math.min(o.maxImagesPerToolResult, imageHeadroom(info));
               const paged = truncateForBudget(
                 innerTextR,
                 resultImageCap,
-                denseGeo.cols,
-                denseGeo.maxChars,
+                partPlan.cols,
+                partGeo.maxChars,
                 linesPerImage,
               );
               if (paged.truncated) {
@@ -3263,10 +3287,10 @@ export async function transformRequest(
               const { blocks: imgs, pngs: rawPngs, dims: rawDims, droppedChars, droppedCodepoints: dcp, pixels } =
                 await textToImageBlocks(
                   paged.text,
-                  o.cols,
-                  true,
-                  denseGeo.style,
-                  denseGeo.maxHeightPx,
+                  partPlan.cols,
+                  false,
+                  partGeo.style,
+                  partGeo.maxHeightPx,
                 );
               // Paging is budgeted at denseGeo.cols but rendering happens at
               // o.cols; when they differ the real page count can exceed the plan.
