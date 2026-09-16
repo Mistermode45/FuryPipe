@@ -184,34 +184,23 @@ const H = GPT_MAX_HEIGHT_PX;
 const GPT5_PRICING = { cacheReadRate: 0.1, outputRate: 8 };
 
 /**
- * Conservative visual fallback for unrecognized OpenAI-compatible readers.
+ * Conservative fallback for unrecognized models: tile 85/170 over-states cost,
+ * which biases the gate toward pass-through (safe). Matches gpt-4o/4.1/4.5.
  *
- * The previous fallback used the dense 5x8 atlas. That maximized packing but
- * silently assumed every future vision model reads tiny glyphs as well as the
- * best measured reader. Unknown/current readers now inherit the legible 14px
- * geometry; the profitability gate can reject its higher image cost, but
- * exactness is never traded away just to make a new model appear supported.
- *
- * The tile 85/170 vision cost remains an explicit conservative approximation
- * for models without a provider-specific image-pricing profile.
+ * Do not use a high-density or model-specific geometry as the universal
+ * fallback: Model Fabric discovery is broader than visual-profile evidence.
+ * Newly discovered readers enter MAX_SAVINGS through explicit capability
+ * policy, while named canary profiles can select more legible geometry.
  */
 export const DEFAULT_GPT_PROFILE: GptModelProfile = {
   vision: { regime: 'tile', base: 85, perTile: 170 },
   ...BASE_PRICING,
-  stripCols: 84,
-  maxHeightPx: 1954,
+  stripCols: C,
+  maxHeightPx: H,
   minCompressTokens: 500,
   factSheetFormat: 'full',
-  history: {
-    ...NATIVE_14PX_HISTORY,
-    maxImages: 64,
-  },
-  style: {
-    ...BASE_STYLE,
-    font: 'jetbrains-mono-14',
-    cellWBonus: 0,
-    cellHBonus: 0,
-  },
+  history: BASE_HISTORY,
+  style: BASE_STYLE,
 };
 
 const OPENAI_CURRENT_LEGIBLE_STYLE: GptRenderStyle = {
@@ -343,16 +332,17 @@ const BUILTIN_RULES: ProfileRule[] = [
       outputRate: 5,
     }),
   },
-  // 5.x flagship (gpt-5.4/5.5/5.6 variants, no mini/nano). Keep the existing
-  // patch-cost regime but use the legible reader geometry for future variants.
+  // 5.x flagship (gpt-5.4/5.5/5.6 variants, no mini/nano): preserve
+  // the validated dense geometry. Only exact model profiles (for example Sol)
+  // may opt into a different reader geometry.
   {
     test: (m) => /^gpt-5\.\d/.test(m),
-    profile: currentOpenAIProfile({ regime: 'patch', multiplier: 1, patchCap: 10000 }, GPT5_PRICING),
+    profile: { vision: { regime: 'patch', multiplier: 1, patchCap: 10000 }, ...GPT5_PRICING, stripCols: C, maxHeightPx: H, minCompressTokens: 500, factSheetFormat: 'full', history: BASE_HISTORY, style: BASE_STYLE },
   },
   // gpt-5 / gpt-5-chat-latest.
   {
     test: (m) => /^gpt-5/.test(m),
-    profile: currentOpenAIProfile({ regime: 'tile', base: 70, perTile: 140 }, GPT5_PRICING),
+    profile: { vision: { regime: 'tile', base: 70, perTile: 140 }, ...GPT5_PRICING, stripCols: C, maxHeightPx: H, minCompressTokens: 500, factSheetFormat: 'full', history: BASE_HISTORY, style: BASE_STYLE },
   },
   // o1 / o3 reasoning: tile 75/150
   {
