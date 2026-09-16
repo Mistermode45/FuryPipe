@@ -12,6 +12,11 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { DashboardState, dashboardPath, dashboardHostLabel } from '../src/dashboard.js';
 import { getAllowedModelBases, isFuryPipeSupportedModel, setAllowedModelBases } from '../src/core/applicability.js';
+import {
+  normalizeOpenAIModelsPayload,
+  registerRuntimeModelCatalog,
+  resetRuntimeModelFabricForTests,
+} from '../src/core/model-fabric.js';
 import type { SessionsPaths } from '../src/sessions.js';
 import type { TrackEvent } from '../src/core/tracker.js';
 import { createControlRoomSnapshot, type ControlRoomSnapshot } from '../src/control-room/index.js';
@@ -108,6 +113,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   setAllowedModelBases(null);
+  resetRuntimeModelFabricForTests();
   try {
     fs.rmSync(path.dirname(tmp.eventsFile), { recursive: true, force: true });
   } catch {
@@ -132,6 +138,7 @@ describe('dashboardPath()', () => {
   it('matches the new /api/* routes', () => {
     expect(dashboardPath('/api/sessions.json')?.kind).toBe('api-sessions');
     expect(dashboardPath('/api/stats.json')?.kind).toBe('api-stats');
+    expect(dashboardPath('/api/models.json')?.kind).toBe('api-models');
     expect(dashboardPath('/api/control-room.json')?.kind).toBe('api-control-room');
   });
 
@@ -179,6 +186,33 @@ describe('serveSessionsJson', () => {
     const bare = new DashboardState();
     const res = await bare.serveSessionsJson();
     expect(res.status).toBe(503);
+  });
+});
+
+// ---- /api/models.json ----------------------------------------------------
+
+describe('serveModelsJson', () => {
+  it('returns a bounded secret-free Model Fabric snapshot', async () => {
+    registerRuntimeModelCatalog(normalizeOpenAIModelsPayload({
+      data: [{ id: 'gpt-6-astra', owned_by: 'openai' }],
+    }, '2026-09-16T00:00:00.000Z'));
+
+    const res = dash.serveModelsJson();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      format: 'furypipe-model-catalog/v1',
+      total: 1,
+      returned: 1,
+      truncated: false,
+    });
+    expect(body.models[0]).toMatchObject({
+      provider: 'openai',
+      id: 'gpt-6-astra',
+      modalities: { imageInput: 'yes' },
+    });
+    expect(JSON.stringify(body)).not.toContain('apiKey');
+    expect(JSON.stringify(body)).not.toContain('authorization');
   });
 });
 
