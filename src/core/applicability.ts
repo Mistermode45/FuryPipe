@@ -41,12 +41,29 @@ let runtimeModelBases: readonly string[] | null = null;
  * FuryPipe release. FURYPIPE_MODELS remains an explicit operator override.
  */
 export const DEFAULT_MODEL_BASES = Object.freeze([
-  'claude',
+  'claude-fable-5',
   'gemini',
-  'gpt-5',
-  'gpt-6',
-  'grok-4.6',
 ]);
+
+export type FuryPipeVisualPolicy = 'auto' | 'max_savings' | 'safe_exact' | 'text_only';
+
+/**
+ * Global automatic visual policy.
+ *
+ * AUTO is deliberately evidence-first: only quality-verified profiles are
+ * transformed without an explicit model scope. MAX_SAVINGS admits every model
+ * whose image-input capability is positively proven, while the downstream
+ * ExactGuard, profitability, image-count and byte-budget gates still apply.
+ * SAFE_EXACT currently shares AUTO's eligibility and exists as a stable policy
+ * surface for more conservative per-content routing. TEXT_ONLY is a hard kill
+ * switch for visual transformation.
+ */
+export function getFuryPipeVisualPolicy(): FuryPipeVisualPolicy {
+  if (typeof process === 'undefined') return 'auto';
+  const raw = process.env?.FURYPIPE_VISUAL_POLICY?.trim().toLowerCase();
+  if (raw === 'max_savings' || raw === 'safe_exact' || raw === 'text_only') return raw;
+  return 'auto';
+}
 
 function falsey(v: string): boolean {
   return /^(0|false|no|off|none)$/i.test(v.trim());
@@ -140,6 +157,16 @@ export function resolveFuryPipeModelEligibility(
   }
 
   const base = baseModelId(model).toLowerCase();
+  const visualPolicy = getFuryPipeVisualPolicy();
+
+  if (visualPolicy === 'text_only') {
+    return Object.freeze({
+      eligible: false,
+      reason: 'visual_profile_blocked',
+      source: 'automatic_model_fabric',
+      resolution: resolveRuntimeVisualModel(base),
+    });
+  }
 
   // A runtime dashboard override is always explicit, even when it is [].
   // A non-empty FURYPIPE_MODELS value is also explicit; "off" therefore stays
@@ -174,9 +201,11 @@ export function resolveFuryPipeModelEligibility(
     });
   }
 
-  // Automatic mode is capability-driven.  A provider/model family can be new
-  // to this FuryPipe release and still enter CANARY when image input is proven.
-  // ExactGuard/profitability/wire budgets remain downstream release blockers.
+  // Automatic mode is capability-driven but evidence-aware. Discovery proves
+  // existence, capability metadata proves image input, and quality evidence
+  // decides whether AUTO may transform. MAX_SAVINGS is the explicit broad mode
+  // requested by operators who prefer coverage/savings over conservative
+  // quality rollout; it still requires positively proven image input.
   const resolution = resolveRuntimeVisualModel(base);
   if (isMisresolvedModelId(base)) {
     return Object.freeze({
@@ -202,6 +231,18 @@ export function resolveFuryPipeModelEligibility(
       resolution,
     });
   }
+
+  const broadVisual = visualPolicy === 'max_savings';
+  const qualityVerified = resolution.profile === 'quality_verified' && resolution.mode === 'visual';
+  if (!broadVisual && !qualityVerified) {
+    return Object.freeze({
+      eligible: false,
+      reason: 'unsupported_model',
+      source: 'automatic_model_fabric',
+      resolution,
+    });
+  }
+
   return Object.freeze({
     eligible: true,
     reason: 'eligible',
