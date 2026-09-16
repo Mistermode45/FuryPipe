@@ -1,6 +1,15 @@
 /**
- * Minimal PNG encoder (grayscale + RGB, 8-bit, fast adaptive Average/Up filtering, single IDAT).
- * Pure Uint8Array — uses CompressionStream (Node 18+, Workers, browsers); no Buffer/node:zlib.
+ * Minimal PNG encoder (lossless grayscale + RGB, adaptive bit depth, fast
+ * Average/Up filtering, single IDAT).
+ *
+ * Pure Uint8Array — uses CompressionStream (Node 18+, Workers, browsers); no
+ * Buffer/node:zlib.
+ *
+ * Grayscale text pages often contain only exact black/white pixels. Encoding
+ * those as legal PNG bit-depth 1 rather than always bit-depth 8 reduces the raw
+ * scanline surface by up to 8× before DEFLATE without changing one decoded
+ * pixel. 2-bit/4-bit grayscale are also selected only when every sample is
+ * exactly representable at that depth; anti-aliased pages remain 8-bit.
  */
 
 // ---- CRC32 ---------------------------------------------------------------
@@ -92,8 +101,10 @@ const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 
  * wire bytes. The fast path is one pass per row plus an occasional zero-fill,
  * while decoded pixels remain byte-identical to the framebuffer.
  */
-function filterAdaptive(pixels: Uint8Array, width: number, height: number, bpp: number): Uint8Array {
-  const rowBytes = width * bpp;
+function filterAdaptive(pixels: Uint8Array, rowBytes: number, height: number, bpp: number): Uint8Array {
+  if (pixels.length !== rowBytes * height) {
+    throw new Error('filterAdaptive: packed scanline length mismatch');
+  }
   const stride = rowBytes + 1;
   const out = new Uint8Array(stride * height);
 
@@ -125,20 +136,83 @@ function filterAdaptive(pixels: Uint8Array, width: number, height: number, bpp: 
   return out;
 }
 
+
+type GrayBitDepth = 1 | 2 | 4 | 8;
+
+function grayBitDepth(pixels: Uint8Array): GrayBitDepth {
+  let fits1 = true;
+  let fits2 = true;
+  let fits4 = true;
+
+  for (let i = 0; i < pixels.length; i++) {
+    const value = pixels[i]!;
+    if (value !== 0 && value !== 255) fits1 = false;
+    if (value % 85 !== 0) fits2 = false;
+    if (value % 17 !== 0) fits4 = false;
+    if (!fits4) return 8;
+  }
+
+  if (fits1) return 1;
+  if (fits2) return 2;
+  if (fits4) return 4;
+  return 8;
+}
+
+function packGraySamples(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  bitDepth: GrayBitDepth,
+): { readonly packed: Uint8Array; readonly rowBytes: number } {
+  if (bitDepth === 8) {
+    return { packed: pixels, rowBytes: width };
+  }
+
+  const samplesPerByte = 8 / bitDepth;
+  const rowBytes = Math.ceil(width / samplesPerByte);
+  const packed = new Uint8Array(rowBytes * height);
+  const maxSample = (1 << bitDepth) - 1;
+
+  for (let y = 0; y < height; y++) {
+    const srcRow = y * width;
+    const dstRow = y * rowBytes;
+    for (let x = 0; x < width; x++) {
+      const value = pixels[srcRow + x]!;
+      const sample = Math.round((value * maxSample) / 255);
+      // grayBitDepth() already proved exact representability. Keep the guard
+      // local so this packing helper cannot silently quantize if reused later.
+      if (Math.round((sample * 255) / maxSample) !== value) {
+        throw new Error('packGraySamples: sample is not exactly representable');
+      }
+      const slot = x % samplesPerByte;
+      const shift = 8 - bitDepth * (slot + 1);
+      packed[dstRow + Math.floor(x / samplesPerByte)]! |= sample << shift;
+    }
+  }
+
+  return { packed, rowBytes };
+}
+
 /** Encode a single-channel (grayscale) buffer as PNG bytes. pixels is row-major, length = width × height. */
 export async function encodeGrayPng(pixels: Uint8Array, width: number, height: number): Promise<Uint8Array> {
   if (pixels.length !== width * height) {
     throw new Error(`encodeGrayPng: pixels.length=${pixels.length} != ${width}×${height}=${width * height}`);
   }
 
-  // IHDR: width(4) height(4) bitDepth=8 colorType=0(gray) compress=0 filter=0 interlace=0
+  const bitDepth = grayBitDepth(pixels);
+  const { packed, rowBytes } = packGraySamples(pixels, width, height, bitDepth);
+
+  // IHDR: width(4) height(4) bitDepth={1,2,4,8} colorType=0(gray)
+  // compress=0 filter=0 interlace=0.
   const ihdr = new Uint8Array(13);
   ihdr.set(u32be(width), 0);
   ihdr.set(u32be(height), 4);
-  ihdr[8] = 8;
+  ihdr[8] = bitDepth;
   ihdr[9] = 0; // colorType 0 = grayscale; bytes 10-12 already zero
 
-  const compressed = await deflateZlib(filterAdaptive(pixels, width, height, 1));
+  // For packed grayscale (<8-bit), PNG filtering operates on packed bytes and
+  // bytes-per-pixel rounds up to one byte per the PNG specification.
+  const compressed = await deflateZlib(filterAdaptive(packed, rowBytes, height, 1));
 
   return concat([
     PNG_SIGNATURE,
@@ -160,7 +234,7 @@ export async function encodeRgbPng(pixels: Uint8Array, width: number, height: nu
   ihdr[8] = 8; // bit depth per channel
   ihdr[9] = 2; // colorType 2 = truecolor RGB; bytes 10-12 already zero
 
-  const compressed = await deflateZlib(filterAdaptive(pixels, width, height, 3));
+  const compressed = await deflateZlib(filterAdaptive(pixels, width * 3, height, 3));
 
   return concat([
     PNG_SIGNATURE,
