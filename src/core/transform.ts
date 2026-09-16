@@ -354,6 +354,74 @@ function imageTokensCost(
   return imageTokensForRows(rows, effectiveCols, imageCountCap, maxCharsPerImage, geometry);
 }
 
+export interface VisualColumnPlan {
+  readonly cols: number;
+  readonly visualRows: number;
+  readonly imageCount: number;
+  readonly imageTokens: number;
+}
+
+/**
+ * FuryPipe Visual Planner.
+ *
+ * The old path always rendered at the natural/widest-line width. That is
+ * deterministic, but it is not necessarily the cheapest vision geometry once
+ * patch rounding and page padding are included. Evaluate a small bounded set of
+ * widths and choose the lowest provider-priced image-token plan. The incumbent
+ * width is always a candidate, so the planner cannot choose a plan with a higher
+ * estimated image-token cost. Ties prefer fewer pages, then wider pages for
+ * readability.
+ */
+export function planVisualColumns(
+  text: string,
+  maxCols: number,
+  style: RenderStyle = DENSE_RENDER_STYLE,
+  pricing: VisionPricing = CLAUDE_PROFILE,
+  maxHeightPx: number = MAX_HEIGHT_PX,
+): VisualColumnPlan {
+  const natural = shrinkColsToContent(text, Math.max(1, maxCols), 1, style.font);
+  const floor = Math.min(natural, 96);
+  const candidates = new Set<number>([natural, floor]);
+  for (const cols of [288, 256, 224, 192, 160, 128, 112, 96]) {
+    if (cols >= floor && cols <= natural) candidates.add(cols);
+  }
+
+  let best: VisualColumnPlan | undefined;
+  for (const cols of candidates) {
+    const visualRows = countVisualRows(text, cols);
+    const cellH = renderCellHeight(style);
+    const hardLinesPerImage = Math.max(1, Math.floor((maxHeightPx - 2 * PAD_Y) / cellH));
+    const readableLinesPerImage = Math.max(1, Math.floor(READABLE_CHARS_PER_IMAGE / cols));
+    const linesPerImage = Math.min(hardLinesPerImage, readableLinesPerImage);
+    const imageCount = visualRows <= 0 ? 0 : Math.ceil(visualRows / linesPerImage);
+    const geometry: GateGeometry = {
+      cols,
+      maxHeightPx,
+      maxChars: maxCharsPerImage(cols),
+      style,
+      pricing,
+    };
+    const imageTokens = imageTokensForRows(
+      visualRows,
+      cols,
+      undefined,
+      maxCharsPerImage(cols),
+      geometry,
+    );
+    const plan = { cols, visualRows, imageCount, imageTokens };
+    if (
+      best === undefined ||
+      plan.imageTokens < best.imageTokens ||
+      (plan.imageTokens === best.imageTokens && plan.imageCount < best.imageCount) ||
+      (plan.imageTokens === best.imageTokens && plan.imageCount === best.imageCount && plan.cols > best.cols)
+    ) {
+      best = plan;
+    }
+  }
+
+  return best ?? { cols: natural, visualRows: 0, imageCount: 0, imageTokens: 0 };
+}
+
 /** Gate geometry for collapsed history.
  *
  *  Identical to {@link denseGateGeometry} unless the model profile sets
@@ -2739,7 +2807,14 @@ export async function transformRequest(
   // so the gate's prediction and the renderer's output agree at the smallest
   // legible width. The banner above sets the natural floor — no separate
   // minWidth knob needed.
-  const slabCols = shrinkColsToContent(combinedWithHeader, o.cols, 1, denseGeo.style.font);
+  const slabPlan = planVisualColumns(
+    combinedWithHeader,
+    o.cols,
+    denseGeo.style,
+    denseGeo.pricing,
+    denseGeo.maxHeightPx,
+  );
+  const slabCols = slabPlan.cols;
   const slabGateEval = evalCompressionProfitability(
     combinedWithHeader, slabCols, undefined, slabCpt, o.priorWarmTokens, o.priorWarmImageTokens,
     false, // already shrunk — don't double-shrink
