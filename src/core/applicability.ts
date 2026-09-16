@@ -61,13 +61,12 @@ export function setFuryPipeVisualPolicy(policy: FuryPipeVisualPolicy | null): vo
 /**
  * Global automatic visual policy.
  *
- * AUTO is deliberately evidence-first: only quality-verified profiles are
- * transformed without an explicit model scope. MAX_SAVINGS admits every model
- * whose image-input capability is positively proven, while the downstream
- * ExactGuard, profitability, image-count and byte-budget gates still apply.
- * SAFE_EXACT currently shares AUTO's eligibility and exists as a stable policy
- * surface for more conservative per-content routing. TEXT_ONLY is a hard kill
- * switch for visual transformation.
+ * AUTO is evidence-first but practical: quality-verified and calibrated
+ * reader profiles are transformed automatically. SAFE_EXACT accepts only
+ * quality-verified profiles. MAX_SAVINGS admits every model whose image-input
+ * capability is positively proven and whose image economics are known, while
+ * downstream ExactGuard, profitability, image-count and byte-budget gates still
+ * apply. TEXT_ONLY is a hard kill switch for visual transformation.
  */
 export function getFuryPipeVisualPolicy(): FuryPipeVisualPolicy {
   if (runtimeVisualPolicy !== null) return runtimeVisualPolicy;
@@ -246,10 +245,22 @@ export function resolveFuryPipeModelEligibility(
   }
 
   const broadVisual = visualPolicy === 'max_savings';
-  const qualityVerified = resolution.profile === 'quality_verified' && resolution.mode === 'visual';
+  const qualityVerified = resolution.profile === 'quality_verified';
+  const calibrated = resolution.profile === 'calibrated';
   const pricingEvidence = resolveVisionPricingEvidence(base);
 
-  if (!broadVisual && !qualityVerified) {
+  // AUTO accepts measured/calibrated reader profiles so models such as current
+  // Claude Opus/Grok do not fall back to plain text merely because they have
+  // not yet earned the stronger QUALITY_VERIFIED label. SAFE_EXACT remains the
+  // strictest policy and requires quality verification. MAX_SAVINGS is the
+  // explicit broad canary mode for proven vision readers with known economics.
+  const policyAllowsProfile = visualPolicy === 'safe_exact'
+    ? qualityVerified
+    : visualPolicy === 'auto'
+      ? (qualityVerified || calibrated)
+      : broadVisual;
+
+  if (!policyAllowsProfile) {
     return Object.freeze({
       eligible: false,
       reason: 'unsupported_model',
