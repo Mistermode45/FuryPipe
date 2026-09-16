@@ -546,6 +546,36 @@ describe('FuryPipe Agent runtime', () => {
     expect(unhealthySkill.failure?.code).toBe('SKILL_BLOCKED');
   });
 
+  it('bounds capability execution receipts before invoking an unreceipted callback', async () => {
+    let calls = 0;
+    const result = await runAgent({
+      objective: 'Bound capability execution evidence.',
+      contextBudgetTokens: 16_000,
+      executors: {
+        ...stageExecutors([]),
+        research: async (context) => {
+          for (let i = 0; i < 513; i++) {
+            await context.invokeSubagent('bounded-helper');
+          }
+          return { evidence: ['unreachable'], consumedTokens: 1 };
+        },
+      },
+      subagents: [{
+        id: 'bounded-helper',
+        stages: ['research'],
+        execute: async () => {
+          calls += 1;
+          return { evidence: ['bounded-helper-evidence'], consumedTokens: 1 };
+        },
+      }],
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.capabilityExecutions).toHaveLength(512);
+    expect(calls).toBe(512);
+    expect(result.failure?.reason).toMatch(/capability execution receipt limit exceeded/);
+  });
+
   it('compiles FuryPrompt once for stage callbacks and binds its digest to resume', async () => {
     const seenPrompts: string[] = [];
     const request: AgentRuntimeRequest = {
