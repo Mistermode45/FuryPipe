@@ -11,9 +11,10 @@
  * pixel. 2-bit/4-bit grayscale are also selected only when every sample is
  * exactly representable at that depth; anti-aliased pages remain 8-bit.
  *
- * RGB pages with <=256 exact colors are encoded as indexed PNGs (PLTE) at the
- * smallest legal index depth. This is also pixel-lossless and avoids paying
- * three raw bytes per pixel for role markers / limited UI palettes.
+ * RGB pages that are exactly grayscale are losslessly collapsed to the native
+ * grayscale encoder first, avoiding PLTE/truecolor overhead. Remaining RGB
+ * pages with <=256 exact colors are encoded as indexed PNGs (PLTE) at the
+ * smallest legal index depth. These choices never change decoded pixels.
  */
 
 // ---- CRC32 ---------------------------------------------------------------
@@ -296,11 +297,28 @@ function indexRgbPalette(
   };
 }
 
-/** Encode an RGB (3 bytes/pixel, R,G,B) buffer as PNG bytes. Uses indexed color when exact palette cardinality permits it. */
+function exactRgbToGray(pixels: Uint8Array): Uint8Array | undefined {
+  const gray = new Uint8Array(pixels.length / 3);
+  for (let i = 0, pixel = 0; i < pixels.length; i += 3, pixel += 1) {
+    const r = pixels[i]!;
+    if (pixels[i + 1] !== r || pixels[i + 2] !== r) return undefined;
+    gray[pixel] = r;
+  }
+  return gray;
+}
+
+/** Encode an RGB (3 bytes/pixel, R,G,B) buffer as PNG bytes.
+ *
+ * Exact grayscale RGB is collapsed to color type 0 first; otherwise limited
+ * palettes use indexed color. Both paths are pixel-lossless.
+ */
 export async function encodeRgbPng(pixels: Uint8Array, width: number, height: number): Promise<Uint8Array> {
   if (pixels.length !== width * height * 3) {
     throw new Error(`encodeRgbPng: pixels.length=${pixels.length} != ${width}×${height}×3=${width * height * 3}`);
   }
+
+  const gray = exactRgbToGray(pixels);
+  if (gray !== undefined) return encodeGrayPng(gray, width, height);
 
   const indexed = indexRgbPalette(pixels);
   if (indexed !== undefined) {
