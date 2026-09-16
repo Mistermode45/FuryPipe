@@ -35,10 +35,11 @@ It is not an unconditional text-to-image converter. A transformation must pass t
    - Unicode misses are surfaced or escaped rather than silently invented;
    - original hard line breaks remain represented by the visible reflow marker when reflow is active.
 
-7. **Adaptive lossless PNG encoding**
-   - choose among PNG's five standard scanline predictors per row;
+7. **Fast adaptive lossless PNG encoding**
+   - keep the measured Average predictor as the default for glyph-bearing rows;
+   - switch byte-identical repeated rows to PNG Up, producing zero residuals without an exhaustive predictor search;
    - pixels decoded from the PNG are byte-identical to the renderer framebuffer;
-   - this reduces wire payload where a better predictor exists without changing what the model sees.
+   - the optimization is retained only when it does not trade wire size for a material render-latency regression.
 
 8. **Wire safety**
    - account for caller-owned images before FuryPipe adds any;
