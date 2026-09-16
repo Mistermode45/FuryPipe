@@ -475,8 +475,9 @@ export function createModelFabricRegistry(): ModelFabricRegistry {
           model: entry.id, provider: entry.provider, imageInput: entry.modalities.imageInput,
           profile: entry.visual.profile, policy: entry.visual.policy,
           // Calibration proves geometry/cost behavior, not necessarily exact
-          // recall. AUTO therefore keeps it in canary until a caller explicitly
-          // selects MAX_SAVINGS or quality evidence promotes the profile.
+          // recall. The registry keeps the profile visibly CANARY so calibration
+          // is never mislabeled QUALITY_VERIFIED; effective AUTO admission is
+          // decided separately by applicability and may allow calibrated readers.
           mode: entry.visual.policy === 'max_savings' ? 'visual' : 'canary',
           reason: 'calibrated_profile', evidence: entry.provenance,
         });

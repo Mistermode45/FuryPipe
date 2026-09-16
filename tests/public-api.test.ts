@@ -40,21 +40,20 @@ describe('public library API', () => {
     expect(isFuryPipeSupportedModel('untrusted/google/gemini-3.6-flash')).toBe(true);
     expect(isFuryPipeSupportedModel('untrusted/google/gemini-3.7-flash')).toBe(true);
 
-    // Measured Claude reader profiles are calibrated and therefore participate
-    // in AUTO. SAFE_EXACT remains available when only quality-verified readers
-    // are acceptable.
+    // Only Claude readers with model-specific calibration/verification evidence
+    // participate in AUTO. Vision capability alone is not reader-quality proof.
     expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(true);
-    expect(isFuryPipeSupportedModel('claude-mythos-5')).toBe(true);
-    expect(isFuryPipeSupportedModel('claude-sonnet-5')).toBe(true);
-    expect(isFuryPipeSupportedModel('claude-haiku-4-5-20251001')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-mythos-5')).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-sonnet-5')).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-haiku-4-5-20251001')).toBe(false);
     expect(isFuryPipeSupportedModel('claude-opus-4-8')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-4-7')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-4-6')).toBe(true);
-    expect(isFuryPipeSupportedModel('claude-sonnet-4-6')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-sonnet-4-6')).toBe(false);
 
-    // Current Mythos 5 is a real Claude family; invented future-looking ids are
-    // still not capability evidence until provider discovery proves them.
-    expect(isFuryPipeSupportedModel('claude-mythos-5')).toBe(true);
+    // Current Mythos 5 is vision-capable but remains UNPROFILED; invented
+    // future-looking ids are not capability evidence either.
+    expect(isFuryPipeSupportedModel('claude-mythos-5')).toBe(false);
     expect(isFuryPipeSupportedModel('claude-sonnet-4-7')).toBe(false);
     expect(isFuryPipeSupportedModel('claude-fable-50')).toBe(false);
     expect(isFuryPipeSupportedModel(null)).toBe(false);
@@ -66,7 +65,7 @@ describe('public library API', () => {
     expect(isFuryPipeSupportedModel('claude-opus-5[1m]')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-4-8[1m]')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-4-7[1m]')).toBe(true);
-    expect(isFuryPipeSupportedModel('claude-mythos-5[1m]')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-mythos-5[1m]')).toBe(false);
     // Bracket stripping cannot turn an invented family into proven capability.
     expect(isFuryPipeSupportedModel('claude-fable-50[1m]')).toBe(false);
   });

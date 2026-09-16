@@ -17,7 +17,7 @@ describe('README model policy', () => {
   });
 
   it('documents calibrated AUTO separately from strict SAFE_EXACT', () => {
-    expect(readme).toContain('quality-verified **and calibrated** visual readers');
+    expect(readme).toContain('quality-verified **or calibrated** visual readers');
     expect(readme).toContain('`safe_exact` is stricter than AUTO and accepts only quality-verified profiles');
   });
 

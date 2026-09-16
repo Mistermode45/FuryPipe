@@ -43,7 +43,8 @@ a positive provider statement that a model is text-only.
 | model rule | visual quality state | cell / columns | max height | notes |
 |---|---|---|---:|---|
 | `claude-fable-5*` | quality-verified | Spleen 5×8 / 312 | 728 px | dense Claude reader with measured exact-recall evidence |
-| other current Claude | calibrated | JetBrains Mono 14px / 172 history | 728 px | legible geometry; broader quality evidence remains distinct |
+| `claude-opus-5*`, calibrated Opus 4.x | calibrated | JetBrains Mono 14px / 172 history | 728 px | model-specific legible geometry; not promoted to quality-verified |
+| other current Claude vision families | unprofiled | conservative fallback/canary | profile dependent | vision capability exists, but AUTO waits for model-specific calibration |
 | measured Gemini profiles | quality-verified | provider profile | 728 px | provider/model image-token profile is explicit |
 | `gpt-5.6-sol*` | calibrated | JetBrains Mono 14px / 84 | 1954 px | measured geometry; not promoted to quality-verified |
 | `grok-4.5/4.6*` | calibrated | JetBrains Mono 14px / 84 | 512 px | measured geometry/economics; exact recall not strong enough for default verification |
