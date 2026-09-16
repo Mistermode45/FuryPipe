@@ -147,6 +147,72 @@ describe('model fabric', () => {
     expect(() => registry.observe('x'.repeat(513))).toThrow(/entry id is invalid/u);
   });
 
+  it('accepts fractional pricing while keeping resource limits integer-only', () => {
+    const registry = createModelFabricRegistry();
+    const base = normalizeXaiModelsPayload({
+      models: [{ id: 'grok-priced', input_modalities: ['text', 'image'], output_modalities: ['text'] }],
+    })[0]!;
+
+    registry.upsert({
+      ...base,
+      pricing: {
+        inputUsdPerMillionTokens: 2.5,
+        cachedInputUsdPerMillionTokens: 0.125,
+        outputUsdPerMillionTokens: 10.75,
+        imageInputUsdPerMillionTokens: 1.25,
+        source: ' provider tariff ',
+        observedAt: ' 2026-09-17T00:00:00.000Z ',
+      },
+    });
+
+    expect(registry.get('grok-priced')?.pricing).toEqual({
+      inputUsdPerMillionTokens: 2.5,
+      cachedInputUsdPerMillionTokens: 0.125,
+      outputUsdPerMillionTokens: 10.75,
+      imageInputUsdPerMillionTokens: 1.25,
+      source: 'provider tariff',
+      observedAt: '2026-09-17T00:00:00.000Z',
+    });
+
+    expect(() => registry.upsert({
+      ...base,
+      id: 'grok-invalid-limit',
+      aliases: ['grok-invalid-limit'],
+      limits: { contextTokens: 1.5 },
+    })).toThrow(/limits\.contextTokens is invalid/u);
+    expect(() => registry.upsert({
+      ...base,
+      id: 'grok-invalid-price',
+      aliases: ['grok-invalid-price'],
+      pricing: { inputUsdPerMillionTokens: Number.NaN },
+    })).toThrow(/pricing\.inputUsdPerMillionTokens is invalid/u);
+  });
+
+  it('keeps canonical IDs and aliases in one unique ownership namespace', () => {
+    const make = (id: string, aliases: readonly string[] = []) => normalizeXaiModelsPayload({
+      models: [{ id, aliases, input_modalities: ['text'], output_modalities: ['text'] }],
+    })[0]!;
+
+    const aliasFirst = createModelFabricRegistry();
+    aliasFirst.upsert(make('alpha', ['beta']));
+    expect(() => aliasFirst.upsert(make('beta'))).toThrow(/identity collision/u);
+    expect(aliasFirst.get('beta')?.id).toBe('alpha');
+    expect(aliasFirst.list()).toHaveLength(1);
+
+    const idFirst = createModelFabricRegistry();
+    idFirst.upsert(make('alpha'));
+    expect(() => idFirst.upsert(make('beta', ['alpha']))).toThrow(/identity collision/u);
+    expect(idFirst.get('alpha')?.id).toBe('alpha');
+    expect(idFirst.list()).toHaveLength(1);
+
+    const atomic = createModelFabricRegistry();
+    expect(() => atomic.upsertMany([
+      make('alpha'),
+      make('beta', ['alpha']),
+    ])).toThrow(/identity collision/u);
+    expect(atomic.list()).toEqual([]);
+  });
+
   it('rejects alias collisions instead of routing one alias to an arbitrary entry', () => {
     const registry = createModelFabricRegistry();
     const first = normalizeXaiModelsPayload({ models: [{ id: 'grok-first', aliases: ['shared-alias'] }] })[0]!;
