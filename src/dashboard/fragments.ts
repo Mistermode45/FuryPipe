@@ -1538,7 +1538,10 @@ const CSS = `
   .instrument-section { padding: 0; border: 0; }
   .instrument-section-head { display: flex; justify-content: space-between; gap: 18px; align-items: end; padding-bottom: 11px; border-bottom: 1px solid var(--border-strong); }
   .instrument-section-head output { flex: none; font: 600 10px/1.3 var(--mono); color: var(--muted); }
-  .cp-tools { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(150px, .4fr) minmax(130px, .3fr); gap: 10px; margin: 14px 0 0; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .cp-explorer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(330px, .48fr); column-gap: 24px; align-items: start; }
+  .cp-explorer > .instrument-section-head { grid-column: 1 / -1; }
+  .cp-explorer > .cp-tools, .cp-explorer > .cp-list { grid-column: 1; }
+  .cp-tools { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(130px, .45fr) minmax(110px, .35fr); gap: 10px; margin: 14px 0 0; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
   .cp-tools label { gap: 5px; color: var(--muted); font: 700 10px/1.2 var(--mono); letter-spacing: .04em; text-transform: uppercase; }
   .cp-tools input, .cp-tools select { width: 100%; min-height: 32px; color: var(--ink); background: transparent; border: 1px solid var(--border-strong); border-radius: 2px; padding: 5px 8px; font: 12px/1.4 inherit; }
   .cp-tools input:focus-visible, .cp-tools select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1555,7 +1558,7 @@ const CSS = `
   .cp-state-stale, .cp-freshness-stale { color: var(--warn); }
   .cp-state-failed, .cp-state-disabled { color: var(--bad); }
   .cp-state-not_available, .cp-state-not_executed, .cp-state-partial, .cp-state-unknown, .cp-freshness-missing { color: var(--muted); }
-  .cp-inspector { position: sticky; bottom: 16px; z-index: 15; display: grid; gap: 8px; margin: 16px 0 0 auto; max-width: 560px; padding: 15px 16px; background: var(--raised); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: 0; box-shadow: none; }
+  .cp-inspector { grid-column: 2; grid-row: 2 / span 2; position: sticky; top: 130px; z-index: 15; display: grid; gap: 8px; margin: 14px 0 0; max-width: none; padding: 15px 16px; background: var(--raised); border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: 0; box-shadow: none; }
   .cp-inspector h3 { margin: 0; color: var(--ink); font-size: 15px; }.cp-inspector p { margin: 0; color: var(--muted); font-size: 12px; }
   .cp-inspector dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 16px; margin: 2px 0 0; }.cp-inspector dl div { min-width: 0; }.cp-inspector dt { color: var(--muted); font: 700 10px/1.2 var(--mono); text-transform: uppercase; letter-spacing: .05em; }.cp-inspector dd { margin: 4px 0 0; color: var(--ink); overflow-wrap: anywhere; font-size: 12px; }
   .cp-inspector details { font-size: 11px; color: var(--muted); }.cp-inspector pre { margin: 7px 0 0; padding: 8px; border: 1px solid var(--border); background: var(--surface); border-radius: 0; color: var(--ink-2); white-space: pre-wrap; word-break: break-word; font: 10px/1.4 var(--mono); }
@@ -1568,6 +1571,7 @@ const CSS = `
   .skip-link { position: absolute; left: 8px; top: -50px; z-index: 100; padding: 8px; background: var(--surface); color: var(--ink); border: 2px solid var(--accent); }.skip-link:focus { top: 8px; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   @media (max-width: 1000px) { .cp-runtime-lane { grid-template-columns: 68px minmax(0, 1fr); }.cp-metrics { grid-column: 1 / -1; border-left: 0; }.xray { grid-template-columns: 1fr; }.xray > .card + .card { border-left: 0; border-top: 1px solid var(--border); padding: 24px 0 0; }.cp-bindings { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) { .cp-explorer { grid-template-columns: 1fr; }.cp-explorer > .instrument-section-head, .cp-explorer > .cp-tools, .cp-explorer > .cp-list, .cp-inspector { grid-column: 1; }.cp-inspector { grid-row: auto; position: static; } }
   @media (max-width: 640px) { .workspace { width: min(100% - 24px, 1440px); }.topbar { position: static; }.command-nav { top: 0; margin-inline: -12px; padding-inline: 12px; }.command-nav a { padding-inline: 9px; }.command-trigger { display: none; }.strip { grid-template-columns: repeat(2, 1fr); }.tile:nth-child(2) { border-right: 0; }.tile:nth-child(-n+2) { border-bottom: 1px solid var(--border); }.cp-runtime-lane { grid-template-columns: 50px minmax(0, 1fr); gap: 12px; }.fury-core { width: 44px; height: 44px; }.fury-core::before { inset: 7px; }.fury-core::after { inset: 15px; }.fury-core span { top: 5px; }.fury-core i { right: 5px; }.fury-core b { bottom: 5px; }.cp-metrics { grid-template-columns: 1fr; gap: 7px; }.cp-metrics div { padding: 0; border-right: 0; }.cp-decision-lens { grid-template-columns: 1fr; gap: 12px; }.instrument-section-head { align-items: start; flex-direction: column; }.cp-tools { grid-template-columns: 1fr; }.cp-row { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }.cp-row-source, .cp-row-life { grid-column: 1 / -1; }.cp-row-source { white-space: normal; }.cp-inspector { position: static; }.cp-inspector dl { grid-template-columns: 1fr; }.cp-bindings li { grid-template-columns: minmax(90px, .75fr) auto minmax(0, 1.25fr); }.cp-evidence tr { border-radius: 0 !important; background: transparent !important; }.cp-evidence td { grid-template-columns: minmax(105px, .8fr) minmax(0, 1.2fr) !important; }.hero { padding-left: 12px; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; } }
 `;
@@ -1804,7 +1808,7 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
   <a href="#topology">${escapeHtml(t('dashboard.page.navTopology'))}</a>
   <a href="#evidence">${escapeHtml(t('dashboard.page.navEvidence'))}</a>
   <a href="#settings">${escapeHtml(t('dashboard.page.navSettings'))}</a>
-  <button type="button" class="command-trigger" data-command-open aria-haspopup="dialog" aria-controls="command-palette">⌘K</button>
+  <button type="button" class="command-trigger" data-command-open aria-haspopup="dialog" aria-controls="command-palette" aria-label="${escapeHtml(t('dashboard.page.commandPalette'))}">⌘K</button>
 </nav>
 
 <dialog id="command-palette" aria-labelledby="command-palette-title" onclick="if (event.target === this) this.close()">
