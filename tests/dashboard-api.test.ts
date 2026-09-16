@@ -327,43 +327,40 @@ describe('serveFragment', () => {
     dash.handleCompressionToggle({ enabled: true });
   });
 
-  it('renders opt-in GPT 5.5/5.6 chips and mutates the single model scope', async () => {
+  it('uses discovered models for manual scope controls instead of a release-time compatibility chip list', async () => {
     const prev = process.env.FURYPIPE_MODELS;
     try {
       delete process.env.FURYPIPE_MODELS;
-      setAllowedModelBases(null); // reset to built-in Fable-only default
-      const off = await (await dash.serveFragment('models', url, 1234)).text();
-      expect(off).toContain('OpenAI Responses visual profiles');
-      expect(off).not.toContain('<div class="models" style="display:none">');
-      // FURYPIPE_MODELS textbox mirrors the live scope as CSV.
-      expect(off).toContain('name="list"');
-      expect(off).toContain('value="claude-fable-5,gemini"');
-      expect(off).toContain('GPT 5.6 Sol</button>');
-      expect(off).toContain('GPT 5.5</button>');
-      // Family chip is lit by default; per-version chips exist for narrowing.
-      expect(off).toContain('Gemini (all versions) ✓</button>');
-      expect(off).toContain('Gemini 3.8 Flash</button>');
-      // Sol remains available and ordered before GPT 5.5.
-      expect(off.indexOf('GPT 5.6 Sol')).toBeLessThan(off.indexOf('GPT 5.5'));
-      expect(getAllowedModelBases()).toContain('claude-fable-5');
-      expect(getAllowedModelBases()).not.toContain('grok-4.5');
-      expect(getAllowedModelBases()).not.toContain('gpt-5.6-sol');
-      expect(getAllowedModelBases()).not.toContain('gpt-5.5');
+      setAllowedModelBases(null);
+      registerRuntimeModelCatalog(normalizeOpenAIModelsPayload({
+        data: [
+          { id: 'gpt-5.6-sol', owned_by: 'openai' },
+          { id: 'gpt-5.5', owned_by: 'openai' },
+        ],
+      }, '2026-09-16T00:00:00.000Z'));
+
+      const initial = await (await dash.serveFragment('models', url, 1234)).text();
+      expect(initial).toContain('Model Fabric');
+      expect(initial).toContain('gpt-5.6-sol');
+      expect(initial).toContain('gpt-5.5');
+      expect(initial).not.toContain('OpenAI Responses visual profiles');
+      expect(initial).not.toContain('GPT 5.6 Sol</button>');
+      expect(initial).not.toContain('Gemini 3.8 Flash</button>');
+      expect(initial).toContain('name="list"');
+      expect(initial).toContain('value="claude-fable-5,gemini"');
 
       dash.handleModelsToggle('gpt-5.6-sol', true);
       dash.handleModelsToggle('gpt-5.5', true);
       const onBoth = await (await dash.serveFragment('models', url, 1234)).text();
-      expect(onBoth).toContain('GPT 5.5 ✓');
-      expect(onBoth).toContain('GPT 5.6 Sol ✓');
+      expect(onBoth).toContain('gpt-5.6-sol ✓');
+      expect(onBoth).toContain('gpt-5.5 ✓');
       expect(getAllowedModelBases()).toContain('gpt-5.5');
       expect(getAllowedModelBases()).toContain('gpt-5.6-sol');
-      // Chip flips are reflected back into the textbox CSV.
       expect(onBoth).toContain('value="claude-fable-5,gemini,gpt-5.6-sol,gpt-5.5"');
-      // Opting the Gemini family off is a real opt-out: the chip unlights and
-      // the base leaves the scope.
+
       dash.handleModelsToggle('gemini', false);
       const geminiOff = await (await dash.serveFragment('models', url, 1234)).text();
-      expect(geminiOff).toContain('Gemini (all versions)</button>');
+      expect(geminiOff).toContain('>gemini</button>');
       expect(getAllowedModelBases()).not.toContain('gemini');
       expect(isFuryPipeSupportedModel('gemini-4')).toBe(false);
     } finally {
@@ -416,7 +413,7 @@ describe('serveFragment', () => {
       expect(getAllowedModelBases()).toEqual(['claude-fable-5', 'grok-4.5']);
       const html = await (await dash.serveFragment('models', url, 1234)).text();
       expect(html).toContain('value="claude-fable-5,grok-4.5"');
-      expect(html).toContain('Grok 4.5 ✓');
+      expect(html).toContain('grok-4.5 ✓');
       // Same falsey vocabulary as the env var: off/false/0 → compress nothing.
       dash.handleModelsSet('off');
       expect(getAllowedModelBases()).toEqual([]);
@@ -572,8 +569,9 @@ describe('dashboard localized fragments', () => {
       new URL('http://localhost/fragments/models?locale=fr'),
       1,
     )).text();
-    expect(models).toContain('Profils visuels Claude');
-    expect(models).toContain('les modèles non listés restent en texte brut');
+    expect(models).toContain('Catalogue des modèles');
+    expect(models).toContain('catalogue runtime découvert/observé');
+    expect(models).toContain('Périmètre du moteur visuel');
 
     const recent = await (await dash.serveFragment(
       'recent',
