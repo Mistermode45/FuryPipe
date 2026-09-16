@@ -6,7 +6,7 @@
 import { markCacheDead, noteCacheOutcome, responseLeftNoCache } from './session-state.js';
 import { transformRequest, type TransformOptions, type TransformInfo } from './transform.js';
 import { isClaudeModel, transformOpenAIChatCompletions, transformOpenAIResponses } from './openai.js';
-import { isAnthropicMessagesPath, isFuryPipeSupportedGptModel, isFuryPipeSupportedModel } from './applicability.js';
+import { isAnthropicMessagesPath, resolveFuryPipeModelEligibility } from './applicability.js';
 import {
   buildBaselineCountTokensBody,
   buildCacheablePrefixCountTokensBody,
@@ -1747,17 +1747,22 @@ let responseContentType: string | undefined;
         bridgedChatMessages = forceChat;
         const chatStamp = bridgedChatMessages ? routedModel : undefined;
         const effectiveModel = (bridgedGptMessages || bridgedChatMessages) ? routedModel : model;
-        // Gemini is in DEFAULT_MODEL_BASES as the family base `gemini`; the same
-        // allowlist gates it so FURYPIPE_MODELS / the chip can opt out.
-        const modelOk = isGoogle
-          ? (isGeminiModel(model) && isFuryPipeSupportedModel(model))
+        // Compression eligibility follows the model that actually receives the
+        // request, not the incoming wire schema or Claude Code gateway alias.
+        // In particular, Messages→OpenAI bridges must not bypass Model Fabric
+        // merely because routing was configured.
+        const eligibilityTarget = effectiveModel ?? model;
+        const modelEligibility = resolveFuryPipeModelEligibility(eligibilityTarget);
+        const routeSupportsVisualTransform = isGoogle
+          ? isGeminiModel(model)
           : isMessages
-            ? (messagesAnthropic && isFuryPipeSupportedModel(model))
-              || bridgedGptMessages
-              || (bridgedChatMessages && isFuryPipeSupportedGptModel(effectiveModel))
-            : isFuryPipeSupportedGptModel(model);
-        // Compression eligibility and telemetry follow the model that actually
-        // receives the request, not Claude Code's local gateway alias.
+            ? messagesAnthropic || bridgedGptMessages || bridgedChatMessages
+            : true;
+        const modelOk = routeSupportsVisualTransform && modelEligibility.eligible;
+        const modelSkipReason = routeSupportsVisualTransform
+          ? modelEligibility.reason
+          : 'unsupported_model';
+
         if ((bridgedGptMessages || bridgedChatMessages) && effectiveModel) {
           requestModel = effectiveModel;
         }
@@ -1826,7 +1831,7 @@ let responseContentType: string | undefined;
             r.info.baselineProbeStatus = 'failed';
           }
         }
-        if (!modelOk) r.info.reason = 'unsupported_model';
+        if (!modelOk) r.info.reason = modelSkipReason;
         bodyOut = r.body as unknown as BodyInit; // TS narrows Uint8Array away from BodyInit
         info = r.info;
         reqBodyBytes = r.body;
