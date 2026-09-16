@@ -46,6 +46,7 @@ import {
   openAIOutputRate,
 } from './core/openai-savings.js';
 import { renderCacheMaxBytes, renderCacheStats } from './core/render.js';
+import { inspectRuntimeModels } from './core/model-fabric.js';
 import {
   aggregateSessions,
   claudeCodeMap,
@@ -1546,6 +1547,26 @@ export class DashboardState {
     }
   }
 
+  /** GET /api/models.json — bounded, secret-free Model Fabric snapshot. */
+  serveModelsJson(): Response {
+    const all = inspectRuntimeModels();
+    const limit = 2_000;
+    const models = all.slice(0, limit);
+    return new Response(JSON.stringify({
+      format: 'furypipe-model-catalog/v1',
+      total: all.length,
+      returned: models.length,
+      truncated: all.length > limit,
+      models,
+    }), {
+      status: 200,
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+      },
+    });
+  }
+
   /** GET /api/control-room.json — metadata-only V5 evidence snapshot. */
   async serveControlRoomJson(): Promise<Response> {
     const snapshot = await this.readControlRoomSnapshot();
@@ -1757,6 +1778,7 @@ export type DashboardRoute =
   | { kind: 'png' } // /proxy-latest-png
   | { kind: 'api-sessions' } // /api/sessions.json
   | { kind: 'api-stats' } // /api/stats.json
+  | { kind: 'api-models' } // /api/models.json
   | { kind: 'api-control-room' } // /api/control-room.json
   | { kind: 'current-session' } // /api/current-session.json
   | { kind: 'api-compression' } // /api/compression (POST {enabled}) — runtime kill switch
@@ -1771,6 +1793,7 @@ export function dashboardPath(pathname: string): DashboardRoute | null {
   if (pathname === '/proxy-latest-png') return { kind: 'png' };
   if (pathname === '/api/sessions.json') return { kind: 'api-sessions' };
   if (pathname === '/api/stats.json') return { kind: 'api-stats' };
+  if (pathname === '/api/models.json') return { kind: 'api-models' };
   if (pathname === '/api/control-room.json') return { kind: 'api-control-room' };
   if (pathname === '/api/current-session.json') return { kind: 'current-session' };
   if (pathname === '/api/compression') return { kind: 'api-compression' };
