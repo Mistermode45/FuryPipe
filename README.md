@@ -30,7 +30,7 @@ FuryPipe is designed around a simple rule:
 
 That distinction is enforced throughout the project through explicit lifecycle states, receipts, source-bound evidence and fail-closed behavior.
 
-**Current public release:** [`v0.14.0`](https://github.com/Mistermode45/FuryPipe/releases/tag/v0.14.0) · [`furypipe@0.14.0`](https://www.npmjs.com/package/furypipe)
+**Current public release:** [Latest GitHub Release](https://github.com/Mistermode45/FuryPipe/releases/latest) · [npm package](https://www.npmjs.com/package/furypipe)
 
 FuryPipe is pre-1.0. Public APIs can still evolve. Package publication also remains distinct from production deployment and from optional hosted-integration verification.
 
@@ -334,8 +334,8 @@ A local green build does not replace required GitHub Actions checks.
 
 | Surface | Status |
 |---|---|
-| npm package | **Released — `furypipe@0.14.0`** |
-| GitHub Release | **Released — `v0.14.0`** |
+| npm package | **Published — current package on npm** |
+| GitHub Release | **Published — latest GitHub release** |
 | Core release gates | **Verified for the release candidate** |
 | Hosted MCP conformance | **Verified for the release candidate** |
 | Hosted Web Studio conformance | **Verified for the release candidate** |
@@ -406,7 +406,7 @@ Security vulnerabilities must follow [SECURITY.md](SECURITY.md).
 
 **Construisez des workflows IA qui distinguent clairement ce qui est disponible, ce qui est autorisé, ce qui a réellement été exécuté et ce qui a été vérifié.**
 
-**Version publique actuelle :** [`v0.14.0`](https://github.com/Mistermode45/FuryPipe/releases/tag/v0.14.0) · [`furypipe@0.14.0`](https://www.npmjs.com/package/furypipe)
+**Version publique actuelle :** [Dernière release GitHub](https://github.com/Mistermode45/FuryPipe/releases/latest) · [package npm](https://www.npmjs.com/package/furypipe)
 
 FuryPipe est encore en pré-1.0. Les API publiques peuvent évoluer. La publication du package reste également distincte d’un déploiement en production et de la vérification des intégrations externes optionnelles.
 
@@ -724,8 +724,8 @@ Un build local vert ne remplace pas les checks GitHub Actions requis.
 
 | Surface | Statut |
 |---|---|
-| Package npm | **Publié — `furypipe@0.14.0`** |
-| GitHub Release | **Publiée — `v0.14.0`** |
+| Package npm | **Publié — package actuel sur npm** |
+| GitHub Release | **Publiée — dernière release GitHub** |
 | Gates principales de release | **Vérifiées pour le release candidate** |
 | Conformance Hosted MCP | **Vérifiée pour le release candidate** |
 | Conformance Hosted Web Studio | **Vérifiée pour le release candidate** |
