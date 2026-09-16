@@ -572,9 +572,34 @@ export function normalizeOpenAIModelsPayload(payload: unknown, observedAt = nowI
       provider: 'openai',
       id,
       displayName: id,
+      ...(looksNonChatOpenAIModel(id) ? {
+        modalities: {
+          textInput: 'unknown',
+          imageInput: 'no',
+          textOutput: 'unknown',
+        },
+      } : {}),
       evidence: { kind: 'provider_api', source: 'OpenAI /v1/models', observedAt },
     })];
   }));
+}
+
+function geminiSupportsGenerateContent(item: Record<string, unknown>): ModelFabricCapability {
+  const methods = stringList(
+    item.supportedGenerationMethods
+      ?? item.supportedActions
+      ?? item.supported_generation_methods,
+  ).map((value) => value.toLowerCase());
+  if (methods.length === 0) return 'unknown';
+  return methods.some((value) => value === 'generatecontent' || value.endsWith('/generatecontent'))
+    ? 'yes'
+    : 'no';
+}
+
+function looksNonChatOpenAIModel(id: string): boolean {
+  const lower = id.toLowerCase();
+  return /(?:embedding|transcrib|whisper|tts|realtime|audio|image|moderation|search-preview)/u.test(lower)
+    && !/^gpt-(?:5(?:\.|-|$)|6(?:\.|-|$)|4o(?:-|$)|4\.1(?:-|$))/u.test(lower);
 }
 
 export function normalizeGeminiModelsPayload(payload: unknown, observedAt = nowIso()): readonly ModelFabricEntry[] {
@@ -585,11 +610,22 @@ export function normalizeGeminiModelsPayload(payload: unknown, observedAt = nowI
     const rawName = bounded(item?.name);
     if (!rawName) return [];
     const id = rawName.replace(/^models\//u, '');
+    const generateContent = geminiSupportsGenerateContent(item!);
     return [catalogEntry({
       provider: 'google',
       id,
       displayName: bounded(item?.displayName, id, DISPLAY_MAX),
       aliases: stringList(item?.baseModelId),
+      ...(generateContent === 'no' ? {
+        modalities: {
+          textInput: 'unknown',
+          imageInput: 'no',
+          textOutput: 'unknown',
+        },
+      } : {}),
+      capabilities: {
+        ...(generateContent === 'unknown' ? {} : { streaming: generateContent }),
+      },
       limits: Object.freeze({
         ...(numberField(item?.inputTokenLimit) === undefined ? {} : { contextTokens: numberField(item?.inputTokenLimit)! }),
         ...(numberField(item?.outputTokenLimit) === undefined ? {} : { outputTokens: numberField(item?.outputTokenLimit)! }),
