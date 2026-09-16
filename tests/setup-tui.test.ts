@@ -8,6 +8,7 @@ import {
   persistSetupLocale,
   readConfiguredSetupLocale,
   renderSetupScreen,
+  resolveSetupKey,
 } from '../src/setup-tui.js';
 
 const tempDirs: string[] = [];
@@ -33,7 +34,9 @@ describe('FuryPipe setup TUI', () => {
     });
 
     expect(rendered).toContain('FURYPIPE');
-    expect(rendered).toContain('GOVERNED AI WORKFLOWS');
+    expect(rendered).toContain('CONTEXT INTELLIGENCE');
+    expect(rendered).toContain('FuryLink');
+    expect(rendered).toContain('Visual Engine');
     expect(rendered).toContain('Bienvenue dans FuryPipe');
     expect(rendered).toContain('Français');
     expect(rendered).toContain('English');
@@ -68,6 +71,19 @@ describe('FuryPipe setup TUI', () => {
     });
     expect(() => parseSetupArgs(['--lang=de'])).toThrow(/unsupported setup language/);
     expect(() => parseSetupArgs(['--wat'])).toThrow(/unknown setup option/);
+  });
+
+  it('handles Windows special-key events that have no printable input', () => {
+    expect(resolveSetupKey(undefined, { name: 'enter' })).toBe('accept');
+    expect(resolveSetupKey(undefined, { name: 'up' })).toBe('fr');
+    expect(resolveSetupKey(undefined, { name: 'down' })).toBe('en');
+    expect(resolveSetupKey(undefined, { name: 'escape' })).toBe('cancel');
+    expect(resolveSetupKey(undefined, undefined)).toBeNull();
+  });
+
+  it('accepts printable shortcuts without depending on key metadata', () => {
+    expect(resolveSetupKey('F', undefined)).toBe('fr');
+    expect(resolveSetupKey('2', undefined)).toBe('en');
   });
 
   it('detects French and otherwise falls back to English', () => {
