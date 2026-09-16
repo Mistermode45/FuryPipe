@@ -8,12 +8,15 @@ import {
   normalizeOpenAIModelsPayload,
   normalizeOpenRouterModelsPayload,
   normalizeXaiModelsPayload,
+  registerRuntimeModelCatalog,
+  resetRuntimeModelFabricForTests,
 } from '../src/core/model-fabric.js';
 import { isFuryPipeSupportedModel } from '../src/core/applicability.js';
 
 afterEach(() => {
   delete process.env.FURYPIPE_MODELS;
   delete process.env.FURYPIPE_VISUAL_POLICY;
+  resetRuntimeModelFabricForTests();
 });
 
 describe('model fabric', () => {
@@ -190,5 +193,21 @@ describe('model fabric', () => {
     process.env.FURYPIPE_VISUAL_POLICY = 'text_only';
     expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(false);
     expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(false);
+  });
+
+  it('lets MAX_SAVINGS admit provider-discovered future vision models but never proven text-only models', () => {
+    registerRuntimeModelCatalog(normalizeMistralModelsPayload({
+      data: [
+        { id: 'mistral-future-vision', capabilities: { vision: true } },
+        { id: 'mistral-future-text', capabilities: { vision: false } },
+      ],
+    }, '2026-09-16T00:00:00.000Z'));
+
+    expect(isFuryPipeSupportedModel('mistral-future-vision')).toBe(false);
+    expect(isFuryPipeSupportedModel('mistral-future-text')).toBe(false);
+
+    process.env.FURYPIPE_VISUAL_POLICY = 'max_savings';
+    expect(isFuryPipeSupportedModel('mistral-future-vision')).toBe(true);
+    expect(isFuryPipeSupportedModel('mistral-future-text')).toBe(false);
   });
 });
