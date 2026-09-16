@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   createModelFabricRegistry,
+  normalizeAnthropicModelsPayload,
   normalizeGeminiModelsPayload,
   normalizeMistralModelsPayload,
   normalizeOpenAIModelsPayload,
@@ -113,6 +114,27 @@ describe('model fabric', () => {
       provider: 'openrouter',
       imageInput: 'yes',
       mode: 'canary',
+    });
+  });
+
+  it('normalizes Anthropic catalog metadata and preserves Claude vision-family evidence', () => {
+    const models = normalizeAnthropicModelsPayload({
+      data: [{
+        id: 'claude-opus-5',
+        display_name: 'Claude Opus 5',
+        max_input_tokens: 1_000_000,
+        max_tokens: 64_000,
+        capabilities: { thinking: { supported: true } },
+      }],
+    }, '2026-09-16T00:00:00.000Z');
+
+    expect(models[0]).toMatchObject({
+      provider: 'anthropic',
+      id: 'claude-opus-5',
+      displayName: 'Claude Opus 5',
+      modalities: { imageInput: 'yes' },
+      capabilities: { reasoning: 'yes' },
+      limits: { contextTokens: 1_000_000, outputTokens: 64_000 },
     });
   });
 
