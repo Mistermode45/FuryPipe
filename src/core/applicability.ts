@@ -145,17 +145,32 @@ export function resolveFuryPipeModelEligibility(
   // A non-empty FURYPIPE_MODELS value is also explicit; "off" therefore stays
   // a hard kill switch instead of being bypassed by capability discovery.
   if (runtimeModelBases !== null || hasExplicitEnvironmentScope()) {
-    if (isMisresolvedModelId(base)) {
+    const resolution = resolveRuntimeVisualModel(base);
+    if (isMisresolvedModelId(base) || resolution.reason === 'blocked_profile') {
       return Object.freeze({
         eligible: false,
         reason: 'visual_profile_blocked',
         source: 'operator_scope',
+        resolution,
       });
     }
+    // A positive provider capability denial cannot be overridden into an
+    // image request by a stale CSV. Unknown capability remains operator-forced
+    // for backward compatibility, but proven text-only always fails closed.
+    if (resolution.imageInput === 'no') {
+      return Object.freeze({
+        eligible: false,
+        reason: 'text_only_model',
+        source: 'operator_scope',
+        resolution,
+      });
+    }
+    const scoped = matchesExplicitScope(base);
     return Object.freeze({
-      eligible: matchesExplicitScope(base),
-      reason: matchesExplicitScope(base) ? 'eligible' : 'unsupported_model',
+      eligible: scoped,
+      reason: scoped ? 'eligible' : 'unsupported_model',
       source: 'operator_scope',
+      resolution,
     });
   }
 
