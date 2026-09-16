@@ -16,6 +16,7 @@ import type {
   SessionRow,
   FullStatsPayload,
   CurrentSessionPayload,
+  ModelRuntimeActivity,
 } from './types.js';
 
 // ---- helpers --------------------------------------------------------
@@ -106,6 +107,7 @@ export function renderModelsFragment(
   locale = 'en',
   discovered: readonly ModelFabricEntry[] = [],
   visualPolicy: FuryPipeVisualPolicy = 'auto',
+  runtimeActivity: ReadonlyMap<string, ModelRuntimeActivity> = new Map(),
 ): string {
   const t = (key: string): string => dashboardT(locale, key);
   const on = new Set(active);
@@ -147,7 +149,15 @@ export function renderModelsFragment(
     const profile = model.visual.profile.toUpperCase();
     const policy = model.visual.policy.toUpperCase();
     const lifecycle = model.lifecycle.toUpperCase();
-    const observed = model.lastObservedAt ? model.lastObservedAt.replace('T', ' ').replace(/\.\d{3}Z$/u, 'Z') : '—';
+    const runtime = runtimeActivity.get(model.id);
+    const observedAt = runtime?.lastObservedAt ?? model.lastObservedAt;
+    const observed = observedAt ? observedAt.replace('T', ' ').replace(/\.\d{3}Z$/u, 'Z') : '—';
+    const runtimeSummary = runtime && runtime.requests > 0
+      ? (
+          `${numFmt(runtime.requests)} req · ${numFmt(runtime.compressedRequests)} visual · ${numFmt(runtime.passthroughRequests)} text` +
+          (runtime.lastReason ? ` · ${runtime.lastReason}` : '')
+        )
+      : t('dashboard.models.noRuntimeActivity');
     return `<tr>` +
       `<td class="model-name"><strong>${escapeHtml(model.displayName || model.id)}</strong><span class="model-id">${escapeHtml(model.id)}</span></td>` +
       `<td>${escapeHtml(model.provider)}</td>` +
@@ -155,6 +165,7 @@ export function renderModelsFragment(
       `<td><span class="model-state">${escapeHtml(profile)}</span></td>` +
       `<td><span class="model-state">${escapeHtml(policy)}</span></td>` +
       `<td>${escapeHtml(lifecycle)}</td>` +
+      `<td class="model-activity">${escapeHtml(runtimeSummary)}</td>` +
       `<td class="model-observed">${escapeHtml(observed)}</td>` +
       `</tr>`;
   }).join('');
@@ -174,7 +185,7 @@ export function renderModelsFragment(
     `</select><a class="mini-btn" href="/api/models.json" target="_blank" rel="noopener">JSON</a></div></div>` +
     (discoveredRows
       ? `<div class="model-fabric-scroll"><table class="model-fabric-table"><thead><tr>` +
-        `<th>${escapeHtml(t('dashboard.models.columnModel'))}</th><th>${escapeHtml(t('dashboard.models.columnProvider'))}</th><th>${escapeHtml(t('dashboard.models.columnVision'))}</th><th>${escapeHtml(t('dashboard.models.columnProfile'))}</th><th>${escapeHtml(t('dashboard.models.columnPolicy'))}</th><th>${escapeHtml(t('dashboard.models.columnLifecycle'))}</th><th>${escapeHtml(t('dashboard.models.columnLastObserved'))}</th>` +
+        `<th>${escapeHtml(t('dashboard.models.columnModel'))}</th><th>${escapeHtml(t('dashboard.models.columnProvider'))}</th><th>${escapeHtml(t('dashboard.models.columnVision'))}</th><th>${escapeHtml(t('dashboard.models.columnProfile'))}</th><th>${escapeHtml(t('dashboard.models.columnPolicy'))}</th><th>${escapeHtml(t('dashboard.models.columnLifecycle'))}</th><th>${escapeHtml(t('dashboard.models.columnActivity'))}</th><th>${escapeHtml(t('dashboard.models.columnLastObserved'))}</th>` +
         `</tr></thead><tbody>${discoveredRows}</tbody></table></div>`
       : `<div class="model-fabric-empty">${escapeHtml(t('dashboard.models.catalogEmpty'))}</div>`) +
     `</section>`;
