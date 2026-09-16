@@ -273,27 +273,46 @@ function normalizeAliases(values: readonly unknown[], id: string): readonly stri
   return Object.freeze([...set]);
 }
 
-function mergeCapability(a: ModelFabricCapability, b: ModelFabricCapability): ModelFabricCapability {
-  if (b !== 'unknown') return b;
-  return a;
+function hasProviderCapabilityEvidence(entry: ModelFabricEntry): boolean {
+  return entry.provenance.some((item) =>
+    item.kind === 'provider_api' || item.kind === 'openrouter_catalog');
+}
+
+function mergeCapability(
+  existingValue: ModelFabricCapability,
+  incomingValue: ModelFabricCapability,
+  existingEntry: ModelFabricEntry,
+  incomingEntry: ModelFabricEntry,
+): ModelFabricCapability {
+  if (incomingValue === 'unknown' || incomingValue === existingValue) return existingValue;
+
+  // Provider catalog modality/capability facts outrank weaker runtime/name
+  // inference. This is especially important for explicit text-only denials:
+  // observing a model whose name resembles a multimodal family must not turn a
+  // provider-proven "no" back into "yes". A later provider refresh may still
+  // update the fact because it carries the same authoritative evidence class.
+  if (hasProviderCapabilityEvidence(existingEntry) && !hasProviderCapabilityEvidence(incomingEntry)) {
+    return existingValue;
+  }
+  return incomingValue;
 }
 
 function mergeEntry(existing: ModelFabricEntry, incoming: ModelFabricEntry): ModelFabricEntry {
   const modalities: ModelFabricModalities = Object.freeze({
-    textInput: mergeCapability(existing.modalities.textInput, incoming.modalities.textInput),
-    imageInput: mergeCapability(existing.modalities.imageInput, incoming.modalities.imageInput),
-    audioInput: mergeCapability(existing.modalities.audioInput, incoming.modalities.audioInput),
-    videoInput: mergeCapability(existing.modalities.videoInput, incoming.modalities.videoInput),
-    fileInput: mergeCapability(existing.modalities.fileInput, incoming.modalities.fileInput),
-    textOutput: mergeCapability(existing.modalities.textOutput, incoming.modalities.textOutput),
-    imageOutput: mergeCapability(existing.modalities.imageOutput, incoming.modalities.imageOutput),
-    audioOutput: mergeCapability(existing.modalities.audioOutput, incoming.modalities.audioOutput),
+    textInput: mergeCapability(existing.modalities.textInput, incoming.modalities.textInput, existing, incoming),
+    imageInput: mergeCapability(existing.modalities.imageInput, incoming.modalities.imageInput, existing, incoming),
+    audioInput: mergeCapability(existing.modalities.audioInput, incoming.modalities.audioInput, existing, incoming),
+    videoInput: mergeCapability(existing.modalities.videoInput, incoming.modalities.videoInput, existing, incoming),
+    fileInput: mergeCapability(existing.modalities.fileInput, incoming.modalities.fileInput, existing, incoming),
+    textOutput: mergeCapability(existing.modalities.textOutput, incoming.modalities.textOutput, existing, incoming),
+    imageOutput: mergeCapability(existing.modalities.imageOutput, incoming.modalities.imageOutput, existing, incoming),
+    audioOutput: mergeCapability(existing.modalities.audioOutput, incoming.modalities.audioOutput, existing, incoming),
   });
   const capabilities: ModelFabricCapabilities = Object.freeze({
-    reasoning: mergeCapability(existing.capabilities.reasoning, incoming.capabilities.reasoning),
-    tools: mergeCapability(existing.capabilities.tools, incoming.capabilities.tools),
-    structuredOutput: mergeCapability(existing.capabilities.structuredOutput, incoming.capabilities.structuredOutput),
-    streaming: mergeCapability(existing.capabilities.streaming, incoming.capabilities.streaming),
+    reasoning: mergeCapability(existing.capabilities.reasoning, incoming.capabilities.reasoning, existing, incoming),
+    tools: mergeCapability(existing.capabilities.tools, incoming.capabilities.tools, existing, incoming),
+    structuredOutput: mergeCapability(existing.capabilities.structuredOutput, incoming.capabilities.structuredOutput, existing, incoming),
+    streaming: mergeCapability(existing.capabilities.streaming, incoming.capabilities.streaming, existing, incoming),
   });
 
   const evidence = new Map<string, ModelFabricEvidence>();
@@ -314,7 +333,9 @@ function mergeEntry(existing: ModelFabricEntry, incoming: ModelFabricEntry): Mod
       ? {}
       : { pricing: Object.freeze({ ...(existing.pricing ?? {}), ...(incoming.pricing ?? {}) }) }),
     visual: Object.freeze({
-      profile: incoming.visual.profile !== 'unprofiled' ? incoming.visual.profile : existing.visual.profile,
+      profile: modalities.imageInput === 'no'
+        ? 'not_applicable'
+        : incoming.visual.profile !== 'unprofiled' ? incoming.visual.profile : existing.visual.profile,
       policy: incoming.visual.policy !== 'auto' ? incoming.visual.policy : existing.visual.policy,
     }),
     provenance: Object.freeze([...evidence.values()].slice(-64)),
@@ -509,6 +530,7 @@ function catalogEntry(input: {
   evidence: ModelFabricEvidence;
 }): ModelFabricEntry {
   const inferred = inferredEntry(input.id, input.provider);
+  const modalities = Object.freeze({ ...inferred.modalities, ...(input.modalities ?? {}) });
   return Object.freeze({
     ...inferred,
     provider: input.provider,
@@ -516,12 +538,14 @@ function catalogEntry(input: {
     displayName: bounded(input.displayName, input.id, DISPLAY_MAX),
     aliases: normalizeAliases(input.aliases ?? [], normalizeId(input.id)),
     lifecycle: input.lifecycle ?? inferred.lifecycle,
-    modalities: Object.freeze({ ...inferred.modalities, ...(input.modalities ?? {}) }),
+    modalities,
     capabilities: Object.freeze({ ...inferred.capabilities, ...(input.capabilities ?? {}) }),
     limits: Object.freeze({ ...(input.limits ?? {}) }),
     ...(input.pricing === undefined ? {} : { pricing: Object.freeze({ ...input.pricing }) }),
     visual: Object.freeze({
-      profile: inferredProfile(input.id, input.provider),
+      profile: modalities.imageInput === 'no'
+        ? 'not_applicable'
+        : inferredProfile(input.id, input.provider),
       policy: 'auto' as const,
     }),
     provenance: Object.freeze([Object.freeze(input.evidence)]),

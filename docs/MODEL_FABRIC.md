@@ -190,6 +190,7 @@ Release-blocking invariants:
 - provider catalog responses are size/time bounded;
 - catalog refresh never runs on each proxy request;
 - a text-only model cannot be forced into visual context;
+- provider-declared modality/capability facts outrank weaker runtime/name inference; a later provider refresh may update them;
 - image capability does not imply quality verification;
 - quality verification does not imply profitability;
 - an unknown provider does not inherit another provider's image pricing;

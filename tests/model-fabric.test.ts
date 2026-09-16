@@ -73,6 +73,48 @@ describe('model fabric', () => {
     });
   });
 
+  it('keeps provider text-only evidence authoritative over weaker runtime family inference', () => {
+    const registry = createModelFabricRegistry();
+    registry.upsertMany(normalizeXaiModelsPayload({
+      models: [{
+        id: 'grok-4.6-text-only',
+        input_modalities: ['text'],
+        output_modalities: ['text'],
+      }],
+    }, '2026-09-16T00:00:00.000Z'));
+
+    expect(registry.resolveVisual('grok-4.6-text-only')).toMatchObject({
+      imageInput: 'no',
+      profile: 'not_applicable',
+      mode: 'native',
+      reason: 'text_only',
+    });
+
+    // Runtime observation/name inference is weaker than provider metadata and
+    // therefore cannot turn the explicit denial back into image support.
+    registry.observe('grok-4.6-text-only', 'xai');
+    expect(registry.resolveVisual('grok-4.6-text-only')).toMatchObject({
+      imageInput: 'no',
+      profile: 'not_applicable',
+      mode: 'native',
+      reason: 'text_only',
+    });
+
+    // A later provider refresh is authoritative and may update the fact.
+    registry.upsertMany(normalizeXaiModelsPayload({
+      models: [{
+        id: 'grok-4.6-text-only',
+        input_modalities: ['text', 'image'],
+        output_modalities: ['text'],
+      }],
+    }, '2026-09-17T00:00:00.000Z'));
+    expect(registry.resolveVisual('grok-4.6-text-only')).toMatchObject({
+      imageInput: 'yes',
+      profile: 'calibrated',
+      mode: 'canary',
+    });
+  });
+
   it('uses provider capability metadata instead of name guessing for Mistral', () => {
     const registry = createModelFabricRegistry();
     registry.upsertMany(normalizeMistralModelsPayload({
