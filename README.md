@@ -116,9 +116,9 @@ Depending on the input, export can produce artifacts such as `page-*.png`, `fact
 
 Default policy: **dynamic discovery + evidence-first AUTO**.
 
-Model Fabric discovers/observes models independently from visual authorization. In `AUTO`, only quality-verified visual profiles transform without an explicit model override; the backward-compatible default scope remains `claude-fable-5,gemini`. Configured provider catalogs can surface newly released models without a FuryPipe release, but `discovered != vision-capable != quality-verified`.
+Model Fabric discovers/observes models independently from visual authorization. In `AUTO`, quality-verified **and calibrated** visual readers transform without an explicit model override, so measured Claude/Grok readers do not fall back to plain text merely because their stronger quality-verification gate is still pending. Configured provider catalogs can surface newly released models without a FuryPipe release, but `discovered != vision-capable != calibrated != quality-verified`.
 
-`FURYPIPE_VISUAL_POLICY=max_savings` broadens automatic eligibility to models whose image-input capability is positively proven **and** whose image-token pricing/profile is provider-appropriate. Discovery alone never causes an unknown provider to inherit OpenAI tile economics. ExactGuard, protocol-state protection, image/byte limits and profitability checks still apply. `safe_exact` keeps the conservative AUTO eligibility surface and `text_only` disables visual transformation globally.
+`FURYPIPE_VISUAL_POLICY=max_savings` broadens automatic eligibility to models whose image-input capability is positively proven **and** whose image-token pricing/profile is provider-appropriate. Discovery alone never causes an unknown provider to inherit OpenAI tile economics. ExactGuard, protocol-state protection, image/byte limits and profitability checks still apply. `safe_exact` is stricter than AUTO and accepts only quality-verified profiles; `text_only` disables visual transformation globally.
 
 `FURYPIPE_MODELS` remains an explicit backward-compatible operator scope override. A CSV selects model bases; `off` disables visual compression.
 
@@ -515,9 +515,9 @@ Selon l’entrée, l’export peut produire des artefacts comme `page-*.png`, `f
 
 La politique par défaut combine **découverte dynamique + AUTO evidence-first**.
 
-Le Model Fabric découvre/observe les modèles indépendamment de l'autorisation de compression. En `AUTO`, seuls les profils visuels dont la qualité est vérifiée sont transformés sans surcharge explicite ; la portée rétrocompatible reste `claude-fable-5,gemini`. Les catalogues providers peuvent faire apparaître de nouveaux modèles sans nouvelle release, mais `découvert != vision-capable != qualité vérifiée`.
+Le Model Fabric découvre/observe les modèles indépendamment de l'autorisation de compression. En `AUTO`, les profils visuels dont la qualité est vérifiée **ou calibrée** peuvent être transformés sans surcharge explicite. Les catalogues providers peuvent faire apparaître de nouveaux modèles sans nouvelle release, mais `découvert != vision-capable != qualité vérifiée`.
 
-`FURYPIPE_VISUAL_POLICY=max_savings` élargit l'éligibilité automatique à tout modèle dont l'entrée image est positivement prouvée. ExactGuard, la protection de l'état protocolaire, les budgets image/octets et la rentabilité restent obligatoires. `safe_exact` conserve l'éligibilité prudente d'AUTO et `text_only` coupe globalement la transformation visuelle.
+`FURYPIPE_VISUAL_POLICY=max_savings` élargit l'éligibilité automatique à tout modèle dont l'entrée image est positivement prouvée. ExactGuard, la protection de l'état protocolaire, les budgets image/octets et la rentabilité restent obligatoires. `safe_exact` est plus strict qu'AUTO et exige un profil quality-verified ; `text_only` coupe globalement la transformation visuelle.
 
 `FURYPIPE_MODELS` reste une surcharge de portée rétrocompatible. Un CSV sélectionne les bases de modèles ; `off` désactive la compression visuelle.
 
