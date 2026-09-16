@@ -207,117 +207,110 @@ export function renderSetupScreen(options: SetupRenderOptions): string {
   const selected = options.selectedLocale;
   const fr = selected === 'fr';
 
-  const header = [
-    ...LOGO.map((line) => paint(color, A.cyan + A.bold, line)),
-    paint(color, A.cyan + A.bold, 'FURYPIPE // CONTROL PLANE'),
+  // FuryPipe's terminal experience is a control-plane console, not a wizard
+  // sidebar. The top rail exposes the runtime domains and the progress capsule
+  // stays horizontal so the visual language matches the web Control Plane.
+  const title = paint(color, A.white + A.bold, 'FURYPIPE') +
+    paint(color, A.cyan + A.bold, '  //  CONTROL PLANE') +
+    paint(color, A.muted, '  v' + version);
+  const domains = [
+    paint(color, A.blue + A.bold, 'CONTEXT'),
+    paint(color, A.cyan + A.bold, 'FURYLINK'),
+    paint(color, A.purple + A.bold, 'VISUAL'),
+    paint(color, A.blue + A.bold, 'MCP'),
+    paint(color, A.cyan + A.bold, 'PROVIDERS'),
+    paint(color, A.purple + A.bold, 'MEMORY'),
+  ].join(paint(color, A.muted, '  ◆  '));
+
+  const phaseLabels = fr
+    ? ['LANGUE', 'RUNTIME', 'INSTALL', 'CONFIG', 'PRÊT']
+    : ['LANGUAGE', 'RUNTIME', 'INSTALL', 'CONFIG', 'READY'];
+  const phase = phaseLabels.map((label, index) => {
+    const done = stage === 'done';
+    const active = !done && index === 0;
+    const marker = done ? '✓' : String(index + 1).padStart(2, '0');
+    const tone = done ? A.green : active ? A.cyan + A.bold : A.muted;
+    return paint(color, tone, '[' + marker + ' ' + label + ']');
+  }).join(paint(color, A.muted, ' ─ '));
+
+  const header = box([
+    title,
+    paint(color, A.muted, fr
+      ? 'Runtime de contexte gouverné · exécution explicite · preuves vérifiables'
+      : 'Governed context runtime · explicit execution · verifiable evidence'),
     '',
-    paint(color, A.white + A.bold, 'CONTEXT INTELLIGENCE') +
-      paint(color, A.muted, '  ·  Context Fabric  ·  FuryLink  ·  Visual Engine  ·  MCP  ·  providers  ·  memory'),
-    paint(color, A.purple + A.bold, 'FuryPipe ' + version) +
-      paint(color, A.muted, '  // one CLI, explicit execution, verifiable results'),
+    domains,
     '',
-  ];
-
-  const leftWidth = Math.max(30, Math.min(36, Math.floor(width * 0.34)));
-  const rightWidth = width - leftWidth - 2;
-  const labels = fr
-    ? [
-        ['Langue', 'Choisir la langue'],
-        ['Vérifications', 'Runtime et terminal'],
-        ['Installation', 'Préparer FuryPipe'],
-        ['Configuration', 'Écrire les préférences'],
-        ['Terminé', 'Prêt à créer'],
-      ] as const
-    : [
-        ['Language', 'Choose your language'],
-        ['Checks', 'Runtime and terminal'],
-        ['Installation', 'Prepare FuryPipe'],
-        ['Configuration', 'Write preferences'],
-        ['Done', 'Ready to create'],
-      ] as const;
-
-  const sidebar: string[] = [];
-  for (let i = 0; i < labels.length; i += 1) {
-    const state = stage === 'done' ? 'done' : i === 0 ? 'active' : 'pending';
-    sidebar.push(...stepLines(i + 1, labels[i]![0], labels[i]![1], state, color));
-    if (i < labels.length - 1) sidebar.push(paint(color, A.muted, '    │'));
-  }
-
-  const tips = fr
-    ? [
-        paint(color, A.yellow + A.bold, 'ASTUCE'),
-        'Aucune dépendance TUI externe.',
-        'Fallback texte automatique dans CI,',
-        'pipes et terminaux non interactifs.',
-      ]
-    : [
-        paint(color, A.yellow + A.bold, 'TIP'),
-        'No external TUI dependency.',
-        'Automatic text fallback in CI, pipes,',
-        'and non-interactive terminals.',
-      ];
-
-  const left = [...box(sidebar, leftWidth, color, 'SETUP'), '', ...box(tips, leftWidth, color)];
+    phase,
+  ], width, color, 'FURYPIPE');
 
   let main: string[];
   if (stage === 'done') {
     const compact = configFile.startsWith(os.homedir()) ? '~' + configFile.slice(os.homedir().length) : configFile;
     main = fr
       ? [
-          paint(color, A.green + A.bold, '✓ Configuration FuryPipe enregistrée'),
+          paint(color, A.green + A.bold, '✓ ENVIRONNEMENT PRÊT'),
           '',
-          'Langue : ' + paint(color, A.white + A.bold, selected === 'fr' ? 'Français' : 'English'),
-          'Config : ' + paint(color, A.muted, fit(compact, rightWidth - 14)),
+          paint(color, A.white + A.bold, 'Configuration enregistrée') +
+            paint(color, A.muted, '  ·  ' + fit(compact, width - 38)),
+          paint(color, A.muted, 'Langue') + '  ' + paint(color, A.white + A.bold, selected === 'fr' ? 'Français' : 'English'),
           '',
-          paint(color, A.white + A.bold, 'Prochaine étape'),
-          paint(color, A.cyan, '  furypipe doctor'),
-          paint(color, A.cyan, '  furypipe start'),
-          '',
-          paint(color, A.muted, 'Relancez `furypipe setup` pour modifier les préférences.'),
+          paint(color, A.cyan + A.bold, 'PROCHAINE ACTION'),
+          '  ' + paint(color, A.white, 'furypipe doctor') + paint(color, A.muted, '   vérifier le runtime local'),
+          '  ' + paint(color, A.white, 'furypipe start') + paint(color, A.muted, '    ouvrir le Control Plane'),
+          '  ' + paint(color, A.white, 'furypipe link codex') + paint(color, A.muted, ' connecter un agent avec FuryLink'),
         ]
       : [
-          paint(color, A.green + A.bold, '✓ FuryPipe setup saved'),
+          paint(color, A.green + A.bold, '✓ ENVIRONMENT READY'),
           '',
-          'Language: ' + paint(color, A.white + A.bold, 'English'),
-          'Config: ' + paint(color, A.muted, fit(compact, rightWidth - 14)),
+          paint(color, A.white + A.bold, 'Configuration saved') +
+            paint(color, A.muted, '  ·  ' + fit(compact, width - 38)),
+          paint(color, A.muted, 'Language') + '  ' + paint(color, A.white + A.bold, 'English'),
           '',
-          paint(color, A.white + A.bold, 'Next step'),
-          paint(color, A.cyan, '  furypipe doctor'),
-          paint(color, A.cyan, '  furypipe start'),
-          '',
-          paint(color, A.muted, 'Run `furypipe setup` again to change preferences.'),
+          paint(color, A.cyan + A.bold, 'NEXT ACTION'),
+          '  ' + paint(color, A.white, 'furypipe doctor') + paint(color, A.muted, '   inspect the local runtime'),
+          '  ' + paint(color, A.white, 'furypipe start') + paint(color, A.muted, '    open the Control Plane'),
+          '  ' + paint(color, A.white, 'furypipe link codex') + paint(color, A.muted, ' connect an agent with FuryLink'),
         ];
   } else {
+    const frState = selected === 'fr' ? A.bgBlue + A.white + A.bold : A.muted;
+    const enState = selected === 'en' ? A.bgBlue + A.white + A.bold : A.muted;
     main = [
-      paint(color, A.white + A.bold, fr ? 'Bienvenue dans FuryPipe' : 'Welcome to FuryPipe'),
+      paint(color, A.white + A.bold, fr ? 'Choisissez votre environnement' : 'Choose your environment'),
       paint(color, A.muted, fr
-        ? 'Choisissez la langue de votre environnement FuryPipe.'
-        : 'Choose the language for your FuryPipe environment.'),
+        ? 'La langue s’applique au setup et aux surfaces locales FuryPipe.'
+        : 'The language applies to setup and local FuryPipe surfaces.'),
       '',
-      ...languageCard('fr', selected, color),
+      paint(color, selected === 'fr' ? A.cyan + A.bold : A.muted, selected === 'fr' ? '◆' : '◇') +
+        '  ' + paint(color, frState, ' FR ') + '  ' + paint(color, selected === 'fr' ? A.white + A.bold : A.muted, 'Français') +
+        paint(color, A.muted, '  ·  interface et onboarding FR'),
       '',
-      ...languageCard('en', selected, color),
+      paint(color, selected === 'en' ? A.cyan + A.bold : A.muted, selected === 'en' ? '◆' : '◇') +
+        '  ' + paint(color, enState, ' EN ') + '  ' + paint(color, selected === 'en' ? A.white + A.bold : A.muted, 'English') +
+        paint(color, A.muted, '  ·  English interface and onboarding'),
       '',
+      paint(color, A.blue, '────────────────────────────────────────────────────────'),
       paint(color, A.muted, fr
-        ? '←/→ ou ↑/↓ pour choisir · Entrée pour continuer · Échap pour quitter'
-        : '←/→ or ↑/↓ to choose · Enter to continue · Esc to quit'),
-      '',
-      paint(color, A.muted, fr ? 'Raccourcis : 1 = Français · 2 = English' : 'Shortcuts: 1 = Français · 2 = English'),
+        ? '↑/↓ ou ←/→ sélectionner   ·   Entrée valider   ·   Échap quitter   ·   1/2 raccourcis'
+        : '↑/↓ or ←/→ select   ·   Enter confirm   ·   Esc quit   ·   1/2 shortcuts'),
     ];
   }
 
-  const right = box(main, rightWidth, color, stage === 'done' ? (fr ? 'PRÊT' : 'READY') : 'LANGUAGE / LANGUE');
+  const panelTitle = stage === 'done'
+    ? (fr ? 'RUNTIME PRÊT' : 'RUNTIME READY')
+    : (fr ? 'LANGUE / ENVIRONNEMENT' : 'LANGUAGE / ENVIRONMENT');
+  const panel = box(main, width, color, panelTitle);
+
   const footer = stage === 'done'
-    ? (fr ? 'READY // FuryPipe est configuré.' : 'READY // FuryPipe is configured.')
-    : (fr ? 'SETUP // Sélectionnez une langue pour continuer.' : 'SETUP // Select a language to continue.');
+    ? (fr ? 'READY  FuryPipe est configuré.' : 'READY  FuryPipe is configured.')
+    : (fr ? 'SELECT  choisissez une langue pour continuer.' : 'SELECT  choose a language to continue.');
 
   return [
     ...header,
-    ...columns(left, right, leftWidth),
     '',
-    paint(color, A.blue, border(width)),
-    paint(color, A.muted, ' FuryPipe Setup ' + version + '  ') + paint(color, A.cyan + A.bold, footer),
-    paint(color, A.blue, border(width, '└', '┘')),
+    ...panel,
+    '',
+    paint(color, A.muted, ' FuryPipe ') + paint(color, A.cyan + A.bold, footer),
   ].join('\n');
 }
 
