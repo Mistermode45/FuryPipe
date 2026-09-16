@@ -1,5 +1,5 @@
 /**
- * Minimal PNG encoder (grayscale + RGB, 8-bit, filter=Average, single IDAT).
+ * Minimal PNG encoder (grayscale + RGB, 8-bit, adaptive scanline filters, single IDAT).
  * Pure Uint8Array — uses CompressionStream (Node 18+, Workers, browsers); no Buffer/node:zlib.
  */
 
@@ -78,36 +78,79 @@ async function deflateZlib(input: Uint8Array): Promise<Uint8Array> {
 const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 /**
- * Prepend scanline filter bytes using PNG's Average filter (type 3):
- *   Filt(x) = Orig(x) − floor((Recon(a) + Recon(b)) / 2)
- * where `a` is the same channel of the pixel to the left (x − bpp) and `b` the byte directly
- * above. Encoding may read the ORIGINAL bytes for a/b because the decoder reconstructs those
- * positions exactly before it needs them — the transform is bit-exact reversible, so decoded
- * pixels are byte-identical to `pixels`. Nothing about the image the model sees changes.
+ * PNG's five lossless row filters. We choose one PER ROW using the conventional
+ * signed-residual score (sum of absolute residual magnitudes). Text renders are
+ * highly non-uniform: blank/paper rows usually prefer Up, long glyph strokes can
+ * prefer Sub/Paeth, while Average still wins on some anti-aliased rows.
  *
- * Chosen over filter=None (the previous behavior): residuals of 5×8 bitmap glyphs on a flat
- * background collapse to mostly zeros, which deflate encodes in both less space and less time —
- * ~34% smaller IDAT at roughly half the compression cost on a representative dense page. That
- * matters because every image is re-uploaded on every turn, so IDAT size is a per-request
- * bandwidth cost. Filtering is pure JS ahead of the compressor, so it stays portable to
- * Workers unlike a deflate-level change (see the CompressionStream note above).
+ * The old encoder forced Average on every row. Adaptive selection keeps the
+ * decoded pixels byte-identical while giving deflate a lower-entropy stream on
+ * the rows where another predictor is a better fit.
  */
-function filterAverage(pixels: Uint8Array, width: number, height: number, bpp: number): Uint8Array {
+function paethPredictor(a: number, b: number, c: number): number {
+  const p = a + b - c;
+  const pa = Math.abs(p - a);
+  const pb = Math.abs(p - b);
+  const pc = Math.abs(p - c);
+  if (pa <= pb && pa <= pc) return a;
+  if (pb <= pc) return b;
+  return c;
+}
+
+function signedResidualMagnitude(byte: number): number {
+  return byte < 128 ? byte : 256 - byte;
+}
+
+function filterByte(
+  type: number,
+  value: number,
+  left: number,
+  up: number,
+  upLeft: number,
+): number {
+  switch (type) {
+    case 0: return value;
+    case 1: return (value - left) & 0xff;
+    case 2: return (value - up) & 0xff;
+    case 3: return (value - ((left + up) >> 1)) & 0xff;
+    case 4: return (value - paethPredictor(left, up, upLeft)) & 0xff;
+    default: throw new Error('unknown PNG filter type: ' + type);
+  }
+}
+
+function filterAdaptive(pixels: Uint8Array, width: number, height: number, bpp: number): Uint8Array {
   const rowBytes = width * bpp;
   const stride = rowBytes + 1;
   const out = new Uint8Array(stride * height);
+  const scratch = Array.from({ length: 5 }, () => new Uint8Array(rowBytes));
+
   for (let y = 0; y < height; y++) {
     const src = y * rowBytes;
-    const dst = y * stride;
-    out[dst] = 3; // filter: Average
-    for (let x = 0; x < rowBytes; x++) {
-      // Off-image neighbors are defined as zero by the spec, not clamped/wrapped.
-      const a = x >= bpp ? pixels[src + x - bpp]! : 0;
-      const b = y > 0 ? pixels[src - rowBytes + x]! : 0;
-      // a + b ≤ 510 so the shift is exact; only the result wraps to a byte.
-      out[dst + 1 + x] = (pixels[src + x]! - ((a + b) >> 1)) & 0xff;
+    let bestType = 0;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (let type = 0; type <= 4; type++) {
+      const row = scratch[type]!;
+      let score = 0;
+      for (let x = 0; x < rowBytes; x++) {
+        const left = x >= bpp ? pixels[src + x - bpp]! : 0;
+        const up = y > 0 ? pixels[src - rowBytes + x]! : 0;
+        const upLeft = y > 0 && x >= bpp ? pixels[src - rowBytes + x - bpp]! : 0;
+        const residual = filterByte(type, pixels[src + x]!, left, up, upLeft);
+        row[x] = residual;
+        score += signedResidualMagnitude(residual);
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        bestType = type;
+      }
     }
+
+    const dst = y * stride;
+    out[dst] = bestType;
+    out.set(scratch[bestType]!, dst + 1);
   }
+
   return out;
 }
 
@@ -124,7 +167,7 @@ export async function encodeGrayPng(pixels: Uint8Array, width: number, height: n
   ihdr[8] = 8;
   ihdr[9] = 0; // colorType 0 = grayscale; bytes 10-12 already zero
 
-  const compressed = await deflateZlib(filterAverage(pixels, width, height, 1));
+  const compressed = await deflateZlib(filterAdaptive(pixels, width, height, 1));
 
   return concat([
     PNG_SIGNATURE,
@@ -146,7 +189,7 @@ export async function encodeRgbPng(pixels: Uint8Array, width: number, height: nu
   ihdr[8] = 8; // bit depth per channel
   ihdr[9] = 2; // colorType 2 = truecolor RGB; bytes 10-12 already zero
 
-  const compressed = await deflateZlib(filterAverage(pixels, width, height, 3));
+  const compressed = await deflateZlib(filterAdaptive(pixels, width, height, 3));
 
   return concat([
     PNG_SIGNATURE,
