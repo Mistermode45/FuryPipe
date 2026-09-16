@@ -44,6 +44,9 @@ describe('public library API', () => {
     // in AUTO. SAFE_EXACT remains available when only quality-verified readers
     // are acceptable.
     expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-mythos-5')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-sonnet-5')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-haiku-4-5-20251001')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-4-8')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-4-7')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-4-6')).toBe(true);
@@ -289,11 +292,11 @@ describe('public library API', () => {
 
   it('wraps the transformer with model gating and cache ownership metadata', async () => {
     const unsupported = enc.encode(JSON.stringify({
-      model: 'claude-mythos-5',
+      model: 'claude-fable-50',
       system: 'x'.repeat(20_000),
       messages: [{ role: 'user', content: 'hello' }],
     }));
-    const skipped = await transformAnthropicMessages({ body: unsupported, model: 'claude-mythos-5' });
+    const skipped = await transformAnthropicMessages({ body: unsupported, model: 'claude-fable-50' });
     expect(skipped.applied).toBe(false);
     expect(skipped.reason).toBe('vision_capability_unknown');
     expect(skipped.body).toBe(unsupported);
