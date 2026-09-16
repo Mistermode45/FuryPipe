@@ -16,7 +16,7 @@ behavioral changes, patch = fixes).
 - Introduced **FuryLink** as the FuryPipe-native agent connectivity surface. `furypipe link codex` and equivalent commands no longer require a `--` separator on Windows.
 - Reworked the dashboard into the **FuryPipe Control Plane** with a midnight navy/black dark palette and cream/ivory light palette, FuryPipe-native navigation and terminology.
 - Added a provider-priced **Visual Planner** that evaluates bounded render geometries and keeps the lowest estimated vision-token plan, with the incumbent geometry always retained as a candidate.
-- Switched PNG output to adaptive lossless row filtering (None/Sub/Up/Average/Paeth) while preserving byte-exact decoded pixels.
+- Switched PNG output to low-overhead adaptive lossless filtering: Average remains the baseline and repeated rows use Up/zero residuals, preserving byte-exact decoded pixels without the CPU regression of exhaustive five-filter scoring.
 
 ### Fixed
 
