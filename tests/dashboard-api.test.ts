@@ -209,6 +209,43 @@ describe('serveSessionsJson', () => {
 // ---- /api/models.json ----------------------------------------------------
 
 describe('serveModelsJson', () => {
+  it('keeps catalog capability separate from observed per-model compression activity', async () => {
+    registerRuntimeModelCatalog(normalizeOpenAIModelsPayload({
+      data: [{ id: 'gpt-6-astra', owned_by: 'openai' }],
+    }, '2026-09-16T00:00:00.000Z'));
+    writeEvents(tmp, [
+      ev({ model: 'gpt-6-astra', compressed: true, reason: undefined }),
+      ev({ model: 'gpt-6-astra', compressed: false, reason: 'visual_pricing_unknown', ts: '2026-05-19T00:01:00Z' }),
+      ev({ model: 'gpt-6-astra', compressed: false, reason: 'exact_guard', ts: '2026-05-19T00:02:00Z' }),
+    ]);
+    await dash.replay(tmp.eventsFile);
+
+    const body = await dash.serveModelsJson().json();
+    expect(body.models[0]).toMatchObject({
+      id: 'gpt-6-astra',
+      modalities: { imageInput: 'yes' },
+      runtime: {
+        requests: 3,
+        compressedRequests: 1,
+        passthroughRequests: 2,
+        recentSkipReasons: {
+          visual_pricing_unknown: 1,
+          exact_guard: 1,
+        },
+        lastReason: 'exact_guard',
+        lastObservedAt: '2026-05-19T00:02:00.000Z',
+      },
+    });
+
+    const html = await (await dash.serveFragment(
+      'models',
+      new URL('http://localhost/fragments/models?locale=en'),
+      1234,
+    )).text();
+    expect(html).toContain('Runtime activity');
+    expect(html).toContain('3 req · 1 visual · 2 text · exact_guard');
+  });
+
   it('returns a bounded secret-free Model Fabric snapshot', async () => {
     registerRuntimeModelCatalog(normalizeOpenAIModelsPayload({
       data: [{ id: 'gpt-6-astra', owned_by: 'openai' }],
