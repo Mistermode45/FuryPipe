@@ -33,12 +33,12 @@ describe('compression receipts', () => {
 
   it('emits an opt-in receipt from the public Anthropic wrapper', async () => {
     const body = encoder.encode(JSON.stringify({
-      model: 'claude-mythos-5',
+      model: 'claude-fable-50',
       messages: [{ role: 'user', content: 'hello' }],
     }));
     const result = await transformAnthropicMessages({
       body,
-      model: 'claude-mythos-5',
+      model: 'claude-fable-50',
       requestId: 'req-public-receipt',
       options: { emitReceipt: true },
     });
@@ -52,17 +52,17 @@ describe('compression receipts', () => {
 
   it('does not add a receipt by default', async () => {
     const body = encoder.encode(JSON.stringify({
-      model: 'claude-mythos-5',
+      model: 'claude-fable-50',
       messages: [{ role: 'user', content: 'hello' }],
     }));
-    const result = await transformAnthropicMessages({ body, model: 'claude-mythos-5' });
+    const result = await transformAnthropicMessages({ body, model: 'claude-fable-50' });
     expect(result.receipt).toBeUndefined();
   });
 
   it('does not claim verified spans for invalid UTF-8 input', async () => {
     const result = await transformAnthropicMessages({
       body: new Uint8Array([0xff, 0xfe, 0xfd]),
-      model: 'claude-mythos-5',
+      model: 'claude-fable-50',
       options: { emitReceipt: true },
     });
     expect(result.receipt?.verificationStatus).toBe('unverified');
