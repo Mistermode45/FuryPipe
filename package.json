@@ -25,6 +25,10 @@
       "types": "./dist/core/applicability.d.ts",
       "import": "./dist/core/applicability.js"
     },
+    "./model-fabric": {
+      "types": "./dist/core/model-fabric.d.ts",
+      "import": "./dist/core/model-fabric.js"
+    },
     "./proxy": {
       "types": "./dist/core/proxy.d.ts",
       "import": "./dist/core/proxy.js"
