@@ -360,7 +360,7 @@ describe('proxy usage extraction', () => {
     expect(upstreamRequests).toHaveLength(1);
     expect(await upstreamRequests[0]!.text()).toBe(body);
     expect(captured?.info?.compressed).toBe(false);
-    expect(captured?.info?.reason).toBe('unsupported_model');
+    expect(captured?.info?.reason).toBe('visual_profile_blocked');
   });
 
   it('classifies bypassed Gemini traffic as Google without probing', async () => {
