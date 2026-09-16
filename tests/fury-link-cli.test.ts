@@ -4,6 +4,7 @@ import {
   furyLinkHelp,
   parseFuryLinkInvocation,
 } from '../src/fury-link-cli.js';
+import { furyLinkEnvValue } from '../src/fury-link/index.js';
 
 describe('FuryLink CLI', () => {
   it('accepts the Windows-friendly separator-free form', () => {
@@ -44,6 +45,16 @@ describe('FuryLink CLI', () => {
     expect(() => parseFuryLinkInvocation(['--route'])).toThrow(FuryLinkUsageError);
     expect(() => parseFuryLinkInvocation(['--route='])).toThrow(/PATTERN=TARGET/);
     expect(() => parseFuryLinkInvocation(['--wat'])).toThrow(/unknown FuryLink option/);
+  });
+
+  it('preserves Windows Path/PATHEXT discovery after process.env is cloned', () => {
+    const copiedWindowsEnv = {
+      Path: 'C:\\Program Files\\nodejs;C:\\Users\\runner\\AppData\\Roaming\\npm',
+      Pathext: '.COM;.EXE;.BAT;.CMD',
+    } as NodeJS.ProcessEnv;
+
+    expect(furyLinkEnvValue(copiedWindowsEnv, 'PATH')).toBe(copiedWindowsEnv.Path);
+    expect(furyLinkEnvValue(copiedWindowsEnv, 'PATHEXT')).toBe(copiedWindowsEnv.Pathext);
   });
 
   it('publishes FuryLink—not warp—as the user-facing help', () => {
