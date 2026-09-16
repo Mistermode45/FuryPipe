@@ -157,6 +157,7 @@ describe('dashboardPath()', () => {
     expect(dashboardPath('/api/stats.json')?.kind).toBe('api-stats');
     expect(dashboardPath('/api/models.json')?.kind).toBe('api-models');
     expect(dashboardPath('/api/control-room.json')?.kind).toBe('api-control-room');
+    expect(dashboardPath('/api/control-plane.json')?.kind).toBe('api-control-plane');
   });
 
   it('returns null for unknown paths', () => {
@@ -330,6 +331,31 @@ describe('serveControlRoomJson', () => {
   });
 });
 
+describe('serveControlPlaneJson', () => {
+  it('returns a bounded read-only projection and does not promote an unwired Control Room', async () => {
+    const res = await dash.serveControlPlaneJson(48721);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.format).toBe('furypipe-control-plane/v2');
+    expect(body.runtime.port).toBe(48721);
+    expect(body.sourceCommit).toBeNull();
+    expect(body.domains.find((domain: { id: string }) => domain.id === 'skills').status).toBe('NOT_AVAILABLE');
+  });
+
+  it('renders the localized Control Plane fragment from the same source-bound snapshot', async () => {
+    const withControlRoom = new DashboardState(tmp, async () => new Map(), undefined, controlRoomSnapshot);
+    const html = await (await withControlRoom.serveFragment(
+      'control-plane',
+      new URL('http://localhost/fragments/control-plane?locale=fr'),
+      48721,
+    )).text();
+    expect(html).toContain('SHA source');
+    expect(html).toContain('Moteur visuel');
+    expect(html).toContain('aaaaaaaaaaaa');
+    expect(html).toContain('NOT_AVAILABLE');
+  });
+});
+
 // ---- /api/stats.json ------------------------------------
 
 describe('serveApiStats', () => {
@@ -367,6 +393,31 @@ describe('serveFragment', () => {
     expect(dashboardPath('/fragments/header')).toEqual({ kind: 'fragment', name: 'header' });
     expect(dashboardPath('/fragments/latest')).toEqual({ kind: 'fragment', name: 'latest' });
     expect(dashboardPath('/fragments/control-room')).toEqual({ kind: 'fragment', name: 'control-room' });
+    expect(dashboardPath('/fragments/control-plane')).toEqual({ kind: 'fragment', name: 'control-plane' });
+    expect(dashboardPath('/fragments/control-plane-overview')).toEqual({ kind: 'fragment', name: 'control-plane-overview' });
+    expect(dashboardPath('/fragments/control-plane-capabilities')).toEqual({ kind: 'fragment', name: 'control-plane-capabilities' });
+  });
+
+  it('renders each converged Control Plane surface from the source-bound snapshot', async () => {
+    const withControlRoom = new DashboardState(tmp, async () => new Map(), undefined, controlRoomSnapshot);
+    const surfaces = [
+      ['control-plane-overview', 'Rail runtime'],
+      ['control-plane-visual-engine', 'Lens de décision'],
+      ['control-plane-capabilities', 'Explorateur de capacités'],
+      ['control-plane-topology', 'Fury Graph'],
+      ['control-plane-evidence', 'Sécurité et preuves'],
+    ] as const;
+    for (const [name, marker] of surfaces) {
+      const html = await (await withControlRoom.serveFragment(
+        name,
+        new URL(`http://localhost/fragments/${name}?locale=fr`),
+        48721,
+      )).text();
+      expect(html, name).toContain(marker);
+      if (name === 'control-plane-overview' || name === 'control-plane-evidence') {
+        expect(html, name).toContain('aaaaaaaaaaaa');
+      }
+    }
   });
 
   it('renders the toggle fragment reflecting compression state', async () => {
@@ -735,9 +786,32 @@ describe('dashboard locale surface', () => {
     expect(html).toContain('Périmètre du moteur visuel');
     expect(html).toContain('Router Claude Code vers des modèles OpenAI / Cloudflare');
     expect(html).toContain('Chargement des preuves Control Room');
+    expect(html).toContain('Palette de commandes');
+    expect(html).toContain('href="#capabilities"');
+    expect(html).toContain('href="#visual-engine"');
+    expect(html).toContain('href="#evidence"');
+    expect(html).toContain('data-command-open');
+    expect(html).toContain('prefers-reduced-motion: reduce');
     expect(html).toContain('OPENAI_MODELS');
     expect(html).toContain('ANTHROPIC_BASE_URL');
     expect(html).not.toContain('Connect an agent');
+  });
+
+  it('uses the Control Plane as the only page shell and moves retained legacy observations into it', () => {
+    const html = renderPage(48721);
+    expect(html).toContain('id="frag-cp-overview"');
+    expect(html).toContain('id="frag-cp-capabilities"');
+    expect(html).toContain('id="frag-cp-visual-engine"');
+    expect(html).toContain('id="frag-cp-topology"');
+    expect(html).toContain('id="frag-cp-evidence"');
+    expect(html).toContain('<details class="cp-disclosure" id="observe" open>');
+    expect(html).toContain('id="frag-sessions"');
+    expect(html).toContain('id="frag-control-room"');
+    expect(html).toContain('id="frag-stats"');
+    expect(html).toContain('id="frag-toggle"');
+    expect(html).not.toContain('id="frag-session"');
+    expect(html).not.toContain('id="control-plane"');
+    expect(html).not.toContain('id="history"');
   });
 
   it('marks the bidi pseudo-locale RTL and falls back safely for invalid tags', () => {
