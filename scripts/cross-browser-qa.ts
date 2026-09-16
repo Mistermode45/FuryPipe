@@ -169,7 +169,12 @@ async function startStudioServer() {
 type EngineName = 'chromium' | 'firefox' | 'webkit';
 
 const dashboardViewports = [
-  { id: 'desktop', width: 1440, height: 1000 },
+  { id: 'fhd', width: 1920, height: 1080 },
+  { id: 'desktop', width: 1440, height: 900 },
+  { id: 'laptop', width: 1366, height: 768 },
+  { id: 'tablet', width: 1024, height: 768 },
+  { id: 'tablet-portrait', width: 768, height: 1024 },
+  { id: 'mobile-wide', width: 640, height: 960 },
   { id: 'above-1000', width: 1001, height: 900 },
   { id: 'at-1000', width: 1000, height: 900 },
   { id: 'above-860', width: 861, height: 900 },
@@ -281,12 +286,11 @@ async function runDashboardCase(
   engine: EngineName,
   dashboard: Awaited<ReturnType<typeof startDashboardServer>>,
   viewport: typeof dashboardViewports[number],
-  locale: 'fr' | 'ar-XB',
+  locale: 'en' | 'fr' | 'ar-XB',
 ) {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
     deviceScaleFactor: 1,
-    ...(viewport.width <= 500 && engine !== 'firefox' ? { isMobile: true, hasTouch: true } : {}),
   });
   const page = await context.newPage();
   const runtimeErrors: string[] = [];
@@ -294,13 +298,14 @@ async function runDashboardCase(
   page.on('pageerror', (error) => runtimeErrors.push(error.message));
   page.on('console', (message) => { if (message.type() === 'error') runtimeErrors.push(message.text()); });
   const requestStart = dashboard.fragmentRequests.length;
-  const name = `${engine}-${locale === 'fr' ? 'ltr' : 'rtl'}-${viewport.id}`;
+  const name = `${engine}-${locale === 'ar-XB' ? 'rtl' : 'ltr'}-${viewport.id}`;
   try {
     await page.goto(`${origin}/?locale=${encodeURIComponent(locale)}`, { waitUntil: 'load' });
     await page.waitForFunction(() =>
       document.querySelector('#frag-toggle')?.children.length > 0
       && document.querySelector('#frag-recent')?.children.length > 0
-      && document.querySelector('#frag-control-room')?.children.length > 0,
+      && document.querySelector('#frag-control-room')?.children.length > 0
+      && document.querySelector('#frag-control-plane')?.children.length > 0,
     undefined, { timeout: 12_000 });
 
     const base = await page.evaluate(() => {
@@ -318,6 +323,21 @@ async function runDashboardCase(
         topbarVisible: !!document.querySelector('.topbar')
           && getComputedStyle(document.querySelector('.topbar') as HTMLElement).display !== 'none',
         sectionCount: document.querySelectorAll('section.section').length,
+        controlPlaneLoaded: !!document.querySelector('#frag-control-plane .cp-summary'),
+        overflowElements: [...document.querySelectorAll('*')]
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+              tag: element.tagName.toLowerCase(),
+              id: element.id || '',
+              cls: typeof element.className === 'string' ? element.className.slice(0, 120) : '',
+              left: Math.round(rect.left * 10) / 10,
+              right: Math.round(rect.right * 10) / 10,
+              width: Math.round(rect.width * 10) / 10,
+            };
+          })
+          .filter((item) => item.right > document.documentElement.clientWidth + 1 || item.left < -1)
+          .slice(0, 12),
       };
     });
     const direction = expectedDirection(locale);
@@ -326,8 +346,19 @@ async function runDashboardCase(
     assert(base.innerWidth === viewport.width, `${name}: viewport width mismatch`);
     assert(base.localeStored === locale && base.selectValue === locale, `${name}: locale persistence/selector mismatch`);
     assert(base.topbarVisible && base.sectionCount >= 4, `${name}: dashboard structure missing`);
+    assert(base.controlPlaneLoaded, `${name}: Control Plane V2 fragment did not load`);
     assert(base.scrollWidth <= base.clientWidth + 1 && base.bodyScrollWidth <= base.clientWidth + 1,
-      `${name}: horizontal overflow (${base.scrollWidth}/${base.clientWidth}, body ${base.bodyScrollWidth})`);
+      `${name}: horizontal overflow (${base.scrollWidth}/${base.clientWidth}, body ${base.bodyScrollWidth}); offenders=${JSON.stringify(base.overflowElements)}`);
+
+    const captureThemeEvidence = engine === 'chromium' && locale === 'en'
+      && ['desktop', 'tablet', 'mobile-wide', 'at-560', 'mobile'].includes(viewport.id);
+    const initialTheme = await page.evaluate(() => document.documentElement.dataset.theme ?? 'unknown');
+    if (captureThemeEvidence) {
+      await page.screenshot({
+        path: join(REPORT_DIR, `dashboard-${name}-${initialTheme}.png`),
+        fullPage: true,
+      });
+    }
 
     const theme = await page.evaluate(() => {
       const before = document.documentElement.dataset.theme;
@@ -335,6 +366,43 @@ async function runDashboardCase(
       return { before, after: document.documentElement.dataset.theme };
     });
     assert(theme.before !== theme.after, `${name}: theme toggle did not change theme`);
+    if (captureThemeEvidence) {
+      await page.screenshot({
+        path: join(REPORT_DIR, `dashboard-${name}-${theme.after ?? 'unknown'}.png`),
+        fullPage: true,
+      });
+    }
+
+    const explorer = await page.evaluate(() => {
+      const root = document.querySelector<HTMLElement>('.cp-explorer');
+      const search = root?.querySelector<HTMLInputElement>('[data-cp-search-input]');
+      const filter = root?.querySelector<HTMLSelectElement>('[data-cp-filter]');
+      const sort = root?.querySelector<HTMLSelectElement>('select:not([data-cp-filter])');
+      if (!root || !search || !filter || !sort) return null;
+      search.value = 'fury';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      const searchVisible = [...root.querySelectorAll<HTMLElement>('[data-cp-card]')]
+        .filter((card) => !card.hidden)
+        .map((card) => card.querySelector('h3')?.textContent?.trim() ?? '');
+      search.value = '';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      filter.value = 'AVAILABLE';
+      filter.dispatchEvent(new Event('change', { bubbles: true }));
+      const availableOnly = [...root.querySelectorAll<HTMLElement>('[data-cp-card]')]
+        .filter((card) => !card.hidden)
+        .every((card) => card.dataset.cpStatus === 'AVAILABLE');
+      filter.value = 'ALL';
+      filter.dispatchEvent(new Event('change', { bubbles: true }));
+      sort.value = 'status';
+      sort.dispatchEvent(new Event('change', { bubbles: true }));
+      const statuses = [...root.querySelectorAll<HTMLElement>('[data-cp-card]')]
+        .map((card) => card.dataset.cpStatus ?? '');
+      return { searchVisible, availableOnly, statuses };
+    });
+    assert(explorer !== null && explorer.searchVisible.includes('FuryLink'), `${name}: capability search did not filter observed cards`);
+    assert(explorer.availableOnly, `${name}: lifecycle filter did not restrict cards to AVAILABLE`);
+    assert(explorer.statuses.every((status, index) => index === 0 || explorer.statuses[index - 1]!.localeCompare(status) <= 0),
+      `${name}: capability status sort did not order cards`);
 
     const tooltipWidths = await page.evaluate(async () => {
       const tips = [...document.querySelectorAll<HTMLElement>('.q')];
@@ -445,7 +513,7 @@ async function main() {
       format: 'furypipe-cross-browser-qa/v1',
       sourceCommit: SOURCE_COMMIT,
       playwrightVersion: versionRecord.version,
-      dashboard: { status: dashboardCases.length === 48 ? 'VERIFIED' : 'PARTIAL', totalCases: dashboardCases.length, cases: dashboardCases },
+      dashboard: { status: dashboardCases.length === dashboardViewports.length * 9 ? 'VERIFIED' : 'PARTIAL', totalCases: dashboardCases.length, cases: dashboardCases },
       webStudio: webStudioReport
         ? { status: webStudioReport.browserQa, totalCases: webStudioReport.totalCases, report: webStudioReport }
         : { status: 'NOT_EXECUTED', plannedCases: webStudioMatrix.length },
@@ -459,7 +527,7 @@ async function main() {
     for (const engine of ['chromium', 'firefox', 'webkit'] as const) {
       const browser = await browserFor(engine);
       const view = browser.version();
-      for (const locale of ['fr', 'ar-XB'] as const) {
+      for (const locale of ['en', 'fr', 'ar-XB'] as const) {
         for (const viewport of dashboardViewports) {
           const result = await runDashboardCase(browser, engine, dashboard, viewport, locale);
           dashboardCases.push(result);
@@ -468,7 +536,8 @@ async function main() {
       }
       console.log(`Dashboard engine ${engine}: ${view}`);
     }
-    assert(dashboardCases.length === 48, `expected 48 dashboard engine/locale/viewport cases, got ${dashboardCases.length}`);
+    const expectedDashboardCases = dashboardViewports.length * 3 * 3;
+    assert(dashboardCases.length === expectedDashboardCases, `expected ${expectedDashboardCases} dashboard engine/locale/viewport cases, got ${dashboardCases.length}`);
 
     webStudioReport = await runStudioBrowserQa({
       id: 'playwright-cross-engine',
@@ -520,7 +589,7 @@ async function main() {
       externalSystems: { provider: 'NOT_EXECUTED', oauth: 'NOT_EXECUTED', hostedMcp: 'NOT_EXECUTED', openclaw: 'NOT_EXECUTED', figma: 'NOT_EXECUTED' },
     };
     await writeFile(join(REPORT_DIR, 'report.json'), JSON.stringify(report, null, 2) + '\n');
-    console.log('Dashboard cross-engine QA passed: 48/48');
+    console.log(`Dashboard cross-engine QA passed: ${dashboardCases.length}/${dashboardCases.length}`);
     console.log('Web Studio cross-engine QA passed: 120/120');
     console.log('Provider/OAuth/hosted MCP/OpenClaw/Figma external checks were not executed by browser QA.');
   } catch (error) {

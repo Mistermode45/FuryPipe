@@ -4,6 +4,7 @@
 import { HTMX_JS, ALPINE_JS } from './vendor.js';
 import { CACHE_CREATE_RATE, CACHE_READ_RATE } from '../core/baseline.js';
 import type { ControlRoomSnapshot } from '../control-room/index.js';
+import type { ControlPlaneDomainId, ControlPlaneSnapshot } from '../control-plane.js';
 import { createI18n } from '../i18n/index.js';
 import { CORE_CATALOGS } from '../i18n/catalogs.js';
 import type {
@@ -897,6 +898,78 @@ export function renderControlRoomFragment(snapshot: ControlRoomSnapshot | null, 
   );
 }
 
+// ---- Control Plane V2 -----------------------------------------------------
+
+export function renderControlPlaneFragment(snapshot: ControlPlaneSnapshot, locale = 'en'): string {
+  const t = (key: string): string => dashboardT(locale, key);
+  const labels: Readonly<Record<ControlPlaneDomainId, string>> = {
+    capabilities: t('dashboard.controlPlane.domain.capabilities'),
+    skills: t('dashboard.controlPlane.domain.skills'),
+    mcp: t('dashboard.controlPlane.domain.mcp'),
+    agents: t('dashboard.controlPlane.domain.agents'),
+    providers: t('dashboard.controlPlane.domain.providers'),
+    'visual-engine': t('dashboard.controlPlane.domain.visualEngine'),
+    'fury-link': t('dashboard.controlPlane.domain.furyLink'),
+    'context-fabric': t('dashboard.controlPlane.domain.contextFabric'),
+    memory: t('dashboard.controlPlane.domain.memory'),
+    knowledge: t('dashboard.controlPlane.domain.knowledge'),
+    learning: t('dashboard.controlPlane.domain.learning'),
+    recovery: t('dashboard.controlPlane.domain.recovery'),
+    security: t('dashboard.controlPlane.domain.security'),
+    evidence: t('dashboard.controlPlane.domain.evidence'),
+    sessions: t('dashboard.controlPlane.domain.sessions'),
+    settings: t('dashboard.controlPlane.domain.settings'),
+  };
+  const cards = snapshot.domains.map((domain) => {
+    const searchable = `${labels[domain.id]} ${domain.source} ${domain.status}`.toLowerCase();
+    const lifecycle = domain.lifecycle
+      .map((step) => `<span class="cp-life">${escapeHtml(step)}</span>`)
+      .join('');
+    const warnings = domain.warnings.length === 0
+      ? ''
+      : `<div class="cp-warnings">${domain.warnings.map((warning) => escapeHtml(warning)).join(' · ')}</div>`;
+    return (
+      `<article class="cp-card" data-cp-card data-cp-search="${escapeHtml(searchable)}" data-cp-status="${escapeHtml(domain.status)}">` +
+      `<h3>${escapeHtml(labels[domain.id])}</h3>` +
+      `<div class="cp-status"><strong>${escapeHtml(domain.status)}</strong> · <code>${escapeHtml(domain.source)}</code></div>` +
+      `<div class="cp-life-list" aria-label="${escapeHtml(t('dashboard.controlPlane.lifecycle'))}">${lifecycle}</div>` +
+      `<details class="cp-details"><summary>${escapeHtml(t('dashboard.controlPlane.details'))}</summary>${warnings || `<div class="cp-warnings">${escapeHtml(t('dashboard.controlPlane.none'))}</div>`}</details>` +
+      `</article>`
+    );
+  }).join('');
+  const source = snapshot.sourceCommit ?? t('dashboard.controlPlane.unknown');
+  const models = snapshot.runtime.activeModels.length === 0
+    ? t('dashboard.controlPlane.none')
+    : snapshot.runtime.activeModels.map(escapeHtml).join(', ');
+  const evidence = snapshot.evidence.map((entry) => (
+    `<tr>` +
+    `<td data-label="${escapeHtml(t('dashboard.controlPlane.evidence'))}">${escapeHtml(entry.id)}</td>` +
+    `<td class="num" data-label="${escapeHtml(t('dashboard.controlPlane.status'))}">${escapeHtml(entry.status)}</td>` +
+    `<td data-label="${escapeHtml(t('dashboard.controlPlane.sourceSha'))}"><code>${escapeHtml(entry.sourceSha?.slice(0, 12) ?? t('dashboard.controlPlane.unknown'))}</code></td>` +
+    `<td data-label="${escapeHtml(t('dashboard.controlPlane.evidenceSha'))}"><code>${escapeHtml(entry.evidenceSha?.slice(0, 12) ?? t('dashboard.controlPlane.unknown'))}</code></td>` +
+    `<td class="num" data-label="${escapeHtml(t('dashboard.controlPlane.runId'))}">${entry.runId === null ? '—' : numFmt(entry.runId)}</td>` +
+    `</tr>`
+  )).join('');
+  return (
+    `<div class="cp-summary">` +
+    `<div><strong>${escapeHtml(t('dashboard.controlPlane.runtime'))}</strong> · ${escapeHtml(snapshot.runtime.status)} · ${escapeHtml(t('dashboard.controlPlane.port'))} <code>${numFmt(snapshot.runtime.port)}</code></div>` +
+    `<div>${escapeHtml(t('dashboard.controlPlane.sourceSha'))} <code>${escapeHtml(source.slice(0, 12))}</code> · ${escapeHtml(t('dashboard.controlPlane.requests'))} ${numFmt(snapshot.runtime.requests)} · ${escapeHtml(t('dashboard.controlPlane.saved'))} ${numFmt(snapshot.runtime.savedInputTokens)}</div>` +
+    `<div>${escapeHtml(t('dashboard.controlPlane.visualEngine'))} ${escapeHtml(snapshot.runtime.compressionEnabled ? t('dashboard.controlPlane.enabled') : t('dashboard.controlPlane.disabled'))} · ${escapeHtml(t('dashboard.controlPlane.models'))} ${models}</div>` +
+    `</div>` +
+    `<section class="cp-explorer" aria-label="${escapeHtml(t('dashboard.controlPlane.explorer'))}">` +
+    `<h3 class="card-head spaced">${escapeHtml(t('dashboard.controlPlane.explorer'))}</h3>` +
+    `<div class="cp-tools">` +
+    `<label>${escapeHtml(t('dashboard.controlPlane.search'))}<input class="mini-btn" data-cp-search-input type="search" placeholder="${escapeHtml(t('dashboard.controlPlane.searchPlaceholder'))}" oninput="var r=this.closest('.cp-explorer'),q=this.value.toLocaleLowerCase(),s=r.querySelector('[data-cp-filter]').value;r.querySelectorAll('[data-cp-card]').forEach(function(c){c.hidden=!(c.dataset.cpSearch.includes(q)&&(s==='ALL'||c.dataset.cpStatus===s));})"></label>` +
+    `<label>${escapeHtml(t('dashboard.controlPlane.filter'))}<select class="mini-btn" data-cp-filter onchange="var r=this.closest('.cp-explorer'),s=this.value,q=r.querySelector('[data-cp-search-input]').value.toLocaleLowerCase();r.querySelectorAll('[data-cp-card]').forEach(function(c){c.hidden=!(c.dataset.cpSearch.includes(q)&&(s==='ALL'||c.dataset.cpStatus===s));})"><option value="ALL">${escapeHtml(t('dashboard.controlPlane.filterAll'))}</option>${[...new Set(snapshot.domains.map((domain) => domain.status))].map((status) => `<option value="${escapeHtml(status)}">${escapeHtml(status)}</option>`).join('')}</select></label>` +
+    `<label>${escapeHtml(t('dashboard.controlPlane.sort'))}<select class="mini-btn" onchange="var g=this.closest('.cp-explorer').querySelector('.cp-grid'),k=this.value;[...g.children].sort(function(a,b){return (k==='status'?a.dataset.cpStatus:a.dataset.cpSearch).localeCompare(k==='status'?b.dataset.cpStatus:b.dataset.cpSearch);}).forEach(function(c){g.append(c);})"><option value="name">${escapeHtml(t('dashboard.controlPlane.sortName'))}</option><option value="status">${escapeHtml(t('dashboard.controlPlane.sortStatus'))}</option></select></label>` +
+    `</div><div class="cp-grid">${cards}</div></section>` +
+    `<h3 class="card-head spaced">${escapeHtml(t('dashboard.controlPlane.evidenceTitle'))}</h3>` +
+    `<div class="table-wrap"><table class="dtable cp-evidence"><thead><tr>` +
+    `<th>${escapeHtml(t('dashboard.controlPlane.evidence'))}</th><th>${escapeHtml(t('dashboard.controlPlane.status'))}</th><th>${escapeHtml(t('dashboard.controlPlane.sourceSha'))}</th><th>${escapeHtml(t('dashboard.controlPlane.evidenceSha'))}</th><th>${escapeHtml(t('dashboard.controlPlane.runId'))}</th>` +
+    `</tr></thead><tbody>${evidence}</tbody></table></div>`
+  );
+}
+
 // ---- full-history stats table --------------------------------------------
 
 export function renderStatsTableFragment(p: FullStatsPayload, locale = 'en'): string {
@@ -1319,6 +1392,33 @@ const CSS = `
 
   /* sessions bars */
   .status { margin-bottom: 12px; color: var(--muted); font-size: 12px; }
+  .cp-summary { display: grid; gap: 5px; margin-bottom: 14px; color: var(--ink-2); font-size: 12px; }
+  .cp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(205px, 1fr)); gap: 10px; }
+  .cp-card { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+  .cp-card h3 { margin: 0 0 6px; color: var(--ink); font-size: 12px; }
+  .cp-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+  .cp-tools label { display: grid; gap: 3px; min-width: min(100%, 175px); color: var(--muted); font-size: 10px; }
+  .cp-tools input { min-width: 0; }
+  .cp-status { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+  .cp-life-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .cp-life { border: 1px solid var(--border-strong); border-radius: 999px; padding: 2px 5px; color: var(--accent-ink); font-size: 10px; font-weight: 700; }
+  .cp-warnings { margin-top: 7px; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+  .cp-details { margin-top: 7px; color: var(--muted); font-size: 10px; }
+  .cp-details summary { cursor: pointer; color: var(--accent-ink); }
+  @media (max-width: 640px) {
+    #frag-control-plane .table-wrap { overflow: visible; }
+    #frag-control-plane .cp-evidence { min-width: 0; display: block; }
+    #frag-control-plane .cp-evidence thead { display: none; }
+    #frag-control-plane .cp-evidence tbody { display: grid; gap: 10px; }
+    #frag-control-plane .cp-evidence tr { display: block; padding: 6px 10px; border: 1px solid var(--border);
+      border-radius: 12px; background: color-mix(in srgb, var(--surface) 94%, var(--accent-tint)); }
+    #frag-control-plane .cp-evidence td { display: grid; grid-template-columns: minmax(92px, .8fr) minmax(0, 1.2fr);
+      gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border);
+      text-align: start; white-space: normal; overflow-wrap: anywhere; }
+    #frag-control-plane .cp-evidence td:last-child { border-bottom: 0; }
+    #frag-control-plane .cp-evidence td::before { content: attr(data-label); color: var(--muted);
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  }
   .bars { display: flex; flex-direction: column; gap: 8px; }
   .bar-row { display: flex; align-items: center; gap: 12px; font-size: 12px; }
   .bar-label { width: 150px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1562,7 +1662,12 @@ npx furypipe</pre>
 </section>
 
 <section class="section" id="control-plane">
-  <h2 class="section-head">FuryPipe Control Plane <span class="section-sub">${escapeHtml(t('dashboard.page.controlRoomSub'))}</span></h2>
+  <h2 class="section-head">${escapeHtml(t('dashboard.controlPlane.title'))} <span class="section-sub">${escapeHtml(t('dashboard.controlPlane.subtitle'))}</span></h2>
+  <div class="card">
+    <div id="frag-control-plane" hx-get="/fragments/control-plane" hx-trigger="load, every 5s" hx-swap="innerHTML">
+      <div class="status">${escapeHtml(t('dashboard.controlPlane.loading'))}</div>
+    </div>
+  </div>
   <div class="card">
     <div id="frag-control-room" hx-get="/fragments/control-room" hx-trigger="load, every 5s" hx-swap="innerHTML">
       <div class="status">${escapeHtml(t('dashboard.page.loadingControlRoom'))}</div>

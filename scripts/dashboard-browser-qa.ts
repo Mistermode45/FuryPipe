@@ -265,7 +265,12 @@ async function closeTarget(debugPort, targetId) {
 }
 
 const BREAKPOINT_WIDTHS = [
-  { id: 'desktop', width: 1440, height: 1000 },
+  { id: 'fhd', width: 1920, height: 1080 },
+  { id: 'desktop', width: 1440, height: 900 },
+  { id: 'laptop', width: 1366, height: 768 },
+  { id: 'tablet', width: 1024, height: 768 },
+  { id: 'tablet-portrait', width: 768, height: 1024 },
+  { id: 'mobile-wide', width: 640, height: 960 },
   { id: 'above-1000', width: 1001, height: 900 },
   { id: 'at-1000', width: 1000, height: 900 },
   { id: 'above-860', width: 861, height: 900 },
@@ -276,6 +281,13 @@ const BREAKPOINT_WIDTHS = [
 ];
 
 const CASES = [
+  ...BREAKPOINT_WIDTHS.map((viewport) => ({
+    name: `en-${viewport.id}`,
+    locale: 'en',
+    direction: 'ltr',
+    width: viewport.width,
+    height: viewport.height,
+  })),
   ...BREAKPOINT_WIDTHS.map((viewport) => ({
     name: `fr-${viewport.id}`,
     locale: 'fr',
@@ -304,14 +316,17 @@ async function runCase(browser, dashboard, testCase) {
       width: testCase.width,
       height: testCase.height,
       deviceScaleFactor: 1,
-      mobile: testCase.width <= 500,
+      // Responsive layout is defined by CSS pixels. Do not enable device
+      // emulation here: Chromium can expose a scaled layout viewport, making
+      // the requested width non-deterministic across engines.
+      mobile: false,
     });
 
     const pageUrl = `http://${HOST}:${dashboard.port}/?locale=${encodeURIComponent(testCase.locale)}`;
     await cdp.send('Page.navigate', { url: pageUrl });
     await cdp.waitFor('document.readyState === "complete"', 'document.readyState=complete');
     await cdp.waitFor(
-      'document.querySelector("#frag-toggle")?.children.length > 0 && document.querySelector("#frag-recent")?.children.length > 0 && document.querySelector("#frag-control-room")?.children.length > 0',
+      'document.querySelector("#frag-toggle")?.children.length > 0 && document.querySelector("#frag-recent")?.children.length > 0 && document.querySelector("#frag-control-room")?.children.length > 0 && document.querySelector("#frag-control-plane")?.children.length > 0',
       'initial HTMX fragments',
       12_000,
     );
@@ -331,6 +346,7 @@ async function runCase(browser, dashboard, testCase) {
       selectValue: document.querySelector('select.mini-btn')?.value ?? null,
       topbarVisible: !!document.querySelector('.topbar') && getComputedStyle(document.querySelector('.topbar')).display !== 'none',
       sectionCount: document.querySelectorAll('section.section').length,
+      controlPlaneLoaded: !!document.querySelector('#frag-control-plane .cp-summary'),
       overflowElements: [...document.querySelectorAll('*')]
         .map((element) => {
           const rect = element.getBoundingClientRect();
@@ -358,8 +374,18 @@ async function runCase(browser, dashboard, testCase) {
     assert(base.selectValue === testCase.locale, `${testCase.name}: locale selector mismatch`);
     assert(base.topbarVisible === true, `${testCase.name}: topbar is not visible`);
     assert(base.sectionCount >= 4, `${testCase.name}: expected dashboard sections`);
+    assert(base.controlPlaneLoaded, `${testCase.name}: Control Plane V2 fragment did not load`);
     assert(base.scrollWidth <= base.clientWidth + 1, `${testCase.name}: root horizontal overflow ${base.scrollWidth} > ${base.clientWidth}; offenders=${JSON.stringify(base.overflowElements)}`);
     assert(base.bodyScrollWidth <= base.clientWidth + 1, `${testCase.name}: body horizontal overflow ${base.bodyScrollWidth} > ${base.clientWidth}`);
+
+    const initialScreenshot = await cdp.send('Page.captureScreenshot', {
+      format: 'png',
+      captureBeyondViewport: false,
+      fromSurface: true,
+    });
+    const initialTheme = base.theme === 'dark' ? 'dark' : 'light';
+    const initialScreenshotPath = join(REPORT_DIR, `${testCase.name}-${initialTheme}.png`);
+    await writeFile(initialScreenshotPath, Buffer.from(initialScreenshot.data, 'base64'));
 
     const theme = await cdp.evaluate(`(() => {
       const before = document.documentElement.dataset.theme;
@@ -424,7 +450,7 @@ async function runCase(browser, dashboard, testCase) {
       captureBeyondViewport: false,
       fromSurface: true,
     });
-    const screenshotPath = join(REPORT_DIR, `${testCase.name}.png`);
+    const screenshotPath = join(REPORT_DIR, `${testCase.name}-${theme.after === 'dark' ? 'dark' : 'light'}.png`);
     await writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'));
 
     const fragmentRequests = dashboard.fragmentRequests.slice(requestStart);
@@ -444,7 +470,10 @@ async function runCase(browser, dashboard, testCase) {
       base,
       tooltipOverflow,
       expanded,
-      screenshot: screenshotPath.replace(process.cwd() + '/', ''),
+      screenshots: [
+        initialScreenshotPath.replace(process.cwd() + '/', ''),
+        screenshotPath.replace(process.cwd() + '/', ''),
+      ],
       runtimeExceptions: [...cdp.exceptions],
     };
   } finally {

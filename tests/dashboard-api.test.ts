@@ -133,6 +133,7 @@ describe('dashboardPath()', () => {
     expect(dashboardPath('/api/sessions.json')?.kind).toBe('api-sessions');
     expect(dashboardPath('/api/stats.json')?.kind).toBe('api-stats');
     expect(dashboardPath('/api/control-room.json')?.kind).toBe('api-control-room');
+    expect(dashboardPath('/api/control-plane.json')?.kind).toBe('api-control-plane');
   });
 
   it('returns null for unknown paths', () => {
@@ -234,6 +235,31 @@ describe('serveControlRoomJson', () => {
   });
 });
 
+describe('serveControlPlaneJson', () => {
+  it('returns a bounded read-only projection and does not promote an unwired Control Room', async () => {
+    const res = await dash.serveControlPlaneJson(48721);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.format).toBe('furypipe-control-plane/v2');
+    expect(body.runtime.port).toBe(48721);
+    expect(body.sourceCommit).toBeNull();
+    expect(body.domains.find((domain: { id: string }) => domain.id === 'skills').status).toBe('NOT_AVAILABLE');
+  });
+
+  it('renders the localized Control Plane fragment from the same source-bound snapshot', async () => {
+    const withControlRoom = new DashboardState(tmp, async () => new Map(), undefined, controlRoomSnapshot);
+    const html = await (await withControlRoom.serveFragment(
+      'control-plane',
+      new URL('http://localhost/fragments/control-plane?locale=fr'),
+      48721,
+    )).text();
+    expect(html).toContain('SHA source');
+    expect(html).toContain('Moteur visuel');
+    expect(html).toContain('aaaaaaaaaaaa');
+    expect(html).toContain('NOT_AVAILABLE');
+  });
+});
+
 // ---- /api/stats.json ------------------------------------
 
 describe('serveApiStats', () => {
@@ -271,6 +297,7 @@ describe('serveFragment', () => {
     expect(dashboardPath('/fragments/header')).toEqual({ kind: 'fragment', name: 'header' });
     expect(dashboardPath('/fragments/latest')).toEqual({ kind: 'fragment', name: 'latest' });
     expect(dashboardPath('/fragments/control-room')).toEqual({ kind: 'fragment', name: 'control-room' });
+    expect(dashboardPath('/fragments/control-plane')).toEqual({ kind: 'fragment', name: 'control-plane' });
   });
 
   it('renders the toggle fragment reflecting compression state', async () => {
