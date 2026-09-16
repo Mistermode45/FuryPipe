@@ -967,9 +967,9 @@ const CSS = `
     --mono: 'SF Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     color-scheme: light;
   }
-  /* Dark theme: same warm-flame identity, inverted neutrals. Set before first
-     paint by the <head> script (localStorage 'furypipe-theme' else system pref);
-     toggled by furyTheme(). Accents (flame/img/txt) are lifted for contrast. */
+  /* FuryPipe midnight theme. Applied before first paint from the FuryPipe-owned
+     theme preference, then toggled by furyTheme(). Cobalt and teal accents are
+     lifted independently from the neutral navy/black surface stack. */
   :root[data-theme="dark"] {
     --bg: #03060c; --surface: #07111f; --surface-2: #0c192b;
     --border: #152641; --border-strong: #22395d;
@@ -1013,7 +1013,7 @@ const CSS = `
   .wordmark-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
   /* Which machine is this? Two dashboards from two hosts look identical otherwise. */
   .hostchip { font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 1px 7px;
-    border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
+    border: 1px solid var(--border); border-radius: 999px; white-space: nowrap; }
   .tagline { font-size: 12.5px; color: var(--muted); margin-top: 1px; max-width: 460px; }
   .controls { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
   .command-nav { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; margin: 0 0 18px;
