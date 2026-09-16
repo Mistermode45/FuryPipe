@@ -8,20 +8,9 @@ The V5 skill registry is an execution gate around host-provided `AgentSkillDefin
 
 ## Categories
 
-The registry defines twelve bounded categories:
+The registry defines 26 bounded categories:
 
-1. repository
-2. debugging
-3. security
-4. architecture
-5. testing
-6. documentation
-7. frontend
-8. design
-9. seo
-10. research
-11. context
-12. learning
+`repository`, `debugging`, `security`, `architecture`, `testing`, `documentation`, `frontend`, `design`, `content`, `marketing`, `seo`, `accessibility`, `performance`, `analytics`, `data`, `automation`, `business`, `sales`, `operations`, `finance`, `minecraft`, `modding`, `game-server`, `research`, `context`, `learning`.
 
 Categories are metadata for routing/inspection, not authorization.
 
@@ -73,3 +62,16 @@ The Agent Runtime still re-applies its own permission, network, health and budge
 `inspect()` is metadata-only. It does not serialize executor callbacks, health callback bodies, evidence output, credentials or arbitrary source file contents.
 
 Third-party skill acquisition, scanning and licensing remain a separate maintainer operation. Adding an entry to the registry does not itself vendor code.
+
+
+## Execution evidence
+
+The registry decides eligibility; it does not claim execution.
+
+Capability Router may select an eligible Skill and schedule it for an Agent Fabric stage. Agent Runtime is the authority that invokes the actual callback. After a successful callback it emits a plaintext-free `AgentCapabilityExecutionReceipt` containing the Skill ID, stage, automatic/manual origin, token count and evidence digest.
+
+A registered or selected Skill that never runs has no execution receipt. This is intentional:
+
+`registered != selected != executable != executed != verified`.
+
+`runPreparedFuryTask()` is the end-to-end orchestrator bridge that forwards the exact prepared Skill schedule into Agent Runtime without turning planning into execution.
