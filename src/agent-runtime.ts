@@ -686,30 +686,65 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   const furyPromptDigest = furyPrompt?.promptDigest;
   const skills = new Map<string, AgentSkillDefinition>();
   for (const skill of request.skills ?? []) {
-    if (!skill || typeof skill !== 'object' || typeof skill.id !== 'string' || !skill.id || typeof skill.execute !== 'function' || skills.has(skill.id)) {
+    const validStages = Array.isArray(skill?.stages)
+      && skill.stages.length > 0
+      && skill.stages.length <= AGENT_FABRIC_STAGE_ORDER.length
+      && skill.stages.every((stage) => AGENT_FABRIC_STAGE_ORDER.includes(stage))
+      && new Set(skill.stages).size === skill.stages.length;
+    if (!skill || typeof skill !== 'object'
+      || typeof skill.id !== 'string' || skill.id.length < 1 || skill.id.length > 256 || skill.id.includes('\0')
+      || typeof skill.version !== 'string' || skill.version.length < 1 || skill.version.length > 256 || skill.version.includes('\0')
+      || !validStages
+      || (skill.permission !== undefined && !['read', 'scoped-write'].includes(skill.permission))
+      || (skill.network !== undefined && !['disabled', 'required'].includes(skill.network))
+      || (skill.health !== undefined && typeof skill.health !== 'function')
+      || typeof skill.execute !== 'function'
+      || skills.has(skill.id)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'skill IDs must be unique and non-empty' },
+        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'skill definitions must use bounded unique IDs/versions, valid stages and supported permissions' },
       };
     }
     skills.set(skill.id, skill);
   }
   const mcpServers = new Map<string, AgentMcpServerDefinition>();
   for (const server of request.mcpServers ?? []) {
-    if (!server || typeof server !== 'object' || typeof server.id !== 'string' || !server.id || typeof server.execute !== 'function' || mcpServers.has(server.id)) {
+    const validMethods = Array.isArray(server?.allowedMethods)
+      && server.allowedMethods.length > 0
+      && server.allowedMethods.length <= 64
+      && server.allowedMethods.every((method) =>
+        typeof method === 'string' && method.length > 0 && method.length <= 256 && !method.includes('\0'))
+      && new Set(server.allowedMethods).size === server.allowedMethods.length;
+    if (!server || typeof server !== 'object'
+      || typeof server.id !== 'string' || server.id.length < 1 || server.id.length > 256 || server.id.includes('\0')
+      || !validMethods
+      || (server.network !== undefined && !['disabled', 'required'].includes(server.network))
+      || typeof server.execute !== 'function'
+      || mcpServers.has(server.id)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'MCP server IDs must be unique and non-empty' },
+        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'MCP server definitions must use bounded unique IDs/methods and supported network policy' },
       };
     }
     mcpServers.set(server.id, server);
   }
   const subagents = new Map<string, AgentSubagentDefinition>();
   for (const subagent of request.subagents ?? []) {
-    if (!subagent || typeof subagent !== 'object' || typeof subagent.id !== 'string' || !subagent.id || typeof subagent.execute !== 'function' || subagents.has(subagent.id)) {
+    const validStages = Array.isArray(subagent?.stages)
+      && subagent.stages.length > 0
+      && subagent.stages.length <= AGENT_FABRIC_STAGE_ORDER.length
+      && subagent.stages.every((stage) => AGENT_FABRIC_STAGE_ORDER.includes(stage))
+      && new Set(subagent.stages).size === subagent.stages.length;
+    if (!subagent || typeof subagent !== 'object'
+      || typeof subagent.id !== 'string' || subagent.id.length < 1 || subagent.id.length > 256 || subagent.id.includes('\0')
+      || !validStages
+      || (subagent.permission !== undefined && !['read', 'scoped-write'].includes(subagent.permission))
+      || (subagent.network !== undefined && !['disabled', 'required'].includes(subagent.network))
+      || typeof subagent.execute !== 'function'
+      || subagents.has(subagent.id)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'subagent IDs must be unique and non-empty' },
+        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'subagent definitions must use bounded unique IDs, valid stages and supported permissions' },
       };
     }
     subagents.set(subagent.id, subagent);
@@ -851,6 +886,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     if (server.network === 'required') throw new Error(`MCP network access is disabled: ${serverId}`);
     assertCapabilityReceiptCapacity(capabilityExecutions);
     const result = await server.execute(method, params, { runId, stage, objectiveDigest, network: 'disabled', secrets: 'never_requested' });
+    if (!jsonBounded(result)) throw new Error(`MCP result is invalid or exceeds its bound: ${serverId}/${method}`);
     capabilityExecutions.push(Object.freeze({
       format: 'furypipe-agent-capability-execution/v1',
       kind: 'mcp',
@@ -968,7 +1004,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
       }
       result = await executor({
         runId, stage, objective: request.objective, prompt, objectiveDigest, permission,
-        allowedWritePaths: request.allowWrites === true ? [...(request.allowedWritePaths ?? [])] : [],
+        allowedWritePaths: permission === 'scoped-write' ? [...(request.allowedWritePaths ?? [])] : [],
         contextBudgetTokens: budget, contextUsedTokens, remainingContextTokens: budget - contextUsedTokens,
         network: 'disabled', secrets: 'never_requested', completedStages: [...completedStages],
         autoSkillExecutions: Object.freeze(autoSkillExecutions),
