@@ -15,6 +15,7 @@ export type FuryPipeApplicabilityReason =
   | 'eligible'
   | 'unsupported_model'
   | 'vision_capability_unknown'
+  | 'visual_profile_unverified'
   | 'text_only_model'
   | 'visual_pricing_unknown'
   | 'visual_profile_blocked'
@@ -144,7 +145,7 @@ export interface FuryPipeModelEligibility {
   readonly eligible: boolean;
   readonly reason: Extract<
     FuryPipeApplicabilityReason,
-    'eligible' | 'unsupported_model' | 'vision_capability_unknown' | 'text_only_model' | 'visual_pricing_unknown' | 'visual_profile_blocked'
+    'eligible' | 'unsupported_model' | 'vision_capability_unknown' | 'visual_profile_unverified' | 'text_only_model' | 'visual_pricing_unknown' | 'visual_profile_blocked'
   >;
   readonly resolution?: ModelVisualResolution;
   readonly pricingEvidence?: FuryVisionPricingEvidence;
@@ -248,22 +249,24 @@ export function resolveFuryPipeModelEligibility(
   const qualityVerified = resolution.profile === 'quality_verified';
   const calibrated = resolution.profile === 'calibrated';
   const pricingEvidence = resolveVisionPricingEvidence(base);
+  const canaryWithKnownEconomics = resolution.mode === 'canary' && pricingEvidence !== 'unknown';
 
-  // AUTO accepts measured/calibrated reader profiles so models such as current
-  // Claude Opus/Grok do not fall back to plain text merely because they have
-  // not yet earned the stronger QUALITY_VERIFIED label. SAFE_EXACT remains the
-  // strictest policy and requires quality verification. MAX_SAVINGS is the
-  // explicit broad canary mode for proven vision readers with known economics.
+  // AUTO is future-proof but still evidence-gated: a newly released model can
+  // enter the Visual Engine when image input and provider-appropriate economics
+  // are both proven, even before it has earned CALIBRATED/QUALITY_VERIFIED.
+  // Such readers remain visibly UNPROFILED/CANARY in Model Fabric and downstream
+  // ExactGuard, byte/image budgets and profitability gates still decide whether
+  // a particular block is actually externalized.
   const policyAllowsProfile = visualPolicy === 'safe_exact'
     ? qualityVerified
     : visualPolicy === 'auto'
-      ? (qualityVerified || calibrated)
+      ? (qualityVerified || calibrated || canaryWithKnownEconomics)
       : broadVisual;
 
   if (!policyAllowsProfile) {
     return Object.freeze({
       eligible: false,
-      reason: 'unsupported_model',
+      reason: resolution.imageInput === 'yes' ? 'visual_profile_unverified' : 'vision_capability_unknown',
       source: 'automatic_model_fabric',
       resolution,
       pricingEvidence,
@@ -271,12 +274,9 @@ export function resolveFuryPipeModelEligibility(
   }
 
   // Dynamic discovery can prove "accepts image input" before FuryPipe has a
-  // provider-appropriate cost profile. In automatic broad mode that model
-  // remains native rather than being priced with DEFAULT_GPT_PROFILE's OpenAI
-  // tile formula. Operators can still supply an explicit FURYPIPE_GPT_PROFILES
-  // entry (pricingEvidence=operator_profile) or an explicit FURYPIPE_MODELS
-  // scope if they intentionally accept that override path.
-  if (broadVisual && pricingEvidence === 'unknown') {
+  // provider-appropriate cost profile. AUTO/MAX_SAVINGS both remain native in
+  // that case rather than fabricating another provider's image-token economics.
+  if ((broadVisual || visualPolicy === 'auto') && pricingEvidence === 'unknown') {
     return Object.freeze({
       eligible: false,
       reason: 'visual_pricing_unknown',
