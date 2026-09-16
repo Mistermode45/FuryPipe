@@ -47,6 +47,12 @@ export const DEFAULT_MODEL_BASES = Object.freeze([
 
 export type FuryPipeVisualPolicy = 'auto' | 'max_savings' | 'safe_exact' | 'text_only';
 
+let runtimeVisualPolicy: FuryPipeVisualPolicy | null = null;
+
+export function setFuryPipeVisualPolicy(policy: FuryPipeVisualPolicy | null): void {
+  runtimeVisualPolicy = policy;
+}
+
 /**
  * Global automatic visual policy.
  *
@@ -59,9 +65,10 @@ export type FuryPipeVisualPolicy = 'auto' | 'max_savings' | 'safe_exact' | 'text
  * switch for visual transformation.
  */
 export function getFuryPipeVisualPolicy(): FuryPipeVisualPolicy {
+  if (runtimeVisualPolicy !== null) return runtimeVisualPolicy;
   if (typeof process === 'undefined') return 'auto';
   const raw = process.env?.FURYPIPE_VISUAL_POLICY?.trim().toLowerCase();
-  if (raw === 'max_savings' || raw === 'safe_exact' || raw === 'text_only') return raw;
+  if (raw === 'max_savings' || raw === 'safe_exact' || raw === 'text_only' || raw === 'auto') return raw;
   return 'auto';
 }
 
