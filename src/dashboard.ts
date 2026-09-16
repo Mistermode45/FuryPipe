@@ -139,6 +139,8 @@ export interface RecentRow {
   status: number;
   size_in?: number;
   compressed: boolean;
+  /** Exact passthrough/compression reason captured from the proxy event. */
+  reason?: string;
   cc_added?: number;
   input_tokens?: number;
   /** From /v1/messages `usage.output_tokens`. Identical with/without
