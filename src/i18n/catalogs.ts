@@ -549,7 +549,7 @@ export const FR_MESSAGES: MessageCatalog = Object.freeze({
   'dashboard.stats.firstByte': 'premier octet p50 / p95',
   'dashboard.page.connectAgent': 'Connecter un agent',
   'dashboard.page.connectHint': 'run lance un agent via FuryPipe · pin garde les instructions à la fin de la requête',
-  'dashboard.page.warpIntro': 'FuryPipe Run lance l’agent avec le transport déjà configuré, sans modifier la configuration de l’agent :,
+  'dashboard.page.warpIntro': 'FuryPipe Run lance l’agent avec le transport déjà configuré, sans modifier la configuration de l’agent :',
   'dashboard.page.pinIntro': 'Épinglez des instructions depuis la session — elles sont déplacées à la fin de chaque requête, là où le modèle les lit :',
   'dashboard.page.pinList': '@furypipe pin sans texte liste les instructions épinglées.',
   'dashboard.page.modelScope': 'Périmètre des modèles imagés',
