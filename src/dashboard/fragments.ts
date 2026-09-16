@@ -1258,7 +1258,7 @@ const CSS = `
      they fit. The table keeps width:100% so it fills at wide widths. */
   #frag-recent, #frag-stats { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
   #frag-recent table, #frag-stats table { min-width: max-content; }
-  @media (max-width: 560px) {
+  @media (max-width: 640px) {
     #frag-recent { overflow: visible; }
     #frag-recent table.rtable { min-width: 0; display: block; }
     #frag-recent .rtable thead { display: none; }
