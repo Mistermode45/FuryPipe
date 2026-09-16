@@ -34,6 +34,7 @@ import * as readline from 'node:readline';
 import type { ProxyEvent } from './core/proxy.js';
 import type { TrackEvent } from './core/tracker.js';
 import type { ControlRoomSnapshot } from './control-room/index.js';
+import { createControlPlaneSnapshot, type ControlPlaneSnapshot } from './control-plane.js';
 import {
   computeActualInputEffWithCacheTier,
   computeBaselineInputEffWithCacheTier,
@@ -72,6 +73,7 @@ import {
   renderSessionsUnavailableFragment,
   renderStatsTableFragment,
   renderControlRoomFragment,
+  renderControlPlaneFragment,
   type ContextMapData,
 } from './dashboard/fragments.js';
 import {
@@ -1559,6 +1561,30 @@ export class DashboardState {
     }
   }
 
+  /** GET /api/control-plane.json — bounded, read-only V2 runtime projection.
+   * It only combines counters already held by this dashboard with the injected
+   * Control Room snapshot; it never scans, configures, or executes a capability. */
+  private async readControlPlaneSnapshot(port: number): Promise<ControlPlaneSnapshot> {
+    const stats = (await this.serveStats().json()) as StatsPayload;
+    const count = (value: number | undefined): number =>
+      typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+    return createControlPlaneSnapshot({
+      generatedAt: Date.now(),
+      runtime: {
+        port,
+        uptimeSec: count(stats.uptime_sec),
+        requests: count(stats.requests),
+        compressedRequests: count(stats.compressed_requests),
+        passthroughRequests: count(stats.passthrough),
+        savedInputTokens: count(stats.saved_input_tokens),
+        savedUsd: Number.isFinite(stats.saved_usd) ? stats.saved_usd : 0,
+        compressionEnabled: this.compressionEnabled,
+        activeModels: getAllowedModelBases(),
+      },
+      controlRoom: await this.readControlRoomSnapshot(),
+    });
+  }
+
   private modelRuntimeActivity(model: string): ModelRuntimeActivity {
     const totals = this.totalsByModel.get(model);
     const recent = this.recent.filter((row) => row.model === model);
@@ -1625,6 +1651,10 @@ export class DashboardState {
       return jsonResponse({ status: 'NOT_AVAILABLE' }, 503);
     }
     return jsonResponse(snapshot);
+  }
+
+  async serveControlPlaneJson(port: number): Promise<Response> {
+    return jsonResponse(await this.readControlPlaneSnapshot(port));
   }
 
   /** GET /fragments/<name> — server-rendered htmx fragments. Each one reuses
@@ -1706,6 +1736,29 @@ export class DashboardState {
         return htmlResponse(renderControlRoomFragment(
           await this.readControlRoomSnapshot(),
           locale,
+        ));
+      }
+      case 'control-plane': {
+        return htmlResponse(renderControlPlaneFragment(
+          await this.readControlPlaneSnapshot(port),
+          locale,
+        ));
+      }
+      case 'control-plane-overview':
+      case 'control-plane-visual-engine':
+      case 'control-plane-capabilities':
+      case 'control-plane-topology':
+      case 'control-plane-evidence': {
+        const surface = name.slice('control-plane-'.length) as
+          | 'overview'
+          | 'visual-engine'
+          | 'capabilities'
+          | 'topology'
+          | 'evidence';
+        return htmlResponse(renderControlPlaneFragment(
+          await this.readControlPlaneSnapshot(port),
+          locale,
+          surface,
         ));
       }
       default:
@@ -1850,6 +1903,7 @@ export type DashboardRoute =
   | { kind: 'api-stats' } // /api/stats.json
   | { kind: 'api-models' } // /api/models.json
   | { kind: 'api-control-room' } // /api/control-room.json
+  | { kind: 'api-control-plane' } // /api/control-plane.json
   | { kind: 'current-session' } // /api/current-session.json
   | { kind: 'api-compression' } // /api/compression (POST {enabled}) — runtime kill switch
   | { kind: 'api-image-source' } // /api/image-source[?id=N] — source text behind a rendered PNG
@@ -1865,6 +1919,7 @@ export function dashboardPath(pathname: string): DashboardRoute | null {
   if (pathname === '/api/stats.json') return { kind: 'api-stats' };
   if (pathname === '/api/models.json') return { kind: 'api-models' };
   if (pathname === '/api/control-room.json') return { kind: 'api-control-room' };
+  if (pathname === '/api/control-plane.json') return { kind: 'api-control-plane' };
   if (pathname === '/api/current-session.json') return { kind: 'current-session' };
   if (pathname === '/api/compression') return { kind: 'api-compression' };
   if (pathname === '/api/image-source') return { kind: 'api-image-source' };
