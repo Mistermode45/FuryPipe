@@ -36,6 +36,11 @@ export interface GooglePart {
     mimeType: string;
     data: string;
   };
+  /** Gemini 3 per-part media tokenization. Dense FuryPipe text pages require
+   *  HIGH so the provider does not silently down-budget OCR/detail quality. */
+  mediaResolution?: {
+    level: 'MEDIA_RESOLUTION_LOW' | 'MEDIA_RESOLUTION_MEDIUM' | 'MEDIA_RESOLUTION_HIGH' | 'MEDIA_RESOLUTION_ULTRA_HIGH';
+  };
   functionCall?: {
     name?: string;
     args?: unknown;
@@ -593,6 +598,11 @@ function imagePart(image: RenderedImage): GooglePart {
       mimeType: 'image/png',
       data: bytesToBase64(image.png),
     },
+    // FuryPipe pages are intentionally dense text. Gemini 3 exposes per-part
+    // media resolution; requesting HIGH makes the provider-side vision budget
+    // match the ~1120-token high-resolution cost modeled by the shipped Gemini
+    // profile instead of relying on a model-dependent default.
+    mediaResolution: { level: 'MEDIA_RESOLUTION_HIGH' },
   };
 }
 
