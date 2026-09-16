@@ -34,14 +34,14 @@ describe('FuryPipe setup TUI', () => {
     });
 
     expect(rendered).toContain('FURYPIPE');
-    expect(rendered).toContain('CONTEXT INTELLIGENCE');
-    expect(rendered).toContain('FuryLink');
-    expect(rendered).toContain('Visual Engine');
-    expect(rendered).toContain('Bienvenue dans FuryPipe');
+    expect(rendered).toContain('CONTROL PLANE');
+    expect(rendered).toContain('FURYLINK');
+    expect(rendered).toContain('VISUAL');
+    expect(rendered).toContain('Choisissez votre environnement');
     expect(rendered).toContain('Français');
     expect(rendered).toContain('English');
-    expect(rendered).toContain('[1] Langue');
-    expect(rendered).toContain('[5] Terminé');
+    expect(rendered).toContain('[01 LANGUE]');
+    expect(rendered).toContain('[05 PRÊT]');
     expect(rendered).not.toContain('\x1b[');
   });
 
@@ -55,10 +55,10 @@ describe('FuryPipe setup TUI', () => {
       configFile: '/tmp/furypipe/config.json',
     });
 
-    expect(rendered).toContain('FuryPipe setup saved');
+    expect(rendered).toContain('ENVIRONMENT READY');
     expect(rendered).toContain('furypipe doctor');
     expect(rendered).toContain('furypipe start');
-    expect(rendered).toContain('READY // FuryPipe is configured.');
+    expect(rendered).toContain('READY  FuryPipe is configured.');
   });
 
   it('parses supported setup arguments and rejects unknown languages', () => {
