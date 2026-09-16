@@ -28,6 +28,7 @@ import {
   compactSlabWhitespace,
   countVisualRows,
   estimateImageCount,
+  planVisualColumns,
   sha8,
   type TransformInfo,
   type TransformOptions,
@@ -1062,11 +1063,14 @@ async function transformOpenAIChatCompletionsCore(
     : '';
   const header = CHAT_HEADER.replace('\n====', reflowNote + '\n====');
   const renderedText = prepareImagedRenderText(header + combined, o.reflow);
-  const maxCols = o.cols ?? profile.stripCols;
-  const cols = Math.min(
-    shrinkColsToContent(renderedText, maxCols, profile.style.markerScale, profile.style.font),
-    profile.stripCols,
-  );
+  const maxCols = Math.min(o.cols ?? profile.stripCols, profile.stripCols);
+  const cols = planVisualColumns(
+    renderedText,
+    maxCols,
+    profile.style,
+    profile,
+    profile.maxHeightPx,
+  ).cols;
 
   const staticBaselineTokens = gptBaselineImagedTokens(systemTexts, req.tools, rewrittenTools);
   const gate = evalOpenAIGate(
@@ -1314,11 +1318,14 @@ async function transformOpenAIResponsesCore(
     : '';
   const header = RESPONSES_HEADER.replace('\n====', reflowNote + '\n====');
   const renderedText = prepareImagedRenderText(header + combined, o.reflow);
-  const maxCols = o.cols ?? profile.stripCols;
-  const cols = Math.min(
-    shrinkColsToContent(renderedText, maxCols, profile.style.markerScale, profile.style.font),
-    profile.stripCols,
-  );
+  const maxCols = Math.min(o.cols ?? profile.stripCols, profile.stripCols);
+  const cols = planVisualColumns(
+    renderedText,
+    maxCols,
+    profile.style,
+    profile,
+    profile.maxHeightPx,
+  ).cols;
 
   const staticBaselineTokens = gptBaselineImagedTokens(systemTexts, req.tools, rewrittenTools);
   const gate = evalOpenAIGate(
