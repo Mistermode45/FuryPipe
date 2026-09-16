@@ -33,17 +33,17 @@ describe('compression receipts', () => {
 
   it('emits an opt-in receipt from the public Anthropic wrapper', async () => {
     const body = encoder.encode(JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-mythos-5',
       messages: [{ role: 'user', content: 'hello' }],
     }));
     const result = await transformAnthropicMessages({
       body,
-      model: 'claude-sonnet-4-6',
+      model: 'claude-mythos-5',
       requestId: 'req-public-receipt',
       options: { emitReceipt: true },
     });
 
-    expect(result.reason).toBe('unsupported_model');
+    expect(result.reason).toBe('vision_capability_unknown');
     expect(result.receipt?.requestId).toBe('req-public-receipt');
     expect(result.receipt?.strategy).toBe('passthrough');
     expect(result.receipt?.originalHash).toBe(result.receipt?.transformedHash);
@@ -52,17 +52,17 @@ describe('compression receipts', () => {
 
   it('does not add a receipt by default', async () => {
     const body = encoder.encode(JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-mythos-5',
       messages: [{ role: 'user', content: 'hello' }],
     }));
-    const result = await transformAnthropicMessages({ body, model: 'claude-sonnet-4-6' });
+    const result = await transformAnthropicMessages({ body, model: 'claude-mythos-5' });
     expect(result.receipt).toBeUndefined();
   });
 
   it('does not claim verified spans for invalid UTF-8 input', async () => {
     const result = await transformAnthropicMessages({
       body: new Uint8Array([0xff, 0xfe, 0xfd]),
-      model: 'claude-sonnet-4-6',
+      model: 'claude-mythos-5',
       options: { emitReceipt: true },
     });
     expect(result.receipt?.verificationStatus).toBe('unverified');
