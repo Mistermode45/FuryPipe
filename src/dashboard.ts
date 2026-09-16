@@ -1591,6 +1591,7 @@ export class DashboardState {
             getConfiguredModelBases(),
             this.compressionEnabled,
             locale,
+            inspectRuntimeModels(),
           ),
         );
       case 'context-map': {
