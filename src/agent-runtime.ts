@@ -238,6 +238,11 @@ const DEFAULT_SUBAGENT_CONCURRENCY = 4;
 const MAX_SUBAGENT_CONCURRENCY = 8;
 const MAX_SUBAGENT_BATCH = 16;
 const MAX_CAPABILITY_EXECUTION_RECEIPTS = 512;
+const MAX_OBJECTIVE_BYTES = 1_048_576;
+const MAX_ALLOWED_WRITE_PATHS = 256;
+const MAX_SKILL_DEFINITIONS = 1_024;
+const MAX_MCP_SERVER_DEFINITIONS = 256;
+const MAX_SUBAGENT_DEFINITIONS = 512;
 
 function digest(value: string): string {
   return `afrun_${createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 24)}`;
@@ -293,7 +298,13 @@ function mcpCallKey(call: AgentMcpPlannedCall): string {
 }
 
 function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefined {
-  if (!request || typeof request !== 'object' || typeof request.objective !== 'string' || !request.objective.trim()) {
+  if (!request || typeof request !== 'object' || typeof request.objective !== 'string' || request.objective.length === 0) {
+    return { code: 'INVALID_REQUEST', reason: 'agent objective must not be empty' };
+  }
+  if (Buffer.byteLength(request.objective, 'utf8') > MAX_OBJECTIVE_BYTES) {
+    return { code: 'INVALID_REQUEST', reason: 'agent objective exceeds its byte bound' };
+  }
+  if (!/\S/u.test(request.objective)) {
     return { code: 'INVALID_REQUEST', reason: 'agent objective must not be empty' };
   }
   if (request.runId !== undefined && (typeof request.runId !== 'string' || request.runId.length === 0
@@ -308,13 +319,16 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
     return { code: 'INVALID_REQUEST', reason: 'scoped write mode requires at least one allowed path' };
   }
   if (request.allowedWritePaths !== undefined && (!Array.isArray(request.allowedWritePaths)
+    || request.allowedWritePaths.length > MAX_ALLOWED_WRITE_PATHS
     || request.allowedWritePaths.some((path) => typeof path !== 'string' || !path || path.length > 1024 || path.includes('\0')))) {
-    return { code: 'INVALID_REQUEST', reason: 'allowed write paths must be bounded non-empty strings' };
+    return { code: 'INVALID_REQUEST', reason: 'allowed write paths must be a bounded list of non-empty strings' };
   }
   if (!request.executors || typeof request.executors !== 'object') {
     return { code: 'INVALID_REQUEST', reason: 'agent stage executors are required' };
   }
-  if (request.skills !== undefined && !Array.isArray(request.skills)) return { code: 'INVALID_REQUEST', reason: 'agent skills must be an array' };
+  if (request.skills !== undefined && (!Array.isArray(request.skills) || request.skills.length > MAX_SKILL_DEFINITIONS)) {
+    return { code: 'INVALID_REQUEST', reason: `agent skills must be an array with at most ${MAX_SKILL_DEFINITIONS} definitions` };
+  }
   if (request.autoInvokeSkillsByStage !== undefined) {
     if (!request.autoInvokeSkillsByStage || typeof request.autoInvokeSkillsByStage !== 'object' || Array.isArray(request.autoInvokeSkillsByStage)) {
       return { code: 'INVALID_REQUEST', reason: 'autoInvokeSkillsByStage must be a stage map' };
@@ -346,8 +360,12 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
       }
     }
   }
-  if (request.mcpServers !== undefined && !Array.isArray(request.mcpServers)) return { code: 'INVALID_REQUEST', reason: 'agent MCP servers must be an array' };
-  if (request.subagents !== undefined && !Array.isArray(request.subagents)) return { code: 'INVALID_REQUEST', reason: 'agent subagents must be an array' };
+  if (request.mcpServers !== undefined && (!Array.isArray(request.mcpServers) || request.mcpServers.length > MAX_MCP_SERVER_DEFINITIONS)) {
+    return { code: 'INVALID_REQUEST', reason: `agent MCP servers must be an array with at most ${MAX_MCP_SERVER_DEFINITIONS} definitions` };
+  }
+  if (request.subagents !== undefined && (!Array.isArray(request.subagents) || request.subagents.length > MAX_SUBAGENT_DEFINITIONS)) {
+    return { code: 'INVALID_REQUEST', reason: `agent subagents must be an array with at most ${MAX_SUBAGENT_DEFINITIONS} definitions` };
+  }
   const subagentConcurrency = request.maxSubagentConcurrency ?? DEFAULT_SUBAGENT_CONCURRENCY;
   if (!Number.isSafeInteger(subagentConcurrency) || subagentConcurrency < 1 || subagentConcurrency > MAX_SUBAGENT_CONCURRENCY) {
     return { code: 'INVALID_REQUEST', reason: `maxSubagentConcurrency must be between 1 and ${MAX_SUBAGENT_CONCURRENCY}` };
@@ -686,30 +704,62 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
   const furyPromptDigest = furyPrompt?.promptDigest;
   const skills = new Map<string, AgentSkillDefinition>();
   for (const skill of request.skills ?? []) {
-    if (!skill || typeof skill !== 'object' || typeof skill.id !== 'string' || !skill.id || typeof skill.execute !== 'function' || skills.has(skill.id)) {
+    const validStages = Array.isArray(skill?.stages)
+      && skill.stages.length <= AGENT_FABRIC_STAGE_ORDER.length
+      && skill.stages.every((stage) => AGENT_FABRIC_STAGE_ORDER.includes(stage))
+      && new Set(skill.stages).size === skill.stages.length;
+    if (!skill || typeof skill !== 'object'
+      || typeof skill.id !== 'string' || skill.id.length < 1 || skill.id.length > 256 || skill.id.includes('\0')
+      || typeof skill.version !== 'string' || skill.version.length > 256 || skill.version.includes('\0')
+      || !validStages
+      || (skill.permission !== undefined && !['read', 'scoped-write'].includes(skill.permission))
+      || (skill.network !== undefined && !['disabled', 'required'].includes(skill.network))
+      || (skill.health !== undefined && typeof skill.health !== 'function')
+      || typeof skill.execute !== 'function'
+      || skills.has(skill.id)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'skill IDs must be unique and non-empty' },
+        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'skill definitions must use bounded unique IDs/versions, valid stages and supported permissions' },
       };
     }
     skills.set(skill.id, skill);
   }
   const mcpServers = new Map<string, AgentMcpServerDefinition>();
   for (const server of request.mcpServers ?? []) {
-    if (!server || typeof server !== 'object' || typeof server.id !== 'string' || !server.id || typeof server.execute !== 'function' || mcpServers.has(server.id)) {
+    const validMethods = Array.isArray(server?.allowedMethods)
+      && server.allowedMethods.length <= 64
+      && server.allowedMethods.every((method) =>
+        typeof method === 'string' && method.length > 0 && method.length <= 256 && !method.includes('\0'))
+      && new Set(server.allowedMethods).size === server.allowedMethods.length;
+    if (!server || typeof server !== 'object'
+      || typeof server.id !== 'string' || server.id.length < 1 || server.id.length > 256 || server.id.includes('\0')
+      || !validMethods
+      || (server.network !== undefined && !['disabled', 'required'].includes(server.network))
+      || typeof server.execute !== 'function'
+      || mcpServers.has(server.id)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'MCP server IDs must be unique and non-empty' },
+        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'MCP server definitions must use bounded unique IDs/methods and supported network policy' },
       };
     }
     mcpServers.set(server.id, server);
   }
   const subagents = new Map<string, AgentSubagentDefinition>();
   for (const subagent of request.subagents ?? []) {
-    if (!subagent || typeof subagent !== 'object' || typeof subagent.id !== 'string' || !subagent.id || typeof subagent.execute !== 'function' || subagents.has(subagent.id)) {
+    const validStages = Array.isArray(subagent?.stages)
+      && subagent.stages.length <= AGENT_FABRIC_STAGE_ORDER.length
+      && subagent.stages.every((stage) => AGENT_FABRIC_STAGE_ORDER.includes(stage))
+      && new Set(subagent.stages).size === subagent.stages.length;
+    if (!subagent || typeof subagent !== 'object'
+      || typeof subagent.id !== 'string' || subagent.id.length < 1 || subagent.id.length > 256 || subagent.id.includes('\0')
+      || !validStages
+      || (subagent.permission !== undefined && !['read', 'scoped-write'].includes(subagent.permission))
+      || (subagent.network !== undefined && !['disabled', 'required'].includes(subagent.network))
+      || typeof subagent.execute !== 'function'
+      || subagents.has(subagent.id)) {
       return {
         format: 'furypipe-agent-run/v1', status: 'failed', runId, objectiveDigest,
-        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'subagent IDs must be unique and non-empty' },
+        completedStages: [], contextUsedTokens: 0, skillHealth, capabilityExecutions: Object.freeze([...capabilityExecutions]), failure: { code: 'INVALID_REQUEST', reason: 'subagent definitions must use bounded unique IDs, valid stages and supported permissions' },
       };
     }
     subagents.set(subagent.id, subagent);
@@ -851,6 +901,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
     if (server.network === 'required') throw new Error(`MCP network access is disabled: ${serverId}`);
     assertCapabilityReceiptCapacity(capabilityExecutions);
     const result = await server.execute(method, params, { runId, stage, objectiveDigest, network: 'disabled', secrets: 'never_requested' });
+    if (!jsonBounded(result)) throw new Error(`MCP result is invalid or exceeds its bound: ${serverId}/${method}`);
     capabilityExecutions.push(Object.freeze({
       format: 'furypipe-agent-capability-execution/v1',
       kind: 'mcp',
@@ -968,7 +1019,7 @@ export async function runAgent(request: AgentRuntimeRequest, resumeFrom?: AgentR
       }
       result = await executor({
         runId, stage, objective: request.objective, prompt, objectiveDigest, permission,
-        allowedWritePaths: request.allowWrites === true ? [...(request.allowedWritePaths ?? [])] : [],
+        allowedWritePaths: permission === 'scoped-write' ? [...(request.allowedWritePaths ?? [])] : [],
         contextBudgetTokens: budget, contextUsedTokens, remainingContextTokens: budget - contextUsedTokens,
         network: 'disabled', secrets: 'never_requested', completedStages: [...completedStages],
         autoSkillExecutions: Object.freeze(autoSkillExecutions),

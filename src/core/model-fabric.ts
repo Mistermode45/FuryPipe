@@ -190,10 +190,18 @@ function validRecord(value: unknown, field: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function validOptionalSafeNumber(value: unknown, field: string): number | undefined {
+function validOptionalSafeInteger(value: unknown, field: string): number | undefined {
   if (value === undefined) return undefined;
   if (numberField(value) === undefined) throw new TypeError(`model fabric ${field} is invalid`);
   return value as number;
+}
+
+function validOptionalPriceNumber(value: unknown, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new TypeError(`model fabric ${field} is invalid`);
+  }
+  return value;
 }
 
 function validOptionalText(value: unknown, field: string, max: number): string | undefined {
@@ -229,17 +237,35 @@ function normalizeRegistryEntry(entry: ModelFabricEntry): ModelFabricEntry {
 
   const normalizedLimits: Record<string, number> = {};
   for (const key of ['contextTokens', 'outputTokens', 'maxImages', 'maxImageBytes', 'maxRequestBytes']) {
-    const value = validOptionalSafeNumber(limits[key], `limits.${key}`);
+    const value = validOptionalSafeInteger(limits[key], `limits.${key}`);
     if (value !== undefined) normalizedLimits[key] = value;
   }
   const pricingInput = entry.pricing === undefined ? undefined : validRecord(entry.pricing, 'pricing');
+  const inputUsdPerMillionTokens = pricingInput === undefined
+    ? undefined
+    : validOptionalPriceNumber(pricingInput.inputUsdPerMillionTokens, 'pricing.inputUsdPerMillionTokens');
+  const cachedInputUsdPerMillionTokens = pricingInput === undefined
+    ? undefined
+    : validOptionalPriceNumber(pricingInput.cachedInputUsdPerMillionTokens, 'pricing.cachedInputUsdPerMillionTokens');
+  const outputUsdPerMillionTokens = pricingInput === undefined
+    ? undefined
+    : validOptionalPriceNumber(pricingInput.outputUsdPerMillionTokens, 'pricing.outputUsdPerMillionTokens');
+  const imageInputUsdPerMillionTokens = pricingInput === undefined
+    ? undefined
+    : validOptionalPriceNumber(pricingInput.imageInputUsdPerMillionTokens, 'pricing.imageInputUsdPerMillionTokens');
+  const pricingSource = pricingInput === undefined
+    ? undefined
+    : validOptionalText(pricingInput.source, 'pricing.source', SOURCE_MAX);
+  const pricingObservedAt = pricingInput === undefined
+    ? undefined
+    : validOptionalText(pricingInput.observedAt, 'pricing.observedAt', 128);
   const pricing = pricingInput === undefined ? undefined : {
-    ...(validOptionalSafeNumber(pricingInput.inputUsdPerMillionTokens, 'pricing.inputUsdPerMillionTokens') === undefined ? {} : { inputUsdPerMillionTokens: pricingInput.inputUsdPerMillionTokens as number }),
-    ...(validOptionalSafeNumber(pricingInput.cachedInputUsdPerMillionTokens, 'pricing.cachedInputUsdPerMillionTokens') === undefined ? {} : { cachedInputUsdPerMillionTokens: pricingInput.cachedInputUsdPerMillionTokens as number }),
-    ...(validOptionalSafeNumber(pricingInput.outputUsdPerMillionTokens, 'pricing.outputUsdPerMillionTokens') === undefined ? {} : { outputUsdPerMillionTokens: pricingInput.outputUsdPerMillionTokens as number }),
-    ...(validOptionalSafeNumber(pricingInput.imageInputUsdPerMillionTokens, 'pricing.imageInputUsdPerMillionTokens') === undefined ? {} : { imageInputUsdPerMillionTokens: pricingInput.imageInputUsdPerMillionTokens as number }),
-    ...(validOptionalText(pricingInput.source, 'pricing.source', SOURCE_MAX) === undefined ? {} : { source: pricingInput.source as string }),
-    ...(validOptionalText(pricingInput.observedAt, 'pricing.observedAt', 128) === undefined ? {} : { observedAt: pricingInput.observedAt as string }),
+    ...(inputUsdPerMillionTokens === undefined ? {} : { inputUsdPerMillionTokens }),
+    ...(cachedInputUsdPerMillionTokens === undefined ? {} : { cachedInputUsdPerMillionTokens }),
+    ...(outputUsdPerMillionTokens === undefined ? {} : { outputUsdPerMillionTokens }),
+    ...(imageInputUsdPerMillionTokens === undefined ? {} : { imageInputUsdPerMillionTokens }),
+    ...(pricingSource === undefined ? {} : { source: pricingSource }),
+    ...(pricingObservedAt === undefined ? {} : { observedAt: pricingObservedAt }),
   };
 
   if (!Array.isArray(entry.provenance) || entry.provenance.length > 64) {
@@ -396,7 +422,9 @@ function normalizeAliases(values: readonly unknown[], id: string): readonly stri
   for (const raw of values) {
     const value = bounded(raw);
     if (!value) continue;
-    set.add(normalizeId(value));
+    const normalized = normalizeId(value);
+    if (!normalized) continue;
+    set.add(normalized);
     if (set.size >= 64) break;
   }
   return Object.freeze([...set]);
@@ -530,17 +558,29 @@ export function createModelFabricRegistry(): ModelFabricRegistry {
 
   const upsertNormalized = (normalized: ModelFabricEntry): void => {
     const id = normalized.id;
+    const idAliasOwner = aliases.get(id);
+    if (idAliasOwner !== undefined && idAliasOwner !== id) {
+      throw new Error(`model fabric identity collision: canonical id ${id} is already an alias of ${idAliasOwner}`);
+    }
     const existing = entries.get(id);
     const merged = existing ? mergeEntry(existing, normalized) : normalized;
     for (const alias of merged.aliases) {
       const aliasKey = canonicalKey(alias);
+      if (!aliasKey) continue;
+      const canonicalOwner = entries.has(aliasKey) ? aliasKey : undefined;
+      if (canonicalOwner !== undefined && canonicalOwner !== id) {
+        throw new Error(`model fabric identity collision: alias ${alias} conflicts with canonical id ${canonicalOwner}`);
+      }
       const owner = aliases.get(aliasKey);
       if (owner !== undefined && owner !== id) {
         throw new Error(`model fabric alias collision: ${alias}`);
       }
     }
     entries.set(id, merged);
-    for (const alias of merged.aliases) aliases.set(canonicalKey(alias), id);
+    for (const alias of merged.aliases) {
+      const aliasKey = canonicalKey(alias);
+      if (aliasKey) aliases.set(aliasKey, id);
+    }
   };
 
   const upsert = (entry: ModelFabricEntry): void => {
@@ -553,16 +593,33 @@ export function createModelFabricRegistry(): ModelFabricRegistry {
       if (!Array.isArray(incoming) || incoming.length > 20_000) {
         throw new Error('model fabric catalog must be a bounded array');
       }
-      // Validate the complete batch before changing the registry. A malformed
-      // provider response must not leave a partially refreshed catalog behind.
+      // Validate the complete batch before changing the registry. Canonical IDs
+      // and aliases share one ownership namespace so neither can hijack the
+      // other during a provider refresh.
       const normalized = incoming.map((entry) => normalizeRegistryEntry(entry));
-      const pendingOwners = new Map(aliases);
+      const pendingOwners = new Map<string, string>();
+      for (const id of entries.keys()) pendingOwners.set(id, id);
+      for (const [alias, owner] of aliases) {
+        const prior = pendingOwners.get(alias);
+        if (prior !== undefined && prior !== owner) {
+          throw new Error(`model fabric identity collision: alias ${alias} conflicts with canonical id ${prior}`);
+        }
+        pendingOwners.set(alias, owner);
+      }
+      for (const entry of normalized) {
+        const owner = pendingOwners.get(entry.id);
+        if (owner !== undefined && owner !== entry.id) {
+          throw new Error(`model fabric identity collision: canonical id ${entry.id} is already owned by ${owner}`);
+        }
+        pendingOwners.set(entry.id, entry.id);
+      }
       for (const entry of normalized) {
         for (const alias of entry.aliases) {
           const aliasKey = canonicalKey(alias);
+          if (!aliasKey) continue;
           const owner = pendingOwners.get(aliasKey);
           if (owner !== undefined && owner !== entry.id) {
-            throw new Error(`model fabric alias collision: ${alias}`);
+            throw new Error(`model fabric identity collision: alias ${alias} is already owned by ${owner}`);
           }
           pendingOwners.set(aliasKey, entry.id);
         }
@@ -692,7 +749,11 @@ function catalogEntry(input: {
   evidence: ModelFabricEvidence;
 }): ModelFabricEntry {
   const inferred = inferredEntry(input.id, input.provider);
-  const modalities = Object.freeze({ ...inferred.modalities, ...(input.modalities ?? {}) });
+  // Provider catalog existence is not field-level capability evidence. Only
+  // values actually carried by the provider payload may receive provider_api /
+  // openrouter_catalog provenance; omitted fields remain UNKNOWN rather than
+  // inheriting a family/name inference under stronger evidence.
+  const modalities = Object.freeze({ ...EMPTY_MODALITIES, ...(input.modalities ?? {}) });
   return Object.freeze({
     ...inferred,
     provider: input.provider,
@@ -701,7 +762,7 @@ function catalogEntry(input: {
     aliases: normalizeAliases(input.aliases ?? [], normalizeId(input.id)),
     lifecycle: input.lifecycle ?? inferred.lifecycle,
     modalities,
-    capabilities: Object.freeze({ ...inferred.capabilities, ...(input.capabilities ?? {}) }),
+    capabilities: Object.freeze({ ...EMPTY_CAPABILITIES, ...(input.capabilities ?? {}) }),
     limits: Object.freeze({ ...(input.limits ?? {}) }),
     ...(input.pricing === undefined ? {} : { pricing: Object.freeze({ ...input.pricing }) }),
     visual: Object.freeze({
