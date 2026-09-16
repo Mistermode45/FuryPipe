@@ -67,7 +67,7 @@ describe('FuryLink CA bundle (#245)', () => {
     expect(count(readFileSync(second.bundlePath, 'utf8'))).toBe(n);
   });
 
-  it('falls back to CA-only and reports it when no system bundle exists', () => {
+  it('reports no filesystem bundle when candidate PEM paths do not exist', () => {
     delete process.env.SSL_CERT_FILE;
     expect(findSystemRootBundle(['/nonexistent/a.pem', '/nonexistent/b.pem'])).toBeNull();
   });
