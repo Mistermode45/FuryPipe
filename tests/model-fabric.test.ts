@@ -182,10 +182,15 @@ describe('model fabric', () => {
     });
   });
 
-  it('keeps AUTO evidence-first while MAX_SAVINGS enables proven vision families', () => {
+  it('lets AUTO use calibrated readers while SAFE_EXACT stays quality-verified-only', () => {
+    expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(true);
+    expect(isFuryPipeSupportedModel('grok-4.6')).toBe(true);
+    expect(isFuryPipeSupportedModel('gpt-6-astra')).toBe(false);
+
+    process.env.FURYPIPE_VISUAL_POLICY = 'safe_exact';
     expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(false);
-    expect(isFuryPipeSupportedModel('gpt-6-astra')).toBe(false);
     expect(isFuryPipeSupportedModel('grok-4.6')).toBe(false);
 
     process.env.FURYPIPE_VISUAL_POLICY = 'max_savings';
