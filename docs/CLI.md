@@ -34,7 +34,7 @@ Use `furypipe --help` and command-specific help as the runtime source of truth f
 
 `furypipe setup` launches the FuryPipe first-run terminal experience.
 
-The rich TUI is dependency-free and uses the terminal directly. It provides FuryPipe branding, a step rail, bilingual language selection, keyboard navigation and a completion screen.
+The rich TUI is dependency-free and uses the terminal directly. It presents the FuryPipe Control Plane identity, a horizontal runtime-domain rail, bilingual language selection, keyboard navigation and a completion screen.
 
 ```bash
 furypipe setup
@@ -110,6 +110,12 @@ furypipe export --git
 ```
 
 Depending on the input and runtime path, exports can include context pages, factsheets and prompt artifacts.
+
+## Visual Engine
+
+The Visual Engine is FuryPipe's guarded context-optimization layer. It keeps text native when visual transformation is not profitable or would violate exactness/provider limits, and otherwise uses provider-priced geometry planning plus deterministic lossless rendering.
+
+See [VISUAL_ENGINE.md](VISUAL_ENGINE.md) for the pipeline, fidelity constraints and release-blocking invariants.
 
 ## FuryLink
 
