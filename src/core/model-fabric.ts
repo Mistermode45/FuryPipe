@@ -749,7 +749,11 @@ function catalogEntry(input: {
   evidence: ModelFabricEvidence;
 }): ModelFabricEntry {
   const inferred = inferredEntry(input.id, input.provider);
-  const modalities = Object.freeze({ ...inferred.modalities, ...(input.modalities ?? {}) });
+  // Provider catalog existence is not field-level capability evidence. Only
+  // values actually carried by the provider payload may receive provider_api /
+  // openrouter_catalog provenance; omitted fields remain UNKNOWN rather than
+  // inheriting a family/name inference under stronger evidence.
+  const modalities = Object.freeze({ ...EMPTY_MODALITIES, ...(input.modalities ?? {}) });
   return Object.freeze({
     ...inferred,
     provider: input.provider,
@@ -758,7 +762,7 @@ function catalogEntry(input: {
     aliases: normalizeAliases(input.aliases ?? [], normalizeId(input.id)),
     lifecycle: input.lifecycle ?? inferred.lifecycle,
     modalities,
-    capabilities: Object.freeze({ ...inferred.capabilities, ...(input.capabilities ?? {}) }),
+    capabilities: Object.freeze({ ...EMPTY_CAPABILITIES, ...(input.capabilities ?? {}) }),
     limits: Object.freeze({ ...(input.limits ?? {}) }),
     ...(input.pricing === undefined ? {} : { pricing: Object.freeze({ ...input.pricing }) }),
     visual: Object.freeze({

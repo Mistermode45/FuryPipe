@@ -115,6 +115,50 @@ describe('model fabric', () => {
     });
   });
 
+  it('does not promote omitted provider modality fields into provider capability evidence', () => {
+    const openai = normalizeOpenAIModelsPayload({
+      data: [{ id: 'gpt-6-astra', owned_by: 'openai' }],
+    }, '2026-09-17T00:00:00.000Z')[0]!;
+    expect(openai.modalities.imageInput).toBe('unknown');
+    expect(openai.provenance).toEqual([
+      expect.objectContaining({ kind: 'provider_api', source: 'OpenAI /v1/models' }),
+    ]);
+
+    const registry = createModelFabricRegistry();
+    registry.upsertMany(normalizeAnthropicModelsPayload({
+      data: [{
+        id: 'claude-opus-5',
+        input_modalities: ['text'],
+      }],
+    }, '2026-09-16T00:00:00.000Z'));
+    expect(registry.resolveVisual('claude-opus-5')).toMatchObject({
+      imageInput: 'no',
+      reason: 'text_only',
+    });
+
+    // A newer catalog row that omits modalities proves model existence only;
+    // it must not inherit the family rule and overturn the explicit denial.
+    registry.upsertMany(normalizeAnthropicModelsPayload({
+      data: [{ id: 'claude-opus-5' }],
+    }, '2026-09-17T00:00:00.000Z'));
+    expect(registry.resolveVisual('claude-opus-5')).toMatchObject({
+      imageInput: 'no',
+      reason: 'text_only',
+    });
+
+    // A still-newer explicit provider fact is allowed to update the denial.
+    registry.upsertMany(normalizeAnthropicModelsPayload({
+      data: [{
+        id: 'claude-opus-5',
+        input_modalities: ['text', 'image'],
+      }],
+    }, '2026-09-18T00:00:00.000Z'));
+    expect(registry.resolveVisual('claude-opus-5')).toMatchObject({
+      imageInput: 'yes',
+      profile: 'calibrated',
+    });
+  });
+
   it('does not let an older or same-time conflicting provider refresh override truth conservatively', () => {
     const registry = createModelFabricRegistry();
     registry.upsertMany(normalizeXaiModelsPayload({
