@@ -453,10 +453,10 @@ function record(value: unknown): Record<string, unknown> | undefined {
 }
 
 function stringList(value: unknown): readonly string[] {
-  if (!Array.isArray(value)) return Object.freeze([]);
-  return Object.freeze(value.flatMap((item) => {
-    const value = bounded(item);
-    return value ? [value] : [];
+  const source = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+  return Object.freeze(source.flatMap((item) => {
+    const normalized = bounded(item);
+    return normalized ? [normalized] : [];
   }).slice(0, 64));
 }
 
@@ -498,6 +498,32 @@ function catalogEntry(input: {
     }),
     provenance: Object.freeze([Object.freeze(input.evidence)]),
   });
+}
+
+export function normalizeAnthropicModelsPayload(payload: unknown, observedAt = nowIso()): readonly ModelFabricEntry[] {
+  const root = record(payload);
+  const data = root && Array.isArray(root.data) ? root.data : [];
+  return Object.freeze(data.flatMap((raw) => {
+    const item = record(raw);
+    const id = bounded(item?.id);
+    if (!id) return [];
+    const capabilities = record(item?.capabilities);
+    const thinking = record(capabilities?.thinking);
+    return [catalogEntry({
+      provider: 'anthropic',
+      id,
+      displayName: bounded(item?.display_name, id, DISPLAY_MAX),
+      lifecycle: 'active',
+      capabilities: {
+        reasoning: boolCapability(thinking?.supported),
+      },
+      limits: Object.freeze({
+        ...(numberField(item?.max_input_tokens) === undefined ? {} : { contextTokens: numberField(item?.max_input_tokens)! }),
+        ...(numberField(item?.max_tokens) === undefined ? {} : { outputTokens: numberField(item?.max_tokens)! }),
+      }),
+      evidence: { kind: 'provider_api', source: 'Anthropic /v1/models', observedAt },
+    })];
+  }));
 }
 
 export function normalizeOpenAIModelsPayload(payload: unknown, observedAt = nowIso()): readonly ModelFabricEntry[] {
