@@ -1437,13 +1437,14 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
 </script>
 </head>
 <body>
+<div class="workspace">
 
 <header class="topbar">
   <div class="brand">
     <span class="pulse-mark"></span>
     <div>
       <div class="wordmark-row">
-        <div class="wordmark">FuryPipe</div>
+        <div class="wordmark">FuryPipe <span class="brand-kicker">Control Plane</span></div>
         ${host ? `<span class="hostchip" title="${escapeHtml(t('dashboard.page.proxyHost'))}">${host}</span>` : ''}
       </div>
       <div class="tagline">${escapeHtml(dashboardT(activeLocale, 'dashboard.tagline'))}</div>
@@ -1461,13 +1462,21 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
   </div>
 </header>
 
-<details class="models-collapse">
+<nav class="command-nav" aria-label="${escapeHtml(t('dashboard.page.navLabel'))}">
+  <a href="#frag-session">${escapeHtml(t('dashboard.page.navOverview'))}</a>
+  <a href="#context">${escapeHtml(t('dashboard.page.navContext'))}</a>
+  <a href="#sessions">${escapeHtml(t('dashboard.page.navSessions'))}</a>
+  <a href="#control-plane">${escapeHtml(t('dashboard.page.navEvidence'))}</a>
+  <a href="#history">${escapeHtml(t('dashboard.page.navHistory'))}</a>
+</nav>
+
+<details class="connect-panel">
   <summary class="models-summary">${escapeHtml(t('dashboard.page.connectAgent'))} <span class="hint">${escapeHtml(t('dashboard.page.connectHint'))}</span></summary>
-  <p>${escapeHtml(t('dashboard.page.warpIntro'))}</p>
-  <pre>furypipe warp -- claude
-furypipe warp -- codex
-furypipe warp -- cursor-agent</pre>
-  <p>${escapeHtml(t('dashboard.page.aliasHelp'))}<br><code>furypipe warp -- pp</code> · <code>--route PATTERN=http://host:port</code> · <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code></p>
+  <p>${escapeHtml(t('dashboard.page.linkIntro'))}</p>
+  <pre>furypipe link claude
+furypipe link codex
+furypipe link cursor-agent</pre>
+  <p>${escapeHtml(t('dashboard.page.aliasHelp'))}<br><code>furypipe link pp</code> · <code>--route PATTERN=http://host:port</code> · <code>ANTHROPIC_BASE_URL=http://127.0.0.1:${port}</code></p>
   <p>${escapeHtml(t('dashboard.page.pinIntro'))}</p>
   <pre>@furypipe pin be concise, no walls of text
 @furypipe unpin 2
@@ -1509,7 +1518,7 @@ npx furypipe</pre>
 
 <div id="frag-header" hx-get="/fragments/header" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
 
-<section class="section">
+<section class="section" id="context">
   <h2 class="section-head">${escapeHtml(t('dashboard.page.contextTitle'))} <span class="section-sub">${escapeHtml(t('dashboard.page.contextSub'))}</span></h2>
   <div class="xray">
     <div class="card">
@@ -1526,15 +1535,15 @@ npx furypipe</pre>
   </div>
 </section>
 
-<section class="section">
+<section class="section" id="sessions">
   <h2 class="section-head">${escapeHtml(t('dashboard.page.topSessions'))} <span class="section-sub">${escapeHtml(t('dashboard.page.bySaved'))}</span></h2>
   <div class="card">
     <div id="frag-sessions" hx-get="/fragments/sessions" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
   </div>
 </section>
 
-<section class="section">
-  <h2 class="section-head">Control Room V5 <span class="section-sub">${escapeHtml(t('dashboard.page.controlRoomSub'))}</span></h2>
+<section class="section" id="control-plane">
+  <h2 class="section-head">FuryPipe Control Plane <span class="section-sub">${escapeHtml(t('dashboard.page.controlRoomSub'))}</span></h2>
   <div class="card">
     <div id="frag-control-room" hx-get="/fragments/control-room" hx-trigger="load, every 5s" hx-swap="innerHTML">
       <div class="status">${escapeHtml(t('dashboard.page.loadingControlRoom'))}</div>
@@ -1542,12 +1551,14 @@ npx furypipe</pre>
   </div>
 </section>
 
-<section class="section">
-  <h2 class="section-head">Full history <span class="section-sub">every event on disk</span></h2>
+<section class="section" id="history">
+  <h2 class="section-head">${escapeHtml(t('dashboard.page.historyTitle'))} <span class="section-sub">${escapeHtml(t('dashboard.page.historySub'))}</span></h2>
   <div class="card">
     <div id="frag-stats" hx-get="/fragments/stats" hx-trigger="load, every 5s" hx-swap="innerHTML"></div>
   </div>
 </section>
+
+</div>
 
 <div class="tray" x-data="{ toasts: [], next: 1 }"
      @fury-toast.window="const id = next++; toasts.push({ id, text: $event.detail.text }); setTimeout(() => toasts = toasts.filter(t => t.id !== id), 5000)">
