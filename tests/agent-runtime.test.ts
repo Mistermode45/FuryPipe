@@ -153,6 +153,37 @@ describe('FuryPipe Agent runtime', () => {
     expect(skillCalled).toBe(true);
     expect(mcpCalled).toBe(true);
     expect(subagentCalled).toBe(true);
+    expect(result.capabilityExecutions).toEqual([
+      expect.objectContaining({
+        format: 'furypipe-agent-capability-execution/v1',
+        kind: 'skill',
+        id: 'repo-reader',
+        stage: 'research',
+        invocation: 'manual',
+        status: 'executed',
+        consumedTokens: 1,
+      }),
+      expect.objectContaining({
+        format: 'furypipe-agent-capability-execution/v1',
+        kind: 'mcp',
+        id: 'local-inspection',
+        stage: 'research',
+        invocation: 'manual',
+        status: 'executed',
+        method: 'list',
+      }),
+      expect.objectContaining({
+        format: 'furypipe-agent-capability-execution/v1',
+        kind: 'subagent',
+        id: 'research-helper',
+        stage: 'research',
+        invocation: 'manual',
+        status: 'executed',
+        consumedTokens: 2,
+      }),
+    ]);
+    expect(JSON.stringify(result.capabilityExecutions)).not.toContain('skill-evidence');
+    expect(JSON.stringify(result.capabilityExecutions)).not.toContain('subagent-evidence');
     expect(result.contextUsedTokens).toBe(53);
   });
 
@@ -191,6 +222,19 @@ describe('FuryPipe Agent runtime', () => {
     expect(result.status).toBe('completed');
     expect(executions).toEqual(['research-skill']);
     expect(result.skillHealth).toEqual({ 'research-skill': 'healthy' });
+    expect(result.capabilityExecutions).toEqual([
+      expect.objectContaining({
+        kind: 'skill',
+        id: 'research-skill',
+        stage: 'research',
+        invocation: 'automatic',
+        status: 'executed',
+        consumedTokens: 2,
+      }),
+    ]);
+    // The executor's repeated invokeSkill() reused the stage cache; a planned
+    // skill is therefore proven exactly once, not double-counted.
+    expect(result.capabilityExecutions).toHaveLength(1);
     expect(result.contextUsedTokens).toBe(45);
   });
 
@@ -227,6 +271,32 @@ describe('FuryPipe Agent runtime', () => {
 
     expect(result.status).toBe('completed');
     expect(calls).toBe(1);
+    expect(result.capabilityExecutions).toEqual([
+      expect.objectContaining({
+        kind: 'mcp',
+        id: 'local-research',
+        stage: 'research',
+        invocation: 'automatic',
+        status: 'executed',
+        method: 'search',
+      }),
+    ]);
+  });
+
+  it('does not claim a registered skill was executed when no stage invokes it', async () => {
+    const result = await runAgent({
+      objective: 'Keep unused capabilities observationally distinct.',
+      executors: stageExecutors([]),
+      skills: [{
+        id: 'registered-only',
+        version: '1.0.0',
+        stages: ['research'],
+        execute: async () => ({ evidence: ['must-not-run'], consumedTokens: 1 }),
+      }],
+    });
+    expect(result.status).toBe('completed');
+    expect(result.capabilityExecutions).toEqual([]);
+    expect(result.skillHealth).toEqual({});
   });
 
   it('shares an in-flight identical MCP call instead of executing concurrent effects twice', async () => {
