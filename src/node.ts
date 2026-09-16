@@ -343,9 +343,10 @@ Environment:
   FURYPIPE_GATEWAY_HEADERS extra gateway headers; OmniRoute rejects auth/cookie names
   OMNIROUTE_BASE_URL      OmniRoute root or /v1 URL; required for omniroute
   OMNIROUTE_API_KEY       optional OmniRoute Bearer API key; never logged
-  FURYPIPE_MODELS         comma-separated model bases eligible for the Visual Engine;
-                          default claude-fable-5,gemini (every Gemini; Sol/Opus/GPT-5.5/Grok opt-in);
-                          off bypasses visual transformation
+  FURYPIPE_MODELS         explicit comma-separated model scope override;
+                          default compatibility seed claude-fable-5,gemini; off disables visual transformation
+  FURYPIPE_VISUAL_POLICY  auto (default), max_savings, safe_exact, or text_only;
+                          max_savings admits every model with positively proven image input
   FURYPIPE_CONFIG         JSON config path (default ~/.config/furypipe/config.json)
                           supports {"models": [...]} or {"models": "off"}
   FURYPIPE_LOG            JSONL events path (default ~/.furypipe/events.jsonl)
