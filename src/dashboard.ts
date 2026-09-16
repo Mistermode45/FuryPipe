@@ -1644,6 +1644,7 @@ export class DashboardState {
             locale,
             inspectRuntimeModels(),
             getFuryPipeVisualPolicy(),
+            this.modelRuntimeActivityMap(),
           ),
         );
       case 'context-map': {
