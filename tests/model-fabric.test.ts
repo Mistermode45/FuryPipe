@@ -26,9 +26,9 @@ describe('model fabric', () => {
     expect(registry.resolveVisual('claude-opus-5')).toMatchObject({
       provider: 'anthropic',
       imageInput: 'yes',
-      profile: 'unprofiled',
+      profile: 'calibrated',
       mode: 'canary',
-      reason: 'vision_unprofiled_canary',
+      reason: 'calibrated_profile',
     });
     expect(registry.resolveVisual('gpt-6-astra')).toMatchObject({
       provider: 'openai',
