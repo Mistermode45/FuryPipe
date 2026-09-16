@@ -163,9 +163,9 @@ export function renderModelsFragment(
     `<option value="${value}"${visualPolicy === value ? ' selected' : ''}>${escapeHtml(label)}</option>`;
 
   const modelFabric = `<section class="model-fabric" aria-labelledby="model-fabric-title">` +
-    `<div class="model-fabric-head"><div><strong id="model-fabric-title">Model Fabric</strong>` +
-    `<span class="hint">discovered/observed runtime catalog · discovered ≠ verified ≠ executed</span></div>` +
-    `<div class="model-fabric-actions"><label for="visual-policy">Visual policy</label>` +
+    `<div class="model-fabric-head"><div><strong id="model-fabric-title">${escapeHtml(t('dashboard.models.fabricTitle'))}</strong>` +
+    `<span class="hint">${escapeHtml(t('dashboard.models.fabricHint'))}</span></div>` +
+    `<div class="model-fabric-actions"><label for="visual-policy">${escapeHtml(t('dashboard.models.visualPolicy'))}</label>` +
     `<select id="visual-policy" name="policy" hx-post="/fragments/models" hx-target="#frag-models" hx-trigger="change">` +
     policyOption('auto', 'AUTO') +
     policyOption('max_savings', 'MAX SAVINGS') +
@@ -174,9 +174,9 @@ export function renderModelsFragment(
     `</select><a class="mini-btn" href="/api/models.json" target="_blank" rel="noopener">JSON</a></div></div>` +
     (discoveredRows
       ? `<div class="model-fabric-scroll"><table class="model-fabric-table"><thead><tr>` +
-        `<th>Model</th><th>Provider</th><th>Vision</th><th>Profile</th><th>Policy</th><th>Lifecycle</th><th>Last observed</th>` +
+        `<th>${escapeHtml(t('dashboard.models.columnModel'))}</th><th>${escapeHtml(t('dashboard.models.columnProvider'))}</th><th>${escapeHtml(t('dashboard.models.columnVision'))}</th><th>${escapeHtml(t('dashboard.models.columnProfile'))}</th><th>${escapeHtml(t('dashboard.models.columnPolicy'))}</th><th>${escapeHtml(t('dashboard.models.columnLifecycle'))}</th><th>${escapeHtml(t('dashboard.models.columnLastObserved'))}</th>` +
         `</tr></thead><tbody>${discoveredRows}</tbody></table></div>`
-      : `<div class="model-fabric-empty">No runtime/provider model catalog observation yet. Models appear here when traffic is observed or a configured provider catalog refresh succeeds.</div>`) +
+      : `<div class="model-fabric-empty">${escapeHtml(t('dashboard.models.catalogEmpty'))}</div>`) +
     `</section>`;
 
   const manualScope = `<details class="model-scope-override">` +
