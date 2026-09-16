@@ -10,6 +10,10 @@
  * scanline surface by up to 8× before DEFLATE without changing one decoded
  * pixel. 2-bit/4-bit grayscale are also selected only when every sample is
  * exactly representable at that depth; anti-aliased pages remain 8-bit.
+ *
+ * RGB pages with <=256 exact colors are encoded as indexed PNGs (PLTE) at the
+ * smallest legal index depth. This is also pixel-lossless and avoids paying
+ * three raw bytes per pixel for role markers / limited UI palettes.
  */
 
 // ---- CRC32 ---------------------------------------------------------------
@@ -186,7 +190,8 @@ function packGraySamples(
       }
       const slot = x % samplesPerByte;
       const shift = 8 - bitDepth * (slot + 1);
-      packed[dstRow + Math.floor(x / samplesPerByte)]! |= sample << shift;
+      const dst = dstRow + Math.floor(x / samplesPerByte);
+      packed[dst] = (packed[dst] ?? 0) | (sample << shift);
     }
   }
 
@@ -222,10 +227,98 @@ export async function encodeGrayPng(pixels: Uint8Array, width: number, height: n
   ]);
 }
 
-/** Encode an RGB (3 bytes/pixel, R,G,B) buffer as PNG bytes (colorType 2 = truecolor). length = width × height × 3. */
+
+function paletteBitDepth(size: number): GrayBitDepth {
+  if (size <= 2) return 1;
+  if (size <= 4) return 2;
+  if (size <= 16) return 4;
+  return 8;
+}
+
+function packPaletteIndices(
+  indices: Uint8Array,
+  width: number,
+  height: number,
+  bitDepth: GrayBitDepth,
+): { readonly packed: Uint8Array; readonly rowBytes: number } {
+  if (bitDepth === 8) return { packed: indices, rowBytes: width };
+
+  const samplesPerByte = 8 / bitDepth;
+  const rowBytes = Math.ceil(width / samplesPerByte);
+  const packed = new Uint8Array(rowBytes * height);
+
+  for (let y = 0; y < height; y++) {
+    const srcRow = y * width;
+    const dstRow = y * rowBytes;
+    for (let x = 0; x < width; x++) {
+      const sample = indices[srcRow + x]!;
+      const slot = x % samplesPerByte;
+      const shift = 8 - bitDepth * (slot + 1);
+      const dst = dstRow + Math.floor(x / samplesPerByte);
+      packed[dst] = (packed[dst] ?? 0) | (sample << shift);
+    }
+  }
+
+  return { packed, rowBytes };
+}
+
+function indexRgbPalette(
+  pixels: Uint8Array,
+): {
+  readonly palette: Uint8Array;
+  readonly indices: Uint8Array;
+  readonly bitDepth: GrayBitDepth;
+} | undefined {
+  const pixelCount = pixels.length / 3;
+  const indices = new Uint8Array(pixelCount);
+  const colors = new Map<number, number>();
+  const palette: number[] = [];
+
+  for (let i = 0, pixel = 0; i < pixels.length; i += 3, pixel += 1) {
+    const r = pixels[i]!;
+    const g = pixels[i + 1]!;
+    const b = pixels[i + 2]!;
+    const key = (r << 16) | (g << 8) | b;
+    let index = colors.get(key);
+    if (index === undefined) {
+      if (colors.size >= 256) return undefined;
+      index = colors.size;
+      colors.set(key, index);
+      palette.push(r, g, b);
+    }
+    indices[pixel] = index;
+  }
+
+  return {
+    palette: Uint8Array.from(palette),
+    indices,
+    bitDepth: paletteBitDepth(colors.size),
+  };
+}
+
+/** Encode an RGB (3 bytes/pixel, R,G,B) buffer as PNG bytes. Uses indexed color when exact palette cardinality permits it. */
 export async function encodeRgbPng(pixels: Uint8Array, width: number, height: number): Promise<Uint8Array> {
   if (pixels.length !== width * height * 3) {
     throw new Error(`encodeRgbPng: pixels.length=${pixels.length} != ${width}×${height}×3=${width * height * 3}`);
+  }
+
+  const indexed = indexRgbPalette(pixels);
+  if (indexed !== undefined) {
+    const { packed, rowBytes } = packPaletteIndices(indexed.indices, width, height, indexed.bitDepth);
+    const ihdr = new Uint8Array(13);
+    ihdr.set(u32be(width), 0);
+    ihdr.set(u32be(height), 4);
+    ihdr[8] = indexed.bitDepth;
+    ihdr[9] = 3; // colorType 3 = indexed-color; PLTE follows IHDR.
+
+    const compressed = await deflateZlib(filterAdaptive(packed, rowBytes, height, 1));
+    return concat([
+      PNG_SIGNATURE,
+      chunk('IHDR', ihdr),
+      chunk('PLTE', indexed.palette),
+      chunk('IDAT', compressed),
+      chunk('IEND', new Uint8Array(0)),
+    ]);
   }
 
   const ihdr = new Uint8Array(13);
