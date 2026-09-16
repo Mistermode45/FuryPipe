@@ -77,8 +77,11 @@ import {
 import {
   getAllowedModelBases,
   getConfiguredModelBases,
+  getFuryPipeVisualPolicy,
   isFuryPipeSupportedModel,
   setAllowedModelBases,
+  setFuryPipeVisualPolicy,
+  type FuryPipeVisualPolicy,
 } from './core/applicability.js';
 import type {
   StatsPayload,
@@ -580,6 +583,8 @@ export class DashboardState {
    *  writes the `models` key of the config file so chip toggles survive a
    *  restart. Best-effort: failures are the hook's problem, never the API's. */
   private readonly persistModelBases: ((bases: readonly string[]) => void) | undefined;
+  /** Host-provided persistence hook for the global visual policy. */
+  private readonly persistVisualPolicy: ((policy: FuryPipeVisualPolicy) => void) | undefined;
   /** Optional metadata-only Control Room provider. Runtime subsystems own the
    * evidence; the dashboard only renders a pre-built snapshot. */
   private readonly controlRoomProvider: ControlRoomProvider | undefined;
@@ -589,11 +594,13 @@ export class DashboardState {
     ccMapFn?: () => Promise<Map<string, ClaudeCodeSessionRef>>,
     persistModelBases?: (bases: readonly string[]) => void,
     controlRoomProvider?: ControlRoomProvider,
+    persistVisualPolicy?: (policy: FuryPipeVisualPolicy) => void,
   ) {
     this.paths = paths;
     this.ccMapFn = ccMapFn ?? (() => claudeCodeMap());
     this.persistModelBases = persistModelBases;
     this.controlRoomProvider = controlRoomProvider;
+    this.persistVisualPolicy = persistVisualPolicy;
   }
 
   private totalsForModel(model: string | undefined): Totals {
@@ -1592,6 +1599,7 @@ export class DashboardState {
             this.compressionEnabled,
             locale,
             inspectRuntimeModels(),
+            getFuryPipeVisualPolicy(),
           ),
         );
       case 'context-map': {
@@ -1708,6 +1716,22 @@ export class DashboardState {
     const on = body.enabled === true;
     this.compressionEnabled = on;
     return jsonResponse({ compression_enabled: on });
+  }
+
+  /** Update the global visual policy. Invalid values fail closed to AUTO. */
+  handleVisualPolicySet(value: unknown): FuryPipeVisualPolicy {
+    const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    const policy: FuryPipeVisualPolicy =
+      normalized === 'max_savings' || normalized === 'safe_exact' || normalized === 'text_only'
+        ? normalized
+        : 'auto';
+    setFuryPipeVisualPolicy(policy);
+    try {
+      this.persistVisualPolicy?.(policy);
+    } catch {
+      // Persistence is best-effort; the live runtime policy remains applied.
+    }
+    return policy;
   }
 
   /** POST /fragments/models — add/remove ONE model (Claude or GPT) from the
