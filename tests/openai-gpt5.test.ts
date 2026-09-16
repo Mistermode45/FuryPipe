@@ -23,16 +23,16 @@ afterEach(() => {
 // ── Task 1: applicability gate ──────────────────────────────────────────────
 
 describe('isFuryPipeSupportedGptModel', () => {
-  it('keeps GPT 5.6 Sol and sibling models opt-in by default', () => {
+  it('AUTO admits the calibrated GPT 5.6 Sol profile but not unprofiled siblings', () => {
     expect(isFuryPipeSupportedGptModel('gpt-5')).toBe(false);
     expect(isFuryPipeSupportedGptModel('gpt-5.5')).toBe(false);
     expect(isFuryPipeSupportedGptModel('gpt-5.6')).toBe(false);
-    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
     expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
     expect(isFuryPipeSupportedGptModel('gpt-5-mini')).toBe(false);
     expect(isFuryPipeSupportedGptModel('gpt-5.6-nano')).toBe(false);
-    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol[1m]')).toBe(false);
-    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol-codex[1m]')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol[1m]')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-sol-codex[1m]')).toBe(true);
   });
 
   it('enables only exact Sol ids and suffix aliases when explicitly opted in', () => {
