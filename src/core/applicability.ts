@@ -141,16 +141,29 @@ function matchesExplicitScope(base: string): boolean {
   });
 }
 
-export interface FuryPipeModelEligibility {
-  readonly eligible: boolean;
-  readonly reason: Extract<
+type FuryPipeModelEligibilityFailureReason = Exclude<
+  Extract<
     FuryPipeApplicabilityReason,
     'eligible' | 'unsupported_model' | 'vision_capability_unknown' | 'visual_profile_unverified' | 'text_only_model' | 'visual_pricing_unknown' | 'visual_profile_blocked'
-  >;
-  readonly resolution?: ModelVisualResolution;
-  readonly pricingEvidence?: FuryVisionPricingEvidence;
-  readonly source: 'operator_scope' | 'automatic_model_fabric';
-}
+  >,
+  'eligible'
+>;
+
+export type FuryPipeModelEligibility =
+  | {
+      readonly eligible: true;
+      readonly reason: 'eligible';
+      readonly resolution?: ModelVisualResolution;
+      readonly pricingEvidence?: FuryVisionPricingEvidence;
+      readonly source: 'operator_scope' | 'automatic_model_fabric';
+    }
+  | {
+      readonly eligible: false;
+      readonly reason: FuryPipeModelEligibilityFailureReason;
+      readonly resolution?: ModelVisualResolution;
+      readonly pricingEvidence?: FuryVisionPricingEvidence;
+      readonly source: 'operator_scope' | 'automatic_model_fabric';
+    };
 
 /**
  * Resolve model eligibility without equating "unknown model name" with
