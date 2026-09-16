@@ -1,5 +1,14 @@
 import type { AgentFabricStageId } from './agent-fabric.js';
-import type { AgentMcpPlannedCall, AgentSkillDefinition } from './agent-runtime.js';
+import {
+  runAgent,
+  type AgentMcpPlannedCall,
+  type AgentMcpServerDefinition,
+  type AgentRunResult,
+  type AgentSkillDefinition,
+  type AgentMemoryStore,
+  type AgentStageExecutor,
+  type AgentSubagentDefinition,
+} from './agent-runtime.js';
 import {
   prepareCapabilityRun,
   resolveFuryCapabilities,
@@ -65,6 +74,8 @@ export interface FuryPreparedTask {
   readonly contextPlan: FuryContextOptimizerPlan;
   readonly furyPrompt: FuryPromptCompileInput;
   readonly skills: readonly AgentSkillDefinition[];
+  /** Exact runtime MCP inventory used while capability routing built this task. */
+  readonly mcpServers: readonly AgentMcpServerDefinition[];
   readonly autoInvokeSkillsByStage: Readonly<Partial<Record<AgentFabricStageId, readonly string[]>>>;
   readonly autoInvokeMcpByStage: Readonly<Partial<Record<AgentFabricStageId, readonly AgentMcpPlannedCall[]>>>;
   readonly pluginActivations: readonly CapabilityPluginActivation[];
@@ -150,6 +161,7 @@ export async function prepareFuryTask(input: FuryTaskPrepareInput): Promise<Fury
     contextPlan,
     furyPrompt,
     skills: prepared.skills,
+    mcpServers: Object.freeze([...(input.capability.runtimeMcpServers ?? [])]),
     autoInvokeSkillsByStage: prepared.autoInvokeSkillsByStage,
     autoInvokeMcpByStage: prepared.autoInvokeMcpByStage,
     pluginActivations: prepared.pluginActivations,
@@ -157,5 +169,59 @@ export async function prepareFuryTask(input: FuryTaskPrepareInput): Promise<Fury
     recommendedSecurityCritical: prepared.recommendedSecurityCritical,
     contextInjected: injectIncluded && contextPlan.included.length > 0,
     injectedContextBytes: renderedContext.bytes,
+  });
+}
+
+
+export interface FuryPreparedTaskExecutionOptions {
+  /** Host stage executors remain explicit; preparing a task never grants execution authority. */
+  readonly executors: Partial<Record<AgentFabricStageId, AgentStageExecutor>>;
+  readonly contextBudgetTokens?: number;
+  readonly allowWrites?: boolean;
+  readonly allowedWritePaths?: readonly string[];
+  readonly runId?: string;
+  readonly subagents?: readonly AgentSubagentDefinition[];
+  readonly maxSubagentConcurrency?: number;
+  readonly memory?: AgentMemoryStore;
+}
+
+/**
+ * Execute exactly the capabilities that were selected during prepareFuryTask().
+ *
+ * This is the governed bridge between planning and execution:
+ * - the prepared task's skill definitions are the only skills exposed;
+ * - autoInvokeSkillsByStage / autoInvokeMcpByStage are forwarded unchanged;
+ * - the exact MCP inventory used during routing is forwarded unchanged;
+ * - write access remains opt-in and runAgent() re-applies all stage/permission/
+ *   health/network/evidence/budget gates;
+ * - AgentRunResult.capabilityExecutions proves what actually ran. A selected
+ *   capability that never executed has no receipt.
+ */
+export async function runPreparedFuryTask(
+  prepared: FuryPreparedTask,
+  options: FuryPreparedTaskExecutionOptions,
+): Promise<AgentRunResult> {
+  if (!prepared || typeof prepared !== 'object' || prepared.format !== 'furypipe-prepared-task/v1') {
+    throw new TypeError('prepared FuryPipe task is required');
+  }
+  if (!options || typeof options !== 'object' || !options.executors || typeof options.executors !== 'object') {
+    throw new TypeError('prepared FuryPipe task execution requires stage executors');
+  }
+
+  return runAgent({
+    objective: prepared.objective,
+    furyPrompt: prepared.furyPrompt,
+    ...(options.contextBudgetTokens === undefined ? {} : { contextBudgetTokens: options.contextBudgetTokens }),
+    ...(options.allowWrites === undefined ? {} : { allowWrites: options.allowWrites }),
+    ...(options.allowedWritePaths === undefined ? {} : { allowedWritePaths: options.allowedWritePaths }),
+    ...(options.runId === undefined ? {} : { runId: options.runId }),
+    executors: options.executors,
+    skills: prepared.skills,
+    autoInvokeSkillsByStage: prepared.autoInvokeSkillsByStage,
+    autoInvokeMcpByStage: prepared.autoInvokeMcpByStage,
+    mcpServers: prepared.mcpServers,
+    ...(options.subagents === undefined ? {} : { subagents: options.subagents }),
+    ...(options.maxSubagentConcurrency === undefined ? {} : { maxSubagentConcurrency: options.maxSubagentConcurrency }),
+    ...(options.memory === undefined ? {} : { memory: options.memory }),
   });
 }
