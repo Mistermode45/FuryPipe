@@ -84,6 +84,7 @@ try {
   const formerPortForChecks = ['478', '21'].join('');
   assert(!packedFiles.has(`docs/${legacyEnvForChecks}GAP_ANALYSIS.md`), 'historical gap analysis leaked into the public package');
   assert(packedFiles.has('docs/CLI.md'), 'FuryPipe CLI documentation is missing from the public package');
+  assert(packedFiles.has('docs/VISUAL_ENGINE.md'), 'Visual Engine documentation is missing from the public package');
   assert(packedFiles.has('docs/MODEL_ADAPTERS.md'), 'Model Adapter documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_CATALOG.md'), 'Capability Catalog documentation is missing from the public package');
   assert(packedFiles.has('docs/ECOSYSTEM_INGESTION.md'), 'Ecosystem Ingestion documentation is missing from the public package');
