@@ -357,13 +357,13 @@ export function createModelFabricRegistry(): ModelFabricRegistry {
 
   return Object.freeze({
     upsert,
-    upsertMany(incoming) {
+    upsertMany(incoming: readonly ModelFabricEntry[]): void {
       if (!Array.isArray(incoming) || incoming.length > 20_000) {
         throw new Error('model fabric catalog must be a bounded array');
       }
       for (const entry of incoming) upsert(entry);
     },
-    observe(model, providerHint) {
+    observe(model: string, providerHint?: ModelFabricProvider): ModelFabricEntry {
       const id = canonicalKey(model);
       const existingId = aliases.get(id) ?? id;
       const existing = entries.get(existingId);
@@ -380,15 +380,15 @@ export function createModelFabricRegistry(): ModelFabricRegistry {
       upsert(observed);
       return entries.get(observed.id)!;
     },
-    get(model) {
+    get(model: string): ModelFabricEntry | undefined {
       const id = canonicalKey(model);
       return entries.get(aliases.get(id) ?? id);
     },
-    list() {
+    list(): readonly ModelFabricEntry[] {
       return Object.freeze([...entries.values()].sort((a, b) =>
         a.provider.localeCompare(b.provider) || a.displayName.localeCompare(b.displayName)));
     },
-    resolveVisual(model, providerHint) {
+    resolveVisual(model: string, providerHint?: ModelFabricProvider): ModelVisualResolution {
       const entry = this.get(model) ?? this.observe(model, providerHint);
       if (entry.visual.policy === 'text_only') {
         return Object.freeze({
@@ -439,7 +439,7 @@ export function createModelFabricRegistry(): ModelFabricRegistry {
         reason: 'vision_unprofiled_canary', evidence: entry.provenance,
       });
     },
-    clear() {
+    clear(): void {
       entries.clear();
       aliases.clear();
     },
