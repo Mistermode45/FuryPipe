@@ -885,9 +885,37 @@ export function renderControlRoomFragment(snapshot: ControlRoomSnapshot | null, 
     ` · ${escapeHtml(t('dashboard.controlRoom.requiredGates'))} ${numFmt(release.verifiedRequiredGates)}/${numFmt(release.requiredGates)}` +
     ` · ${escapeHtml(t('dashboard.controlRoom.blockers'))} ${numFmt(release.blockers)} · ${escapeHtml(t('dashboard.controlRoom.releaseActions'))}</div>`;
 
+  const agent = snapshot.sections.agent.evidence;
+  const capabilityCountsAvailable = agent.skillExecutions !== undefined
+    || agent.mcpExecutions !== undefined
+    || agent.subagentExecutions !== undefined
+    || agent.automaticCapabilityExecutions !== undefined
+    || agent.manualCapabilityExecutions !== undefined;
+  const recentCapabilityExecutions = agent.recentCapabilityExecutions ?? [];
+  const capabilityExecutionSummary = capabilityCountsAvailable
+    ? (
+        `<div class="status"><strong>${escapeHtml(t('dashboard.controlRoom.capabilityExecutions'))}</strong>` +
+        ` · ${escapeHtml(t('dashboard.controlRoom.skillsExecuted'))} ${numFmt(agent.skillExecutions ?? 0)}` +
+        ` · ${escapeHtml(t('dashboard.controlRoom.mcpExecuted'))} ${numFmt(agent.mcpExecutions ?? 0)}` +
+        ` · ${escapeHtml(t('dashboard.controlRoom.subagentsExecuted'))} ${numFmt(agent.subagentExecutions ?? 0)}` +
+        ` · ${escapeHtml(t('dashboard.controlRoom.automaticExecuted'))} ${numFmt(agent.automaticCapabilityExecutions ?? 0)}` +
+        ` · ${escapeHtml(t('dashboard.controlRoom.manualExecuted'))} ${numFmt(agent.manualCapabilityExecutions ?? 0)}</div>` +
+        (recentCapabilityExecutions.length > 0
+          ? (
+              `<div class="status"><strong>${escapeHtml(t('dashboard.controlRoom.recentExecutions'))}</strong></div>` +
+              `<table class="dtable"><tbody>${recentCapabilityExecutions.slice(-12).map((execution) =>
+                `<tr><td><code>${escapeHtml(execution.kind)}:${escapeHtml(execution.id)}</code></td>` +
+                `<td class="num">${escapeHtml(execution.stage)} · ${escapeHtml(execution.invocation)}</td></tr>`
+              ).join('')}</tbody></table>`
+            )
+          : `<div class="status">${escapeHtml(t('dashboard.controlRoom.noCapabilityExecution'))}</div>`)
+      )
+    : '';
+
   return (
     `<div class="status"><strong>Control Room V5 · ${escapeHtml(snapshot.overall)}</strong> · commit <code>${escapeHtml(snapshot.sourceCommit.slice(0, 12))}</code></div>` +
     releaseSummary +
+    capabilityExecutionSummary +
     `<table class="dtable"><tbody>${rows}</tbody></table>` +
     warnings
   );
