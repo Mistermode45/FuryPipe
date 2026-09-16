@@ -28,6 +28,26 @@ function mockUpstream(handler: (req: Request) => Promise<Response> | Response) {
   };
 }
 
+/** Deterministically await the background telemetry callback.
+ *
+ * The proxy deliberately returns the client response before the usage/error
+ * scanner finishes. Tests must therefore synchronize on `onRequest` itself,
+ * not sleep for an arbitrary number of milliseconds (which races on Windows).
+ */
+function captureProxyEvent(): {
+  readonly onRequest: (event: ProxyEvent) => void;
+  readonly event: Promise<ProxyEvent>;
+} {
+  let resolveEvent!: (event: ProxyEvent) => void;
+  const event = new Promise<ProxyEvent>((resolve) => {
+    resolveEvent = resolve;
+  });
+  return {
+    onRequest: (proxyEvent) => resolveEvent(proxyEvent),
+    event,
+  };
+}
+
 const SAMPLE_REQ_BODY = JSON.stringify({
   model: 'claude-3-5-haiku-latest',
   messages: [{ role: 'user', content: 'hi' }],
@@ -1786,7 +1806,7 @@ describe('proxy usage extraction', () => {
     expect(captured!.status).toBe(529);
     expect(captured!.usage).toBeUndefined();
     // 5xx: we synthesize our own message upstream, so no errorBody capture.
-    expect(captured!.errorBody).toBeUndefined();
+    expect(captured.errorBody).toBeUndefined();
   });
 
   it('captures upstream error body for 4xx responses (up to 2 KiB)', async () => {
@@ -1805,13 +1825,11 @@ describe('proxy usage extraction', () => {
         }),
     );
 
-    let captured: ProxyEvent | undefined;
+    const capture = captureProxyEvent();
     const proxy = createProxy({
       transform: {},
       captureErrorReqBody: true,
-      onRequest: (e) => {
-        captured = e;
-      },
+      onRequest: capture.onRequest,
     });
 
     const res = await proxy(
@@ -1821,15 +1839,15 @@ describe('proxy usage extraction', () => {
         body: SAMPLE_REQ_BODY,
       }),
     );
-    // Drain the client side so the tee can complete.
+    // Drain the client side so the tee can complete, then synchronize on the
+    // actual background telemetry completion rather than wall-clock time.
     const clientBody = await res.text();
-    await new Promise((r) => setTimeout(r, 20));
+    const captured = await capture.event;
     restore();
 
-    expect(captured).toBeDefined();
-    expect(captured!.status).toBe(400);
-    expect(captured!.usage).toBeUndefined();
-    expect(captured!.errorBody).toBe(JSON.stringify(upstreamErr));
+    expect(captured.status).toBe(400);
+    expect(captured.usage).toBeUndefined();
+    expect(captured.errorBody).toBe(JSON.stringify(upstreamErr));
     // Client must still receive the full body unchanged.
     expect(clientBody).toBe(JSON.stringify(upstreamErr));
   });
@@ -1844,13 +1862,11 @@ describe('proxy usage extraction', () => {
         }),
     );
 
-    let captured: ProxyEvent | undefined;
+    const capture = captureProxyEvent();
     const proxy = createProxy({
       transform: {},
       captureErrorReqBody: true,
-      onRequest: (e) => {
-        captured = e;
-      },
+      onRequest: capture.onRequest,
     });
 
     const res = await proxy(
@@ -1861,12 +1877,11 @@ describe('proxy usage extraction', () => {
       }),
     );
     await res.text();
-    await new Promise((r) => setTimeout(r, 20));
+    const captured = await capture.event;
     restore();
 
-    expect(captured).toBeDefined();
-    expect(captured!.errorBody).toBeDefined();
-    expect(captured!.errorBody!.length).toBe(2048);
+    expect(captured.errorBody).toBeDefined();
+    expect(captured.errorBody!.length).toBe(2048);
   });
 
   /** Decompress a gzip Uint8Array back to bytes — mirror of proxy's gzipBytes. */
@@ -1892,13 +1907,11 @@ describe('proxy usage extraction', () => {
         }),
     );
 
-    let captured: ProxyEvent | undefined;
+    const capture = captureProxyEvent();
     const proxy = createProxy({
       transform: {},
       captureErrorReqBody: true,
-      onRequest: (e) => {
-        captured = e;
-      },
+      onRequest: capture.onRequest,
     });
 
     const res = await proxy(
@@ -1909,23 +1922,22 @@ describe('proxy usage extraction', () => {
       }),
     );
     await res.text();
-    await new Promise((r) => setTimeout(r, 20));
+    const captured = await capture.event;
     restore();
 
-    expect(captured).toBeDefined();
-    expect(captured!.status).toBe(400);
+    expect(captured.status).toBe(400);
 
     // Hash lands on every event, not just 4xx.
-    expect(captured!.reqBodySha8).toMatch(/^[0-9a-f]{8}$/);
+    expect(captured.reqBodySha8).toMatch(/^[0-9a-f]{8}$/);
 
     // Gzipped body is present, has the gzip magic header, and decompresses
     // back to the transformed JSON we sent upstream.
-    expect(captured!.reqBodyGz).toBeDefined();
-    expect(captured!.reqBodyGz![0]).toBe(0x1f);
-    expect(captured!.reqBodyGz![1]).toBe(0x8b);
+    expect(captured.reqBodyGz).toBeDefined();
+    expect(captured.reqBodyGz![0]).toBe(0x1f);
+    expect(captured.reqBodyGz![1]).toBe(0x8b);
 
     const decoded = new TextDecoder().decode(
-      await gunzipBytes(captured!.reqBodyGz!),
+      await gunzipBytes(captured.reqBodyGz!),
     );
     const parsed = JSON.parse(decoded);
     expect(parsed.model).toBe('claude-3-5-haiku-latest');
@@ -1943,12 +1955,10 @@ describe('proxy usage extraction', () => {
         }),
     );
 
-    let captured: ProxyEvent | undefined;
+    const capture = captureProxyEvent();
     const proxy = createProxy({
       transform: {},
-      onRequest: (e) => {
-        captured = e;
-      },
+      onRequest: capture.onRequest,
     });
 
     const res = await proxy(
@@ -1959,13 +1969,13 @@ describe('proxy usage extraction', () => {
       }),
     );
     await res.text();
-    await new Promise((r) => setTimeout(r, 20));
+    const captured = await capture.event;
     restore();
 
-    expect(captured!.status).toBe(400);
-    expect(captured!.reqBodySha8).toMatch(/^[0-9a-f]{8}$/); // hash still lands
-    expect(captured!.reqBodyGz).toBeUndefined(); // but not the raw body
-    expect(captured!.errorBody).toBeUndefined();
+    expect(captured.status).toBe(400);
+    expect(captured.reqBodySha8).toMatch(/^[0-9a-f]{8}$/); // hash still lands
+    expect(captured.reqBodyGz).toBeUndefined(); // but not the raw body
+    expect(captured.errorBody).toBeUndefined();
   });
 
   it('does NOT gzip the request body on 2xx (but still sets reqBodySha8)', async () => {
@@ -2004,9 +2014,9 @@ describe('proxy usage extraction', () => {
     expect(captured).toBeDefined();
     expect(captured!.status).toBe(200);
     // Hash lands on every event.
-    expect(captured!.reqBodySha8).toMatch(/^[0-9a-f]{8}$/);
+    expect(captured.reqBodySha8).toMatch(/^[0-9a-f]{8}$/);
     // But the gzipped body itself is only captured on 4xx.
-    expect(captured!.reqBodyGz).toBeUndefined();
+    expect(captured.reqBodyGz).toBeUndefined();
   });
 
   it('reqBodySha8 is identical across two requests with the same body', async () => {
