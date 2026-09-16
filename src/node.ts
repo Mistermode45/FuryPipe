@@ -292,7 +292,8 @@ function printHelp(): void {
   console.log(`FuryPipe — governed context runtime for production AI workflows
 
 Usage:
-  furypipe              run the proxy (no flags)
+  furypipe              start the local FuryPipe runtime (same as `start`)
+  furypipe start         start the runtime and local Control Plane
   furypipe setup [options]
                         launch the interactive FuryPipe first-run setup
   furypipe doctor [--json]
@@ -341,9 +342,9 @@ Environment:
   FURYPIPE_GATEWAY_HEADERS extra gateway headers; OmniRoute rejects auth/cookie names
   OMNIROUTE_BASE_URL      OmniRoute root or /v1 URL; required for omniroute
   OMNIROUTE_API_KEY       optional OmniRoute Bearer API key; never logged
-  FURYPIPE_MODELS         comma-separated model bases to image (Claude/Gemini/GPT/Grok);
+  FURYPIPE_MODELS         comma-separated model bases eligible for the Visual Engine;
                           default claude-fable-5,gemini (every Gemini; Sol/Opus/GPT-5.5/Grok opt-in);
-                          off disables
+                          off bypasses visual transformation
   FURYPIPE_CONFIG         JSON config path (default ~/.config/furypipe/config.json)
                           supports {"models": [...]} or {"models": "off"}
   FURYPIPE_LOG            JSONL events path (default ~/.furypipe/events.jsonl)
@@ -353,9 +354,9 @@ Environment:
   FURYPIPE_CONTROL_ROOM_SECURITY_CI_EVIDENCE
                           optional bounded Security CI evidence JSON; exact-source CI security
                           takes precedence over conflicting static host security with a warning
-  FURYPIPE_DUMP_DIR       debug: write every rendered PNG here (what the model
-                          sees); off unless set. Compress arm only.
-  FURYPIPE_RENDER_CACHE_BYTES max bytes of rendered pages to keep in memory
+  FURYPIPE_DUMP_DIR       debug: write every Visual Engine PNG here (exactly what
+                          the model sees); off unless set.
+  FURYPIPE_RENDER_CACHE_BYTES max bytes of Visual Engine pages to keep in memory
                           (default 64 MiB here; 8 MiB on Workers, where the
                           isolate has ~128 MiB for everything). Frozen history
                           chunks are byte-identical across turns, so
