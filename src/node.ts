@@ -292,7 +292,7 @@ function printHelp(): void {
   console.log(`FuryPipe — governed context runtime for production AI workflows
 
 Usage:
-  furypipe              start the local FuryPipe runtime (same as `start`)
+  furypipe              start the local FuryPipe runtime (same as start)
   furypipe start         start the runtime and local Control Plane
   furypipe setup [options]
                         launch the interactive FuryPipe first-run setup
