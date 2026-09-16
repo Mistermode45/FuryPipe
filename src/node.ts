@@ -635,6 +635,9 @@ async function dispatchDashboard(
     case 'api-stats':
       if (method !== 'GET') return undefined;
       return dashboard.serveApiStats();
+    case 'api-models':
+      if (method !== 'GET') return undefined;
+      return dashboard.serveModelsJson();
     case 'api-control-room':
       if (method !== 'GET') return undefined;
       return dashboard.serveControlRoomJson();
