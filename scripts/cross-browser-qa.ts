@@ -383,7 +383,7 @@ async function runDashboardCase(
       search.dispatchEvent(new Event('input', { bubbles: true }));
       const searchVisible = [...root.querySelectorAll<HTMLElement>('[data-cp-card]')]
         .filter((card) => !card.hidden)
-        .map((card) => card.querySelector('h3')?.textContent?.trim() ?? '');
+        .map((card) => card.dataset.cpSearch ?? '');
       search.value = '';
       search.dispatchEvent(new Event('input', { bubbles: true }));
       filter.value = 'AVAILABLE';
@@ -399,7 +399,7 @@ async function runDashboardCase(
         .map((card) => card.dataset.cpStatus ?? '');
       return { searchVisible, availableOnly, statuses };
     });
-    assert(explorer !== null && explorer.searchVisible.includes('FuryLink'), `${name}: capability search did not filter observed cards`);
+    assert(explorer !== null && explorer.searchVisible.includes('furylink fury-link-cli available'), `${name}: capability search did not filter observed cards`);
     assert(explorer.availableOnly, `${name}: lifecycle filter did not restrict cards to AVAILABLE`);
     assert(explorer.statuses.every((status, index) => index === 0 || explorer.statuses[index - 1]!.localeCompare(status) <= 0),
       `${name}: capability status sort did not order cards`);
