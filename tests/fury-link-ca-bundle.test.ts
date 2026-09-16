@@ -37,11 +37,10 @@ describe('FuryLink CA bundle (#245)', () => {
     const bundle = readFileSync(ca.bundlePath, 'utf8');
     // Our CA comes first so a client that stops at the first match still trusts us.
     expect(bundle.startsWith(readFileSync(ca.certPath, 'utf8'))).toBe(true);
+    expect(ca.bundleIncludesPublicRoots).toBe(true);
+    expect(count(bundle)).toBeGreaterThan(1);
     if (ca.systemRootsPath) {
-      expect(count(bundle)).toBeGreaterThan(1);
       expect(count(bundle)).toBe(1 + count(readFileSync(ca.systemRootsPath, 'utf8')));
-    } else {
-      expect(count(bundle)).toBe(1);
     }
   });
 
