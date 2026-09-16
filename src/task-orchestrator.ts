@@ -225,3 +225,31 @@ export async function runPreparedFuryTask(
     ...(options.memory === undefined ? {} : { memory: options.memory }),
   });
 }
+
+
+export interface FuryExecutedTask {
+  readonly format: 'furypipe-executed-task/v1';
+  readonly prepared: FuryPreparedTask;
+  readonly run: AgentRunResult;
+}
+
+/**
+ * Prepare and execute one task through the governed FuryPipe path.
+ *
+ * This convenience surface exists to make the product contract hard to misuse:
+ * callers that intend execution should not stop at capability selection and then
+ * accidentally report selected Skills/MCP as used. The returned run contains
+ * capabilityExecutions receipts for callbacks that actually completed.
+ */
+export async function executeFuryTask(
+  input: FuryTaskPrepareInput,
+  options: FuryPreparedTaskExecutionOptions,
+): Promise<FuryExecutedTask> {
+  const prepared = await prepareFuryTask(input);
+  const run = await runPreparedFuryTask(prepared, options);
+  return Object.freeze({
+    format: 'furypipe-executed-task/v1',
+    prepared,
+    run,
+  });
+}
