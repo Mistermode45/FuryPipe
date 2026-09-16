@@ -87,7 +87,7 @@ Un receipt d'exécution contient notamment :
 - `kind` : `skill`, `mcp` ou `subagent` ;
 - l'ID de la capacité ;
 - le stage réel ;
-- `invocation` : `auto` ou `manual` ;
+- `invocation` : `automatic` ou `manual` ;
 - `status: executed` ;
 - pour un skill/subagent, les tokens consommés et un digest des preuves ;
 - pour MCP, la méthode et un digest borné des paramètres.
