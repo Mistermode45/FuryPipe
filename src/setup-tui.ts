@@ -25,9 +25,30 @@ export interface SetupWizardOptions {
   readonly now?: () => Date;
 }
 
-interface Keypress {
+export interface SetupKeypress {
   readonly name?: string;
   readonly ctrl?: boolean;
+}
+
+export type SetupKeyAction = 'cancel' | 'fr' | 'en' | 'confirm' | 'noop';
+
+/**
+ * Normalize readline keypress events before the interactive TUI touches them.
+ *
+ * On Windows Terminal / PowerShell, arrow-key events can arrive with an
+ * undefined `input` payload while `key.name` is still populated. Treating
+ * input as an unconditional string caused v0.15.0 to throw on arrow keys.
+ */
+export function interpretSetupKeypress(
+  input: string | undefined,
+  key: SetupKeypress = {},
+): SetupKeyAction {
+  const char = typeof input === 'string' ? input.toLowerCase() : '';
+  if ((key.ctrl && key.name === 'c') || key.name === 'escape' || key.name === 'q') return 'cancel';
+  if (key.name === 'left' || key.name === 'up' || char === '1' || char === 'f') return 'fr';
+  if (key.name === 'right' || key.name === 'down' || char === '2' || char === 'e') return 'en';
+  if (key.name === 'return' || key.name === 'enter') return 'confirm';
+  return 'noop';
 }
 
 interface ParsedSetupArgs {
@@ -397,19 +418,19 @@ async function chooseLocale(
 
   try {
     return await new Promise<SetupLocale | null>((resolve) => {
-      const onKeypress = (input: string, key: Keypress): void => {
-        if ((key.ctrl && key.name === 'c') || key.name === 'escape' || key.name === 'q') {
+      const onKeypress = (input: string | undefined, key: SetupKeypress): void => {
+        const action = interpretSetupKeypress(input, key);
+        if (action === 'cancel') {
           stdin.off('keypress', onKeypress);
           resolve(null);
           return;
         }
-        if (key.name === 'left' || key.name === 'up' || input === '1' || input.toLowerCase() === 'f') {
-          selected = 'fr'; redraw(); return;
+        if (action === 'fr' || action === 'en') {
+          selected = action;
+          redraw();
+          return;
         }
-        if (key.name === 'right' || key.name === 'down' || input === '2' || input.toLowerCase() === 'e') {
-          selected = 'en'; redraw(); return;
-        }
-        if (key.name === 'return' || key.name === 'enter') {
+        if (action === 'confirm') {
           stdin.off('keypress', onKeypress);
           resolve(selected);
         }
