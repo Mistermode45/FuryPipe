@@ -224,10 +224,14 @@ export async function refreshRuntimeModelCatalog(
       let pageToken: string | undefined;
       for (let page = 0; page < MAX_PAGES; page += 1) {
         const url = new URL('https://generativelanguage.googleapis.com/v1beta/models');
-        url.searchParams.set('key', googleKey!);
         url.searchParams.set('pageSize', '1000');
         if (pageToken) url.searchParams.set('pageToken', pageToken);
-        const payload = await fetchJson(fetchImpl, url.toString(), {}, timeoutMs, maxBytes);
+        // Gemini REST supports x-goog-api-key. Keep credentials out of URLs so
+        // proxy/access logs and thrown URL diagnostics cannot accidentally
+        // retain a reusable API key.
+        const payload = await fetchJson(fetchImpl, url.toString(), {
+          headers: { 'x-goog-api-key': googleKey! },
+        }, timeoutMs, maxBytes);
         entries.push(...normalizeGeminiModelsPayload(payload));
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) break;
         const next = (payload as Record<string, unknown>).nextPageToken;
