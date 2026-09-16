@@ -1,6 +1,27 @@
 # FuryPipe release security and provenance
 
-## Current status
+## Current public release
+
+```text
+PACKAGE:          furypipe@0.14.0
+TAG:              v0.14.0
+SOURCE COMMIT:    f05af8b4291371706240853d0bd1a35ffda1cba6
+GITHUB RELEASE:   RELEASED
+NPM PACKAGE:      PUBLISHED
+NPM PROVENANCE:   VERIFIED
+RELEASE WORKFLOW: 35013750389 / SUCCESS
+PROD DEPLOYMENT:  NOT_CLAIMED
+```
+
+FuryPipe `v0.14.0` was publicly released on **2026-09-15**.
+
+The tag targets the exact source commit above. The tag-triggered GitHub Actions release completed successfully, `furypipe@0.14.0` was published through npm Trusted Publishing with provenance, and GitHub Release `v0.14.0` exists as a non-draft, non-prerelease release.
+
+Publication still does **not** imply production deployment, OAuth verification, Figma verification or provider-performance verification.
+
+This document records release facts and their boundaries. It must not be used to promote unexecuted integration states to verified.
+
+## Historical bootstrap record — v0.13.2
 
 ```text
 PACKAGE:          furypipe@0.13.2
@@ -12,8 +33,6 @@ PROD DEPLOYMENT:  NOT_CLAIMED
 ```
 
 FuryPipe `v0.13.2` was publicly released on **2026-09-15**.
-
-This document records release facts and their boundaries. It must not be used to promote unexecuted integration states to verified.
 
 ## Source binding
 

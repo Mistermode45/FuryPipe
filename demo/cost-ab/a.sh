@@ -4,7 +4,7 @@
 # it work in the real CLI. Run `bash demo/cost-ab/setup.sh` first.
 set -uo pipefail
 
-DIR=/tmp/pp-demo-left
+DIR=/tmp/furypipe-demo-left
 [ -d "$DIR" ] || { echo "no $DIR — run: bash demo/cost-ab/setup.sh"; exit 1; }
 
 # `claude` is usually a shell alias (not on PATH); resolve the real binary.
@@ -22,11 +22,11 @@ PROMPT='This project has a failing test suite. Read SPEC.md and the source, then
 # comparable to b.sh — an A/B across two different models measures nothing.
 #   ./a.sh              → the model setup.sh armed (same as b.sh)
 #   ./a.sh opus         → unique substring match against the shipping model list
-#   ./a.sh claude-...   → any full id, verbatim   (also: PXPIPE_DEMO_MODEL=... ./a.sh)
-# No scope check here: this column deliberately runs through the PXPIPE_DISABLE=1
+#   ./a.sh claude-...   → any full id, verbatim   (also: FURYPIPE_DEMO_MODEL=... ./a.sh)
+# No scope check here: this column deliberately runs through the FURYPIPE_DISABLE=1
 # passthrough proxy, so compress scope is irrelevant to it by design.
 DEMO_NAME=cost-ab
-: "${PXPIPE_DEMO_VARIANT:=[1m]}"   # large-context variant; scope keys ignore [tags]
+: "${FURYPIPE_DEMO_VARIANT:=[1m]}"   # large-context variant; scope keys ignore [tags]
 . "$(dirname "$0")/../models.sh"
 demo_resolve_column_model "$DEMO_NAME" "${1:-}" || exit 1
 if [ -n "${DEMO_STATE_MODEL_ID:-}" ] && [ "$DEMO_MODEL_ID" != "$DEMO_STATE_MODEL_ID" ]; then

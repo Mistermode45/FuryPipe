@@ -11,8 +11,36 @@ behavioral changes, patch = fixes).
 
 ## Unreleased
 
+_No changes yet._
+
+## 0.15.0 — 2026-09-16
+
+### Changed
+- **FuryPipe runtime identity is now fully independent.** The runtime no longer
+  exposes the historical CLI alias, consumes no historical environment-variable
+  namespace, falls back to no historical config/event paths, and uses the
+  FuryPipe-specific default listener `FURYPIPE_HOST=127.0.0.1` /
+  `FURYPIPE_PORT=48721`.
+- **Runtime protocol names are FuryPipe-native.** Worker authentication,
+  bypass/pin commands, generated identifiers, model/profile environment
+  variables, transform receipts, dashboard copy and internal/public API names
+  use FuryPipe terminology only. Historical names remain only in provenance,
+  licensing and immutable historical records.
+- **Port conflicts now fail closed with a FuryPipe-owned diagnostic.**
+  `furypipe start` never reuses or attaches to another process that already
+  owns the selected port. `furypipe setup`, `doctor`, `export` and
+  `stats` remain offline and do not bind the runtime listener.
+- **The npm executable surface is FuryPipe-only.** The installed package exposes
+  `furypipe`, `furypipe-mcp` and `furypipe-mcp-http`; the historical CLI
+  alias is no longer published.
+- Added CI/package-smoke contracts that fail if the legacy runtime identity or
+  old default port re-enters active source/public CLI surfaces, and that prove
+  setup remains offline while another process owns a listener port.
+
+## 0.14.0 — 2026-09-15
+
 ### Added
-- **Custom `furypipe setup` terminal onboarding.** FuryPipe now includes a
+- **Custom `furypipe setup` terminal onboarding.** FuryPipe includes a
   dependency-free, bilingual FR/EN setup TUI with FuryPipe branding, keyboard
   navigation, persisted locale preference, safe atomic config writes and a
   plain-text fallback for CI, pipes, narrow terminals and other non-interactive
@@ -20,16 +48,13 @@ behavioral changes, patch = fixes).
   lifecycle hook, so package installation never blocks waiting for input.
 
 ### Changed
-- **FuryPipe runtime identity is now fully independent.** The runtime no longer exposes the historical CLI alias, consumes no historical environment-variable namespace, does not fall back to historical config/event paths, uses the FuryPipe-specific default port `48721`, and keeps `furypipe setup` offline even when another process owns a listener port. Historical upstream names remain only in provenance and immutable historical records.
 - **Gemini is on by default for every version, and opt-out works again.** The
   built-in scope is now `FURYPIPE_MODELS=claude-fable-5,gemini`; the `gemini`
   family base matches `gemini-3.6-flash`, `gemini-4`, `gemini-pro`, and future
   ids through the ordinary prefix rule. The Google gate in the proxy and the
-  dashboard totals previously admitted any measured Gemini model whenever the
-  allowlist was non-empty, which made `FURYPIPE_MODELS=claude-fable-5` (and the
-  dashboard chip) unable to turn Gemini off. That bypass is removed; the
-  allowlist is the only gate. Dashboard: one "Gemini (all versions)" chip plus
-  per-version chips for narrowing.
+  dashboard totals no longer bypass the allowlist; the allowlist is the only
+  gate. Dashboard exposes one “Gemini (all versions)” chip plus per-version
+  chips for narrowing.
 
 ## 0.13.2 — 2026-09-15
 
