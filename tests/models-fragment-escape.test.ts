@@ -23,4 +23,16 @@ describe('renderModelsFragment hx-vals escaping', () => {
     const ok = renderModelsFragment(['claude-fable-5'], [], true);
     expect(ok).toContain('&quot;model&quot;:&quot;claude-fable-5&quot;');
   });
+  it('does not present a release-time hard-coded model chip catalog', () => {
+    const html = renderModelsFragment([], [], true);
+    expect(html).toContain('Model Fabric');
+    expect(html).not.toContain('GPT 5.6 Sol');
+    expect(html).not.toContain('Grok 4.6');
+    expect(html).not.toContain('Gemini 3.8 Flash');
+
+    const observed = renderModelsFragment(['future-provider/model-new'], [], true);
+    expect(observed).toContain('future-provider/model-new');
+    expect(observed).toContain('&quot;model&quot;:&quot;future-provider/model-new&quot;');
+  });
+
 });
