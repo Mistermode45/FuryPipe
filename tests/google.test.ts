@@ -104,6 +104,9 @@ describe('transformGoogleGenerateContent', () => {
     expect(outReq.systemInstruction.parts[0].text).toContain('same authority and priority');
     expect(outReq.contents[0].parts[0].inlineData).toBeDefined();
     expect(outReq.contents[0].parts[0].inlineData.mimeType).toBe('image/png');
+    expect(outReq.contents[0].parts[0].mediaResolution).toEqual({
+      level: 'MEDIA_RESOLUTION_HIGH',
+    });
   });
 
   it('keeps a short system instruction as text', async () => {
