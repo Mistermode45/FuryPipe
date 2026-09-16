@@ -11,11 +11,15 @@ import {
   registerRuntimeModelCatalog,
   resetRuntimeModelFabricForTests,
 } from '../src/core/model-fabric.js';
-import { isFuryPipeSupportedModel } from '../src/core/applicability.js';
+import {
+  isFuryPipeSupportedModel,
+  resolveFuryPipeModelEligibility,
+} from '../src/core/applicability.js';
 
 afterEach(() => {
   delete process.env.FURYPIPE_MODELS;
   delete process.env.FURYPIPE_VISUAL_POLICY;
+  delete process.env.FURYPIPE_GPT_PROFILES;
   resetRuntimeModelFabricForTests();
 });
 
@@ -195,7 +199,7 @@ describe('model fabric', () => {
     expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(false);
   });
 
-  it('lets MAX_SAVINGS admit provider-discovered future vision models but never proven text-only models', () => {
+  it('does not invent OpenAI image pricing for provider-discovered Mistral vision models', () => {
     registerRuntimeModelCatalog(normalizeMistralModelsPayload({
       data: [
         { id: 'mistral-future-vision', capabilities: { vision: true } },
@@ -203,11 +207,64 @@ describe('model fabric', () => {
       ],
     }, '2026-09-16T00:00:00.000Z'));
 
-    expect(isFuryPipeSupportedModel('mistral-future-vision')).toBe(false);
+    process.env.FURYPIPE_VISUAL_POLICY = 'max_savings';
+
+    expect(resolveFuryPipeModelEligibility('mistral-future-vision')).toMatchObject({
+      eligible: false,
+      reason: 'visual_pricing_unknown',
+      pricingEvidence: 'unknown',
+    });
     expect(isFuryPipeSupportedModel('mistral-future-text')).toBe(false);
 
+    // An operator can provide an explicit provider-appropriate profile without
+    // waiting for a FuryPipe release. That is evidence distinct from discovery.
+    process.env.FURYPIPE_GPT_PROFILES = JSON.stringify({
+      'mistral-future-vision': {
+        vision: { regime: 'mpix', tokensPerMegapixel: 900 },
+        stripCols: 100,
+      },
+    });
+    expect(resolveFuryPipeModelEligibility('mistral-future-vision')).toMatchObject({
+      eligible: true,
+      reason: 'eligible',
+      pricingEvidence: 'operator_profile',
+    });
+  });
+
+  it('keeps arbitrary OpenRouter multimodal catalog entries native until pricing is known', () => {
+    registerRuntimeModelCatalog(normalizeOpenRouterModelsPayload({
+      data: [{
+        id: 'futurecorp/model-x',
+        canonical_slug: 'futurecorp/model-x-2026',
+        architecture: {
+          input_modalities: ['text', 'image'],
+          output_modalities: ['text'],
+        },
+      }],
+    }));
+
     process.env.FURYPIPE_VISUAL_POLICY = 'max_savings';
-    expect(isFuryPipeSupportedModel('mistral-future-vision')).toBe(true);
-    expect(isFuryPipeSupportedModel('mistral-future-text')).toBe(false);
+    expect(resolveFuryPipeModelEligibility('futurecorp/model-x-2026')).toMatchObject({
+      eligible: false,
+      reason: 'visual_pricing_unknown',
+      pricingEvidence: 'unknown',
+    });
+  });
+
+  it('keeps known-family pricing evidence through gateway-qualified ids', () => {
+    process.env.FURYPIPE_VISUAL_POLICY = 'max_savings';
+
+    expect(resolveFuryPipeModelEligibility('openrouter/claude-opus-5')).toMatchObject({
+      eligible: true,
+      pricingEvidence: 'provider_profile',
+    });
+    expect(resolveFuryPipeModelEligibility('gpt-6-astra')).toMatchObject({
+      eligible: true,
+      pricingEvidence: 'conservative_openai',
+    });
+    expect(resolveFuryPipeModelEligibility('grok-4.6')).toMatchObject({
+      eligible: true,
+      pricingEvidence: 'provider_profile',
+    });
   });
 });
