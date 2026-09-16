@@ -82,6 +82,15 @@ function controlRoomSnapshot(): ControlRoomSnapshot {
       contextUsedTokens: 20,
       persistedMemory: 'PARTIAL',
       distributedHandoff: 'NOT_EXECUTED',
+      skillExecutions: 1,
+      mcpExecutions: 1,
+      subagentExecutions: 0,
+      automaticCapabilityExecutions: 1,
+      manualCapabilityExecutions: 1,
+      recentCapabilityExecutions: [
+        { kind: 'skill', id: 'repo-reader', stage: 'research', invocation: 'automatic' },
+        { kind: 'mcp', id: 'github', stage: 'research', invocation: 'manual' },
+      ],
     },
     learning: { humanTopics: 1, agentLessons: 1, reusedLessons: 0, durableStore: 'PARTIAL', semanticRetrieval: 'NOT_EXECUTED' },
     mcp: { stdio: 'VERIFIED', http: 'VERIFIED', bearerAuth: 'VERIFIED', oauth: 'PARTIAL', externalConformance: 'NOT_EXECUTED' },
@@ -257,6 +266,11 @@ describe('serveControlRoomJson', () => {
     expect(html).toContain('Release readiness · <strong>NOT_AVAILABLE</strong>');
     expect(html).toContain('release actions executed: no');
     expect(html).toContain('Provider benchmarks are not verified');
+    expect(html).toContain('Capability executions');
+    expect(html).toContain('skills 1');
+    expect(html).toContain('MCP calls 1');
+    expect(html).toContain('<code>skill:repo-reader</code>');
+    expect(html).toContain('<code>mcp:github</code>');
   });
 
   it('localizes Control Room human labels without translating machine statuses', async () => {
@@ -273,6 +287,9 @@ describe('serveControlRoomJson', () => {
     expect(html).toContain('actions de release exécutées : non');
     expect(html).toContain('<strong>NOT_AVAILABLE</strong>');
     expect(html).toContain('commit <code>aaaaaaaaaaaa</code>');
+    expect(html).toContain('Exécutions de capacités');
+    expect(html).toContain('appels MCP 1');
+    expect(html).toContain('Exécutions vérifiées récentes');
   });
 });
 
