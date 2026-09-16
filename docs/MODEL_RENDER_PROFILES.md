@@ -29,9 +29,10 @@ Catalog failures are diagnostic and do not block ordinary proxying.
 - `auto` — evidence-first; automatic imaging requires a quality-verified profile.
 - `safe_exact` — currently the same admission boundary as `auto`, reserved as
   the stable conservative policy surface.
-- `max_savings` — admits positively proven image-capable models even when the
-  reader is only calibrated/unprofiled; downstream ExactGuard, profitability,
-  image-count and decoded-byte gates still apply.
+- `max_savings` — admits positively proven image-capable models only when FuryPipe
+  also has provider-appropriate image-pricing evidence. A catalog entry does not
+  make OpenAI tile math valid for another provider. Downstream ExactGuard,
+  profitability, image-count and decoded-byte gates still apply.
 - `text_only` — hard visual bypass.
 
 `FURYPIPE_MODELS` remains an explicit model-scope override. It cannot override
@@ -68,10 +69,12 @@ rendering is readable by a particular model.
 ## Unmeasured readers
 
 A model that positively supports image input but lacks quality evidence is not
-silently treated as verified. Under the default `auto` policy it remains
-native text. Under `max_savings` or an explicit operator scope it may enter the
-visual pipeline, where provider pricing, ExactGuard, profitability, image count,
-decoded image-byte budget and request-size checks still apply.
+silently treated as verified. Under the default `auto` policy it remains native
+text. Under `max_savings`, it may enter the visual pipeline only when visual
+pricing is provider-appropriate; otherwise it remains native with
+`visual_pricing_unknown`. An explicit `FURYPIPE_GPT_PROFILES` entry can supply
+operator-owned geometry/pricing without waiting for a FuryPipe release. ExactGuard,
+profitability, image count, decoded image-byte budget and request-size checks still apply.
 
 A model positively known to be text-only always stays native, even if a stale
 operator CSV contains its ID.
