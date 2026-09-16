@@ -11,7 +11,28 @@ behavioral changes, patch = fixes).
 
 ## Unreleased
 
-_No changes yet._
+### Added
+- **FuryVision adaptive image layout.** Large live tool results are classified
+  before rasterization. Structure-sensitive code, formatted JSON and Markdown
+  preserve hard lines; dense logs and prose retain the compact reflow path.
+  The existing profitability gate remains authoritative, so a more readable
+  layout that is not token-profitable stays as native text.
+- **FuryPipe-native agent launcher.** `furypipe run <agent> [args...]` accepts
+  direct commands on Windows, macOS and Linux without requiring a `--`
+  separator. `warp` remains a hidden transition alias for this development
+  cycle only.
+
+### Changed
+- Dashboard identity is rebuilt around FuryPipe navy/black dark mode and
+  cream/white light mode with blue/cyan accents. Browser state names and public
+  examples use FuryPipe-native naming.
+- Setup TUI adopts the same control-plane identity and blue/cyan terminal
+  palette.
+
+### Fixed
+- Windows Terminal arrow-key events can carry no text payload. Setup now
+  normalizes those events before key matching instead of calling
+  `toLowerCase()` on an undefined value.
 
 ## 0.15.0 — 2026-09-16
 

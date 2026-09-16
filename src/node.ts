@@ -8,6 +8,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createWarpRuntime } from './warp/index.js';
+import { parseAgentLaunchArgs } from './warp/cli.js';
 import { once } from 'node:events';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -293,13 +294,11 @@ Usage:
   furypipe doctor [--json]
                         inspect the local runtime and available tools
   furypipe export [...] render files/diff to PNG pages + cost report (see furypipe export --help)
-  furypipe warp [--route PATTERN=TARGET]... -- CMD
-                        run CMD behind the proxy without a custom base URL, so
-                        client-side first-party gates (/remote-control,
-                        claude.ai connectors) keep working.
-                        api.anthropic.com/v1/messages is routed by default;
-                        --route adds rules for agents that talk to another
-                        base URL, e.g.
+  furypipe run [--route PATTERN=TARGET]... [--] CMD [args...]
+                        launch an AI agent through the local FuryPipe transport.
+                        The -- separator is optional, including on Windows.
+                        Anthropic and Google inference routes are recognized by
+                        default; --route adds an explicit provider path, e.g.
                           --route '127.0.0.1:9090/v1/*=http://127.0.0.1:48721'
   furypipe stats [--json] [--file <p>]
                         summarize the events log offline (no server needed),
@@ -1191,49 +1190,38 @@ async function main(): Promise<void> {
   if (argv[0] === 'start') {
     argv.splice(0, 1);
   }
-  // `warp` runs an agent behind a CONNECT proxy and redirects its inference
-  // traffic into the FuryPipe instance already running. It starts no proxy of its own, so
-  // it exits through its own branch below rather than falling through here.
-  let warpCommand: string[] | undefined;
-  const warpRoutes: string[] = [];
+  // `run` launches an agent behind FuryPipe's scoped CONNECT transport.
+  // v0.15 used `warp`; keep that spelling as a hidden compatibility alias for
+  // one transition release, but the public FuryPipe UX is now `furypipe run`.
+  let agentCommand: string[] | undefined;
+  let agentRoutes: string[] = [];
   let cliArgv = argv;
-  if (argv[0] === 'warp') {
-    const sep = argv.indexOf('--');
-    warpCommand = sep < 0 ? [] : argv.slice(sep + 1);
-    // warp's own flags live before the `--`; parseCli accepts none of them, so
-    // they are consumed here rather than passed through.
-    const warpArgv = argv.slice(1, sep < 0 ? argv.length : sep);
-    const rest: string[] = [];
-    for (let i = 0; i < warpArgv.length; i += 1) {
-      const a = warpArgv[i]!;
-      if (a === '--route') {
-        const spec = warpArgv[i + 1];
-        if (spec === undefined) {
-          console.error('[furypipe] warp: --route needs PATTERN=TARGET');
-          process.exit(2);
-        }
-        warpRoutes.push(spec);
-        i += 1;
-        continue;
-      }
-      if (a.startsWith('--route=')) {
-        warpRoutes.push(a.slice('--route='.length));
-        continue;
-      }
-      rest.push(a);
+  if (argv[0] === 'run' || argv[0] === 'warp') {
+    const legacyWarp = argv[0] === 'warp';
+    try {
+      const parsed = parseAgentLaunchArgs(argv.slice(1));
+      agentCommand = [...parsed.command];
+      agentRoutes = [...parsed.routes];
+    } catch (caught) {
+      console.error('[furypipe] run: ' + (caught as Error).message);
+      console.error('[furypipe] run: usage: furypipe run [--route PATTERN=TARGET]... [--] <command> [args...]');
+      process.exit(2);
     }
-    cliArgv = rest;
+    // Launcher arguments are fully consumed above. parseCli only resolves the
+    // FuryPipe listener address from environment/defaults for this path.
+    cliArgv = [];
+    if (legacyWarp) {
+      console.error('[furypipe] note: `warp` is a compatibility alias; use `furypipe run ...`.');
+    }
   }
   // Stats / sessions / cleanup tools live in the dashboard
   // (see http://127.0.0.1:${port}/).
   const opts = parseCli(cliArgv);
 
-  // warp only redirects traffic: it decrypts the agent's TLS and re-points the
-  // inference path at the FuryPipe instance already running, so that instance
-  // does the transforming, the tracking and the dashboard. Everything below —
-  // tracker, proxy pipeline, listener — belongs to that instance, not to us.
-  if (warpCommand) {
-    createWarpRuntime({ port: opts.port, routes: warpRoutes }).launch(warpCommand);
+  // Agent launch only redirects traffic: the already-running FuryPipe instance
+  // remains the sole transform/tracking/dashboard runtime.
+  if (agentCommand) {
+    createWarpRuntime({ port: opts.port, routes: agentRoutes }).launch(agentCommand);
     return;
   }
   // A/B harness passthrough switch (see the `transform` callback below).

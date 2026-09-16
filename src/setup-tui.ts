@@ -25,9 +25,30 @@ export interface SetupWizardOptions {
   readonly now?: () => Date;
 }
 
-interface Keypress {
+export interface SetupKeypress {
   readonly name?: string;
   readonly ctrl?: boolean;
+}
+
+export type SetupKeyAction = 'cancel' | 'fr' | 'en' | 'confirm' | 'noop';
+
+/**
+ * Normalize readline keypress events before the interactive TUI touches them.
+ *
+ * On Windows Terminal / PowerShell, arrow-key events can arrive with an
+ * undefined `input` payload while `key.name` is still populated. Treating
+ * input as an unconditional string caused v0.15.0 to throw on arrow keys.
+ */
+export function interpretSetupKeypress(
+  input: string | undefined,
+  key: SetupKeypress = {},
+): SetupKeyAction {
+  const char = typeof input === 'string' ? input.toLowerCase() : '';
+  if ((key.ctrl && key.name === 'c') || key.name === 'escape' || key.name === 'q') return 'cancel';
+  if (key.name === 'left' || key.name === 'up' || char === '1' || char === 'f') return 'fr';
+  if (key.name === 'right' || key.name === 'down' || char === '2' || char === 'e') return 'en';
+  if (key.name === 'return' || key.name === 'enter') return 'confirm';
+  return 'noop';
 }
 
 interface ParsedSetupArgs {
@@ -41,14 +62,14 @@ interface ParsedSetupArgs {
 const A = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
-  cyan: '\x1b[38;5;45m',
-  blue: '\x1b[38;5;39m',
-  purple: '\x1b[38;5;141m',
+  cyan: '\x1b[38;5;39m',
+  blue: '\x1b[38;5;27m',
+  purple: '\x1b[38;5;51m',
   green: '\x1b[38;5;82m',
   yellow: '\x1b[38;5;220m',
   muted: '\x1b[38;5;245m',
   white: '\x1b[38;5;255m',
-  bgBlue: '\x1b[48;5;24m',
+  bgBlue: '\x1b[48;5;17m',
 } as const;
 
 const LOGO = [
@@ -206,12 +227,12 @@ export function renderSetupScreen(options: SetupRenderOptions): string {
 
   const header = [
     ...LOGO.map((line) => paint(color, A.cyan + A.bold, line)),
-    paint(color, A.cyan + A.bold, 'FURYPIPE // SETUP EXPERIENCE'),
+    paint(color, A.cyan + A.bold, 'FURYPIPE // CONTROL PLANE'),
     '',
-    paint(color, A.white + A.bold, 'GOVERNED AI WORKFLOWS') +
-      paint(color, A.muted, '  ·  context  ·  agents  ·  skills  ·  MCP  ·  providers  ·  memory'),
+    paint(color, A.white + A.bold, 'FURYPIPE RUNTIME') +
+      paint(color, A.muted, '  ·  context  ·  routing  ·  agents  ·  MCP  ·  memory  ·  evidence'),
     paint(color, A.purple + A.bold, 'FuryPipe ' + version) +
-      paint(color, A.muted, '  // one CLI, explicit execution, verifiable results'),
+      paint(color, A.muted, '  // native runtime · measured compression · explicit execution'),
     '',
   ];
 
@@ -397,19 +418,19 @@ async function chooseLocale(
 
   try {
     return await new Promise<SetupLocale | null>((resolve) => {
-      const onKeypress = (input: string, key: Keypress): void => {
-        if ((key.ctrl && key.name === 'c') || key.name === 'escape' || key.name === 'q') {
+      const onKeypress = (input: string | undefined, key: SetupKeypress): void => {
+        const action = interpretSetupKeypress(input, key);
+        if (action === 'cancel') {
           stdin.off('keypress', onKeypress);
           resolve(null);
           return;
         }
-        if (key.name === 'left' || key.name === 'up' || input === '1' || input.toLowerCase() === 'f') {
-          selected = 'fr'; redraw(); return;
+        if (action === 'fr' || action === 'en') {
+          selected = action;
+          redraw();
+          return;
         }
-        if (key.name === 'right' || key.name === 'down' || input === '2' || input.toLowerCase() === 'e') {
-          selected = 'en'; redraw(); return;
-        }
-        if (key.name === 'return' || key.name === 'enter') {
+        if (action === 'confirm') {
           stdin.off('keypress', onKeypress);
           resolve(selected);
         }
