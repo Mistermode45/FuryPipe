@@ -4,7 +4,7 @@ import {
   furyLinkHelp,
   parseFuryLinkInvocation,
 } from '../src/fury-link-cli.js';
-import { furyLinkEnvValue } from '../src/fury-link/index.js';
+import { furyLinkEnvValue, furyLinkPathCandidates } from '../src/fury-link/index.js';
 
 describe('FuryLink CLI', () => {
   it('accepts the Windows-friendly separator-free form', () => {
@@ -55,6 +55,14 @@ describe('FuryLink CLI', () => {
 
     expect(furyLinkEnvValue(copiedWindowsEnv, 'PATH')).toBe(copiedWindowsEnv.Path);
     expect(furyLinkEnvValue(copiedWindowsEnv, 'PATHEXT')).toBe(copiedWindowsEnv.Pathext);
+    expect(furyLinkPathCandidates('npm', copiedWindowsEnv, 'win32')).toEqual([
+      'npm.COM',
+      'npm.EXE',
+      'npm.BAT',
+      'npm.CMD',
+    ]);
+    expect(furyLinkPathCandidates('npm.cmd', copiedWindowsEnv, 'win32')).toEqual(['npm.cmd']);
+    expect(furyLinkPathCandidates('npm', copiedWindowsEnv, 'linux')).toEqual(['npm']);
   });
 
   it('publishes FuryLink—not warp—as the user-facing help', () => {
