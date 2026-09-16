@@ -38,6 +38,7 @@ import {
 import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
 import { runSetupWizard } from './setup-tui.js';
+import { refreshRuntimeModelCatalog } from './model-catalog-node.js';
 import { FURYPIPE_DEFAULT_HOST, FURYPIPE_DEFAULT_PORT, parseFuryPipePort } from './runtime-defaults.js';
 import { createControlRoomRuntime } from './control-room/runtime.js';
 import { loadControlRoomHostEvidence, type ControlRoomHostEvidence } from './control-room/evidence-file.js';
@@ -1562,6 +1563,30 @@ async function main(): Promise<void> {
     }
     announce();
     console.log('[furypipe] dashboard available on loopback');
+
+    // Refresh configured provider catalogs outside the startup critical path.
+    // Missing credentials perform no network request; failures are diagnostic
+    // only and never disable proxying/runtime-observed model discovery.
+    if (!/^(0|false|no|off)$/i.test(process.env.FURYPIPE_MODEL_CATALOG_REFRESH ?? '')) {
+      void refreshRuntimeModelCatalog().then((report) => {
+        const refreshed = report.providers.filter((provider) => provider.status === 'refreshed');
+        const failed = report.providers.filter((provider) => provider.status === 'failed');
+        if (refreshed.length > 0) {
+          console.log(
+            `[furypipe] model catalog refreshed: ${report.registeredModels} model(s) from ` +
+            refreshed.map((provider) => provider.provider).join(', '),
+          );
+        }
+        for (const provider of failed) {
+          console.warn(
+            `[furypipe] model catalog refresh failed for ${provider.provider}: ${provider.reason ?? 'unknown'}` +
+            (provider.httpStatus === undefined ? '' : ` (HTTP ${provider.httpStatus})`),
+          );
+        }
+      }).catch(() => {
+        console.warn('[furypipe] model catalog refresh failed unexpectedly');
+      });
+    }
   });
 
   // server.close() only stops accepting new connections and waits for open
