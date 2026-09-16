@@ -441,7 +441,7 @@ describe('serveFragment', () => {
     const initial = await (await policyDash.serveFragment('models', url, 1234)).text();
     expect(initial).toContain('Model Fabric');
     expect(initial).toContain('gpt-6-astra');
-    expect(initial).toContain('IMAGE YES');
+    expect(initial).toContain('IMAGE UNKNOWN');
     expect(initial).toContain('UNPROFILED');
     expect(initial).toContain('<option value="auto" selected>AUTO</option>');
 
