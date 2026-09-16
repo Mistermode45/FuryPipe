@@ -33,6 +33,29 @@ export interface FuryLinkRuntime {
   launch: (command: string[]) => void;
 }
 
+
+/**
+ * Read an environment variable without relying on Node's special
+ * case-insensitive `process.env` object on Windows.
+ *
+ * FuryLink intentionally clones process.env before adding child-scoped proxy
+ * variables. A spread copy is an ordinary object: `Path` no longer answers a
+ * `PATH` lookup. Windows runners and user shells commonly preserve `Path`,
+ * so executable discovery must normalize key casing explicitly.
+ */
+export function furyLinkEnvValue(
+  env: NodeJS.ProcessEnv,
+  key: string,
+): string | undefined {
+  const exact = env[key];
+  if (exact !== undefined) return exact;
+  const wanted = key.toLowerCase();
+  for (const [candidate, value] of Object.entries(env)) {
+    if (candidate.toLowerCase() === wanted) return value;
+  }
+  return undefined;
+}
+
 /**
  * Only the inference path is diverted. Everything else on the host — OAuth,
  * telemetry, the control plane — is re-originated untouched, which is what
@@ -94,14 +117,14 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
 
     const windows = process.platform === 'win32';
     const pathExt = windows
-      ? (env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+      ? (furyLinkEnvValue(env, 'PATHEXT') ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
       : [''];
     const alreadyHasWindowsExt = windows && pathExt.some((ext) => name.toLowerCase().endsWith(ext.toLowerCase()));
     const candidates = windows && !alreadyHasWindowsExt
       ? [name, ...pathExt.map((ext) => name + ext)]
       : [name];
 
-    for (const dir of (env.PATH ?? '').split(delimiter)) {
+    for (const dir of (furyLinkEnvValue(env, 'PATH') ?? '').split(delimiter)) {
       if (!dir) continue;
       for (const candidate of candidates) {
         const full = join(dir, candidate);
