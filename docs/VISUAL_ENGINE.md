@@ -36,10 +36,12 @@ It is not an unconditional text-to-image converter. A transformation must pass t
    - original hard line breaks remain represented by the visible reflow marker when reflow is active.
 
 7. **Fast adaptive lossless PNG encoding**
+   - detect whether every grayscale sample is exactly representable at PNG bit depth 1, 2, 4 or 8;
+   - pack exact black/white pages at 1-bit instead of always shipping an 8-bit grayscale scanline surface;
+   - use 2-bit/4-bit only when every sample round-trips exactly; anti-aliased or otherwise non-representable pages remain 8-bit;
    - keep the measured Average predictor as the default for glyph-bearing rows;
    - switch byte-identical repeated rows to PNG Up, producing zero residuals without an exhaustive predictor search;
-   - pixels decoded from the PNG are byte-identical to the renderer framebuffer;
-   - the optimization is retained only when it does not trade wire size for a material render-latency regression.
+   - decoded pixels remain byte-identical to the renderer framebuffer; no quantization is permitted.
 
 8. **Wire safety**
    - account for caller-owned images before FuryPipe adds any;
@@ -50,7 +52,13 @@ It is not an unconditional text-to-image converter. A transformation must pass t
    - emit gate, image-count, image-byte, cache-prefix and recovery telemetry;
    - measured savings remain distinct from estimates and from unverified claims.
 
-## Model profiles
+## Model Fabric and profiles
+
+Model discovery, image-input capability, visual quality state and render pricing are separate facts.
+
+The runtime can refresh configured provider catalogs (Anthropic, OpenAI, Gemini, xAI, Mistral and OpenRouter) outside the request hot path. A newly discovered model does not become quality-verified merely because it exists or accepts images.
+
+`FURYPIPE_VISUAL_POLICY=auto` is evidence-first: automatic transformation requires a quality-verified visual profile. `max_savings` broadens eligibility to models with positively proven image-input capability while preserving ExactGuard, profitability, image-count and byte-budget gates. `text_only` is a hard visual bypass. An explicit `FURYPIPE_MODELS` scope remains authoritative but cannot force a model that is positively known to be text-only into an image request.
 
 Geometry and image-token pricing are model data, not hard-coded assumptions shared across providers.
 
@@ -78,7 +86,7 @@ The following invariants are release blockers:
 - `ExactGuard` cannot be weakened to improve a benchmark.
 - Provider count/byte caps cannot be bypassed to force compression.
 - A Visual Planner candidate cannot be accepted on an invented provider cost.
-- PNG optimization must remain pixel-lossless.
+- PNG optimization must remain pixel-lossless; adaptive bit depth may reduce representation size but may never quantize a sample.
 - `recommended != installed != connected != approved != executable != executed != verified`.
 - `released != deployed`.
 
