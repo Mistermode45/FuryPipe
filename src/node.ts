@@ -47,6 +47,7 @@ import {
   resolveControlRoomSecurityEvidence,
 } from './control-room/security-ci-evidence-file.js';
 import type { SecurityEvidence } from './control-room/index.js';
+import type { FuryPipeVisualPolicy } from './core/applicability.js';
 
 /** Runtime config. The core transform tuning comes from DEFAULTS in
  *  transform.ts; startup knobs cover deployment plus emergency GPT scope
@@ -153,6 +154,12 @@ function applyConfigFileDefaults(): void {
     const models = normalizeModelsConfig(cfg.models);
     if (models !== undefined) process.env.FURYPIPE_MODELS = models;
   }
+  if (process.env.FURYPIPE_VISUAL_POLICY === undefined && typeof cfg.visualPolicy === 'string') {
+    const policy = cfg.visualPolicy.trim().toLowerCase();
+    if (policy === 'auto' || policy === 'max_savings' || policy === 'safe_exact' || policy === 'text_only') {
+      process.env.FURYPIPE_VISUAL_POLICY = policy;
+    }
+  }
 }
 
 /** Dashboard persistence hook: write the runtime model scope back to the
@@ -194,6 +201,41 @@ function persistModelBasesToConfig(bases: readonly string[]): void {
       // The write may have failed before the temporary file was created.
     }
     console.warn('[furypipe] could not persist model scope');
+  }
+}
+
+function persistVisualPolicyToConfig(policy: FuryPipeVisualPolicy): void {
+  const file = process.env.FURYPIPE_CONFIG ?? defaultConfigFile();
+  let cfg: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      console.warn('[furypipe] could not persist visual policy: invalid config object');
+      return;
+    }
+    cfg = parsed as Record<string, unknown>;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn('[furypipe] could not persist visual policy: invalid config file');
+      return;
+    }
+  }
+  cfg.visualPolicy = policy;
+  const tmp = `${file}.tmp-${process.pid}`;
+  try {
+    const parentExists = fs.existsSync(path.dirname(file));
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    if (!parentExists) fs.chmodSync(path.dirname(file), 0o700);
+    fs.writeFileSync(tmp, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
+    fs.renameSync(tmp, file);
+    fs.chmodSync(file, 0o600);
+  } catch {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // The write may have failed before the temporary file was created.
+    }
+    console.warn('[furypipe] could not persist visual policy');
   }
 }
 
@@ -671,22 +713,26 @@ async function dispatchDashboard(
         let model = '';
         let on = false;
         let list: string | null = null;
+        let policy: string | null = null;
         try {
           const raw = await readRequestBody(req);
           try {
-            const j = JSON.parse(raw) as { model?: unknown; on?: unknown; list?: unknown };
+            const j = JSON.parse(raw) as { model?: unknown; on?: unknown; list?: unknown; policy?: unknown };
             model = typeof j.model === 'string' ? j.model : '';
             on = j.on === true;
             if (typeof j.list === 'string') list = j.list;
+            if (typeof j.policy === 'string') policy = j.policy;
           } catch {
             const p = new URLSearchParams(raw);
             model = p.get('model') ?? '';
             on = p.get('on') === 'true';
             list = p.get('list');
+            policy = p.get('policy');
           }
         } catch {
           return new Response('bad request body', { status: 400 });
         }
+        if (policy !== null) dashboard.handleVisualPolicySet(policy);
         if (list !== null) dashboard.handleModelsSet(list);
         else if (model) dashboard.handleModelsToggle(model, on);
         return dashboard.serveFragment('models', url, port);
@@ -1343,6 +1389,7 @@ async function main(): Promise<void> {
     undefined,
     persistModelBasesToConfig,
     controlRoomRuntime === undefined ? undefined : () => controlRoomRuntime.snapshot(),
+    persistVisualPolicyToConfig,
   );
   // Seed the "recent requests" table from the JSONL log so a process restart
   // doesn't reset what you can see in the UI. Best-effort; ignored on error.
