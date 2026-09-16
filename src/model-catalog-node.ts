@@ -222,6 +222,7 @@ export async function refreshRuntimeModelCatalog(
     refreshSimple('google', googleKey !== undefined, async () => {
       const entries: ModelFabricEntry[] = [];
       let pageToken: string | undefined;
+      const seenPageTokens = new Set<string>();
       for (let page = 0; page < MAX_PAGES; page += 1) {
         const url = new URL('https://generativelanguage.googleapis.com/v1beta/models');
         url.searchParams.set('pageSize', '1000');
@@ -237,6 +238,8 @@ export async function refreshRuntimeModelCatalog(
         const next = (payload as Record<string, unknown>).nextPageToken;
         pageToken = typeof next === 'string' && next ? next : undefined;
         if (!pageToken) break;
+        if (seenPageTokens.has(pageToken)) throw new CatalogFetchError('invalid_payload');
+        seenPageTokens.add(pageToken);
       }
       return Object.freeze(entries);
     }),

@@ -85,6 +85,28 @@ describe('Node model catalog refresh', () => {
     ]);
   });
 
+  it('fails closed on a repeated Gemini page token instead of refetching the same page', async () => {
+    let calls = 0;
+    const report = await refreshRuntimeModelCatalog({
+      env: { GEMINI_API_KEY: 'gemini-secret' },
+      fetchImpl: (async () => {
+        calls += 1;
+        return new Response(JSON.stringify({
+          models: [{ name: `models/gemini-page-${calls}` }],
+          nextPageToken: 'same-token',
+        }), { status: 200 });
+      }) as typeof fetch,
+    });
+
+    expect(calls).toBe(2);
+    expect(report.providers.find((provider) => provider.provider === 'google')).toMatchObject({
+      status: 'failed',
+      reason: 'invalid_payload',
+      models: 0,
+    });
+    expect(inspectRuntimeModels()).toEqual([]);
+  });
+
   it('fails closed on oversized provider metadata without exposing the body', async () => {
     const report = await refreshRuntimeModelCatalog({
       env: { OPENAI_API_KEY: 'secret' },

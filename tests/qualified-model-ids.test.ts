@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   isFuryPipeSupportedGptModel,
   isFuryPipeSupportedModel,
+  resolveFuryPipeModelEligibility,
   setAllowedModelBases,
 } from '../src/core/applicability.js';
 import {
@@ -35,7 +36,13 @@ describe('scope matching for gateway-qualified ids', () => {
   it('strips a multi-segment gateway prefix to the last segment', () => {
     setAllowedModelBases(['kimi-k3']);
     // workers-ai/@cf/moonshotai/kimi-k3 — the real Cloudflare Workers AI id.
-    expect(isFuryPipeSupportedGptModel('workers-ai/@cf/moonshotai/kimi-k3')).toBe(true);
+    // Scope matching reaches the model, but scope alone is not pricing
+    // evidence for an unknown OpenAI-compatible provider.
+    expect(resolveFuryPipeModelEligibility('workers-ai/@cf/moonshotai/kimi-k3')).toMatchObject({
+      eligible: false,
+      reason: 'visual_pricing_unknown',
+      source: 'operator_scope',
+    });
   });
 
   it('still requires the last segment to match exactly', () => {
@@ -88,19 +95,21 @@ describe('Gemini family default and opt-out', () => {
   });
 });
 
-describe('unknown OpenAI-compatible ids fall back to DEFAULT_GPT_PROFILE', () => {
+describe('unknown OpenAI-compatible ids remain unpriced until evidence exists', () => {
   // Kimi K3 through Cloudflare's OpenAI-compatible route is the worked example
-  // (see messages-chat-bridge.ts). FuryPipe has measured no geometry for it, but
-  // an unmeasured OpenAI-compatible id is not refused: it is gated with
-  // DEFAULT_GPT_PROFILE's tile math, which is an approximation, not a
-  // measurement. Scope is the only gate, and no env var is required.
-  it('admits every spelling on scope alone, with no env var set', () => {
+  // (see messages-chat-bridge.ts). FuryPipe has no provider-appropriate price
+  // evidence for it, so scope admission must not authorize visual economics.
+  it('matches every spelling on scope but refuses execution without pricing evidence', () => {
     delete process.env.FURYPIPE_GPT_PROFILES;
     setAllowedModelBases(['kimi-k3']);
     expect(isMisresolvedModelId('kimi-k3')).toBe(false);
-    expect(isFuryPipeSupportedGptModel('kimi-k3')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('moonshotai/kimi-k3')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('workers-ai/@cf/moonshotai/kimi-k3')).toBe(true);
+    for (const id of ['kimi-k3', 'moonshotai/kimi-k3', 'workers-ai/@cf/moonshotai/kimi-k3']) {
+      expect(resolveFuryPipeModelEligibility(id), id).toMatchObject({
+        eligible: false,
+        reason: 'visual_pricing_unknown',
+        source: 'operator_scope',
+      });
+    }
   });
 
   it('gives an undeclared id the default tile vision cost', () => {
@@ -117,9 +126,15 @@ describe('unknown OpenAI-compatible ids fall back to DEFAULT_GPT_PROFILE', () =>
       regime: 'mpix',
       tokensPerMegapixel: 1000,
     });
-    // A sibling with no declaration of its own is still admitted — it falls
-    // back to the default profile rather than being refused.
-    expect(isFuryPipeSupportedGptModel('example-model-1')).toBe(true);
+    // A sibling with no declaration of its own is not authorized by the
+    // neighboring operator profile: DEFAULT_GPT_PROFILE is a resolver fallback,
+    // not provider pricing evidence.
+    expect(isFuryPipeSupportedGptModel('kimi-k3')).toBe(true);
+    expect(resolveFuryPipeModelEligibility('example-model-1')).toMatchObject({
+      eligible: false,
+      reason: 'visual_pricing_unknown',
+      pricingEvidence: 'unknown',
+    });
     expect(resolveGptProfile('example-model-1').vision).toEqual(DEFAULT_GPT_PROFILE.vision);
   });
 });

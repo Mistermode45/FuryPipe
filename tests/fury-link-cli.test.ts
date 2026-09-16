@@ -4,7 +4,11 @@ import {
   furyLinkHelp,
   parseFuryLinkInvocation,
 } from '../src/fury-link-cli.js';
-import { furyLinkEnvValue, furyLinkPathCandidates } from '../src/fury-link/index.js';
+import {
+  furyLinkEnvValue,
+  furyLinkPathCandidates,
+  furyLinkWindowsCommandLine,
+} from '../src/fury-link/index.js';
 
 describe('FuryLink CLI', () => {
   it('accepts the Windows-friendly separator-free form', () => {
@@ -63,6 +67,14 @@ describe('FuryLink CLI', () => {
     ]);
     expect(furyLinkPathCandidates('npm.cmd', copiedWindowsEnv, 'win32')).toEqual(['npm.cmd']);
     expect(furyLinkPathCandidates('npm', copiedWindowsEnv, 'linux')).toEqual(['npm']);
+  });
+
+  it('quotes a Windows launcher path with spaces without Node shell mode', () => {
+    expect(furyLinkWindowsCommandLine([
+      'C:\\Program Files\\nodejs\\npm.cmd',
+      '--version',
+      'value with spaces & pipes',
+    ])).toBe('"C:\\Program Files\\nodejs\\npm.cmd" "--version" "value with spaces ^& pipes"');
   });
 
   it('publishes FuryLink—not warp—as the user-facing help', () => {

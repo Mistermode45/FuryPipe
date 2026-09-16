@@ -115,6 +115,47 @@ describe('model fabric', () => {
     });
   });
 
+  it('does not let an older or same-time conflicting provider refresh override truth conservatively', () => {
+    const registry = createModelFabricRegistry();
+    registry.upsertMany(normalizeXaiModelsPayload({
+      models: [{ id: 'grok-conflict', input_modalities: ['text', 'image'], output_modalities: ['text'] }],
+    }, '2026-09-17T00:00:00.000Z'));
+
+    registry.upsertMany(normalizeXaiModelsPayload({
+      models: [{ id: 'grok-conflict', input_modalities: ['text'], output_modalities: ['text'] }],
+    }, '2026-09-16T00:00:00.000Z'));
+    expect(registry.resolveVisual('grok-conflict')).toMatchObject({ imageInput: 'yes' });
+
+    registry.upsertMany(normalizeXaiModelsPayload({
+      models: [{ id: 'grok-conflict', input_modalities: ['text'], output_modalities: ['text'] }],
+    }, '2026-09-17T00:00:00.000Z'));
+    expect(registry.resolveVisual('grok-conflict')).toMatchObject({
+      imageInput: 'no',
+      reason: 'text_only',
+    });
+  });
+
+  it('rejects identity truncation and keeps a batch atomic on invalid input', () => {
+    const registry = createModelFabricRegistry();
+    const valid = normalizeXaiModelsPayload({
+      models: [{ id: 'grok-valid', input_modalities: ['text', 'image'], output_modalities: ['text'] }],
+    })[0]!;
+    const invalid = { ...valid, id: 'x'.repeat(513) };
+
+    expect(() => registry.upsertMany([valid, invalid])).toThrow(/entry id is invalid/u);
+    expect(registry.list()).toEqual([]);
+    expect(() => registry.observe('x'.repeat(513))).toThrow(/entry id is invalid/u);
+  });
+
+  it('rejects alias collisions instead of routing one alias to an arbitrary entry', () => {
+    const registry = createModelFabricRegistry();
+    const first = normalizeXaiModelsPayload({ models: [{ id: 'grok-first', aliases: ['shared-alias'] }] })[0]!;
+    const second = normalizeXaiModelsPayload({ models: [{ id: 'grok-second', aliases: ['shared-alias'] }] })[0]!;
+    registry.upsert(first);
+    expect(() => registry.upsert(second)).toThrow(/alias collision/u);
+    expect(registry.get('shared-alias')?.id).toBe('grok-first');
+  });
+
   it('uses provider capability metadata instead of name guessing for Mistral', () => {
     const registry = createModelFabricRegistry();
     registry.upsertMany(normalizeMistralModelsPayload({

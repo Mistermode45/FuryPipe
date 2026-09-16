@@ -148,6 +148,18 @@ const ID_MAX = 512;
 const DISPLAY_MAX = 512;
 const SOURCE_MAX = 1024;
 
+const MODEL_FABRIC_EVIDENCE_KINDS = Object.freeze([
+  'provider_api', 'official_family_rule', 'runtime_observation',
+  'operator_override', 'openrouter_catalog', 'local_profile',
+] as const);
+const MODEL_FABRIC_LIFECYCLES = Object.freeze([
+  'active', 'preview', 'experimental', 'deprecated', 'retired', 'unknown',
+] as const);
+const MODEL_VISUAL_PROFILES = Object.freeze([
+  'calibrated', 'quality_verified', 'unprofiled', 'degraded', 'blocked', 'not_applicable',
+] as const);
+const MODEL_VISUAL_POLICIES = Object.freeze(['auto', 'max_savings', 'safe_exact', 'text_only'] as const);
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -161,7 +173,124 @@ function bounded(value: unknown, fallback = '', max = ID_MAX): string {
 
 function normalizeId(value: string): string {
   const stripped = stripBracketedSegments(value.trim().toLowerCase());
-  return stripped.length > ID_MAX ? stripped.slice(0, ID_MAX) : stripped;
+  // Truncating an external model id can turn two distinct ids into the same
+  // registry key.  A bounded identity must be rejected, never rewritten.
+  return stripped.length > ID_MAX ? '' : stripped;
+}
+
+function validCapability(value: unknown, field: string): ModelFabricCapability {
+  if (value === 'yes' || value === 'no' || value === 'unknown') return value;
+  throw new TypeError(`model fabric ${field} capability is invalid`);
+}
+
+function validRecord(value: unknown, field: string): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TypeError(`model fabric ${field} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function validOptionalSafeNumber(value: unknown, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (numberField(value) === undefined) throw new TypeError(`model fabric ${field} is invalid`);
+  return value as number;
+}
+
+function validOptionalText(value: unknown, field: string, max: number): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = bounded(value, '', max);
+  if (!normalized) throw new TypeError(`model fabric ${field} is invalid`);
+  return normalized;
+}
+
+function normalizeRegistryEntry(entry: ModelFabricEntry): ModelFabricEntry {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    throw new TypeError('model fabric entry is required');
+  }
+  if (!(MODEL_FABRIC_PROVIDERS as readonly unknown[]).includes(entry.provider)) {
+    throw new TypeError('model fabric provider is invalid');
+  }
+  if (!(MODEL_FABRIC_LIFECYCLES as readonly unknown[]).includes(entry.lifecycle)) {
+    throw new TypeError('model fabric lifecycle is invalid');
+  }
+  if (typeof entry.id !== 'string') throw new TypeError('model fabric entry id is invalid');
+  const id = canonicalKey(entry.id);
+  if (!id) throw new Error('model fabric entry id is invalid');
+  if (!Array.isArray(entry.aliases)) throw new TypeError('model fabric aliases must be an array');
+
+  const modalities = validRecord(entry.modalities, 'modalities');
+  const capabilities = validRecord(entry.capabilities, 'capabilities');
+  const limits = validRecord(entry.limits, 'limits');
+  const visual = validRecord(entry.visual, 'visual');
+  if (!(MODEL_VISUAL_PROFILES as readonly unknown[]).includes(visual.profile)
+    || !(MODEL_VISUAL_POLICIES as readonly unknown[]).includes(visual.policy)) {
+    throw new TypeError('model fabric visual state is invalid');
+  }
+
+  const normalizedLimits: Record<string, number> = {};
+  for (const key of ['contextTokens', 'outputTokens', 'maxImages', 'maxImageBytes', 'maxRequestBytes']) {
+    const value = validOptionalSafeNumber(limits[key], `limits.${key}`);
+    if (value !== undefined) normalizedLimits[key] = value;
+  }
+  const pricingInput = entry.pricing === undefined ? undefined : validRecord(entry.pricing, 'pricing');
+  const pricing = pricingInput === undefined ? undefined : {
+    ...(validOptionalSafeNumber(pricingInput.inputUsdPerMillionTokens, 'pricing.inputUsdPerMillionTokens') === undefined ? {} : { inputUsdPerMillionTokens: pricingInput.inputUsdPerMillionTokens as number }),
+    ...(validOptionalSafeNumber(pricingInput.cachedInputUsdPerMillionTokens, 'pricing.cachedInputUsdPerMillionTokens') === undefined ? {} : { cachedInputUsdPerMillionTokens: pricingInput.cachedInputUsdPerMillionTokens as number }),
+    ...(validOptionalSafeNumber(pricingInput.outputUsdPerMillionTokens, 'pricing.outputUsdPerMillionTokens') === undefined ? {} : { outputUsdPerMillionTokens: pricingInput.outputUsdPerMillionTokens as number }),
+    ...(validOptionalSafeNumber(pricingInput.imageInputUsdPerMillionTokens, 'pricing.imageInputUsdPerMillionTokens') === undefined ? {} : { imageInputUsdPerMillionTokens: pricingInput.imageInputUsdPerMillionTokens as number }),
+    ...(validOptionalText(pricingInput.source, 'pricing.source', SOURCE_MAX) === undefined ? {} : { source: pricingInput.source as string }),
+    ...(validOptionalText(pricingInput.observedAt, 'pricing.observedAt', 128) === undefined ? {} : { observedAt: pricingInput.observedAt as string }),
+  };
+
+  if (!Array.isArray(entry.provenance) || entry.provenance.length > 64) {
+    throw new TypeError('model fabric provenance must be a bounded array');
+  }
+  const provenance = entry.provenance.map((item) => {
+    const evidence = validRecord(item, 'provenance item');
+    if (!(MODEL_FABRIC_EVIDENCE_KINDS as readonly unknown[]).includes(evidence.kind)) {
+      throw new TypeError('model fabric evidence kind is invalid');
+    }
+    const source = bounded(evidence.source, '', SOURCE_MAX);
+    if (!source) throw new TypeError('model fabric evidence source is invalid');
+    return Object.freeze({
+      kind: evidence.kind as ModelFabricEvidenceKind,
+      source,
+      ...(evidence.observedAt === undefined ? {} : { observedAt: validOptionalText(evidence.observedAt, 'provenance.observedAt', 128) }),
+    });
+  });
+
+  const normalizedModalities = Object.freeze({
+    textInput: validCapability(modalities.textInput, 'textInput'),
+    imageInput: validCapability(modalities.imageInput, 'imageInput'),
+    audioInput: validCapability(modalities.audioInput, 'audioInput'),
+    videoInput: validCapability(modalities.videoInput, 'videoInput'),
+    fileInput: validCapability(modalities.fileInput, 'fileInput'),
+    textOutput: validCapability(modalities.textOutput, 'textOutput'),
+    imageOutput: validCapability(modalities.imageOutput, 'imageOutput'),
+    audioOutput: validCapability(modalities.audioOutput, 'audioOutput'),
+  });
+  const normalizedCapabilities = Object.freeze({
+    reasoning: validCapability(capabilities.reasoning, 'reasoning'),
+    tools: validCapability(capabilities.tools, 'tools'),
+    structuredOutput: validCapability(capabilities.structuredOutput, 'structuredOutput'),
+    streaming: validCapability(capabilities.streaming, 'streaming'),
+  });
+
+  return Object.freeze({
+    provider: entry.provider,
+    id,
+    displayName: bounded(entry.displayName, id, DISPLAY_MAX),
+    aliases: normalizeAliases(entry.aliases, id),
+    lifecycle: entry.lifecycle,
+    modalities: normalizedModalities,
+    capabilities: normalizedCapabilities,
+    limits: Object.freeze(normalizedLimits),
+    ...(pricing === undefined ? {} : { pricing: Object.freeze(pricing) }),
+    visual: Object.freeze({ profile: visual.profile as ModelVisualProfileState, policy: visual.policy as ModelVisualPolicy }),
+    provenance: Object.freeze(provenance),
+    ...(entry.firstObservedAt === undefined ? {} : { firstObservedAt: validOptionalText(entry.firstObservedAt, 'firstObservedAt', 128) }),
+    ...(entry.lastObservedAt === undefined ? {} : { lastObservedAt: validOptionalText(entry.lastObservedAt, 'lastObservedAt', 128) }),
+  });
 }
 
 function unqualifiedModelId(value: string): string {
@@ -278,6 +407,14 @@ function hasProviderCapabilityEvidence(entry: ModelFabricEntry): boolean {
     item.kind === 'provider_api' || item.kind === 'openrouter_catalog');
 }
 
+function latestProviderEvidenceAt(entry: ModelFabricEntry): number | undefined {
+  const timestamps = entry.provenance
+    .filter((item) => item.kind === 'provider_api' || item.kind === 'openrouter_catalog')
+    .map((item) => item.observedAt === undefined ? Number.NaN : Date.parse(item.observedAt))
+    .filter((value) => Number.isFinite(value));
+  return timestamps.length === 0 ? undefined : Math.max(...timestamps);
+}
+
 function mergeCapability(
   existingValue: ModelFabricCapability,
   incomingValue: ModelFabricCapability,
@@ -293,6 +430,18 @@ function mergeCapability(
   // update the fact because it carries the same authoritative evidence class.
   if (hasProviderCapabilityEvidence(existingEntry) && !hasProviderCapabilityEvidence(incomingEntry)) {
     return existingValue;
+  }
+
+  // Provider refreshes are authoritative, but an older response must not
+  // resurrect stale capability facts.  At the same observation instant, a
+  // denial wins the conflict so an ambiguous catalog never becomes an image
+  // request by optimistic merging.
+  if (hasProviderCapabilityEvidence(existingEntry) && hasProviderCapabilityEvidence(incomingEntry)) {
+    const existingAt = latestProviderEvidenceAt(existingEntry);
+    const incomingAt = latestProviderEvidenceAt(incomingEntry);
+    if (existingAt !== undefined && incomingAt !== undefined && incomingAt < existingAt) return existingValue;
+    if ((existingAt === undefined || incomingAt === undefined || incomingAt === existingAt)
+      && (existingValue === 'no' || incomingValue === 'no')) return 'no';
   }
   return incomingValue;
 }
@@ -379,25 +528,23 @@ export function createModelFabricRegistry(): ModelFabricRegistry {
   const entries = new Map<string, ModelFabricEntry>();
   const aliases = new Map<string, string>();
 
-  const upsert = (entry: ModelFabricEntry): void => {
-    if (!entry || typeof entry !== 'object') throw new TypeError('model fabric entry is required');
-    const id = canonicalKey(entry.id);
-    if (!id) throw new Error('model fabric entry id is invalid');
+  const upsertNormalized = (normalized: ModelFabricEntry): void => {
+    const id = normalized.id;
     const existing = entries.get(id);
-    const normalized = Object.freeze({
-      ...entry,
-      id,
-      displayName: bounded(entry.displayName, id, DISPLAY_MAX),
-      aliases: normalizeAliases(entry.aliases ?? [], id),
-      provenance: Object.freeze((entry.provenance ?? []).slice(-64).map((item) => Object.freeze({
-        kind: item.kind,
-        source: bounded(item.source, 'unknown', SOURCE_MAX),
-        ...(item.observedAt === undefined ? {} : { observedAt: item.observedAt }),
-      }))),
-    }) as ModelFabricEntry;
     const merged = existing ? mergeEntry(existing, normalized) : normalized;
+    for (const alias of merged.aliases) {
+      const aliasKey = canonicalKey(alias);
+      const owner = aliases.get(aliasKey);
+      if (owner !== undefined && owner !== id) {
+        throw new Error(`model fabric alias collision: ${alias}`);
+      }
+    }
     entries.set(id, merged);
     for (const alias of merged.aliases) aliases.set(canonicalKey(alias), id);
+  };
+
+  const upsert = (entry: ModelFabricEntry): void => {
+    upsertNormalized(normalizeRegistryEntry(entry));
   };
 
   return Object.freeze({
@@ -406,7 +553,21 @@ export function createModelFabricRegistry(): ModelFabricRegistry {
       if (!Array.isArray(incoming) || incoming.length > 20_000) {
         throw new Error('model fabric catalog must be a bounded array');
       }
-      for (const entry of incoming) upsert(entry);
+      // Validate the complete batch before changing the registry. A malformed
+      // provider response must not leave a partially refreshed catalog behind.
+      const normalized = incoming.map((entry) => normalizeRegistryEntry(entry));
+      const pendingOwners = new Map(aliases);
+      for (const entry of normalized) {
+        for (const alias of entry.aliases) {
+          const aliasKey = canonicalKey(alias);
+          const owner = pendingOwners.get(aliasKey);
+          if (owner !== undefined && owner !== entry.id) {
+            throw new Error(`model fabric alias collision: ${alias}`);
+          }
+          pendingOwners.set(aliasKey, entry.id);
+        }
+      }
+      for (const entry of normalized) upsertNormalized(entry);
     },
     observe(model: string, providerHint?: ModelFabricProvider): ModelFabricEntry {
       const id = canonicalKey(model);
@@ -515,7 +676,7 @@ function boolCapability(value: unknown): ModelFabricCapability {
 }
 
 function numberField(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 function catalogEntry(input: {

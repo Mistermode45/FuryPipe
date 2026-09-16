@@ -80,6 +80,27 @@ export function furyLinkPathCandidates(
 }
 
 /**
+ * Build the command text consumed by cmd.exe for a resolved .cmd/.bat
+ * launcher.  Keeping this in one bounded helper makes the executable path
+ * explicit (including spaces) instead of relying on Node's deprecated
+ * `shell: true` concatenation.
+ */
+export function furyLinkWindowsCommandLine(command: readonly string[]): string {
+  if (!Array.isArray(command) || command.length === 0 || command.some((part) =>
+    typeof part !== 'string' || part.length === 0 || part.includes('\0'))) {
+    throw new TypeError('FuryLink Windows command must be a bounded non-empty argument list');
+  }
+  const quote = (part: string): string => `"${part.replaceAll('^', '^^')
+    .replaceAll('"', '^"')
+    .replaceAll('&', '^&')
+    .replaceAll('|', '^|')
+    .replaceAll('<', '^<')
+    .replaceAll('>', '^>')
+    .replaceAll('%', '^%')}"`;
+  return command.map(quote).join(' ');
+}
+
+/**
  * Only the inference path is diverted. Everything else on the host — OAuth,
  * telemetry, the control plane — is re-originated untouched, which is what
  * keeps the agent's client-side gates satisfied.
@@ -181,9 +202,9 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
   /**
    * Resolve and launch an agent on Windows, macOS and Linux.
    *
-   * Windows npm shims are .cmd/.bat files and therefore need cmd.exe semantics;
-   * Node's shell mode is used only for those resolved launcher files. Native
-   * executables stay shell-free. POSIX keeps the interactive-shell alias
+   * Windows npm shims are .cmd/.bat files and therefore need cmd.exe semantics.
+   * They are invoked through an explicit cmd.exe argv with a quoted resolved
+   * path; native executables stay shell-free. POSIX keeps the interactive-shell alias
    * fallback used by Claude aliases while preferring a concrete executable.
    */
   const spawnResolved = (command: string[], env: NodeJS.ProcessEnv) => {
@@ -193,7 +214,14 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
 
     if (process.platform === 'win32') {
       if (resolved && /\.(?:cmd|bat)$/i.test(resolved)) {
-        return spawn(resolved, command.slice(1), { ...direct, shell: true });
+        const comspec = furyLinkEnvValue(env, 'ComSpec') ?? 'cmd.exe';
+        // /s /c removes one outer quote pair. Add that pair around the fully
+        // quoted command so the launcher's own quotes survive paths with spaces.
+        const commandLine = `"${furyLinkWindowsCommandLine([resolved, ...command.slice(1)])}"`;
+        return spawn(comspec, ['/d', '/s', '/c', commandLine], {
+          ...direct,
+          windowsVerbatimArguments: true,
+        });
       }
       return spawn(resolved ?? first, command.slice(1), direct);
     }
