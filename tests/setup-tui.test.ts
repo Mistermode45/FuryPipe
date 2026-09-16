@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   detectSetupLocale,
+  interpretSetupKeypress,
   parseSetupArgs,
   persistSetupLocale,
   readConfiguredSetupLocale,
@@ -56,6 +57,15 @@ describe('FuryPipe setup TUI', () => {
     expect(rendered).toContain('furypipe doctor');
     expect(rendered).toContain('furypipe start');
     expect(rendered).toContain('READY // FuryPipe is configured.');
+  });
+
+  it('handles Windows arrow-key events with an undefined input payload', () => {
+    expect(interpretSetupKeypress(undefined, { name: 'up' })).toBe('fr');
+    expect(interpretSetupKeypress(undefined, { name: 'down' })).toBe('en');
+    expect(interpretSetupKeypress(undefined, { name: 'left' })).toBe('fr');
+    expect(interpretSetupKeypress(undefined, { name: 'right' })).toBe('en');
+    expect(interpretSetupKeypress(undefined, { name: 'enter' })).toBe('confirm');
+    expect(interpretSetupKeypress(undefined, {})).toBe('noop');
   });
 
   it('parses supported setup arguments and rejects unknown languages', () => {
