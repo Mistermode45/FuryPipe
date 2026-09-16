@@ -223,7 +223,7 @@ describe('serveModelsJson', () => {
     const body = await dash.serveModelsJson().json();
     expect(body.models[0]).toMatchObject({
       id: 'gpt-6-astra',
-      modalities: { imageInput: 'yes' },
+      modalities: { imageInput: 'unknown' },
       runtime: {
         requests: 3,
         compressedRequests: 1,
@@ -263,7 +263,7 @@ describe('serveModelsJson', () => {
     expect(body.models[0]).toMatchObject({
       provider: 'openai',
       id: 'gpt-6-astra',
-      modalities: { imageInput: 'yes' },
+      modalities: { imageInput: 'unknown' },
     });
     expect(JSON.stringify(body)).not.toContain('apiKey');
     expect(JSON.stringify(body)).not.toContain('authorization');
