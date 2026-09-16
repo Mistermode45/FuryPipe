@@ -129,6 +129,8 @@ Calling `prepareFuryTask()` can perform the normal capability-resolution checks 
 
 Execution is an explicit second step through `runPreparedFuryTask(prepared, options)`. That function forwards the prepared Skills, automatic Skill schedule, automatic MCP schedule and exact MCP inventory unchanged into `runAgent()`.
 
+Callers that want a single governed operation can use `executeFuryTask(input, options)`, which performs the same side-effect-free preparation first and then executes that exact prepared plan. It returns both the prepared plan and the final Agent Runtime result so selection and execution remain inspectable rather than being collapsed into one opaque success state.
+
 A successful callback creates an `AgentCapabilityExecutionReceipt` in the final `AgentRunResult.capabilityExecutions`. Merely registering, recommending, selecting or scheduling a capability does **not** create a receipt. The receipt contains bounded metadata/digests rather than raw Skill evidence or MCP parameters.
 
 This preserves the lifecycle boundary:
