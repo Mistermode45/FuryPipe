@@ -7,7 +7,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createFuryLinkRuntime } from './warp/index.js';
+import { createFuryLinkRuntime } from './fury-link/index.js';
 import { FuryLinkUsageError, furyLinkHelp, parseFuryLinkInvocation } from './fury-link-cli.js';
 import { once } from 'node:events';
 import * as fs from 'node:fs';
@@ -197,10 +197,14 @@ function persistModelBasesToConfig(bases: readonly string[]): void {
 }
 
 function parseCli(argv: string[]): RuntimeConfig {
-  // Only flags accepted are --help and --version. Anything else is an
-  // error — there is exactly ONE way to run FuryPipe and the dashboard
-  // exposes every metric the operator might want to inspect.
+  // The runtime has an explicit command surface. Once setup/doctor/export/stats,
+  // start and FuryLink have been dispatched, no positional command is valid.
   for (const a of argv) {
+    if (!a.startsWith('-')) {
+      console.error(`[furypipe] unknown command: ${a}`);
+      console.error('[furypipe] run `furypipe --help` for the FuryPipe command surface');
+      process.exit(2);
+    }
     if (a === '-h' || a === '--help') {
       printHelp();
       process.exit(0);
@@ -1196,12 +1200,6 @@ async function main(): Promise<void> {
   let furyLinkCommand: string[] | undefined;
   let furyLinkRoutes: string[] = [];
   let cliArgv = argv;
-
-  if (argv[0] === 'warp') {
-    console.error('[furypipe] `warp` is not a FuryPipe command anymore.');
-    console.error('[furypipe] Use FuryLink instead: furypipe link <command> [args...]');
-    process.exit(2);
-  }
 
   if (argv[0] === 'link') {
     try {
