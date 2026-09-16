@@ -63,6 +63,7 @@ import { analyzeContextFabric, finalizeContextFabricAnalysis, type ContextFabric
 import type { RecoveryHandle, RecoveryStore } from './recovery-store.js';
 import { compileFuryPrompt, type FuryPromptCompileInput, type FuryPromptCompilation } from '../fury-prompt.js';
 import type { ProviderRegistry } from './provider-fabric.js';
+import { planFuryVisionLayout } from './vision-layout.js';
 
 /** Per-block descriptor passed to `TransformOptions.keepSharp`. */
 export interface KeepSharpBlock {
@@ -905,6 +906,11 @@ export interface TransformInfo {
    *  render may repeat its section source. Dashboard-only; not persisted. */
   imageSourceTexts?: Array<string | undefined>;
   toolResultImgs?: number;
+  /** FuryVision content-aware layout decisions for imaged live-region blocks. */
+  furyVision?: {
+    denseBlocks: number;
+    structuredBlocks: number;
+  };
   /** Image blocks the CLIENT already sent (screenshots, pasted images, prior
    *  tool_result images). They count against the provider's hard image cap just
    *  like ours do, so every FuryPipe imaging path must price them in — a request
@@ -3045,8 +3051,14 @@ export async function transformRequest(
               continue;
             }
             const inner = compactSlabWhitespace(innerRaw);
-            // classifyContent sees pre-reflow `inner` so shape bucketing reflects real structure.
-            const innerR = maybeReflow(inner, o.reflow);
+            // FuryVision preserves structural lines for code/JSON/Markdown and
+            // keeps dense reflow for logs/prose. The profitability gate below
+            // sees the exact layout that will be rendered.
+            const visionLayout = planFuryVisionLayout(inner, o.reflow);
+            const innerR = maybeReflow(inner, visionLayout.reflow);
+            const visionStats = (info.furyVision ??= { denseBlocks: 0, structuredBlocks: 0 });
+            if (visionLayout.mode === 'dense') visionStats.denseBlocks += 1;
+            else visionStats.structuredBlocks += 1;
             if (innerR.length < o.minToolResultChars) {
               bumpPassthrough(info, 'below_threshold');
               rewritten.push(blk);
@@ -3157,8 +3169,11 @@ export async function transformRequest(
               }
               // Lossless whitespace compaction before gate + render.
               const innerText = compactSlabWhitespace(innerTextRaw);
-              // R3: gate/page/render on reflowed text; classify pre-reflow.
-              const innerTextR = maybeReflow(innerText, o.reflow);
+              const visionLayout = planFuryVisionLayout(innerText, o.reflow);
+              const innerTextR = maybeReflow(innerText, visionLayout.reflow);
+              const visionStats = (info.furyVision ??= { denseBlocks: 0, structuredBlocks: 0 });
+              if (visionLayout.mode === 'dense') visionStats.denseBlocks += 1;
+              else visionStats.structuredBlocks += 1;
               if (innerTextR.length < o.minToolResultChars) {
                 bumpPassthrough(info, 'below_threshold');
                 newInner.push(ib as TextBlock | ImageBlock);
