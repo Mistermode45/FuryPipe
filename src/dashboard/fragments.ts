@@ -5,6 +5,7 @@ import { HTMX_JS, ALPINE_JS } from './vendor.js';
 import { CACHE_CREATE_RATE, CACHE_READ_RATE } from '../core/baseline.js';
 import type { ControlRoomSnapshot } from '../control-room/index.js';
 import type { ModelFabricEntry } from '../core/model-fabric.js';
+import type { FuryPipeVisualPolicy } from '../core/applicability.js';
 import { createI18n } from '../i18n/index.js';
 import { CORE_CATALOGS } from '../i18n/catalogs.js';
 import type {
@@ -128,6 +129,7 @@ export function renderModelsFragment(
   enabled: boolean,
   locale = 'en',
   discovered: readonly ModelFabricEntry[] = [],
+  visualPolicy: FuryPipeVisualPolicy = 'auto',
 ): string {
   const t = (key: string): string => dashboardT(locale, key);
   const on = new Set(active);
@@ -190,10 +192,19 @@ export function renderModelsFragment(
       `</tr>`;
   }).join('');
 
+  const policyOption = (value: FuryPipeVisualPolicy, label: string): string =>
+    `<option value="${value}"${visualPolicy === value ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+
   const modelFabric = `<section class="model-fabric" aria-labelledby="model-fabric-title">` +
     `<div class="model-fabric-head"><div><strong id="model-fabric-title">Model Fabric</strong>` +
     `<span class="hint">discovered/observed runtime catalog · discovered ≠ verified ≠ executed</span></div>` +
-    `<a class="mini-btn" href="/api/models.json" target="_blank" rel="noopener">JSON</a></div>` +
+    `<div class="model-fabric-actions"><label for="visual-policy">Visual policy</label>` +
+    `<select id="visual-policy" name="policy" hx-post="/fragments/models" hx-target="#frag-models" hx-trigger="change">` +
+    policyOption('auto', 'AUTO') +
+    policyOption('max_savings', 'MAX SAVINGS') +
+    policyOption('safe_exact', 'SAFE EXACT') +
+    policyOption('text_only', 'TEXT ONLY') +
+    `</select><a class="mini-btn" href="/api/models.json" target="_blank" rel="noopener">JSON</a></div></div>` +
     (discoveredRows
       ? `<div class="model-fabric-scroll"><table class="model-fabric-table"><thead><tr>` +
         `<th>Model</th><th>Provider</th><th>Vision</th><th>Profile</th><th>Policy</th><th>Lifecycle</th><th>Last observed</th>` +
@@ -1096,6 +1107,10 @@ const CSS = `
   .model-fabric { margin: 0 0 18px; padding: 12px 0 4px; border-top: 1px solid var(--border); }
   .model-fabric-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
   .model-fabric-head > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+  .model-fabric-actions { display: flex; align-items: center; gap: 8px; }
+  .model-fabric-actions label { color: var(--ink-2); font-size: 11px; font-weight: 600; }
+  .model-fabric-actions select { color: var(--ink); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px; padding: 5px 8px; font: 600 11px/1.2 var(--mono); }
+  .model-fabric-actions select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .model-fabric-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
   .model-fabric-table { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 12px; }
   .model-fabric-table th, .model-fabric-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
