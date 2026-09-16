@@ -58,9 +58,11 @@ describe('Node model catalog refresh', () => {
     const urls: string[] = [];
     const report = await refreshRuntimeModelCatalog({
       env: { GEMINI_API_KEY: 'gemini-secret' },
-      fetchImpl: (async (input) => {
+      fetchImpl: (async (input, init) => {
         const url = new URL(String(input));
         urls.push(url.toString());
+        expect(url.searchParams.has('key')).toBe(false);
+        expect(new Headers(init?.headers).get('x-goog-api-key')).toBe('gemini-secret');
         const pageToken = url.searchParams.get('pageToken');
         return new Response(JSON.stringify(pageToken === null ? {
           models: [{ name: 'models/gemini-3.8-flash', displayName: 'Gemini 3.8 Flash' }],
