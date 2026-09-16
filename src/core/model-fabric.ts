@@ -231,7 +231,10 @@ function inferredProfile(model: string, provider: ModelFabricProvider): ModelVis
   // silently inherit another reader's exact-recall claim.
   if (provider === 'anthropic') {
     if (/^claude-fable-5(?:-|$)/u.test(id)) return 'quality_verified';
-    return inferredModalities(id, provider).imageInput === 'yes' ? 'unprofiled' : 'not_applicable';
+    // Current non-Fable Claude readers have a measured legible 14px geometry,
+    // but broader multi-page recall evidence is weaker than the exact-value
+    // sweep. Geometry is therefore CALIBRATED without claiming quality verified.
+    return inferredModalities(id, provider).imageInput === 'yes' ? 'calibrated' : 'not_applicable';
   }
   if (provider === 'google') {
     return hasGeminiMeasuredProfile(id) ? 'quality_verified' : 'unprofiled';
