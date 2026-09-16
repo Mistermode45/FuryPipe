@@ -29,6 +29,10 @@
       "types": "./dist/core/model-fabric.d.ts",
       "import": "./dist/core/model-fabric.js"
     },
+    "./model-catalog-node": {
+      "types": "./dist/model-catalog-node.d.ts",
+      "import": "./dist/model-catalog-node.js"
+    },
     "./proxy": {
       "types": "./dist/core/proxy.d.ts",
       "import": "./dist/core/proxy.js"
