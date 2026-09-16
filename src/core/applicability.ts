@@ -1,6 +1,10 @@
 /** Applicability helpers for FuryPipe's production-safe model scope. */
 
-import { isMisresolvedModelId } from './gpt-model-profiles.js';
+import {
+  isMisresolvedModelId,
+  resolveVisionPricingEvidence,
+  type FuryVisionPricingEvidence,
+} from './gpt-model-profiles.js';
 import {
   resolveRuntimeVisualModel,
   type ModelVisualResolution,
@@ -12,6 +16,7 @@ export type FuryPipeApplicabilityReason =
   | 'unsupported_model'
   | 'vision_capability_unknown'
   | 'text_only_model'
+  | 'visual_pricing_unknown'
   | 'visual_profile_blocked'
   | 'unsupported_method'
   | 'unsupported_path'
@@ -140,9 +145,10 @@ export interface FuryPipeModelEligibility {
   readonly eligible: boolean;
   readonly reason: Extract<
     FuryPipeApplicabilityReason,
-    'eligible' | 'unsupported_model' | 'vision_capability_unknown' | 'text_only_model' | 'visual_profile_blocked'
+    'eligible' | 'unsupported_model' | 'vision_capability_unknown' | 'text_only_model' | 'visual_pricing_unknown' | 'visual_profile_blocked'
   >;
   readonly resolution?: ModelVisualResolution;
+  readonly pricingEvidence?: FuryVisionPricingEvidence;
   readonly source: 'operator_scope' | 'automatic_model_fabric';
 }
 
@@ -241,12 +247,31 @@ export function resolveFuryPipeModelEligibility(
 
   const broadVisual = visualPolicy === 'max_savings';
   const qualityVerified = resolution.profile === 'quality_verified' && resolution.mode === 'visual';
+  const pricingEvidence = resolveVisionPricingEvidence(base);
+
   if (!broadVisual && !qualityVerified) {
     return Object.freeze({
       eligible: false,
       reason: 'unsupported_model',
       source: 'automatic_model_fabric',
       resolution,
+      pricingEvidence,
+    });
+  }
+
+  // Dynamic discovery can prove "accepts image input" before FuryPipe has a
+  // provider-appropriate cost profile. In automatic broad mode that model
+  // remains native rather than being priced with DEFAULT_GPT_PROFILE's OpenAI
+  // tile formula. Operators can still supply an explicit FURYPIPE_GPT_PROFILES
+  // entry (pricingEvidence=operator_profile) or an explicit FURYPIPE_MODELS
+  // scope if they intentionally accept that override path.
+  if (broadVisual && pricingEvidence === 'unknown') {
+    return Object.freeze({
+      eligible: false,
+      reason: 'visual_pricing_unknown',
+      source: 'automatic_model_fabric',
+      resolution,
+      pricingEvidence,
     });
   }
 
@@ -255,6 +280,7 @@ export function resolveFuryPipeModelEligibility(
     reason: 'eligible',
     source: 'automatic_model_fabric',
     resolution,
+    pricingEvidence,
   });
 }
 
