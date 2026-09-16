@@ -204,7 +204,7 @@ describe('renderRecentFragment — billed delta presentation', () => {
     } satisfies RecentPayload);
 
     expect(html).toContain('Saved/lost');
-    expect(html).toContain('class="num neg">-61,908</td>');
+    expect(html).toMatch(/class="num neg"(?: data-label="Saved\/lost")?>-61,908<\/td>/u);
     expect(html).not.toContain('class="num pos">—</td>');
   });
 });
