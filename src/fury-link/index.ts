@@ -177,7 +177,7 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
     const env = { ...process.env };
     // The agent must believe it is talking to api.anthropic.com. Both of these
     // would defeat that, and either may be left over in the user's shell from a
-    // previous non-warp session.
+    // previous non-FuryLink session.
     delete env.ANTHROPIC_BASE_URL;
     delete env.ANTHROPIC_UNIX_SOCKET;
     env.HTTP_PROXY = proxyUrl;
@@ -201,7 +201,7 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
     env.REQUESTS_CA_BUNDLE = ca.bundlePath; // Python requests / httpx
 
     const child = spawnResolved(command, env);
-    // The child's proxy and CA point at this process. If warp dies for any
+    // The child's proxy and CA point at this process. If FuryLink exits for any
     // reason the child is reparented to init and keeps running against a closed
     // port, so every request fails and the agent looks hung instead of exiting.
     // Take it with us on every exit path, including a crash.
@@ -212,7 +212,7 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
     process.on('exit', () => {
       if (childLive) child.kill('SIGTERM');
     });
-    // A connection dying is not a warp failure. The upstream resets, the proxy
+    // A connection dying is not a FuryLink failure. The upstream resets, the proxy
     // gets restarted, a keep-alive socket goes away between requests — all of
     // that arrives here as an errno on a socket nobody was listening to at that
     // instant. Exiting on it would take the agent down with us (see the exit
@@ -256,11 +256,11 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
     // its proxy pointed at a port that is about to close.
     const forwarded = ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT'] as const;
     child.on('exit', (code, signal) => {
-      // Reproduce the child's own exit status so warp is transparent to callers.
+      // Reproduce the child's own exit status so FuryLink is transparent to callers.
       // Re-raising means routing the signal back through our own handlers, so
       // drop them first: Ctrl-C kills the child with SIGINT, and without this
       // the re-raise just re-enters the forwarder, kills an already-dead child
-      // and leaves warp running forever.
+      // and leaves FuryLink running forever.
       if (signal) {
         for (const s of forwarded) process.removeAllListeners(s);
         process.kill(process.pid, signal);
@@ -289,7 +289,7 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
     } else {
       console.error(
         `[furypipe] FuryLink CA bundle → ${ca.bundlePath} (no system root bundle found; ` +
-          `non-FuryPipe HTTPS in the child may fail verification — set SSL_CERT_FILE to your OS bundle before warp)`,
+          `non-FuryPipe HTTPS in the child may fail verification — set SSL_CERT_FILE to your OS bundle before FuryLink)`,
       );
     }
     console.error(`[furypipe] FuryLink exec → ${command.join(' ')}`);
