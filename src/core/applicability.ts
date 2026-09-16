@@ -220,11 +220,25 @@ export function resolveFuryPipeModelEligibility(
     }
     const scoped = matchesExplicitScope(base);
     if (scoped) {
+      // FURYPIPE_MODELS is a scope/authorization override, not pricing
+      // evidence. It must not silently authorize profitability decisions using
+      // another model/provider's fallback economics.
+      const pricingEvidence = resolveVisionPricingEvidence(base);
+      if (pricingEvidence === 'unknown') {
+        return Object.freeze({
+          eligible: false,
+          reason: 'visual_pricing_unknown',
+          source: 'operator_scope',
+          resolution,
+          pricingEvidence,
+        });
+      }
       return Object.freeze({
         eligible: true,
         reason: 'eligible',
         source: 'operator_scope',
         resolution,
+        pricingEvidence,
       });
     }
     return Object.freeze({

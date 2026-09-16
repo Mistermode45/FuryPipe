@@ -77,7 +77,10 @@ operator-owned geometry/pricing without waiting for a FuryPipe release. ExactGua
 profitability, image count, decoded image-byte budget and request-size checks still apply.
 
 A model positively known to be text-only always stays native, even if a stale
-operator CSV contains its ID.
+operator CSV contains its ID. Likewise, `FURYPIPE_MODELS` is only a scope
+override: it cannot turn unknown image-token economics into a measured pricing
+profile. Future OpenAI families such as GPT-6 remain pricing-unknown until
+provider-backed or operator-owned evidence supplies that cost model.
 
 ## Fidelity and geometry
 

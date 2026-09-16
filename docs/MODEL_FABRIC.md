@@ -143,7 +143,9 @@ conservative_openai
 unknown
 ```
 
-Unknown pricing keeps automatic visual transformation native until a provider-appropriate cost model or explicit operator profile exists.
+Unknown pricing keeps visual transformation native until a provider-appropriate cost model or explicit operator profile exists. An explicit `FURYPIPE_MODELS` scope authorizes a model ID; it does not manufacture pricing evidence.
+
+For example, a newly discovered GPT-6-family reader can be vision-capable while its FuryPipe pricing state remains `unknown`. It is therefore not admitted by `max_savings` until provider-backed economics or an explicit operator profile exists.
 
 The profitability gate remains request-specific even after a model becomes eligible.
 

@@ -231,7 +231,7 @@ describe('model fabric', () => {
     expect(resolveFuryPipeModelEligibility('gpt-6-astra')).toMatchObject({
       eligible: false,
       reason: 'visual_profile_unverified',
-      pricingEvidence: 'conservative_openai',
+      pricingEvidence: 'unknown',
     });
 
     process.env.FURYPIPE_VISUAL_POLICY = 'safe_exact';
@@ -242,7 +242,11 @@ describe('model fabric', () => {
     process.env.FURYPIPE_VISUAL_POLICY = 'max_savings';
     expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(true);
-    expect(isFuryPipeSupportedModel('gpt-6-astra')).toBe(true);
+    expect(resolveFuryPipeModelEligibility('gpt-6-astra')).toMatchObject({
+      eligible: false,
+      reason: 'visual_pricing_unknown',
+      pricingEvidence: 'unknown',
+    });
     expect(isFuryPipeSupportedModel('grok-4.6')).toBe(true);
 
     process.env.FURYPIPE_VISUAL_POLICY = 'text_only';
@@ -319,8 +323,19 @@ describe('model fabric', () => {
       pricingEvidence: 'provider_profile',
     });
     expect(resolveFuryPipeModelEligibility('gpt-6-astra')).toMatchObject({
+      eligible: false,
+      reason: 'visual_pricing_unknown',
+      pricingEvidence: 'unknown',
+    });
+    process.env.FURYPIPE_GPT_PROFILES = JSON.stringify({
+      'gpt-6-astra': {
+        vision: { regime: 'patch', multiplier: 1 },
+        stripCols: 84,
+      },
+    });
+    expect(resolveFuryPipeModelEligibility('gpt-6-astra')).toMatchObject({
       eligible: true,
-      pricingEvidence: 'conservative_openai',
+      pricingEvidence: 'operator_profile',
     });
     expect(resolveFuryPipeModelEligibility('grok-4.6')).toMatchObject({
       eligible: true,

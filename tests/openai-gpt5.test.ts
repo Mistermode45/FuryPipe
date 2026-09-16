@@ -23,15 +23,15 @@ afterEach(() => {
 // ── Task 1: applicability gate ──────────────────────────────────────────────
 
 describe('isFuryPipeSupportedGptModel', () => {
-  it('AUTO admits proven OpenAI vision readers while preserving calibrated Sol metadata', () => {
-    expect(isFuryPipeSupportedGptModel('gpt-5')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-5.5')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-5.6')).toBe(true);
+  it('AUTO admits calibrated OpenAI readers without promoting unprofiled families', () => {
+    expect(isFuryPipeSupportedGptModel('gpt-5')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.5')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6')).toBe(false);
     expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-5-mini')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-5.6-nano')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-6-astra')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5-mini')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-nano')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-6-astra')).toBe(false);
     expect(isFuryPipeSupportedGptModel('gpt-5.6-sol[1m]')).toBe(true);
     expect(isFuryPipeSupportedGptModel('gpt-5.6-sol-codex[1m]')).toBe(true);
   });
@@ -46,8 +46,8 @@ describe('isFuryPipeSupportedGptModel', () => {
     expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
   });
 
-  it('admits other proven OpenAI vision families but rejects invented/empty ids', () => {
-    expect(isFuryPipeSupportedGptModel('gpt-4o')).toBe(true);
+  it('does not equate OpenAI vision capability with AUTO reader-quality evidence', () => {
+    expect(isFuryPipeSupportedGptModel('gpt-4o')).toBe(false);
     expect(isFuryPipeSupportedGptModel('gpt-50')).toBe(false);
     expect(isFuryPipeSupportedGptModel('')).toBe(false);
     expect(isFuryPipeSupportedGptModel(null)).toBe(false);

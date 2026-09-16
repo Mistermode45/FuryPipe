@@ -517,9 +517,9 @@ Selon l’entrée, l’export peut produire des artefacts comme `page-*.png`, `f
 
 La politique par défaut combine **découverte dynamique + AUTO evidence-first**.
 
-Le Model Fabric découvre/observe les modèles indépendamment de l'autorisation de compression. En `AUTO`, les profils visuels dont la qualité est vérifiée **ou calibrée** peuvent être transformés sans surcharge explicite. Les catalogues providers peuvent faire apparaître de nouveaux modèles sans nouvelle release, mais `découvert != vision-capable != qualité vérifiée`.
+Le Model Fabric découvre/observe les modèles indépendamment de l'autorisation de compression. En `AUTO`, les profils visuels dont la qualité est vérifiée **ou calibrée** peuvent être transformés sans surcharge explicite. Les catalogues providers peuvent faire apparaître de nouveaux modèles sans nouvelle release, mais `découvert != vision-capable != calibré != qualité vérifiée`.
 
-`FURYPIPE_VISUAL_POLICY=max_savings` élargit l'éligibilité automatique à tout modèle dont l'entrée image est positivement prouvée. ExactGuard, la protection de l'état protocolaire, les budgets image/octets et la rentabilité restent obligatoires. `safe_exact` est plus strict qu'AUTO et exige un profil quality-verified ; `text_only` coupe globalement la transformation visuelle.
+`FURYPIPE_VISUAL_POLICY=max_savings` élargit l'éligibilité aux modèles dont l'entrée image est positivement prouvée **et** dont le pricing image est connu via une preuve adaptée au provider. ExactGuard, la protection de l'état protocolaire, les budgets image/octets et la rentabilité restent obligatoires. `safe_exact` est plus strict qu'AUTO et exige un profil quality-verified ; `text_only` coupe globalement la transformation visuelle.
 
 `FURYPIPE_MODELS` reste une surcharge de portée rétrocompatible. Un CSV sélectionne les bases de modèles ; `off` désactive la compression visuelle.
 

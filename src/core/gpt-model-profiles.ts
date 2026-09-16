@@ -327,10 +327,11 @@ const BUILTIN_RULES: ProfileRule[] = [
     test: (m) => m === 'gpt-5.6-sol' || m.startsWith('gpt-5.6-sol-'),
     profile: GPT56_SOL_PROFILE,
   },
-  // Current 6.x OpenAI readers are vision-capable. Until an exact image-token
-  // regime is source-bound per model, use the conservative fallback tile cost
-  // with the legible geometry. Text pricing ratios for Astra are 1.0/10.0
-  // cached/uncached and 50/10 output/input.
+  // Current 6.x OpenAI readers are vision-capable, but FuryPipe does not yet
+  // have source-bound image-token economics for this family. Keep a legible
+  // geometry fallback for explicit/operator-owned experiments only; the
+  // applicability gate treats GPT-6 visual pricing as UNKNOWN until an
+  // operator profile or provider-backed pricing profile supplies evidence.
   {
     test: (m) => /^gpt-6(?:\.|-|$)/.test(m),
     profile: currentOpenAIProfile({ regime: 'tile', base: 85, perTile: 170 }, {
@@ -467,9 +468,14 @@ export function resolveVisionPricingEvidence(
   if (ids.some((id) => isMeasuredGrokPricingId(id))) return 'provider_profile';
   if (ids.some((id) => isQwenModel(id))) return 'provider_profile';
 
-  // DEFAULT_GPT_PROFILE is deliberately an OpenAI-only conservative fallback.
-  // These families may use it without pretending another provider follows
-  // OpenAI's tile formula.
+  // GPT-6 is known as an OpenAI family, but family identity is not evidence for
+  // its image-token accounting. Do not turn the internal conservative geometry
+  // fallback into a profitability claim.
+  if (ids.some((id) => /^gpt-6(?:\.|-|$)/u.test(id))) return 'unknown';
+
+  // DEFAULT_GPT_PROFILE is deliberately an OpenAI-only conservative fallback
+  // for older/current families whose image-token regime FuryPipe already uses
+  // as an explicit compatibility contract.
   if (ids.some((id) =>
     /^(?:gpt-|chat-latest$|o(?:1|3|4)(?:-|$))/u.test(id))) {
     return 'conservative_openai';

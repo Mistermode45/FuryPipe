@@ -108,17 +108,17 @@ describe('public library API', () => {
     }
   });
 
-  it('AUTO admits proven OpenAI vision readers while explicit scope can still narrow them', () => {
-    expect(isFuryPipeSupportedGptModel('gpt-5')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-5.5')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-5.5-codex')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-5.6')).toBe(true);
+  it('AUTO keeps unprofiled OpenAI readers native while calibrated Sol remains eligible', () => {
+    expect(isFuryPipeSupportedGptModel('gpt-5')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.5')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.5-codex')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6')).toBe(false);
     expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
     expect(isFuryPipeSupportedGptModel('gpt-5.6-sol-codex')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-5-mini')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-6-astra')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-4o')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5-mini')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-6-astra')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-4o')).toBe(false);
 
     process.env.FURYPIPE_MODELS = 'gpt-5.6-sol';
     expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
