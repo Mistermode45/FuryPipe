@@ -22,6 +22,7 @@ behavioral changes, patch = fixes).
 
 - Fixed the Windows interactive setup crash caused by keypress events whose printable input is undefined.
 - Fixed cross-platform agent command resolution so Windows `.cmd` / `.bat` npm shims and PATHEXT launchers are handled explicitly.
+- Preserved public TLS trust in FuryLink child processes on Windows by falling back to Node's built-in public root certificates when the OS exposes no PEM bundle; replacement trust variables no longer receive a FuryLink-CA-only bundle.
 
 ## 0.15.0 — 2026-09-16
 
