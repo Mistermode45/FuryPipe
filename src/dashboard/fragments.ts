@@ -563,7 +563,7 @@ export function renderContextMapFragment(
       ids
         .map(
           (id) =>
-            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="ppPin(${id});ppSource(true)" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
+            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="furyPin(${id});furySource(true)" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
         )
         .join('') +
       `</div>`
@@ -763,7 +763,7 @@ export function renderLatestFragment(inp: LatestFragmentInput, locale = 'en'): s
 
   const pinBar =
     pin != null
-      ? `<div class="viewer-bar"><button class="mini-btn" type="button" onclick="ppPin(null)">${escapeHtml(t('dashboard.latest.back'))}</button><span class="mini-label">${escapeHtml(t('dashboard.latest.image', { id: pin }))}</span></div>`
+      ? `<div class="viewer-bar"><button class="mini-btn" type="button" onclick="furyPin(null)">${escapeHtml(t('dashboard.latest.back'))}</button><span class="mini-label">${escapeHtml(t('dashboard.latest.image', { id: pin }))}</span></div>`
       : '';
 
   let main: string;
@@ -780,7 +780,7 @@ export function renderLatestFragment(inp: LatestFragmentInput, locale = 'en'): s
   const caption =
     pin != null ? escapeHtml(t('dashboard.latest.image', { id: pin })) : meta ? `${escapeHtml(meta)} · ${escapeHtml(t('dashboard.latest.topLeft'))}` : '';
   const srcBtn = showBtn
-    ? `<button class="mini-btn" type="button" onclick="ppSource(${showSource ? 'false' : 'true'})">${escapeHtml(t(showSource ? 'dashboard.latest.hideSource' : 'dashboard.latest.showSource'))}</button>`
+    ? `<button class="mini-btn" type="button" onclick="furySource(${showSource ? 'false' : 'true'})">${escapeHtml(t(showSource ? 'dashboard.latest.hideSource' : 'dashboard.latest.showSource'))}</button>`
     : '';
 
   let pane = '';
@@ -1327,21 +1327,21 @@ const CSS = `
 // Client glue: window.fury (pin+source state) → hx-vals; preserves <details> open state across swaps; routes htmx errors to toast tray.
 const GLUE_JS = `
   window.fury = { pin: null, src: false };
-  function ppPin(id) {
+  function furyPin(id) {
     window.fury.pin = id;
     htmx.trigger('#frag-latest', 'fury-refresh');
   }
-  function ppSource(on) {
+  function furySource(on) {
     window.fury.src = on;
     htmx.trigger('#frag-latest', 'fury-refresh');
   }
   document.body.addEventListener('htmx:beforeSwap', function (ev) {
     const open = [];
     ev.detail.target.querySelectorAll('details[open][id]').forEach(function (d) { open.push(d.id); });
-    ev.detail.target.__ppOpen = open;
+    ev.detail.target.__furyOpen = open;
   });
   document.body.addEventListener('htmx:afterSwap', function (ev) {
-    (ev.detail.target.__ppOpen || []).forEach(function (id) {
+    (ev.detail.target.__furyOpen || []).forEach(function (id) {
       const d = document.getElementById(id);
       if (d) d.setAttribute('open', '');
     });
