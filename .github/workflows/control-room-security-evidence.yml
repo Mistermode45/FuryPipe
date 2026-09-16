@@ -2,9 +2,9 @@ name: Control Room Security Evidence
 
 on:
   pull_request:
-    branches: [v5-production-hardening, v5-chatgpt-post-codex-integrity-final-validation]
+    branches: [v5-codex-review-clean, v5-production-hardening, v5-chatgpt-post-codex-integrity-final-validation]
   push:
-    branches: [v5-production-hardening]
+    branches: [v5-codex-review-clean, v5-production-hardening]
   workflow_dispatch:
 
 permissions:
