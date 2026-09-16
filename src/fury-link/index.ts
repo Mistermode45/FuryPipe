@@ -326,10 +326,12 @@ export function createFuryLinkRuntime(options: FuryLinkRuntimeOptions): FuryLink
     console.error(`[furypipe] FuryLink CA → ${ca.certPath}`);
     if (ca.systemRootsPath) {
       console.error(`[furypipe] FuryLink CA bundle → ${ca.bundlePath} (+ system roots from ${ca.systemRootsPath})`);
+    } else if (ca.bundleIncludesPublicRoots) {
+      console.error(`[furypipe] FuryLink CA bundle → ${ca.bundlePath} (+ Node built-in public roots)`);
     } else {
       console.error(
-        `[furypipe] FuryLink CA bundle → ${ca.bundlePath} (no system root bundle found; ` +
-          `non-FuryPipe HTTPS in the child may fail verification — set SSL_CERT_FILE to your OS bundle before FuryLink)`,
+        `[furypipe] FuryLink CA bundle → ${ca.bundlePath} (no public root bundle available; ` +
+          `non-FuryPipe HTTPS in the child may fail verification)`,
       );
     }
     console.error(`[furypipe] FuryLink exec → ${command.join(' ')}`);
