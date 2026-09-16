@@ -132,6 +132,23 @@ try {
   assert(/FuryPipe setup/u.test(setupHelp.stdout), 'setup help is missing FuryPipe branding');
   assert(/--lang=fr\|en/u.test(setupHelp.stdout), 'setup help is missing bilingual language selection');
 
+  const linkHelp = await run(process.execPath, [cli, 'link', '--help'], installDir);
+  assert(/FuryLink/u.test(linkHelp.stdout), 'FuryLink help is missing FuryPipe link branding');
+  assert(/furypipe link codex/u.test(linkHelp.stdout), 'FuryLink help is missing separator-free Windows syntax');
+  assert(!/furypipe warp/u.test(linkHelp.stdout), 'retired warp command leaked into FuryLink help');
+
+  // Cross-platform launcher smoke. On Windows npm is normally an npm.cmd shim;
+  // this proves FuryLink resolves PATHEXT launchers instead of falling through
+  // to a POSIX /bin/sh path. The child makes no provider request, so a running
+  // FuryPipe listener is not required for this launcher-only check.
+  const linkLaunch = await run(process.execPath, [cli, 'link', 'npm', '--version'], installDir, {
+    ...process.env,
+    CI: '1',
+    NO_COLOR: '1',
+  });
+  assert(/^\d+\.\d+/u.test(linkLaunch.stdout.trim()), `FuryLink did not launch npm: ${linkLaunch.stdout}`);
+  assert(/FuryLink exec/u.test(linkLaunch.stderr), 'FuryLink launcher did not emit its execution receipt');
+
   const setupConfig = path.join(installDir, 'furypipe-setup-smoke.json');
   const occupied = createServer();
   await new Promise((resolve, reject) => {
