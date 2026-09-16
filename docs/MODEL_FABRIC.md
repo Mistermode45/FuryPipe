@@ -56,9 +56,9 @@ When `FURYPIPE_MODELS` is unset or empty, FuryPipe uses the Model Fabric rather 
 
 | Policy | Behaviour |
 | --- | --- |
-| `auto` | Accept quality-verified and calibrated readers, plus unprofiled vision readers only when FuryPipe has provider-appropriate image economics. |
+| `auto` | Accept quality-verified and calibrated readers. Discovery or pricing evidence alone cannot promote an unprofiled reader. |
 | `safe_exact` | Accept only quality-verified visual readers. |
-| `max_savings` | Broaden to every positively proven vision reader for which image economics are known; ExactGuard and profitability/budget gates still apply. |
+| `max_savings` | Broaden to positively proven vision readers for which provider-appropriate image economics are known; ExactGuard and profitability/budget gates still apply. |
 | `text_only` | Hard visual bypass. |
 
 `FURYPIPE_MODELS` remains an explicit operator scope override and can narrow the model bases. A positively proven text-only model cannot be forced into an image request by a stale CSV.

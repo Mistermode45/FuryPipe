@@ -270,18 +270,16 @@ export function resolveFuryPipeModelEligibility(
   const qualityVerified = resolution.profile === 'quality_verified';
   const calibrated = resolution.profile === 'calibrated';
   const pricingEvidence = resolveVisionPricingEvidence(base);
-  const canaryWithKnownEconomics = resolution.mode === 'canary' && pricingEvidence !== 'unknown';
 
-  // AUTO is future-proof but still evidence-gated: a newly released model can
-  // enter the Visual Engine when image input and provider-appropriate economics
-  // are both proven, even before it has earned CALIBRATED/QUALITY_VERIFIED.
-  // Such readers remain visibly UNPROFILED/CANARY in Model Fabric and downstream
-  // ExactGuard, byte/image budgets and profitability gates still decide whether
-  // a particular block is actually externalized.
+  // AUTO is deliberately conservative about reader quality: a model must have
+  // earned either CALIBRATED or QUALITY_VERIFIED status before automatic visual
+  // transformation is allowed. Provider discovery plus pricing evidence alone
+  // is not reader-quality evidence. MAX_SAVINGS is the explicit policy that can
+  // admit positively proven but still UNPROFILED vision readers.
   const policyAllowsProfile = visualPolicy === 'safe_exact'
     ? qualityVerified
     : visualPolicy === 'auto'
-      ? (qualityVerified || calibrated || canaryWithKnownEconomics)
+      ? (qualityVerified || calibrated)
       : broadVisual;
 
   if (!policyAllowsProfile) {

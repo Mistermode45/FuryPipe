@@ -26,9 +26,9 @@ Catalog failures are diagnostic and do not block ordinary proxying.
 
 `FURYPIPE_VISUAL_POLICY` supports:
 
-- `auto` — evidence-first; automatic imaging requires a quality-verified profile.
-- `safe_exact` — currently the same admission boundary as `auto`, reserved as
-  the stable conservative policy surface.
+- `auto` — evidence-first; automatic imaging accepts quality-verified or
+  calibrated reader profiles, but not unprofiled readers.
+- `safe_exact` — stricter than `auto`; only quality-verified readers are admitted.
 - `max_savings` — admits positively proven image-capable models only when FuryPipe
   also has provider-appropriate image-pricing evidence. A catalog entry does not
   make OpenAI tile math valid for another provider. Downstream ExactGuard,

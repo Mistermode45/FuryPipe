@@ -116,7 +116,7 @@ Depending on the input, export can produce artifacts such as `page-*.png`, `fact
 
 Default policy: **dynamic discovery + evidence-first AUTO**.
 
-Model Fabric discovers/observes models independently from visual authorization. In `AUTO`, quality-verified **and calibrated** visual readers transform without an explicit model override, so measured Claude/Grok readers do not fall back to plain text merely because their stronger quality-verification gate is still pending. Configured provider catalogs can surface newly released models without a FuryPipe release, but `discovered != vision-capable != calibrated != quality-verified`.
+Model Fabric discovers/observes models independently from visual authorization. In `AUTO`, quality-verified **or calibrated** visual readers transform without an explicit model override, so measured Claude/Grok readers do not fall back to plain text merely because their stronger quality-verification gate is still pending. Configured provider catalogs can surface newly released models without a FuryPipe release, but `discovered != vision-capable != calibrated != quality-verified`.
 
 `FURYPIPE_VISUAL_POLICY=max_savings` broadens automatic eligibility to models whose image-input capability is positively proven **and** whose image-token pricing/profile is provider-appropriate. Discovery alone never causes an unknown provider to inherit OpenAI tile economics. ExactGuard, protocol-state protection, image/byte limits and profitability checks still apply. `safe_exact` is stricter than AUTO and accepts only quality-verified profiles; `text_only` disables visual transformation globally.
 
