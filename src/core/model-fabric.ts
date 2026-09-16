@@ -241,7 +241,7 @@ function inferredProfile(model: string, provider: ModelFabricProvider): ModelVis
     // current Claude families are vision-capable but remain UNPROFILED until
     // FuryPipe records model-specific recall/calibration evidence.
     if (/^claude-opus-(?:5|4-(?:8|7|6|5))(?:-|$)/u.test(id)) return 'calibrated';
-    return inferredModalities(id, provider).imageInput === 'yes' ? 'unprofiled' : 'not_applicable';
+    return inferredModalities(id, provider).imageInput === 'no' ? 'not_applicable' : 'unprofiled';
   }
   if (provider === 'google') {
     return hasGeminiMeasuredProfile(id) ? 'quality_verified' : 'unprofiled';
@@ -250,7 +250,7 @@ function inferredProfile(model: string, provider: ModelFabricProvider): ModelVis
     // Sol has a measured geometry but the existing pilot still recorded an
     // exact-identifier truncation, so it is calibrated rather than verified.
     if (/^gpt-5\.6-sol(?:-|$)/u.test(id)) return 'calibrated';
-    return inferredModalities(id, provider).imageInput === 'yes' ? 'unprofiled' : 'not_applicable';
+    return inferredModalities(id, provider).imageInput === 'no' ? 'not_applicable' : 'unprofiled';
   }
   if (provider === 'xai') {
     // Grok has measured geometry/economics, but its exact-recall battery is not
