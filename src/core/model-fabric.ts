@@ -224,13 +224,27 @@ function inferredModalities(model: string, provider: ModelFabricProvider): Model
 
 function inferredProfile(model: string, provider: ModelFabricProvider): ModelVisualProfileState {
   const id = unqualifiedModelId(normalizeId(model));
-  if (provider === 'anthropic') return 'calibrated';
-  if (provider === 'google') return hasGeminiMeasuredProfile(id) ? 'calibrated' : 'unprofiled';
+
+  // A provider/family capability rule proves that a model can SEE images; it
+  // does not prove that it can recover dense FuryPipe pages accurately. Keep
+  // quality verification model-specific so a newly released sibling cannot
+  // silently inherit another reader's exact-recall claim.
+  if (provider === 'anthropic') {
+    if (/^claude-fable-5(?:-|$)/u.test(id)) return 'quality_verified';
+    return inferredModalities(id, provider).imageInput === 'yes' ? 'unprofiled' : 'not_applicable';
+  }
+  if (provider === 'google') {
+    return hasGeminiMeasuredProfile(id) ? 'quality_verified' : 'unprofiled';
+  }
   if (provider === 'openai') {
+    // Sol has a measured geometry but the existing pilot still recorded an
+    // exact-identifier truncation, so it is calibrated rather than verified.
     if (/^gpt-5\.6-sol(?:-|$)/u.test(id)) return 'calibrated';
     return inferredModalities(id, provider).imageInput === 'yes' ? 'unprofiled' : 'not_applicable';
   }
   if (provider === 'xai') {
+    // Grok has measured geometry/economics, but its exact-recall battery is not
+    // strong enough for a default quality-verified claim.
     if (/^grok-4\.[56](?:-|$)/u.test(id)) return 'calibrated';
     return 'unprofiled';
   }
@@ -428,7 +442,11 @@ export function createModelFabricRegistry(): ModelFabricRegistry {
       if (entry.visual.profile === 'calibrated') {
         return Object.freeze({
           model: entry.id, provider: entry.provider, imageInput: entry.modalities.imageInput,
-          profile: entry.visual.profile, policy: entry.visual.policy, mode: 'visual',
+          profile: entry.visual.profile, policy: entry.visual.policy,
+          // Calibration proves geometry/cost behavior, not necessarily exact
+          // recall. AUTO therefore keeps it in canary until a caller explicitly
+          // selects MAX_SAVINGS or quality evidence promotes the profile.
+          mode: entry.visual.policy === 'max_savings' ? 'visual' : 'canary',
           reason: 'calibrated_profile', evidence: entry.provenance,
         });
       }
