@@ -268,6 +268,8 @@ Report vulnerabilities through GitHub private vulnerability reporting, **not** a
 
 FuryPipe is a governed context runtime rather than a single-purpose proxy. Its public surface combines Context Fabric, FuryLink agent connectivity, adaptive visual optimization, provider routing, MCP, memory, agent/skill orchestration and evidence-first runtime receipts behind one FuryPipe-native control plane.
 
+The loopback Control Plane V2 exposes only bounded, read-only runtime and source-bound evidence. It does not execute capabilities from the dashboard; unavailable wiring remains fail-visible. See [Control Plane V2](docs/CONTROL_PLANE.md).
+
 The visual engine uses provider-priced geometry planning and lossless rendering safeguards; transformations remain gated by profitability and fidelity checks rather than being applied blindly. See [Visual Engine](docs/VISUAL_ENGINE.md) for the pipeline and release invariants.
 ## CLI
 
