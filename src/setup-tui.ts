@@ -54,14 +54,6 @@ const A = {
   bgBlue: '\x1b[48;2;23;37;84m',
 } as const;
 
-const LOGO = [
-  '███████╗██╗   ██╗██████╗ ██╗   ██╗██████╗ ██╗██████╗ ███████╗',
-  '██╔════╝██║   ██║██╔══██╗╚██╗ ██╔╝██╔══██╗██║██╔══██╗██╔════╝',
-  '█████╗  ██║   ██║██████╔╝ ╚████╔╝ ██████╔╝██║██████╔╝█████╗  ',
-  '██╔══╝  ██║   ██║██╔══██╗  ╚██╔╝  ██╔═══╝ ██║██╔═══╝ ██╔══╝  ',
-  '██║     ╚██████╔╝██║  ██║   ██║   ██║     ██║██║     ███████╗',
-  '╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝     ╚═╝╚═╝     ╚══════╝',
-] as const;
 
 const MIN_WIDTH = 78;
 const MAX_WIDTH = 118;
@@ -105,46 +97,6 @@ function box(lines: readonly string[], width: number, color: boolean, title?: st
     paint(color, A.blue, top),
     ...lines.map((line) => paint(color, A.blue, '│ ') + pad(fit(line, inner), inner) + paint(color, A.blue, ' │')),
     paint(color, A.blue, border(width, '└', '┘')),
-  ];
-}
-
-function columns(left: readonly string[], right: readonly string[], leftWidth: number): string[] {
-  const rows = Math.max(left.length, right.length);
-  const out: string[] = [];
-  for (let i = 0; i < rows; i += 1) {
-    out.push(pad(left[i] ?? '', leftWidth) + '  ' + (right[i] ?? ''));
-  }
-  return out;
-}
-
-function stepLines(
-  n: number,
-  label: string,
-  description: string,
-  state: 'active' | 'pending' | 'done',
-  color: boolean,
-): string[] {
-  const marker = state === 'done' ? '✓' : String(n);
-  const markerColor = state === 'active' ? A.cyan : state === 'done' ? A.green : A.muted;
-  const titleColor = state === 'active' ? A.white + A.bold : state === 'done' ? A.white : A.muted;
-  return [
-    paint(color, markerColor, '[' + marker + ']') + ' ' + paint(color, titleColor, label),
-    '    ' + paint(color, A.muted, description),
-  ];
-}
-
-function languageCard(locale: SetupLocale, selected: SetupLocale, color: boolean): string[] {
-  const active = locale === selected;
-  const tag = locale === 'fr' ? 'FR' : 'EN';
-  const name = locale === 'fr' ? 'Français' : 'English';
-  const detail = locale === 'fr' ? 'Interface et onboarding en français' : 'Interface and onboarding in English';
-  const pointer = active ? paint(color, A.cyan + A.bold, '▶') : ' ';
-  const badge = active
-    ? paint(color, A.bgBlue + A.white + A.bold, ' ' + tag + ' ')
-    : paint(color, A.muted, '[' + tag + ']');
-  return [
-    pointer + ' ' + badge + '  ' + paint(color, active ? A.white + A.bold : A.muted, name),
-    '       ' + paint(color, A.muted, detail),
   ];
 }
 
