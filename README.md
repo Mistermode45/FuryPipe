@@ -118,7 +118,7 @@ Default policy: **dynamic discovery + evidence-first AUTO**.
 
 Model Fabric discovers/observes models independently from visual authorization. In `AUTO`, only quality-verified visual profiles transform without an explicit model override; the backward-compatible default scope remains `claude-fable-5,gemini`. Configured provider catalogs can surface newly released models without a FuryPipe release, but `discovered != vision-capable != quality-verified`.
 
-`FURYPIPE_VISUAL_POLICY=max_savings` broadens automatic eligibility to every model whose image-input capability is positively proven. ExactGuard, protocol-state protection, image/byte limits and profitability checks still apply. `safe_exact` keeps the conservative AUTO eligibility surface and `text_only` disables visual transformation globally.
+`FURYPIPE_VISUAL_POLICY=max_savings` broadens automatic eligibility to models whose image-input capability is positively proven **and** whose image-token pricing/profile is provider-appropriate. Discovery alone never causes an unknown provider to inherit OpenAI tile economics. ExactGuard, protocol-state protection, image/byte limits and profitability checks still apply. `safe_exact` keeps the conservative AUTO eligibility surface and `text_only` disables visual transformation globally.
 
 `FURYPIPE_MODELS` remains an explicit backward-compatible operator scope override. A CSV selects model bases; `off` disables visual compression.
 
