@@ -238,6 +238,11 @@ const DEFAULT_SUBAGENT_CONCURRENCY = 4;
 const MAX_SUBAGENT_CONCURRENCY = 8;
 const MAX_SUBAGENT_BATCH = 16;
 const MAX_CAPABILITY_EXECUTION_RECEIPTS = 512;
+const MAX_OBJECTIVE_BYTES = 1_048_576;
+const MAX_ALLOWED_WRITE_PATHS = 256;
+const MAX_SKILL_DEFINITIONS = 1_024;
+const MAX_MCP_SERVER_DEFINITIONS = 256;
+const MAX_SUBAGENT_DEFINITIONS = 512;
 
 function digest(value: string): string {
   return `afrun_${createHash('sha256').update(value, 'utf8').digest('hex').slice(0, 24)}`;
@@ -296,6 +301,9 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
   if (!request || typeof request !== 'object' || typeof request.objective !== 'string' || !request.objective.trim()) {
     return { code: 'INVALID_REQUEST', reason: 'agent objective must not be empty' };
   }
+  if (Buffer.byteLength(request.objective, 'utf8') > MAX_OBJECTIVE_BYTES) {
+    return { code: 'INVALID_REQUEST', reason: 'agent objective exceeds its byte bound' };
+  }
   if (request.runId !== undefined && (typeof request.runId !== 'string' || request.runId.length === 0
     || request.runId.length > MAX_AGENT_MEMORY_RUN_ID || request.runId.includes('\0'))) {
     return { code: 'INVALID_REQUEST', reason: 'agent run ID is invalid or exceeds its bound' };
@@ -308,13 +316,16 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
     return { code: 'INVALID_REQUEST', reason: 'scoped write mode requires at least one allowed path' };
   }
   if (request.allowedWritePaths !== undefined && (!Array.isArray(request.allowedWritePaths)
+    || request.allowedWritePaths.length > MAX_ALLOWED_WRITE_PATHS
     || request.allowedWritePaths.some((path) => typeof path !== 'string' || !path || path.length > 1024 || path.includes('\0')))) {
-    return { code: 'INVALID_REQUEST', reason: 'allowed write paths must be bounded non-empty strings' };
+    return { code: 'INVALID_REQUEST', reason: 'allowed write paths must be a bounded list of non-empty strings' };
   }
   if (!request.executors || typeof request.executors !== 'object') {
     return { code: 'INVALID_REQUEST', reason: 'agent stage executors are required' };
   }
-  if (request.skills !== undefined && !Array.isArray(request.skills)) return { code: 'INVALID_REQUEST', reason: 'agent skills must be an array' };
+  if (request.skills !== undefined && (!Array.isArray(request.skills) || request.skills.length > MAX_SKILL_DEFINITIONS)) {
+    return { code: 'INVALID_REQUEST', reason: `agent skills must be an array with at most ${MAX_SKILL_DEFINITIONS} definitions` };
+  }
   if (request.autoInvokeSkillsByStage !== undefined) {
     if (!request.autoInvokeSkillsByStage || typeof request.autoInvokeSkillsByStage !== 'object' || Array.isArray(request.autoInvokeSkillsByStage)) {
       return { code: 'INVALID_REQUEST', reason: 'autoInvokeSkillsByStage must be a stage map' };
@@ -346,8 +357,12 @@ function validateRequest(request: AgentRuntimeRequest): AgentRunFailure | undefi
       }
     }
   }
-  if (request.mcpServers !== undefined && !Array.isArray(request.mcpServers)) return { code: 'INVALID_REQUEST', reason: 'agent MCP servers must be an array' };
-  if (request.subagents !== undefined && !Array.isArray(request.subagents)) return { code: 'INVALID_REQUEST', reason: 'agent subagents must be an array' };
+  if (request.mcpServers !== undefined && (!Array.isArray(request.mcpServers) || request.mcpServers.length > MAX_MCP_SERVER_DEFINITIONS)) {
+    return { code: 'INVALID_REQUEST', reason: `agent MCP servers must be an array with at most ${MAX_MCP_SERVER_DEFINITIONS} definitions` };
+  }
+  if (request.subagents !== undefined && (!Array.isArray(request.subagents) || request.subagents.length > MAX_SUBAGENT_DEFINITIONS)) {
+    return { code: 'INVALID_REQUEST', reason: `agent subagents must be an array with at most ${MAX_SUBAGENT_DEFINITIONS} definitions` };
+  }
   const subagentConcurrency = request.maxSubagentConcurrency ?? DEFAULT_SUBAGENT_CONCURRENCY;
   if (!Number.isSafeInteger(subagentConcurrency) || subagentConcurrency < 1 || subagentConcurrency > MAX_SUBAGENT_CONCURRENCY) {
     return { code: 'INVALID_REQUEST', reason: `maxSubagentConcurrency must be between 1 and ${MAX_SUBAGENT_CONCURRENCY}` };

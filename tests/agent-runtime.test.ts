@@ -534,6 +534,57 @@ describe('FuryPipe Agent runtime', () => {
     ]);
   });
 
+  it('bounds objective, write scopes and capability registries before allocation-heavy execution', async () => {
+    const hugeObjective = await runAgent({
+      objective: 'x'.repeat(1_048_577),
+      executors: stageExecutors([]),
+    });
+    expect(hugeObjective).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+
+    const tooManyPaths = await runAgent({
+      objective: 'Bound write path cardinality.',
+      allowWrites: true,
+      allowedWritePaths: Array.from({ length: 257 }, (_, index) => `/repo/${index}`),
+      executors: stageExecutors([]),
+    });
+    expect(tooManyPaths).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+
+    const skill = {
+      id: 's',
+      version: '1.0.0',
+      stages: ['research'] as const,
+      execute: async () => ({ evidence: ['ok'], consumedTokens: 0 }),
+    };
+    const tooManySkills = await runAgent({
+      objective: 'Bound skill registry cardinality.',
+      executors: stageExecutors([]),
+      skills: Array.from({ length: 1_025 }, (_, index) => ({ ...skill, id: `s-${index}` })),
+    });
+    expect(tooManySkills).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+
+    const tooManyMcpServers = await runAgent({
+      objective: 'Bound MCP registry cardinality.',
+      executors: stageExecutors([]),
+      mcpServers: Array.from({ length: 257 }, (_, index) => ({
+        id: `mcp-${index}`,
+        allowedMethods: ['read'],
+        execute: async () => ({ ok: true }),
+      })),
+    });
+    expect(tooManyMcpServers).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+
+    const tooManySubagents = await runAgent({
+      objective: 'Bound subagent registry cardinality.',
+      executors: stageExecutors([]),
+      subagents: Array.from({ length: 513 }, (_, index) => ({
+        id: `sub-${index}`,
+        stages: ['research'] as const,
+        execute: async () => ({ evidence: ['ok'], consumedTokens: 0 }),
+      })),
+    });
+    expect(tooManySubagents).toMatchObject({ status: 'failed', failure: { code: 'INVALID_REQUEST' } });
+  });
+
   it('rejects malformed capability definitions before any callback can execute', async () => {
     let calls = 0;
     const invalidMcp = await runAgent({
