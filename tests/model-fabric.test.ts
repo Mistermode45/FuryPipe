@@ -9,9 +9,11 @@ import {
   normalizeOpenRouterModelsPayload,
   normalizeXaiModelsPayload,
 } from '../src/core/model-fabric.js';
+import { isFuryPipeSupportedModel } from '../src/core/applicability.js';
 
 afterEach(() => {
   delete process.env.FURYPIPE_MODELS;
+  delete process.env.FURYPIPE_VISUAL_POLICY;
 });
 
 describe('model fabric', () => {
@@ -21,8 +23,9 @@ describe('model fabric', () => {
     expect(registry.resolveVisual('claude-opus-5')).toMatchObject({
       provider: 'anthropic',
       imageInput: 'yes',
-      mode: 'visual',
-      reason: 'calibrated_profile',
+      profile: 'unprofiled',
+      mode: 'canary',
+      reason: 'vision_unprofiled_canary',
     });
     expect(registry.resolveVisual('gpt-6-astra')).toMatchObject({
       provider: 'openai',
@@ -38,7 +41,8 @@ describe('model fabric', () => {
     expect(registry.resolveVisual('grok-4.6')).toMatchObject({
       provider: 'xai',
       imageInput: 'yes',
-      mode: 'visual',
+      profile: 'calibrated',
+      mode: 'canary',
     });
   });
 
@@ -169,5 +173,22 @@ describe('model fabric', () => {
       mode: 'native',
       reason: 'unknown_capability',
     });
+  });
+
+  it('keeps AUTO evidence-first while MAX_SAVINGS enables proven vision families', () => {
+    expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(false);
+    expect(isFuryPipeSupportedModel('gpt-6-astra')).toBe(false);
+    expect(isFuryPipeSupportedModel('grok-4.6')).toBe(false);
+
+    process.env.FURYPIPE_VISUAL_POLICY = 'max_savings';
+    expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(true);
+    expect(isFuryPipeSupportedModel('gpt-6-astra')).toBe(true);
+    expect(isFuryPipeSupportedModel('grok-4.6')).toBe(true);
+
+    process.env.FURYPIPE_VISUAL_POLICY = 'text_only';
+    expect(isFuryPipeSupportedModel('claude-fable-5')).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-opus-5')).toBe(false);
   });
 });
