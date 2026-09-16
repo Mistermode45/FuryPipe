@@ -15,7 +15,7 @@ import {
 } from './render.js';
 import { geminiVisionTokens, hasGeminiMeasuredProfile, resolveGeminiProfile } from './gemini-model-profiles.js';
 import { bytesToBase64 } from './png.js';
-import { classifyContent, compactSlabWhitespace, type TransformInfo } from './transform.js';
+import { classifyContent, compactSlabWhitespace, planVisualColumns, type TransformInfo } from './transform.js';
 import {
   prepareImagedRenderText,
   droppedCodepointsTop,
@@ -733,11 +733,14 @@ export async function transformGoogleGenerateContent(
     const header = CHAT_HEADER.replace('\n====', reflowNote + '\n====');
     renderedText = prepareImagedRenderText(header + combined, options.reflow !== false);
 
-    const maxCols = options.cols ?? profile.stripCols;
-    const cols = Math.min(
-      shrinkColsToContent(renderedText, maxCols, profile.style.markerScale, profile.style.font),
-      profile.stripCols,
-    );
+    const maxCols = Math.min(options.cols ?? profile.stripCols, profile.stripCols);
+    const cols = planVisualColumns(
+      renderedText,
+      maxCols,
+      profile.style,
+      profile,
+      profile.maxHeightPx,
+    ).cols;
 
     staticImages = await renderTextToPngs(renderedText, cols, profile.style, profile.maxHeightPx);
     imageTokens = staticImages.reduce(
