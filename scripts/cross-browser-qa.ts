@@ -305,7 +305,7 @@ async function runDashboardCase(
       document.querySelector('#frag-toggle')?.children.length > 0
       && document.querySelector('#frag-recent')?.children.length > 0
       && document.querySelector('#frag-control-room')?.children.length > 0
-      && document.querySelector('#frag-control-plane')?.children.length > 0,
+      && !!document.querySelector('#frag-control-plane .cp-runtime-lane'),
     undefined, { timeout: 12_000 });
 
     const base = await page.evaluate(() => {

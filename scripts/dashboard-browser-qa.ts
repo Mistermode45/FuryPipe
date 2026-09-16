@@ -326,7 +326,7 @@ async function runCase(browser, dashboard, testCase) {
     await cdp.send('Page.navigate', { url: pageUrl });
     await cdp.waitFor('document.readyState === "complete"', 'document.readyState=complete');
     await cdp.waitFor(
-      'document.querySelector("#frag-toggle")?.children.length > 0 && document.querySelector("#frag-recent")?.children.length > 0 && document.querySelector("#frag-control-room")?.children.length > 0 && document.querySelector("#frag-control-plane")?.children.length > 0',
+      'document.querySelector("#frag-toggle")?.children.length > 0 && document.querySelector("#frag-recent")?.children.length > 0 && document.querySelector("#frag-control-room")?.children.length > 0 && !!document.querySelector("#frag-control-plane .cp-runtime-lane")',
       'initial HTMX fragments',
       12_000,
     );
