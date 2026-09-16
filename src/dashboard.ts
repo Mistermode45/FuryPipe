@@ -89,6 +89,7 @@ import type {
   SessionsPayload,
   FullStatsPayload,
   CurrentSessionPayload,
+  ModelRuntimeActivity,
 } from './dashboard/types.js';
 import { parseAcceptLanguage, resolveSupportedLocale } from './i18n/runtime.js';
 import { CORE_CATALOGS } from './i18n/catalogs.js';
@@ -1026,6 +1027,7 @@ export class DashboardState {
       model: ev.model,
       status: ev.status,
       compressed,
+      reason: info?.reason,
       cc_added: compressed ? 1 : undefined,
       input_tokens: haveUsage ? inp : undefined,
       output_tokens: haveUsage ? out : undefined,
@@ -1250,6 +1252,7 @@ export class DashboardState {
         model: t.model,
         status: t.status,
         compressed,
+        reason: t.reason,
         cc_added: compressed ? 1 : undefined,
         input_tokens: t.input_tokens,
         output_tokens: t.output_tokens,
@@ -1554,17 +1557,56 @@ export class DashboardState {
     }
   }
 
+  private modelRuntimeActivity(model: string): ModelRuntimeActivity {
+    const totals = this.totalsByModel.get(model);
+    const recent = this.recent.filter((row) => row.model === model);
+    const recentSkipReasons: Record<string, number> = {};
+    for (const row of recent) {
+      if (row.compressed || !row.reason) continue;
+      recentSkipReasons[row.reason] = (recentSkipReasons[row.reason] ?? 0) + 1;
+    }
+    const last = recent[recent.length - 1];
+    return Object.freeze({
+      requests: totals?.requests ?? recent.length,
+      compressedRequests: totals?.compressedRequests ?? recent.filter((row) => row.compressed).length,
+      passthroughRequests: Math.max(
+        0,
+        (totals?.requests ?? recent.length) - (totals?.compressedRequests ?? recent.filter((row) => row.compressed).length),
+      ),
+      recentSkipReasons: Object.freeze({ ...recentSkipReasons }),
+      ...(last?.reason === undefined ? {} : { lastReason: last.reason }),
+      ...(last === undefined || !Number.isFinite(last.ts)
+        ? {}
+        : { lastObservedAt: new Date(last.ts * 1000).toISOString() }),
+    });
+  }
+
+  private modelRuntimeActivityMap(): ReadonlyMap<string, ModelRuntimeActivity> {
+    const ids = new Set<string>([
+      ...inspectRuntimeModels().map((model) => model.id),
+      ...this.totalsByModel.keys(),
+      ...this.recent.flatMap((row) => row.model ? [row.model] : []),
+    ]);
+    const output = new Map<string, ModelRuntimeActivity>();
+    for (const id of [...ids].slice(0, 2_000)) output.set(id, this.modelRuntimeActivity(id));
+    return output;
+  }
+
   /** GET /api/models.json — bounded, secret-free Model Fabric snapshot. */
   serveModelsJson(): Response {
     const all = inspectRuntimeModels();
     const limit = 2_000;
     const models = all.slice(0, limit);
+    const runtime = this.modelRuntimeActivityMap();
     return new Response(JSON.stringify({
       format: 'furypipe-model-catalog/v1',
       total: all.length,
       returned: models.length,
       truncated: all.length > limit,
-      models,
+      models: models.map((model) => ({
+        ...model,
+        runtime: runtime.get(model.id) ?? this.modelRuntimeActivity(model.id),
+      })),
     }), {
       status: 200,
       headers: {
