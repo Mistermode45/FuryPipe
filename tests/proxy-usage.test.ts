@@ -1806,7 +1806,7 @@ describe('proxy usage extraction', () => {
     expect(captured!.status).toBe(529);
     expect(captured!.usage).toBeUndefined();
     // 5xx: we synthesize our own message upstream, so no errorBody capture.
-    expect(captured.errorBody).toBeUndefined();
+    expect(captured!.errorBody).toBeUndefined();
   });
 
   it('captures upstream error body for 4xx responses (up to 2 KiB)', async () => {
@@ -2014,9 +2014,9 @@ describe('proxy usage extraction', () => {
     expect(captured).toBeDefined();
     expect(captured!.status).toBe(200);
     // Hash lands on every event.
-    expect(captured.reqBodySha8).toMatch(/^[0-9a-f]{8}$/);
+    expect(captured!.reqBodySha8).toMatch(/^[0-9a-f]{8}$/);
     // But the gzipped body itself is only captured on 4xx.
-    expect(captured.reqBodyGz).toBeUndefined();
+    expect(captured!.reqBodyGz).toBeUndefined();
   });
 
   it('reqBodySha8 is identical across two requests with the same body', async () => {
