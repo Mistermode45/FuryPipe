@@ -264,7 +264,7 @@ Report vulnerabilities through GitHub private vulnerability reporting, **not** a
 
 FuryPipe is a governed context runtime rather than a single-purpose proxy. Its public surface combines Context Fabric, FuryLink agent connectivity, adaptive visual optimization, provider routing, MCP, memory, agent/skill orchestration and evidence-first runtime receipts behind one FuryPipe-native control plane.
 
-The visual engine uses provider-priced geometry planning and lossless rendering safeguards; transformations remain gated by profitability and fidelity checks rather than being applied blindly.
+The visual engine uses provider-priced geometry planning and lossless rendering safeguards; transformations remain gated by profitability and fidelity checks rather than being applied blindly. See [Visual Engine](docs/VISUAL_ENGINE.md) for the pipeline and release invariants.
 ## CLI
 
 Common entry points:
