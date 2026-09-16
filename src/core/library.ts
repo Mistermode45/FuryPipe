@@ -1,4 +1,4 @@
-import { isFuryPipeSupportedModel } from './applicability.js';
+import { resolveFuryPipeModelEligibility } from './applicability.js';
 import { countCacheControlMarkers } from './measurement.js';
 import {
   renderTextToPngsWithCharLimit,
@@ -46,6 +46,11 @@ export type FuryPipeReason =
   | 'applied'
   | 'externalized'
   | 'unsupported_model'
+  | 'vision_capability_unknown'
+  | 'visual_profile_unverified'
+  | 'text_only_model'
+  | 'visual_pricing_unknown'
+  | 'visual_profile_blocked'
   | 'parse_error'
   | 'below_min_chars'
   | 'below_min_tokens'
@@ -145,14 +150,15 @@ export async function transformAnthropicMessages(
   input: FuryPipeTransformInput,
 ): Promise<FuryPipeTransformResult> {
   const original = toUint8Array(input.body);
-  if (!isFuryPipeSupportedModel(input.model)) {
+  const eligibility = resolveFuryPipeModelEligibility(input.model);
+  if (!eligibility.eligible) {
     const markerCount = countCacheControlMarkers(original);
     return {
       body: original,
       applied: false,
-      reason: 'unsupported_model',
+      reason: eligibility.reason,
       detail: input.model ?? undefined,
-      info: emptyInfo('unsupported_model'),
+      info: emptyInfo(eligibility.reason),
       cache: { ownsCacheControl: false, markerCount },
       receipt: buildReceipt(input, original, original, 'passthrough', markerCount, false),
     };
