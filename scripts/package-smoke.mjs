@@ -149,6 +149,12 @@ try {
   });
   assert(/^\d+\.\d+/u.test(linkLaunch.stdout.trim()), `FuryLink did not launch npm: ${linkLaunch.stdout}`);
   assert(/FuryLink exec/u.test(linkLaunch.stderr), 'FuryLink launcher did not emit its execution receipt');
+  if (process.platform === 'win32') {
+    assert(
+      !/no public root bundle available|no system root bundle found/u.test(linkLaunch.stderr),
+      'FuryLink Windows child received a CA-only replacement trust bundle',
+    );
+  }
 
   const setupConfig = path.join(installDir, 'furypipe-setup-smoke.json');
   const occupied = createServer();
