@@ -346,7 +346,7 @@ async function runCase(browser, dashboard, testCase) {
       selectValue: document.querySelector('select.mini-btn')?.value ?? null,
       topbarVisible: !!document.querySelector('.topbar') && getComputedStyle(document.querySelector('.topbar')).display !== 'none',
       sectionCount: document.querySelectorAll('section.section').length,
-      controlPlaneLoaded: !!document.querySelector('#frag-control-plane .cp-summary'),
+      controlPlaneLoaded: !!document.querySelector('#frag-control-plane .cp-runtime-lane'),
       overflowElements: [...document.querySelectorAll('*')]
         .map((element) => {
           const rect = element.getBoundingClientRect();

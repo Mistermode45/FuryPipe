@@ -81,3 +81,58 @@ including 1920, 1440, 1366, 1024, 768, 640, 560 and 390 pixel widths.
 This evidence validates the rendered local dashboard artifact only. It does
 not establish production deployment, provider account authentication, hosted
 MCP interoperability, Figma integration or a full manual WCAG assessment.
+
+## V4 Fury Instrument Panel
+
+The V4 presentation keeps the V2 snapshot contract intact while making source,
+state and evidence easier to distinguish at a glance. It is an observation
+surface, not an operator console: navigation, search, filters, the command
+palette and the inspector do not trigger a capability, mutate configuration,
+call a provider or execute an agent.
+
+### Information architecture
+
+The primary navigation is intentionally limited to seven operator questions:
+
+1. **Overview** — current runtime and savings already available from the dashboard.
+2. **Observe** — retained request/context observations and sessions.
+3. **Capabilities** — the bounded, source-bound domain collection.
+4. **Visual Engine** — only live enabled/disabled and executed/executable state.
+5. **Topology** — a Fury Graph rendered solely as `domain -> source` bindings.
+6. **Evidence** — source SHA, evidence SHA, run ID, state and freshness.
+7. **Settings** — existing local display/model-scope controls.
+
+The compact `Ctrl/Cmd+K` palette is navigation-only. The Capability Explorer
+uses dense rows rather than a grid of status cards. Selecting a row opens the
+bounded inspector, which reports identity, source, lifecycle, warnings and a
+small JSON projection. The projection is assigned as text, not HTML, and
+contains no prompt, credential, header, cookie, filesystem path or provider
+payload.
+
+### Evidence Lens and Decision Lens
+
+Evidence freshness is source-bound. `CURRENT` is shown only when an evidence
+SHA exists and did not become `STALE` through the snapshot's exact comparison.
+An absent SHA is `NOT_AVAILABLE`; a mismatch is explicitly `STALE`. The status
+text remains visible alongside colour.
+
+The Decision Lens reports only the runtime facts already in the snapshot:
+Visual Engine is `DISABLED`, `EXECUTABLE`, or `EXECUTED`. The currently exposed
+snapshot has no per-request reason-code or ExactGuard counter, so the panel
+says so instead of inventing a decision path.
+
+### Design-system and accessibility constraints
+
+The panel uses canvas, surface and one raised inspector surface. Borders mark
+structural ownership; radius is square or two-to-four pixels except for the
+Fury Core's intentionally circular instrumentation mark and semantic dots.
+There are no gradients, glass blur or motion-dependent state changes. The
+`prefers-reduced-motion: reduce` path suppresses non-essential animation and
+transition. Focus uses a visible cobalt outline, the command palette is a
+native labelled dialog with an explicit close path, and a skip link reaches the
+instrument panel.
+
+The responsive layout changes composition rather than scaling a desktop card
+grid: capability rows and source bindings become stacked reading order, the
+inspector stops being sticky, and evidence tables preserve their labelled
+mobile representation. Collections remain bounded by the V2 contract.

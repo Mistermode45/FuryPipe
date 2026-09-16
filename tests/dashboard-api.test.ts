@@ -633,6 +633,12 @@ describe('dashboard locale surface', () => {
     expect(html).toContain('Périmètre du moteur visuel');
     expect(html).toContain('Router Claude Code vers des modèles OpenAI / Cloudflare');
     expect(html).toContain('Chargement des preuves Control Room');
+    expect(html).toContain('Palette de commandes');
+    expect(html).toContain('href="#capabilities"');
+    expect(html).toContain('href="#visual-engine"');
+    expect(html).toContain('href="#evidence"');
+    expect(html).toContain('data-command-open');
+    expect(html).toContain('prefers-reduced-motion: reduce');
     expect(html).toContain('OPENAI_MODELS');
     expect(html).toContain('ANTHROPIC_BASE_URL');
     expect(html).not.toContain('Connect an agent');

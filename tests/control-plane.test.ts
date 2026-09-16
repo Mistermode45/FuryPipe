@@ -112,4 +112,16 @@ describe('Control Plane V2 snapshot', () => {
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(html).not.toContain('<img src=x onerror=alert(1)>');
   });
+
+  it('renders source-bound topology and an inert metadata inspector instead of status cards', () => {
+    const value = createControlPlaneSnapshot({ generatedAt: 1, runtime, controlRoom: null });
+    const html = renderControlPlaneFragment(value, 'en');
+    expect(html).toContain('Fury Graph — observed source bindings');
+    expect(html).toContain('data-cp-row');
+    expect(html).toContain('data-cp-inspector');
+    expect(html).toContain('data-cp-inspector-json');
+    expect(html).not.toContain('cp-card');
+    expect(html).toContain('control-room-unavailable');
+    expect(renderControlPlaneFragment(value, 'fr')).toContain('Panneau d’instrumentation Fury');
+  });
 });

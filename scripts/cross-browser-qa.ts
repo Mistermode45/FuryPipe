@@ -323,7 +323,7 @@ async function runDashboardCase(
         topbarVisible: !!document.querySelector('.topbar')
           && getComputedStyle(document.querySelector('.topbar') as HTMLElement).display !== 'none',
         sectionCount: document.querySelectorAll('section.section').length,
-        controlPlaneLoaded: !!document.querySelector('#frag-control-plane .cp-summary'),
+        controlPlaneLoaded: !!document.querySelector('#frag-control-plane .cp-runtime-lane'),
         overflowElements: [...document.querySelectorAll('*')]
           .map((element) => {
             const rect = element.getBoundingClientRect();
@@ -377,33 +377,58 @@ async function runDashboardCase(
       const root = document.querySelector<HTMLElement>('.cp-explorer');
       const search = root?.querySelector<HTMLInputElement>('[data-cp-search-input]');
       const filter = root?.querySelector<HTMLSelectElement>('[data-cp-filter]');
-      const sort = root?.querySelector<HTMLSelectElement>('select:not([data-cp-filter])');
+      const sort = root?.querySelector<HTMLSelectElement>('[data-cp-sort]');
       if (!root || !search || !filter || !sort) return null;
       search.value = 'fury';
       search.dispatchEvent(new Event('input', { bubbles: true }));
-      const searchVisible = [...root.querySelectorAll<HTMLElement>('[data-cp-card]')]
+      const searchVisible = [...root.querySelectorAll<HTMLElement>('[data-cp-row]')]
         .filter((card) => !card.hidden)
         .map((card) => card.dataset.cpSearch ?? '');
       search.value = '';
       search.dispatchEvent(new Event('input', { bubbles: true }));
       filter.value = 'AVAILABLE';
       filter.dispatchEvent(new Event('change', { bubbles: true }));
-      const availableOnly = [...root.querySelectorAll<HTMLElement>('[data-cp-card]')]
+      const availableOnly = [...root.querySelectorAll<HTMLElement>('[data-cp-row]')]
         .filter((card) => !card.hidden)
         .every((card) => card.dataset.cpStatus === 'AVAILABLE');
       filter.value = 'ALL';
       filter.dispatchEvent(new Event('change', { bubbles: true }));
       sort.value = 'status';
       sort.dispatchEvent(new Event('change', { bubbles: true }));
-      const statuses = [...root.querySelectorAll<HTMLElement>('[data-cp-card]')]
+      const statuses = [...root.querySelectorAll<HTMLElement>('[data-cp-row]')]
         .map((card) => card.dataset.cpStatus ?? '');
       return { searchVisible, availableOnly, statuses };
     });
     assert(explorer !== null && explorer.searchVisible.some((value) => value.includes('fury-link-cli')),
-      `${name}: capability search did not filter observed cards`);
+      `${name}: capability search did not filter observed domains`);
     assert(explorer.availableOnly, `${name}: lifecycle filter did not restrict cards to AVAILABLE`);
     assert(explorer.statuses.every((status, index) => index === 0 || explorer.statuses[index - 1]!.localeCompare(status) <= 0),
       `${name}: capability status sort did not order cards`);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const instrumentInteraction = await page.evaluate(() => {
+      const root = document.querySelector<HTMLElement>('.cp-explorer');
+      const row = root?.querySelector<HTMLElement>('[data-cp-row]');
+      row?.click();
+      const panel = root?.querySelector<HTMLElement>('[data-cp-inspector]');
+      const initialTitle = panel?.querySelector('[data-cp-inspector-title]')?.textContent ?? '';
+      const detailsVisible = !(panel?.querySelector('[data-cp-inspector-details]') as HTMLElement | null)?.hidden;
+      const dot = document.querySelector<HTMLElement>('.live-dot');
+      return {
+        initialTitle,
+        detailsVisible,
+        reducedMotion: dot ? getComputedStyle(dot).animationName : 'none',
+        commandDialogExists: document.getElementById('command-palette') instanceof HTMLDialogElement,
+      };
+    });
+    assert(instrumentInteraction.initialTitle.length > 0 && instrumentInteraction.detailsVisible,
+      `${name}: observed domain did not populate the evidence inspector`);
+    assert(instrumentInteraction.reducedMotion === 'none', `${name}: reduced-motion preference did not stop non-essential pulse`);
+    assert(instrumentInteraction.commandDialogExists, `${name}: command palette dialog is missing`);
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K');
+    const commandOpen = await page.evaluate(() => (document.getElementById('command-palette') as HTMLDialogElement | null)?.open ?? false);
+    assert(commandOpen, `${name}: command palette did not open from keyboard`);
+    await page.keyboard.press('Escape');
 
     const tooltipWidths = await page.evaluate(async () => {
       const tips = [...document.querySelectorAll<HTMLElement>('.q')];
