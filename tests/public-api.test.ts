@@ -50,10 +50,12 @@ describe('public library API', () => {
     expect(isFuryPipeSupportedModel('claude-opus-4-8')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-4-7')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-4-6')).toBe(true);
-    expect(isFuryPipeSupportedModel('claude-sonnet-4-7')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-sonnet-4-6')).toBe(true);
 
-    // A Claude-looking but unknown product family is not capability evidence.
-    expect(isFuryPipeSupportedModel('claude-mythos-5')).toBe(false);
+    // Current Mythos 5 is a real Claude family; invented future-looking ids are
+    // still not capability evidence until provider discovery proves them.
+    expect(isFuryPipeSupportedModel('claude-mythos-5')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-sonnet-4-7')).toBe(false);
     expect(isFuryPipeSupportedModel('claude-fable-50')).toBe(false);
     expect(isFuryPipeSupportedModel(null)).toBe(false);
   });
@@ -64,8 +66,9 @@ describe('public library API', () => {
     expect(isFuryPipeSupportedModel('claude-opus-5[1m]')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-4-8[1m]')).toBe(true);
     expect(isFuryPipeSupportedModel('claude-opus-4-7[1m]')).toBe(true);
+    expect(isFuryPipeSupportedModel('claude-mythos-5[1m]')).toBe(true);
     // Bracket stripping cannot turn an invented family into proven capability.
-    expect(isFuryPipeSupportedModel('claude-mythos-5[1m]')).toBe(false);
+    expect(isFuryPipeSupportedModel('claude-fable-50[1m]')).toBe(false);
   });
 
   it('honors FURYPIPE_MODELS to override the default scope', () => {
@@ -105,16 +108,17 @@ describe('public library API', () => {
     }
   });
 
-  it('AUTO admits calibrated GPT 5.6 Sol aliases while unprofiled siblings remain native', () => {
-    expect(isFuryPipeSupportedGptModel('gpt-5')).toBe(false);
-    expect(isFuryPipeSupportedGptModel('gpt-5.5')).toBe(false);
-    expect(isFuryPipeSupportedGptModel('gpt-5.5-codex')).toBe(false);
-    expect(isFuryPipeSupportedGptModel('gpt-5.6')).toBe(false);
+  it('AUTO admits proven OpenAI vision readers while explicit scope can still narrow them', () => {
+    expect(isFuryPipeSupportedGptModel('gpt-5')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.5')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.5-codex')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6')).toBe(true);
     expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
     expect(isFuryPipeSupportedGptModel('gpt-5.6-sol-codex')).toBe(true);
-    expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(false);
-    expect(isFuryPipeSupportedGptModel('gpt-5-mini')).toBe(false);
-    expect(isFuryPipeSupportedGptModel('gpt-4o')).toBe(false);
+    expect(isFuryPipeSupportedGptModel('gpt-5.6-terra')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-5-mini')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-6-astra')).toBe(true);
+    expect(isFuryPipeSupportedGptModel('gpt-4o')).toBe(true);
 
     process.env.FURYPIPE_MODELS = 'gpt-5.6-sol';
     expect(isFuryPipeSupportedGptModel('gpt-5.6-sol')).toBe(true);
