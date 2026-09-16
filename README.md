@@ -369,6 +369,8 @@ Release details belong in [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASE_SECURIT
 | Capability routing | [docs/CAPABILITY_ROUTER.md](docs/CAPABILITY_ROUTER.md) |
 | Instruction composition | [docs/INSTRUCTION_FABRIC.md](docs/INSTRUCTION_FABRIC.md) |
 | Context optimization | [docs/CONTEXT_OPTIMIZER.md](docs/CONTEXT_OPTIMIZER.md) |
+| Model Fabric | [docs/MODEL_FABRIC.md](docs/MODEL_FABRIC.md) |
+| Visual Engine | [docs/VISUAL_ENGINE.md](docs/VISUAL_ENGINE.md) |
 | Task orchestration | [docs/TASK_ORCHESTRATOR.md](docs/TASK_ORCHESTRATOR.md) |
 | Continuous Memory | [docs/CONTINUOUS_MEMORY.md](docs/CONTINUOUS_MEMORY.md) |
 | Agents | [docs/AGENT_FABRIC.md](docs/AGENT_FABRIC.md) |
@@ -763,6 +765,8 @@ Les détails de release sont documentés dans [CHANGELOG.md](CHANGELOG.md) et [d
 | Routage des capacités | [docs/CAPABILITY_ROUTER.md](docs/CAPABILITY_ROUTER.md) |
 | Composition des instructions | [docs/INSTRUCTION_FABRIC.md](docs/INSTRUCTION_FABRIC.md) |
 | Optimisation du contexte | [docs/CONTEXT_OPTIMIZER.md](docs/CONTEXT_OPTIMIZER.md) |
+| Model Fabric | [docs/MODEL_FABRIC.md](docs/MODEL_FABRIC.md) |
+| Visual Engine | [docs/VISUAL_ENGINE.md](docs/VISUAL_ENGINE.md) |
 | Orchestration des tâches | [docs/TASK_ORCHESTRATOR.md](docs/TASK_ORCHESTRATOR.md) |
 | Continuous Memory | [docs/CONTINUOUS_MEMORY.md](docs/CONTINUOUS_MEMORY.md) |
 | Agents | [docs/AGENT_FABRIC.md](docs/AGENT_FABRIC.md) |
