@@ -127,15 +127,6 @@ function controlRoomSecurityCiEvidence(sourceCommit: string | undefined): Securi
   }
 }
 
-function normalizeModelsConfig(value: unknown): string | undefined {
-  if (Array.isArray(value)) {
-    const models = value.map((v) => String(v).trim()).filter(Boolean);
-    return models.length > 0 ? models.join(',') : 'off';
-  }
-  if (typeof value === 'string') return value.trim() || 'off';
-  return undefined;
-}
-
 function applyConfigFileDefaults(): void {
   const file = process.env.FURYPIPE_CONFIG?.trim() || defaultConfigFile();
   if (!fs.existsSync(file)) return;
