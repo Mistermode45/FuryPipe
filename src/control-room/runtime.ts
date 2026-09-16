@@ -1,5 +1,5 @@
 import type { ProxyEvent } from '../core/proxy.js';
-import type { AgentRunResult } from '../agent-runtime.js';
+import type { AgentCapabilityExecutionReceipt, AgentRunResult } from '../agent-runtime.js';
 import type { AgentLearningCycleResult } from '../learning.js';
 import type { ReleaseReadinessReport } from '../release-readiness/index.js';
 import {
@@ -21,6 +21,7 @@ import {
 } from '../governed-provider-stream-executor.js';
 import {
   createControlRoomSnapshot,
+  type AgentCapabilityExecutionEvidence,
   type AgentEvidence,
   type BenchmarkEvidence,
   type ControlRoomSnapshot,
@@ -182,6 +183,9 @@ interface StreamProviderObservationState {
 }
 
 const MAX_PROVIDER_OBSERVATIONS = 100_000;
+const MAX_AGENT_CAPABILITY_EXECUTIONS = 512;
+const MAX_RECENT_AGENT_CAPABILITY_EXECUTIONS = 64;
+const AGENT_STAGES = new Set(['research', 'plan', 'implement', 'review', 'verify'] as const);
 
 function snapshotProviderUsage(value: ProviderUsage | undefined): Readonly<ProviderUsageSummary> | undefined {
   if (value === undefined) return undefined;
@@ -389,6 +393,31 @@ function safeRuntimeCount(value: unknown, label: string): asserts value is numbe
   }
 }
 
+function snapshotAgentCapabilityExecutions(
+  value: AgentRunResult['capabilityExecutions'] | undefined,
+): readonly AgentCapabilityExecutionEvidence[] {
+  if (value === undefined) return Object.freeze([]);
+  if (!Array.isArray(value) || value.length > MAX_AGENT_CAPABILITY_EXECUTIONS) {
+    throw new Error('Control Room Agent capabilityExecutions are invalid');
+  }
+  return Object.freeze(value.map((receipt: AgentCapabilityExecutionReceipt) => {
+    if (!receipt || receipt.format !== 'furypipe-agent-capability-execution/v1'
+      || !['skill', 'mcp', 'subagent'].includes(receipt.kind)
+      || receipt.status !== 'executed'
+      || !['automatic', 'manual'].includes(receipt.invocation)
+      || !AGENT_STAGES.has(receipt.stage)
+      || typeof receipt.id !== 'string' || receipt.id.length < 1 || receipt.id.length > 256 || receipt.id.includes('\0')) {
+      throw new Error('Control Room Agent capability execution receipt is invalid');
+    }
+    return Object.freeze({
+      kind: receipt.kind,
+      id: receipt.id,
+      stage: receipt.stage,
+      invocation: receipt.invocation,
+    });
+  }));
+}
+
 function observeStreamEvent(
   session: GovernedProviderStreamSession,
   state: StreamProviderObservationState,
@@ -450,7 +479,11 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
   let sawEstimatedConfidence = false;
   let sawUnknownConfidence = false;
   const uniqueRecoveryHandles = new Set<string>();
-  const observedAgentRuns = new Map<string, { status: AgentRunResult['status']; contextUsedTokens: number }>();
+  const observedAgentRuns = new Map<string, {
+    status: AgentRunResult['status'];
+    contextUsedTokens: number;
+    capabilityExecutions: readonly AgentCapabilityExecutionEvidence[];
+  }>();
   const observedLearningCycles = new Map<string, {
     status: AgentLearningCycleResult['status'];
     lessonId?: string;
@@ -487,9 +520,11 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
         throw new Error('Control Room Agent observation status is invalid');
       }
       safeRuntimeCount(result.contextUsedTokens, 'Agent contextUsedTokens');
+      const capabilityExecutions = snapshotAgentCapabilityExecutions(result.capabilityExecutions);
       observedAgentRuns.set(result.runId, {
         status: result.status,
         contextUsedTokens: result.contextUsedTokens,
+        capabilityExecutions,
       });
     },
 
@@ -607,6 +642,16 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
 
       const baseAgent = options.agent ?? NOT_AVAILABLE_AGENT;
       const agentRuns = [...observedAgentRuns.values()];
+      const observedCapabilityExecutions = agentRuns.flatMap((run) => [...run.capabilityExecutions]);
+      const skillExecutions = observedCapabilityExecutions.filter((execution) => execution.kind === 'skill').length;
+      const mcpExecutions = observedCapabilityExecutions.filter((execution) => execution.kind === 'mcp').length;
+      const subagentExecutions = observedCapabilityExecutions.filter((execution) => execution.kind === 'subagent').length;
+      const automaticCapabilityExecutions = observedCapabilityExecutions.filter((execution) => execution.invocation === 'automatic').length;
+      const manualCapabilityExecutions = observedCapabilityExecutions.filter((execution) => execution.invocation === 'manual').length;
+      const recentCapabilityExecutions = Object.freeze([
+        ...(baseAgent.recentCapabilityExecutions ?? []),
+        ...observedCapabilityExecutions,
+      ].slice(-MAX_RECENT_AGENT_CAPABILITY_EXECUTIONS));
       const agent: AgentEvidence = {
         ...baseAgent,
         runs: baseAgent.runs + observedAgentRuns.size,
@@ -614,6 +659,12 @@ export function createControlRoomRuntime(options: ControlRoomRuntimeOptions): Co
         handoffRuns: baseAgent.handoffRuns + agentRuns.filter((run) => run.status === 'handoff_required').length,
         failedRuns: baseAgent.failedRuns + agentRuns.filter((run) => run.status === 'failed').length,
         contextUsedTokens: baseAgent.contextUsedTokens + agentRuns.reduce((sum, run) => sum + run.contextUsedTokens, 0),
+        skillExecutions: (baseAgent.skillExecutions ?? 0) + skillExecutions,
+        mcpExecutions: (baseAgent.mcpExecutions ?? 0) + mcpExecutions,
+        subagentExecutions: (baseAgent.subagentExecutions ?? 0) + subagentExecutions,
+        automaticCapabilityExecutions: (baseAgent.automaticCapabilityExecutions ?? 0) + automaticCapabilityExecutions,
+        manualCapabilityExecutions: (baseAgent.manualCapabilityExecutions ?? 0) + manualCapabilityExecutions,
+        recentCapabilityExecutions,
       };
 
       const baseLearning = options.learning ?? NOT_AVAILABLE_LEARNING;
