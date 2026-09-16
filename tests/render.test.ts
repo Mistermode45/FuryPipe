@@ -2482,7 +2482,7 @@ describe('colorByRole (structure-through slot string)', () => {
     expect(ROLE_PALETTE[0]).not.toEqual(ROLE_PALETTE[1]);
   });
 
-  it('emits RGB truecolor PNG when slot coloring is on, grayscale when off', async () => {
+  it('emits indexed-color PNG when slot coloring has a bounded palette, grayscale when off', async () => {
     const text = '<user>\nhello user\n</user>\n\n<assistant>\nhello model\n</assistant>';
     const slot =
       `${roleSlotSegment('user', 'hello user', SLOT_MARK_USER)}\n\n` +
@@ -2490,7 +2490,7 @@ describe('colorByRole (structure-through slot string)', () => {
     const colored = await renderChunkToPng(text, 40, { colorByRole: true }, undefined, slot);
     const plain = await renderChunkToPng(text, 40, {});
     // PNG IHDR colorType byte: sig(8) + len(4) + "IHDR"(4) + ihdr[9] = offset 25.
-    expect(colored.png[25]).toBe(2); // 2 = truecolor RGB
+    expect(colored.png[25]).toBe(3); // 3 = indexed-color; exact PLTE optimization
     expect(plain.png[25]).toBe(0); // 0 = grayscale
   });
 });
