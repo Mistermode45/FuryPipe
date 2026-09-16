@@ -101,7 +101,7 @@ describe('gateway-prefixed chat/completions is OpenAI-shaped', () => {
     stubUpstream(cap);
     const ev = await post('/compat/chat/completions', CHAT_BODY);
     expect(ev.info?.compressed).toBe(false);
-    expect(ev.info?.reason).toBe('unsupported_model');
+    expect(ev.info?.reason).toBe('vision_capability_unknown');
   });
 
   it('does not move upstream routing for a provider-prefixed path', async () => {
