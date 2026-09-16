@@ -195,12 +195,37 @@ describe('telemetry distinguishes the two ceilings', () => {
   beforeEach(() => resetSessionState());
 
   it('reports a byte skip, not a count skip, when weight is what ran out', async () => {
+    // Derive a byte-only pressure point from the current lossless encoder.
+    // Fixed byte thresholds are not a stable invariant because better PNG
+    // representation can legitimately make the same pages much smaller.
+    const generous = 64 * 1024 * 1024;
+    const slabProbe = await transformRequest(
+      withSlab([{ role: 'user', content: 'go' }]),
+      { maxImageBytes: generous },
+    );
+    const slabBytes = slabProbe.info.imageBytes ?? 0;
+    expect(slabProbe.info.imageCount ?? 0).toBeGreaterThan(0);
+    expect(slabBytes).toBeGreaterThan(0);
+
+    resetSessionState();
+    const fullProbe = await transformRequest(
+      withSlab([{ role: 'user', content: 'go' }, toolResult('t1')]),
+      { maxImageBytes: generous },
+    );
+    const fullBytes = fullProbe.info.imageBytes ?? 0;
+    expect(fullProbe.info.toolResultImgs ?? 0).toBeGreaterThan(0);
+    expect(fullBytes).toBeGreaterThan(slabBytes);
+
+    const limit = slabBytes + Math.max(1, Math.floor((fullBytes - slabBytes) / 2));
+    resetSessionState();
     const { info } = await transformRequest(
       withSlab([{ role: 'user', content: 'go' }, toolResult('t1')]),
-      { maxImageBytes: 15_000 },
+      { maxImageBytes: limit },
     );
-    // Five images is far under the 100-image cap, so nothing here is a count
-    // problem. The two ceilings need different fixes and must not be conflated.
+
+    // Count headroom remains ample; only decoded image bytes reject the tool group.
+    expect(info.imageCount ?? 0).toBeGreaterThan(0);
+    expect(info.imageCount ?? 0).toBeLessThan(100);
     expect(info.imageByteSkips ?? 0).toBeGreaterThan(0);
     expect(info.imageBudgetSkips ?? 0).toBe(0);
   });
