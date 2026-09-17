@@ -144,6 +144,8 @@ export interface RecentRow {
   compressed: boolean;
   /** Exact passthrough/compression reason captured from the proxy event. */
   reason?: string;
+  /** Stable eligibility cause, separate from the legacy free-form reason. */
+  eligibility_cause?: 'operator_scope_excluded';
   cc_added?: number;
   input_tokens?: number;
   /** From /v1/messages `usage.output_tokens`. Identical with/without
@@ -1033,6 +1035,9 @@ export class DashboardState {
       status: ev.status,
       compressed,
       reason: info?.reason,
+      ...(info?.eligibilityCause === 'operator_scope_excluded'
+        ? { eligibility_cause: info.eligibilityCause }
+        : {}),
       cc_added: compressed ? 1 : undefined,
       input_tokens: haveUsage ? inp : undefined,
       output_tokens: haveUsage ? out : undefined,
@@ -1258,6 +1263,9 @@ export class DashboardState {
         status: t.status,
         compressed,
         reason: t.reason,
+        ...(t.eligibility_cause === 'operator_scope_excluded'
+          ? { eligibility_cause: t.eligibility_cause }
+          : {}),
         cc_added: compressed ? 1 : undefined,
         input_tokens: t.input_tokens,
         output_tokens: t.output_tokens,
@@ -1591,9 +1599,14 @@ export class DashboardState {
     const totals = this.totalsByModel.get(model);
     const recent = this.recent.filter((row) => row.model === model);
     const recentSkipReasons: Record<string, number> = {};
+    const recentEligibilityCauses: Record<string, number> = {};
     for (const row of recent) {
       if (row.compressed || !row.reason) continue;
       recentSkipReasons[row.reason] = (recentSkipReasons[row.reason] ?? 0) + 1;
+      if (row.eligibility_cause) {
+        recentEligibilityCauses[row.eligibility_cause] =
+          (recentEligibilityCauses[row.eligibility_cause] ?? 0) + 1;
+      }
     }
     const last = recent[recent.length - 1];
     return Object.freeze({
@@ -1604,6 +1617,7 @@ export class DashboardState {
         (totals?.requests ?? recent.length) - (totals?.compressedRequests ?? recent.filter((row) => row.compressed).length),
       ),
       recentSkipReasons: Object.freeze({ ...recentSkipReasons }),
+      recentEligibilityCauses: Object.freeze({ ...recentEligibilityCauses }),
       ...(last?.reason === undefined ? {} : { lastReason: last.reason }),
       ...(last === undefined || !Number.isFinite(last.ts)
         ? {}

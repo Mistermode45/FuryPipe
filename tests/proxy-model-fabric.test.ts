@@ -179,4 +179,27 @@ describe('proxy Model Fabric enforcement', () => {
       restore();
     }
   });
+
+  it('records a bounded operator-scope cause while retaining the legacy reason', async () => {
+    setAllowedModelBases(['claude-fable-5']);
+    const restore = mockFetch(() => new Response(JSON.stringify({
+      id: 'resp_excluded', type: 'message', role: 'assistant', content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 3, output_tokens: 1 },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    try {
+      const captured = captureEvent();
+      const proxy = createProxy({ upstream: 'http://anthropic.test', transform: { compress: true }, onRequest: captured.onRequest });
+      const response = await proxy(new Request('http://localhost/v1/messages', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: 'claude-opus-5', messages: [{ role: 'user', content: 'hello' }] }),
+      }));
+      await response.text();
+      const event = await captured.event;
+      expect(event.info?.compressed).toBe(false);
+      expect(event.info?.reason).toBe('unsupported_model');
+      expect(event.info?.eligibilityCause).toBe('operator_scope_excluded');
+    } finally {
+      restore();
+    }
+  });
 });

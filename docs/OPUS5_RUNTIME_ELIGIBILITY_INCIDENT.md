@@ -113,6 +113,64 @@ Anthropic, image-capable and calibrated. No resolver relaxation was made.
   dashboard round-trip/persistence callbacks, and the proxy Opus 5 automatic
   path.
 
+## Final scope state contract
+
+The effective scope resolver uses this precedence, without treating a static
+list as a complete Model Fabric catalog:
+
+| Precedence | State | Source |
+| --- | --- | --- |
+| 1 | `automatic`, `explicit`, or `off` | dashboard runtime override |
+| 2 | `explicit` or `off` when non-empty/kill-switch input exists | `FURYPIPE_MODELS` environment |
+| 3 | `automatic`, `explicit`, or `off` | persisted `modelScopeMode` plus legacy `models` |
+| 4 | `automatic` | built-in default when no operator scope exists |
+
+`modelScopeMode: "automatic"` ignores stale legacy list keys. A persisted
+`modelScopeMode: "off"` and an explicit empty list both remain `off` after a
+restart. An unmarked legacy `models=["claude-fable-5","gemini"]` is migrated
+logically to automatic discovery without broadening a custom legacy list.
+Environment values remain authoritative over the file. A dashboard request to
+restore automatic clears only a scope that FuryPipe injected from the config;
+it never removes an operator-owned environment variable.
+
+The mutating model endpoint accepts only `automatic`, `explicit`, or `off` and
+rejects unknown modes and contradictory mode/list payloads before applying a
+policy or writing the config.
+
+## Operator diagnostics and telemetry
+
+`furypipe doctor --json` reports package version, source commit when supplied,
+entrypoint, Node executable, discovered global `furypipe` path, model-scope
+mode/source, and visual policy. Automatic mode intentionally reports an empty
+`effectiveModels` list because Model Fabric discovery is dynamic; it does not
+pretend that the compatibility seed is a complete catalog. Paths and upstream
+URLs are metadata-only and credentials are not read or printed.
+
+Runtime startup logs one bounded line such as
+`[furypipe] model scope: automatic (source=config)`. Persisted events keep the
+backward-compatible `reason: "unsupported_model"` value, while a known model
+excluded by an explicit operator scope also receives the bounded
+`eligibility_cause: "operator_scope_excluded"` field. Stats expose that cause
+separately, so historical compatibility labels do not hide the operator action.
+
+## Request-path evidence map
+
+```text
+HTTP request
+  -> bounded body + wire/provider route parsing (src/core/proxy.ts)
+  -> effective model / alias resolution
+  -> resolveFuryPipeModelEligibility (src/core/applicability.ts)
+  -> visual profile, provider capability, pricing evidence
+  -> transform + ExactGuard + profitability gates (src/core/transform.ts)
+  -> upstream request and usage response
+  -> ProxyEvent -> DashboardState / Control Room observer
+  -> toTrackEvent -> JSONL / Worker log
+  -> stats aggregation -> dashboard / Control Plane JSON and fragments
+```
+
+The model-scope decision is authorization for visual transformation only. It
+does not prove provider routing, pricing, execution, release, or deployment.
+
 ## Compatibility and safety
 
 An explicit `FURYPIPE_MODELS` environment variable still wins over file
@@ -123,7 +181,11 @@ does not call a provider, execute an agent, or trigger Model Fabric discovery.
 
 The config write remains write-then-rename with restrictive file and directory
 modes. User-visible strings use the existing FR/EN catalogues. Model IDs remain
-escaped at the HTML boundary, and the new mode is an allowlisted union.
+escaped at the HTML boundary, and the new mode is an allowlisted union. The
+current process performs each synchronous read/modify/write atomically with
+respect to its Node event loop; concurrent independent processes sharing one
+config path remain an operational constraint and are not represented as a
+distributed lock guarantee.
 
 ## Validation status
 

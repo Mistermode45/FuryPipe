@@ -10,6 +10,7 @@ import {
   type ModelVisualResolution,
 } from './model-fabric.js';
 import { stripBracketedSegments } from './safe-string.js';
+import { resolveEffectiveModelScope, type EffectiveModelScope } from '../model-config.js';
 
 export type FuryPipeApplicabilityReason =
   | 'eligible'
@@ -79,10 +80,6 @@ export function getFuryPipeVisualPolicy(): FuryPipeVisualPolicy {
   return 'auto';
 }
 
-function falsey(v: string): boolean {
-  return /^(0|false|no|off|none)$/i.test(v.trim());
-}
-
 function rawModelScope(): string | undefined {
   return typeof process !== 'undefined' ? process.env?.FURYPIPE_MODELS : undefined;
 }
@@ -100,12 +97,10 @@ function hasExplicitEnvironmentScope(): boolean {
  * - CSV model bases         → exactly those bases
  */
 function envOrDefaultBases(): string[] {
-  const raw = rawModelScope();
-  if (raw === undefined) return [...DEFAULT_MODEL_BASES];
-  const trimmed = raw.trim();
-  if (!trimmed) return [...DEFAULT_MODEL_BASES];
-  if (falsey(trimmed)) return [];
-  return trimmed.split(',').map((model) => model.trim()).filter(Boolean);
+  return [...resolveEffectiveModelScope({
+    envValue: rawModelScope(),
+    automaticModels: DEFAULT_MODEL_BASES,
+  }).effectiveModels];
 }
 
 function allowedModelBases(): string[] {
@@ -123,13 +118,25 @@ export function getConfiguredModelBases(): string[] {
   return envOrDefaultBases();
 }
 
+/** Complete operator-facing state, including the source used for diagnostics. */
+export function getFuryPipeModelScope(): EffectiveModelScope {
+  if (runtimeModelBases !== null) {
+    return Object.freeze({
+      mode: runtimeModelBases.length === 0 ? 'off' : 'explicit',
+      source: 'runtime_override',
+      effectiveModels: Object.freeze([...runtimeModelBases]),
+    });
+  }
+  return resolveEffectiveModelScope({
+    envValue: rawModelScope(),
+    automaticModels: DEFAULT_MODEL_BASES,
+  });
+}
+
 /** Effective scope mode, kept separate from the model list because automatic
  * Model Fabric discovery is not equivalent to a static catalog. */
 export function getFuryPipeModelScopeMode(): FuryPipeModelScopeMode {
-  if (runtimeModelBases !== null) return runtimeModelBases.length === 0 ? 'off' : 'explicit';
-  const raw = rawModelScope();
-  if (raw === undefined || raw.trim() === '') return 'automatic';
-  return falsey(raw) ? 'off' : 'explicit';
+  return getFuryPipeModelScope().mode;
 }
 
 /** Set the dashboard runtime override. Empty array = compress nothing; null = automatic/default policy. */

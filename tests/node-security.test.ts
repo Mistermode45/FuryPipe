@@ -82,7 +82,10 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-async function startNode(extraEnv: Record<string, string> = {}): Promise<{
+async function startNode(
+  extraEnv: Record<string, string | undefined> = {},
+  initialConfig?: Record<string, unknown>,
+): Promise<{
   base: string;
   eventsFile: string;
   configFile: string;
@@ -110,18 +113,25 @@ async function startNode(extraEnv: Record<string, string> = {}): Promise<{
   await new Promise<void>((resolve) => upstream!.listen(upstreamPort, '127.0.0.1', resolve));
   const eventsFile = path.join(dir, 'data', 'events.jsonl');
   const configFile = path.join(dir, 'config', 'config.json');
+  if (initialConfig !== undefined) {
+    fs.mkdirSync(path.dirname(configFile), { recursive: true });
+    fs.writeFileSync(configFile, JSON.stringify(initialConfig));
+  }
+  const childEnv: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
+  for (const [key, value] of Object.entries(extraEnv)) {
+    if (value === undefined) delete childEnv[key];
+  }
+  if (!Object.prototype.hasOwnProperty.call(extraEnv, 'FURYPIPE_MODELS')) {
+    childEnv.FURYPIPE_MODELS = 'claude-fable-5';
+  }
+  childEnv.FURYPIPE_PORT = String(port);
+  childEnv.FURYPIPE_HOST = '127.0.0.1';
+  childEnv.FURYPIPE_LOG = eventsFile;
+  childEnv.FURYPIPE_CONFIG = configFile;
+  childEnv.ANTHROPIC_UPSTREAM = `http://127.0.0.1:${upstreamPort}`;
   child = spawn(process.execPath, [tsxCli, 'src/node.ts'], {
     cwd: repoRoot,
-    env: {
-      ...process.env,
-      FURYPIPE_PORT: String(port),
-      FURYPIPE_HOST: '127.0.0.1',
-      FURYPIPE_LOG: eventsFile,
-      FURYPIPE_CONFIG: configFile,
-      FURYPIPE_MODELS: 'claude-fable-5',
-      ANTHROPIC_UPSTREAM: `http://127.0.0.1:${upstreamPort}`,
-      ...extraEnv,
-    },
+    env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   const output: string[] = [];
@@ -304,6 +314,51 @@ describe('Node Control Room Security CI ingestion', () => {
 });
 
 describe('Node dashboard security', () => {
+  it('rejects unknown or contradictory model-scope commands before mutation', async () => {
+    const { base, configFile } = await startNode();
+    const headers = {
+      'content-type': 'application/json',
+      origin: base,
+      'sec-fetch-site': 'same-origin',
+    };
+    const unknown = await fetch(`${base}/fragments/models`, {
+      method: 'POST', headers, body: JSON.stringify({ mode: 'future', list: 'off' }),
+    });
+    expect(unknown.status).toBe(400);
+    expect(fs.existsSync(configFile)).toBe(false);
+    const contradictory = await fetch(`${base}/fragments/models`, {
+      method: 'POST', headers, body: JSON.stringify({ mode: 'automatic', list: 'claude-fable-5' }),
+    });
+    expect(contradictory.status).toBe(400);
+    expect(fs.existsSync(configFile)).toBe(false);
+  });
+
+  it('returns to automatic after a persisted scope was injected at startup', async () => {
+    const { base, configFile, output } = await startNode(
+      { FURYPIPE_MODELS: undefined },
+      { modelScopeMode: 'explicit', models: ['claude-fable-5'], modelScopeExplicit: true },
+    );
+    const response = await fetch(`${base}/fragments/models`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: base,
+        'sec-fetch-site': 'same-origin',
+      },
+      body: JSON.stringify({ mode: 'automatic' }),
+    });
+    expect(response.status).toBe(200);
+    const fragment = await response.text();
+    expect(fragment).toContain('data-model-scope="automatic"');
+    const models = await (await fetch(`${base}/api/models.json`)).json() as { scopeMode: string };
+    expect(models.scopeMode).toBe('automatic');
+    const persisted = JSON.parse(fs.readFileSync(configFile, 'utf8')) as Record<string, unknown>;
+    expect(persisted.modelScopeMode).toBe('automatic');
+    expect(persisted.models).toBeUndefined();
+    expect(persisted.modelScopeExplicit).toBeUndefined();
+    expect(output()).toContain('model scope: explicit (source=config)');
+  });
+
   it('rejects cross-origin mutations and accepts same-origin mutations', async () => {
     const { base, configFile } = await startNode();
     const denied = await fetch(`${base}/fragments/models`, {

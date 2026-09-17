@@ -76,11 +76,18 @@ The default deployment is loopback-oriented. Non-loopback exposure requires an e
 
 ## Doctor
 
-`furypipe doctor` inspects runtime configuration without intentionally reading or printing provider credentials.
+`furypipe doctor` inspects runtime configuration without intentionally reading or printing provider credentials. It reports the package version, optional source commit, local entrypoint/runtime executable, discovered global `furypipe` path, effective model-scope mode/source, and visual policy. In automatic mode the diagnostic leaves `effectiveModels` empty because Model Fabric discovery is dynamic rather than a static catalog.
 
 Upstream URLs are normalized before display so userinfo, query strings and fragments are not exposed in the report.
 
 Missing tools are reported as unavailable. `doctor` does not automatically install third-party tooling.
+
+Model scope diagnostics use this precedence: dashboard runtime override, then
+an explicit `FURYPIPE_MODELS` environment value, then persisted config, then
+automatic Model Fabric discovery. `modelScopeMode` accepts `automatic`,
+`explicit`, or `off`; legacy `models` arrays remain supported and are never
+silently broadened when they contain a custom operator scope. `off` is a
+fail-closed visual-transformation kill switch.
 
 Human-readable output supports locale selection, including:
 

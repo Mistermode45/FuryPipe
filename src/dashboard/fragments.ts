@@ -175,6 +175,9 @@ export function renderModelsFragment(
     const runtimeSummary = runtime && runtime.requests > 0
       ? (
           `${numFmt(runtime.requests)} req · ${numFmt(runtime.compressedRequests)} visual · ${numFmt(runtime.passthroughRequests)} text` +
+          (runtime.recentEligibilityCauses.operator_scope_excluded
+            ? ` · ${t('dashboard.models.operatorScopeExcluded')}`
+            : '') +
           (runtime.lastReason ? ` · ${runtime.lastReason}` : '')
         )
       : t('dashboard.models.noRuntimeActivity');
@@ -216,7 +219,7 @@ export function renderModelsFragment(
     (scopeChips || `<span class="hint">${escapeHtml(t('dashboard.models.unlisted'))}</span>`) +
     `</div>` +
     `<div class="models">` +
-    `<span class="models-label">FURYPIPE_MODELS</span>` +
+    `<label class="models-label" for="models-csv">FURYPIPE_MODELS</label>` +
     `<input class="models-csv" id="models-csv" type="text" name="list" ` +
     `value="${escapeHtml(active.join(','))}" spellcheck="false" autocomplete="off" ` +
     `hx-post="/fragments/models" hx-target="#frag-models" hx-trigger="change">` +
@@ -289,7 +292,7 @@ function mathRow(key: string, val: number | string | undefined, note = ''): stri
 }
 
 function mathBlock(title: string, body: string): string {
-  return `<section class="math-block"><h4>${title}</h4><div class="formula">${body}</div></section>`;
+  return `<section class="math-block"><h3>${title}</h3><div class="formula">${body}</div></section>`;
 }
 
 /** Stat tile; `tip` adds a hover "?" explainer. */
@@ -301,7 +304,7 @@ function statTile(
   tip = '',
 ): string {
   const q = tip
-    ? `<span class="q" tabindex="0" aria-label="${escapeHtml(tip)}" title="${escapeHtml(tip)}" data-tip="${escapeHtml(tip)}">?</span>`
+    ? `<button type="button" class="q" aria-label="? ${escapeHtml(tip)}" title="${escapeHtml(tip)}" data-tip="${escapeHtml(tip)}">?</button>`
     : '';
   return (
     `<div class="tile">` +
@@ -758,7 +761,7 @@ export function renderRecentFragment(p: RecentPayload, locale = 'en'): string {
     `<th class="num" title="${escapeHtml(t('dashboard.recent.asTextTip'))}">${escapeHtml(t('dashboard.recent.asText'))}</th>` +
     `<th class="num" title="${escapeHtml(t('dashboard.recent.sentTip'))}">${escapeHtml(t('dashboard.recent.sent'))}</th>` +
     `<th class="num" title="${escapeHtml(t('dashboard.recent.savedLostTip'))}">${escapeHtml(t('dashboard.recent.savedLost'))}</th>` +
-    `<th></th>` +
+    `<th>${escapeHtml(t('dashboard.recent.details'))}</th>` +
     `</tr></thead><tbody>${body}</tbody></table>`
   );
 }
@@ -1055,11 +1058,11 @@ export function renderControlPlaneFragment(
     `<section class="cp-explorer instrument-section" data-cp-root aria-labelledby="cp-explorer-title">` +
     `<div class="instrument-section-head"><div><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.instrumentPanel'))}</span><h2 id="cp-explorer-title">${escapeHtml(t('dashboard.controlPlane.explorer'))}</h2></div><output data-cp-result-count data-cp-result-label="${escapeHtml(t('dashboard.controlPlane.observedDomains'))}">${escapeHtml(t('dashboard.controlPlane.resultCount', { count: snapshot.domains.length }))}</output></div>` +
     `<div class="cp-tools">` +
-    `<label>${escapeHtml(t('dashboard.controlPlane.search'))}<input data-cp-search-input type="search" placeholder="${escapeHtml(t('dashboard.controlPlane.searchPlaceholder'))}" /></label>` +
-    `<label>${escapeHtml(t('dashboard.controlPlane.filter'))}<select data-cp-filter><option value="ALL">${escapeHtml(t('dashboard.controlPlane.filterAll'))}</option>${[...new Set(snapshot.domains.map((domain) => domain.status))].map((status) => `<option value="${escapeHtml(status)}">${escapeHtml(status)}</option>`).join('')}</select></label>` +
-    `<label>${escapeHtml(t('dashboard.controlPlane.sort'))}<select data-cp-sort><option value="name">${escapeHtml(t('dashboard.controlPlane.sortName'))}</option><option value="status">${escapeHtml(t('dashboard.controlPlane.sortStatus'))}</option></select></label>` +
-    `</div><div class="cp-list" role="list">${rows}</div>` +
-    `<aside class="cp-inspector" id="cp-inspector" data-cp-inspector data-no-warnings="${escapeHtml(t('dashboard.controlPlane.noWarnings'))}" aria-live="polite"><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.inspector'))}</span><h3 data-cp-inspector-title>${escapeHtml(t('dashboard.controlPlane.inspector'))}</h3><p data-cp-inspector-empty>${escapeHtml(t('dashboard.controlPlane.inspectorEmpty'))}</p><dl hidden data-cp-inspector-details><div><dt>${escapeHtml(t('dashboard.controlPlane.status'))}</dt><dd data-cp-inspector-status></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.inspectorSource'))}</dt><dd><code data-cp-inspector-source></code></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.lifecycle'))}</dt><dd data-cp-inspector-lifecycle></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.inspectorWarnings'))}</dt><dd data-cp-inspector-warnings></dd></div></dl><details hidden data-cp-inspector-raw><summary>${escapeHtml(t('dashboard.controlPlane.inspectorRaw'))}</summary><pre data-cp-inspector-json></pre></details></aside></section>`;
+    `<label for="cp-search">${escapeHtml(t('dashboard.controlPlane.search'))}<input id="cp-search" name="capability-search" data-cp-search-input type="search" placeholder="${escapeHtml(t('dashboard.controlPlane.searchPlaceholder'))}" /></label>` +
+    `<label for="cp-filter">${escapeHtml(t('dashboard.controlPlane.filter'))}<select id="cp-filter" name="capability-filter" data-cp-filter><option value="ALL">${escapeHtml(t('dashboard.controlPlane.filterAll'))}</option>${[...new Set(snapshot.domains.map((domain) => domain.status))].map((status) => `<option value="${escapeHtml(status)}">${escapeHtml(status)}</option>`).join('')}</select></label>` +
+    `<label for="cp-sort">${escapeHtml(t('dashboard.controlPlane.sort'))}<select id="cp-sort" name="capability-sort" data-cp-sort><option value="name">${escapeHtml(t('dashboard.controlPlane.sortName'))}</option><option value="status">${escapeHtml(t('dashboard.controlPlane.sortStatus'))}</option></select></label>` +
+    `</div><div class="cp-list">${rows}</div>` +
+    `<div class="cp-inspector" id="cp-inspector" data-cp-inspector data-no-warnings="${escapeHtml(t('dashboard.controlPlane.noWarnings'))}" aria-live="polite"><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.inspector'))}</span><h3 data-cp-inspector-title>${escapeHtml(t('dashboard.controlPlane.inspector'))}</h3><p data-cp-inspector-empty>${escapeHtml(t('dashboard.controlPlane.inspectorEmpty'))}</p><dl hidden data-cp-inspector-details><div><dt>${escapeHtml(t('dashboard.controlPlane.status'))}</dt><dd data-cp-inspector-status></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.inspectorSource'))}</dt><dd><code data-cp-inspector-source></code></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.lifecycle'))}</dt><dd data-cp-inspector-lifecycle></dd></div><div><dt>${escapeHtml(t('dashboard.controlPlane.inspectorWarnings'))}</dt><dd data-cp-inspector-warnings></dd></div></dl><details hidden data-cp-inspector-raw><summary>${escapeHtml(t('dashboard.controlPlane.inspectorRaw'))}</summary><pre data-cp-inspector-json></pre></details></div></section>`;
   const topology =
     `<section class="cp-topology instrument-section" aria-labelledby="cp-topology-title"><div class="instrument-section-head"><div><span class="eyebrow">${escapeHtml(t('dashboard.controlPlane.instrumentPanel'))}</span><h2 id="cp-topology-title">${escapeHtml(t('dashboard.controlPlane.sourceBindings'))}</h2><p>${escapeHtml(t('dashboard.controlPlane.sourceBindingsSub'))}</p></div></div><ol class="cp-bindings">${bindings}</ol></section>`;
   const evidenceSurface =
@@ -1333,7 +1336,7 @@ const CSS = `
   .tile-sub { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
   .q { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px;
     border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border-strong);
-    color: var(--muted); font-size: 9px; font-weight: 700; cursor: help; position: relative; outline: none; }
+    color: var(--muted); font-size: 9px; font-weight: 700; line-height: 1; padding: 0; cursor: help; position: relative; outline: none; }
   .q:hover, .q:focus-visible { color: var(--accent-ink); border-color: var(--accent); }
   .q::after { content: attr(data-tip); position: absolute; z-index: 50; left: 0; bottom: calc(100% + 8px);
     width: min(280px, calc(100vw - 32px)); transform: translateY(4px); padding: 8px 10px; border-radius: 2px;
@@ -1379,7 +1382,7 @@ const CSS = `
   .drawer-intro em { color: var(--accent-ink); font-style: normal; font-weight: 600; }
   .math-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 0 16px 16px; }
   @media (max-width: 860px) { .math-grid { grid-template-columns: 1fr; } }
-  .math-block h4 { margin: 0 0 6px; font-size: 12px; color: var(--ink); }
+  .math-block h3 { margin: 0 0 6px; font-size: 12px; color: var(--ink); }
   .formula { background: var(--surface-2); border: 1px solid var(--border); border-radius: 2px;
     padding: 9px 11px; font: 11px/1.55 var(--mono); color: var(--ink-2); white-space: pre-wrap;
     word-break: break-word; }
@@ -1893,6 +1896,7 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${host ? `${host} · ${escapeHtml(dashboardT(activeLocale, 'dashboard.title'))}` : escapeHtml(dashboardT(activeLocale, 'dashboard.liveTitle'))}</title>
+<meta name="description" content="${escapeHtml(t('dashboard.tagline'))}" />
 <link rel="icon" href="${FAVICON}" />
 <style>${CSS}</style>
 <script>
@@ -1945,7 +1949,7 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
     </div>
   </div>
   <div class="controls">
-    <label class="hint">${escapeHtml(dashboardT(activeLocale, 'dashboard.language'))} <select class="mini-btn" onchange="furySetLocale(this.value)">${languageOptions}</select></label>
+    <label class="hint" for="dashboard-language">${escapeHtml(dashboardT(activeLocale, 'dashboard.language'))} <select id="dashboard-language" name="language" class="mini-btn" onchange="furySetLocale(this.value)">${languageOptions}</select></label>
     <button type="button" id="theme-btn" class="theme-btn" onclick="furyTheme()"
       data-dark-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeDark'))}"
       data-light-label="${escapeHtml(dashboardT(activeLocale, 'dashboard.themeLight'))}"
@@ -1963,7 +1967,7 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
   <a href="#topology">${escapeHtml(t('dashboard.page.navTopology'))}</a>
   <a href="#evidence">${escapeHtml(t('dashboard.page.navEvidence'))}</a>
   <a href="#settings">${escapeHtml(t('dashboard.page.navSettings'))}</a>
-  <button type="button" class="command-trigger" data-command-open aria-haspopup="dialog" aria-controls="command-palette" aria-label="${escapeHtml(t('dashboard.page.commandPalette'))}">⌘K</button>
+    <button type="button" class="command-trigger" data-command-open aria-haspopup="dialog" aria-controls="command-palette" aria-label="⌘K ${escapeHtml(t('dashboard.page.commandPalette'))}">⌘K</button>
 </nav>
 
 <dialog id="command-palette" aria-labelledby="command-palette-title" onclick="if (event.target === this) this.close()">

@@ -48,6 +48,7 @@ import {
   resolveControlRoomSecurityEvidence,
 } from './control-room/security-ci-evidence-file.js';
 import type { SecurityEvidence } from './control-room/index.js';
+import { getFuryPipeModelScope } from './core/applicability.js';
 import type { FuryPipeVisualPolicy } from './core/applicability.js';
 
 /** Runtime config. The core transform tuning comes from DEFAULTS in
@@ -82,6 +83,11 @@ interface RuntimeConfig {
 
 const DEFAULT_CONFIG_FILE = path.join(os.homedir(), '.config', 'furypipe', 'config.json');
 const DEFAULT_EVENTS_FILE = path.join(os.homedir(), '.furypipe', 'events.jsonl');
+
+// Distinguish a scope copied from the persisted file from an operator-owned
+// environment variable. The dashboard may clear the former when returning to
+// automatic mode, but must never overwrite the latter.
+let configInjectedModelScope = false;
 
 function defaultConfigFile(): string {
   return DEFAULT_CONFIG_FILE;
@@ -144,8 +150,9 @@ function applyConfigFileDefaults(): void {
   // runtime (in-memory) for an emergency live flip.
   if (process.env.FURYPIPE_MODELS === undefined) {
     const scope = resolvePersistedModelScope(cfg.models, cfg.modelScopeExplicit, cfg.modelScopeMode);
-    if (scope.mode === 'explicit' && scope.envValue !== undefined) {
+    if ((scope.mode === 'explicit' || scope.mode === 'off') && scope.envValue !== undefined) {
       process.env.FURYPIPE_MODELS = scope.envValue;
+      configInjectedModelScope = true;
     } else if (scope.migratedLegacyDefault) {
       console.log('[furypipe] migrated legacy default model scope to automatic Model Fabric discovery');
     }
@@ -180,6 +187,10 @@ function persistModelBasesToConfig(bases: readonly string[] | null): void {
     }
   }
   if (bases === null) {
+    if (configInjectedModelScope) {
+      delete process.env.FURYPIPE_MODELS;
+      configInjectedModelScope = false;
+    }
     cfg.modelScopeMode = 'automatic';
     delete cfg.models;
     delete cfg.modelScopeExplicit;
@@ -744,10 +755,37 @@ async function dispatchDashboard(
         } catch {
           return new Response('bad request body', { status: 400 });
         }
+        if (mode !== null && mode !== 'automatic' && mode !== 'explicit' && mode !== 'off') {
+          return new Response(JSON.stringify({ error: 'mode must be automatic, explicit, or off' }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
         if (policy !== null) dashboard.handleVisualPolicySet(policy);
-        if (mode === 'automatic') dashboard.handleModelsAutomatic();
-        else if (list !== null) dashboard.handleModelsSet(list);
+        if (mode === 'automatic') {
+          if (list !== null || model) {
+            return new Response(JSON.stringify({ error: 'automatic mode cannot include a model list' }), {
+              status: 400,
+              headers: { 'content-type': 'application/json' },
+            });
+          }
+          dashboard.handleModelsAutomatic();
+        } else if (mode === 'off') {
+          if (list !== null || model) {
+            return new Response(JSON.stringify({ error: 'off mode cannot include a model list' }), {
+              status: 400,
+              headers: { 'content-type': 'application/json' },
+            });
+          }
+          dashboard.handleModelsSet('off');
+        } else if (list !== null) dashboard.handleModelsSet(list);
         else if (model) dashboard.handleModelsToggle(model, on);
+        else if (mode === 'explicit') {
+          return new Response(JSON.stringify({ error: 'explicit mode requires a model or list' }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
         return dashboard.serveFragment('models', url, port);
       }
       if (method !== 'GET') return undefined;
@@ -1237,7 +1275,11 @@ async function main(): Promise<void> {
       return;
     }
     console.log(renderDoctorReport(
-      collectDoctorReport(),
+      collectDoctorReport({
+        packageVersion: currentVersion(),
+        sourceCommit: process.env.FURYPIPE_SOURCE_COMMIT,
+        entrypoint: process.argv[1],
+      }),
       extra.includes('--json'),
       resolveDoctorLocale(localeArg?.slice('--locale='.length)),
     ));
@@ -1289,6 +1331,9 @@ async function main(): Promise<void> {
   // Stats / sessions / cleanup tools live in the dashboard
   // (see http://127.0.0.1:${port}/).
   const opts = parseCli(cliArgv);
+  const startupScope = getFuryPipeModelScope();
+  const startupSource = configInjectedModelScope ? 'config' : startupScope.source;
+  console.log(`[furypipe] model scope: ${startupScope.mode} (source=${startupSource})`);
 
   // FuryLink only redirects the child's provider traffic; the existing FuryPipe
   // runtime remains the single transformation/tracking/dashboard authority.

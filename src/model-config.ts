@@ -14,12 +14,19 @@ export const LEGACY_DEFAULT_MODEL_SCOPE = Object.freeze([
 ] as const);
 
 export interface PersistedModelScopeResolution {
-  readonly mode: 'absent' | 'automatic' | 'explicit';
+  readonly mode: 'absent' | 'automatic' | 'explicit' | 'off';
   readonly envValue?: string;
   readonly migratedLegacyDefault: boolean;
 }
 
-export type PersistedModelScopeMode = 'automatic' | 'explicit';
+export type PersistedModelScopeMode = 'automatic' | 'explicit' | 'off';
+export type ModelScopeSource = 'automatic_default' | 'config' | 'environment' | 'runtime_override';
+
+export interface EffectiveModelScope {
+  readonly mode: 'automatic' | 'explicit' | 'off';
+  readonly source: ModelScopeSource;
+  readonly effectiveModels: readonly string[];
+}
 
 function normalizedList(value: unknown): string[] | undefined {
   if (Array.isArray(value)) {
@@ -56,12 +63,18 @@ export function resolvePersistedModelScope(
   if (mode === 'automatic') {
     return Object.freeze({ mode: 'automatic', migratedLegacyDefault: false });
   }
+  if (mode === 'off') {
+    return Object.freeze({ mode: 'off', envValue: 'off', migratedLegacyDefault: false });
+  }
   const list = normalizedList(value);
   if (list === undefined) {
     return Object.freeze({ mode: 'absent', migratedLegacyDefault: false });
   }
 
   if (explicit === true) {
+    if (list.length === 0) {
+      return Object.freeze({ mode: 'off', envValue: 'off', migratedLegacyDefault: false });
+    }
     return Object.freeze({
       mode: 'explicit',
       envValue: list.length === 0 ? 'off' : list.join(','),
@@ -74,8 +87,57 @@ export function resolvePersistedModelScope(
   }
 
   return Object.freeze({
-    mode: 'explicit',
+    mode: list.length === 0 ? 'off' : 'explicit',
     envValue: list.length === 0 ? 'off' : list.join(','),
     migratedLegacyDefault: false,
+  });
+}
+
+/**
+ * Resolve the operator-facing scope without mutating process.env. This is the
+ * shared precedence contract used by diagnostics and the runtime host:
+ * environment > persisted config > automatic Model Fabric default.
+ * An empty environment value is treated as absent for compatibility; the
+ * explicit values off/0/false/no/none remain a hard kill switch.
+ */
+export function resolveEffectiveModelScope(input: {
+  readonly envValue?: string;
+  readonly persisted?: {
+    readonly models?: unknown;
+    readonly modelScopeExplicit?: unknown;
+    readonly modelScopeMode?: unknown;
+  };
+  readonly automaticModels: readonly string[];
+}): EffectiveModelScope {
+  const env = normalizedList(input.envValue);
+  if (input.envValue !== undefined && input.envValue.trim() !== '') {
+    return Object.freeze({
+      mode: env?.length === 0 ? 'off' : 'explicit',
+      source: 'environment',
+      effectiveModels: Object.freeze(env ?? []),
+    });
+  }
+
+  const persisted = input.persisted === undefined
+    ? Object.freeze({ mode: 'absent' as const, migratedLegacyDefault: false })
+    : resolvePersistedModelScope(
+        input.persisted.models,
+        input.persisted.modelScopeExplicit,
+        input.persisted.modelScopeMode,
+      );
+  if (persisted.mode === 'explicit') {
+    return Object.freeze({
+      mode: 'explicit',
+      source: 'config',
+      effectiveModels: Object.freeze((persisted.envValue ?? '').split(',').map((model) => model.trim()).filter(Boolean)),
+    });
+  }
+  if (persisted.mode === 'off') {
+    return Object.freeze({ mode: 'off', source: 'config', effectiveModels: Object.freeze([]) });
+  }
+  return Object.freeze({
+    mode: 'automatic',
+    source: 'automatic_default',
+    effectiveModels: Object.freeze([...input.automaticModels]),
   });
 }
