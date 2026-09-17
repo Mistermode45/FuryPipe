@@ -47,11 +47,13 @@ const withDeadline = <T,>(p: Promise<T>, ms: number) =>
 describe('upstream stall handling', () => {
   it('errors the response stream when the upstream goes idle', async () => {
     const restore = mockStalledUpstream();
+    let event: { status?: number; error?: string } | undefined;
     try {
       const proxy = createProxy({
         openAIUpstream: 'http://mock',
         transform: { compress: false },
         upstreamIdleTimeoutMs: 300,
+        onRequest: (observed) => { event = observed; },
       });
       const res = await proxy(request());
       const started = Date.now();
@@ -65,6 +67,8 @@ describe('upstream stall handling', () => {
       expect(outcome).not.toBe('HUNG');
       expect(String(outcome)).toContain('upstream stalled');
       expect(Date.now() - started).toBeLessThan(3000);
+      for (let i = 0; i < 20 && event === undefined; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(event).toMatchObject({ status: 200, error: expect.stringContaining('upstream_timeout') });
     } finally {
       restore();
     }

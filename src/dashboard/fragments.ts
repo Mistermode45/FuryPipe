@@ -6,7 +6,7 @@ import { CACHE_CREATE_RATE, CACHE_READ_RATE } from '../core/baseline.js';
 import type { ControlRoomSnapshot } from '../control-room/index.js';
 import type { ControlPlaneDomainId, ControlPlaneSnapshot } from '../control-plane.js';
 import type { ModelFabricEntry } from '../core/model-fabric.js';
-import type { FuryPipeVisualPolicy } from '../core/applicability.js';
+import type { FuryPipeModelScopeMode, FuryPipeVisualPolicy } from '../core/applicability.js';
 import { createI18n } from '../i18n/index.js';
 import { CORE_CATALOGS } from '../i18n/catalogs.js';
 import type {
@@ -109,6 +109,7 @@ export function renderModelsFragment(
   discovered: readonly ModelFabricEntry[] = [],
   visualPolicy: FuryPipeVisualPolicy = 'auto',
   runtimeActivity: ReadonlyMap<string, ModelRuntimeActivity> = new Map(),
+  scopeMode: FuryPipeModelScopeMode = 'automatic',
 ): string {
   const t = (key: string): string => dashboardT(locale, key);
   const on = new Set(active);
@@ -144,6 +145,24 @@ export function renderModelsFragment(
   const moot = enabled
     ? ''
     : `<div class="models"><span class="hint">${escapeHtml(t('dashboard.models.offHint'))}</span></div>`;
+  const scopeModeLabel = scopeMode === 'automatic'
+    ? t('dashboard.models.scopeAutomatic')
+    : scopeMode === 'explicit'
+      ? t('dashboard.models.scopeExplicit')
+      : t('dashboard.models.scopeOff');
+  const scopeModeHint = scopeMode === 'automatic'
+    ? t('dashboard.models.scopeAutomaticHint')
+    : scopeMode === 'explicit'
+      ? t('dashboard.models.scopeExplicitHint')
+      : t('dashboard.models.scopeOffHint');
+  const scopeStatus = `<div class="model-scope-status" data-model-scope="${scopeMode}">` +
+    `<span class="models-label">${escapeHtml(t('dashboard.models.scopeMode'))}</span>` +
+    `<strong>${escapeHtml(scopeModeLabel)}</strong>` +
+    `<span class="hint">${escapeHtml(scopeModeHint)}</span>` +
+    (scopeMode === 'automatic' ? '' :
+      `<button class="mini-btn" type="button" hx-post="/fragments/models" hx-target="#frag-models" ` +
+      `hx-vals='${escapeHtml('{"mode":"automatic"}')}'>${escapeHtml(t('dashboard.models.restoreAutomatic'))}</button>`) +
+    `</div>`;
 
   const discoveredRows = discovered.slice(0, 250).map((model) => {
     const imageState = model.modalities.imageInput.toUpperCase();
@@ -156,6 +175,9 @@ export function renderModelsFragment(
     const runtimeSummary = runtime && runtime.requests > 0
       ? (
           `${numFmt(runtime.requests)} req · ${numFmt(runtime.compressedRequests)} visual · ${numFmt(runtime.passthroughRequests)} text` +
+          (runtime.recentEligibilityCauses.operator_scope_excluded
+            ? ` · ${t('dashboard.models.operatorScopeExcluded')}`
+            : '') +
           (runtime.lastReason ? ` · ${runtime.lastReason}` : '')
         )
       : t('dashboard.models.noRuntimeActivity');
@@ -204,7 +226,7 @@ export function renderModelsFragment(
     `<span class="hint">${escapeHtml(t('dashboard.models.csvHint'))}</span>` +
     `</div></details>`;
 
-  return modelFabric + moot + manualScope;
+  return modelFabric + moot + scopeStatus + manualScope;
 }
 
 // ---- session hero --------------------------------------------------------
@@ -571,7 +593,7 @@ export function renderContextMapFragment(
       ids
         .map(
           (id) =>
-            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="furyPin(${id});furySource(true)" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
+            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" role="button" tabindex="0" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="furyPin(${id});furySource(true)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
         )
         .join('') +
       `</div>`
@@ -1952,7 +1974,7 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
     <label id="command-palette-title" for="command-search">${escapeHtml(t('dashboard.page.commandPalette'))}</label>
     <input id="command-search" type="search" autocomplete="off" placeholder="${escapeHtml(t('dashboard.page.commandSearch'))}" />
   </div>
-  <div class="command-results" role="list">
+  <div class="command-results">
     <a href="#overview" data-command-item data-command-search="overview runtime"><small>01 · RUNTIME</small><span>${escapeHtml(t('dashboard.page.navOverview'))}</span></a>
     <a href="#observe" data-command-item data-command-search="observe context sessions"><small>02 · OBSERVE</small><span>${escapeHtml(t('dashboard.page.navObserve'))}</span></a>
     <a href="#capabilities" data-command-item data-command-search="capabilities skills mcp agents providers"><small>03 · CAPABILITIES</small><span>${escapeHtml(t('dashboard.page.navCapabilities'))}</span></a>

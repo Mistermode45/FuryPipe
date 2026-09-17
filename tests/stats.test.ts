@@ -37,16 +37,18 @@ describe('stats aggregator', () => {
     fold(s, ev({ compressed: false, reason: 'below_min_chars (50 < 2000)' }));
     fold(s, ev({ compressed: false, reason: 'below_min_chars (60 < 2000)' }));
     fold(s, ev({ compressed: false, reason: 'compress=false' }));
+    fold(s, ev({ compressed: false, reason: 'unsupported_model', eligibility_cause: 'operator_scope_excluded' }));
     expect(s.compressed).toBe(2);
-    expect(s.passthrough).toBe(3);
+    expect(s.passthrough).toBe(4);
     expect(s.origCharsTotal).toBe(3000);
     expect(s.imageBytesTotal).toBe(500);
     // Reasons keep their exact string form (parenthetical char counts and
     // all) — useful for spotting outliers without collapsing detail.
-    expect(s.skipReasons.size).toBe(3);
+    expect(s.skipReasons.size).toBe(4);
     expect(s.skipReasons.get('below_min_chars (50 < 2000)')).toBe(1);
     expect(s.skipReasons.get('below_min_chars (60 < 2000)')).toBe(1);
     expect(s.skipReasons.get('compress=false')).toBe(1);
+    expect(s.eligibilityCauses.get('operator_scope_excluded')).toBe(1);
   });
 
   it('aggregates Anthropic token usage and computes cache hit metrics', () => {

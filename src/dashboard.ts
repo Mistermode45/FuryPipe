@@ -22,10 +22,10 @@
  *
  * Node-only by design. Workers host has no dashboard; use Workers Logs.
  *
- * Memory bound: ring buffer cap 50 events + a parallel ring of the last 50
- * rendered PNGs (images are never persisted to disk, so this ring is the
- * only place to view them). At a typical 75 KB PNG that's ~3-4 MB resident;
- * a process restart starts the image ring empty.
+ * Memory bound: ring buffer cap 50 events + a parallel ring of rendered PNGs
+ * capped by both entry count and bytes (images are never persisted to disk,
+ * so this ring is the only place to view them). A process restart starts the
+ * image ring empty.
  */
 
 import * as fs from 'node:fs';
@@ -79,8 +79,11 @@ import {
 import {
   getAllowedModelBases,
   getConfiguredModelBases,
+  getFuryPipeModelScopeMode,
   getFuryPipeVisualPolicy,
   isFuryPipeSupportedModel,
+  normalizeModelScopeEntry,
+  parseModelScopeList,
   setAllowedModelBases,
   setFuryPipeVisualPolicy,
   type FuryPipeVisualPolicy,
@@ -99,10 +102,11 @@ import { CORE_CATALOGS } from './i18n/catalogs.js';
 const DASHBOARD_AUTO_LOCALES = Object.freeze(Object.keys(CORE_CATALOGS));
 const RECENT_CAP = 50;
 
-/** How many rendered PNGs to keep in the in-memory image ring. Matches
- *  RECENT_CAP so every visible recent-requests row can still resolve its
- *  image. Images are never written to disk — this ring is the only store. */
+/** Hard count ceiling for rendered PNGs in the in-memory image ring. The
+ *  byte ceiling below is the primary memory guard; this count preserves a
+ *  bounded lookup surface for recent rows. */
 const IMAGE_RING_CAP = 800;
+const IMAGE_RING_MAX_BYTES = 64 * 1024 * 1024;
 
 type ControlRoomProvider = () => ControlRoomSnapshot | null | Promise<ControlRoomSnapshot | null>;
 
@@ -143,6 +147,8 @@ export interface RecentRow {
   compressed: boolean;
   /** Exact passthrough/compression reason captured from the proxy event. */
   reason?: string;
+  /** Stable eligibility cause, separate from the legacy free-form reason. */
+  eligibility_cause?: 'operator_scope_excluded';
   cc_added?: number;
   input_tokens?: number;
   /** From /v1/messages `usage.output_tokens`. Identical with/without
@@ -547,6 +553,7 @@ export class DashboardState {
    *  the ring via /proxy-latest-png?id=N. In-memory only — images are never
    *  persisted, so a restart starts this empty. */
   private images: ImageEntry[] = [];
+  private imageBytes = 0;
   /** Monotonic image id source. Never reset, never reused — an evicted id
    *  stays dangling on its RecentRow rather than pointing at a new image. */
   private nextImageId = 1;
@@ -585,9 +592,9 @@ export class DashboardState {
 
   /** Host-provided persistence hook for the runtime model scope. The core
    *  override stays in-memory (Edge-safe); a Node host passes a saver that
-   *  writes the `models` key of the config file so chip toggles survive a
+   *  writes the model-scope keys of the config file so chip toggles survive a
    *  restart. Best-effort: failures are the hook's problem, never the API's. */
-  private readonly persistModelBases: ((bases: readonly string[]) => void) | undefined;
+  private readonly persistModelBases: ((bases: readonly string[] | null) => void) | undefined;
   /** Host-provided persistence hook for the global visual policy. */
   private readonly persistVisualPolicy: ((policy: FuryPipeVisualPolicy) => void) | undefined;
   /** Optional metadata-only Control Room provider. Runtime subsystems own the
@@ -597,7 +604,7 @@ export class DashboardState {
   constructor(
     paths?: SessionsPaths,
     ccMapFn?: () => Promise<Map<string, ClaudeCodeSessionRef>>,
-    persistModelBases?: (bases: readonly string[]) => void,
+    persistModelBases?: (bases: readonly string[] | null) => void,
     controlRoomProvider?: ControlRoomProvider,
     persistVisualPolicy?: (policy: FuryPipeVisualPolicy) => void,
   ) {
@@ -647,23 +654,28 @@ export class DashboardState {
       const id = this.nextImageId++;
       const width = dims[i]?.width ?? 0;
       const height = dims[i]?.height ?? 0;
-      const kb = (pngs[i]!.length / 1024).toFixed(1);
+      const png = pngs[i]!;
+      const kb = (png.length / 1024).toFixed(1);
       const meta = `${width}×${height} · ${kb} KB · image ${i + 1}/${pngs.length}`;
       this.images.push({
         id,
-        png: pngs[i]!,
+        png,
         meta,
         width,
         height,
         ts: Date.now() / 1000,
         sourceText: info.imageSourceTexts?.[i] ?? info.imageSourceText,
       });
+      this.imageBytes += png.byteLength;
       ids.push(id);
     }
-    // Evict the oldest entries past the cap. splice() keeps insertion order
-    // so images[images.length - 1] is always the latest render.
-    if (this.images.length > IMAGE_RING_CAP) {
-      this.images.splice(0, this.images.length - IMAGE_RING_CAP);
+    // Evict the oldest entries past either cap. Keeping a byte budget matters
+    // because a count-only ring can retain gigabytes of valid but dense PNGs.
+    // shift() keeps insertion order so the last image is always the latest.
+    while (this.images.length > IMAGE_RING_CAP || this.imageBytes > IMAGE_RING_MAX_BYTES) {
+      const evicted = this.images.shift();
+      if (!evicted) break;
+      this.imageBytes -= evicted.png.byteLength;
     }
     return ids;
   }
@@ -1032,6 +1044,9 @@ export class DashboardState {
       status: ev.status,
       compressed,
       reason: info?.reason,
+      ...(info?.eligibilityCause === 'operator_scope_excluded'
+        ? { eligibility_cause: info.eligibilityCause }
+        : {}),
       cc_added: compressed ? 1 : undefined,
       input_tokens: haveUsage ? inp : undefined,
       output_tokens: haveUsage ? out : undefined,
@@ -1257,6 +1272,9 @@ export class DashboardState {
         status: t.status,
         compressed,
         reason: t.reason,
+        ...(t.eligibility_cause === 'operator_scope_excluded'
+          ? { eligibility_cause: t.eligibility_cause }
+          : {}),
         cc_added: compressed ? 1 : undefined,
         input_tokens: t.input_tokens,
         output_tokens: t.output_tokens,
@@ -1580,6 +1598,7 @@ export class DashboardState {
         savedUsd: Number.isFinite(stats.saved_usd) ? stats.saved_usd : 0,
         compressionEnabled: this.compressionEnabled,
         activeModels: getAllowedModelBases(),
+        modelScopeMode: getFuryPipeModelScopeMode(),
       },
       controlRoom: await this.readControlRoomSnapshot(),
     });
@@ -1589,9 +1608,14 @@ export class DashboardState {
     const totals = this.totalsByModel.get(model);
     const recent = this.recent.filter((row) => row.model === model);
     const recentSkipReasons: Record<string, number> = {};
+    const recentEligibilityCauses: Record<string, number> = {};
     for (const row of recent) {
       if (row.compressed || !row.reason) continue;
       recentSkipReasons[row.reason] = (recentSkipReasons[row.reason] ?? 0) + 1;
+      if (row.eligibility_cause) {
+        recentEligibilityCauses[row.eligibility_cause] =
+          (recentEligibilityCauses[row.eligibility_cause] ?? 0) + 1;
+      }
     }
     const last = recent[recent.length - 1];
     return Object.freeze({
@@ -1602,6 +1626,7 @@ export class DashboardState {
         (totals?.requests ?? recent.length) - (totals?.compressedRequests ?? recent.filter((row) => row.compressed).length),
       ),
       recentSkipReasons: Object.freeze({ ...recentSkipReasons }),
+      recentEligibilityCauses: Object.freeze({ ...recentEligibilityCauses }),
       ...(last?.reason === undefined ? {} : { lastReason: last.reason }),
       ...(last === undefined || !Number.isFinite(last.ts)
         ? {}
@@ -1635,6 +1660,7 @@ export class DashboardState {
         ...model,
         runtime: runtime.get(model.id) ?? this.modelRuntimeActivity(model.id),
       })),
+      scopeMode: getFuryPipeModelScopeMode(),
     }), {
       status: 200,
       headers: {
@@ -1675,6 +1701,7 @@ export class DashboardState {
             inspectRuntimeModels(),
             getFuryPipeVisualPolicy(),
             this.modelRuntimeActivityMap(),
+            getFuryPipeModelScopeMode(),
           ),
         );
       case 'context-map': {
@@ -1839,8 +1866,9 @@ export class DashboardState {
    *  FURYPIPE_MODELS env / built-in default. */
   handleModelsToggle(model: string, on: boolean): void {
     const next = new Set(getAllowedModelBases());
-    if (on) next.add(model);
-    else next.delete(model);
+    const normalized = normalizeModelScopeEntry(model);
+    if (on) next.add(normalized);
+    else next.delete(normalized);
     this.applyModelBases([...next]);
   }
 
@@ -1848,15 +1876,16 @@ export class DashboardState {
    *  scope from the FURYPIPE_MODELS textbox. Same CSV shape as the env var;
    *  empty or off/false/0/no/none = compress nothing. Persistence as above. */
   handleModelsSet(csv: string): void {
-    const trimmed = csv.trim();
-    const bases =
-      !trimmed || /^(0|false|no|off|none)$/i.test(trimmed)
-        ? []
-        : trimmed.split(',').map((s) => s.trim()).filter(Boolean);
-    this.applyModelBases(bases);
+    this.applyModelBases(parseModelScopeList(csv));
   }
 
-  private applyModelBases(bases: string[]): void {
+  /** POST /fragments/models with {mode: "automatic"} — remove the persisted
+   * operator scope and return to Model Fabric discovery. */
+  handleModelsAutomatic(): void {
+    this.applyModelBases(null);
+  }
+
+  private applyModelBases(bases: readonly string[] | null): void {
     setAllowedModelBases(bases);
     try {
       this.persistModelBases?.(bases);
