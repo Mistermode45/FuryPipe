@@ -79,11 +79,12 @@ function sameScope(a: readonly string[], b: readonly string[]): boolean {
 /**
  * Resolve persisted config into the environment contract.
  *
- * explicit=true is written by current FuryPipe whenever the operator edits
- * the scope. Unmarked legacy values equal to the historical built-in default
- * migrate to automatic discovery. Every other unmarked value is preserved as
- * explicit because surprising broadening is worse than retaining a custom
- * historical scope.
+ * modelScopeMode is authoritative when present. For legacy config without that
+ * field, explicit=true is the marker written by current FuryPipe whenever the
+ * operator edits the scope. Only an unmarked legacy value equal to the
+ * historical built-in default migrates to automatic discovery. Every other
+ * unmarked value is preserved as explicit because surprising broadening is
+ * worse than retaining a custom historical scope.
  */
 export function resolvePersistedModelScope(
   value: unknown,
@@ -96,15 +97,29 @@ export function resolvePersistedModelScope(
   if (mode === 'off') {
     return Object.freeze({ mode: 'off', envValue: 'off', migratedLegacyDefault: false });
   }
-  if (mode === 'explicit' && explicit !== undefined && explicit !== true && explicit !== false) {
-    return Object.freeze({ mode: 'off', envValue: 'off', migratedLegacyDefault: false });
-  }
   if (mode !== undefined && mode !== 'automatic' && mode !== 'explicit' && mode !== 'off') {
     return Object.freeze({ mode: 'off', envValue: 'off', migratedLegacyDefault: false });
   }
+
   const list = normalizedList(value);
+
+  // A current-format persisted mode is authoritative over the <=0.15 legacy
+  // migration heuristic. Missing, empty, malformed or oversized explicit state
+  // fails closed to off; a valid explicit list is never broadened to automatic,
+  // even when it happens to equal the historical default seed.
+  if (mode === 'explicit') {
+    if (list === undefined || list.length === 0) {
+      return Object.freeze({ mode: 'off', envValue: 'off', migratedLegacyDefault: false });
+    }
+    return Object.freeze({
+      mode: 'explicit',
+      envValue: list.join(','),
+      migratedLegacyDefault: false,
+    });
+  }
+
   if (list === undefined) {
-    if (value !== undefined || mode === 'explicit') {
+    if (value !== undefined) {
       return Object.freeze({ mode: 'off', envValue: 'off', migratedLegacyDefault: false });
     }
     return Object.freeze({ mode: 'absent', migratedLegacyDefault: false });
@@ -116,7 +131,7 @@ export function resolvePersistedModelScope(
     }
     return Object.freeze({
       mode: 'explicit',
-      envValue: list.length === 0 ? 'off' : list.join(','),
+      envValue: list.join(','),
       migratedLegacyDefault: false,
     });
   }

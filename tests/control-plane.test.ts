@@ -39,6 +39,10 @@ function snapshot(status: 'VERIFIED' | 'NOT_EXECUTED' = 'VERIFIED'): ControlRoom
   } as unknown as ControlRoomSnapshot;
 }
 
+function snapshotWithOverall(overall: 'BLOCKED' | 'DEGRADED'): ControlRoomSnapshot {
+  return { ...snapshot(), overall };
+}
+
 describe('Control Plane V2 snapshot', () => {
   it('keeps unwired capability domains explicit instead of promoting them to green', () => {
     const value = createControlPlaneSnapshot({ generatedAt: 1, runtime, controlRoom: null });
@@ -93,6 +97,46 @@ describe('Control Plane V2 snapshot', () => {
       evidenceSha: 'b'.repeat(40),
       runId: 42,
     })]);
+  });
+
+  it('marks a source SHA mismatch stale even when the evidence SHA matches', () => {
+    const value = createControlPlaneSnapshot({
+      generatedAt: 1,
+      runtime,
+      controlRoom: snapshot(),
+      evidence: [{
+        id: 'codeql',
+        status: 'VERIFIED',
+        sourceSha: 'b'.repeat(40),
+        evidenceSha: 'a'.repeat(40),
+        runId: 42,
+        generatedAt: 2,
+      }],
+    });
+    expect(value.evidence[0]?.status).toBe('STALE');
+  });
+
+  it('does not call positive evidence source-bound when no source commit exists', () => {
+    const value = createControlPlaneSnapshot({
+      generatedAt: 1,
+      runtime,
+      controlRoom: null,
+      evidence: [{
+        id: 'codeql',
+        status: 'VERIFIED',
+        sourceSha: 'a'.repeat(40),
+        evidenceSha: 'a'.repeat(40),
+        runId: 42,
+        generatedAt: 2,
+      }],
+    });
+    expect(value.evidence[0]?.status).toBe('STALE');
+  });
+
+  it('preserves a blocked Control Room as a failed top-level evidence state', () => {
+    const value = createControlPlaneSnapshot({ generatedAt: 1, runtime, controlRoom: snapshotWithOverall('BLOCKED') });
+    expect(value.domains.find((domain) => domain.id === 'evidence')).toMatchObject({ status: 'FAILED' });
+    expect(value.evidence[0]).toMatchObject({ status: 'FAILED' });
   });
 
   it('bounds invalid runtime payloads', () => {
