@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { renderDoctorReport, resolveDoctorLocale, type DoctorReport } from '../src/doctor.js';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale, type DoctorReport } from '../src/doctor.js';
 
 const report: DoctorReport = {
   platform: { os: 'test 1', arch: 'x64', shell: 'powershell', cwd: 'C:\\work', executable: 'node' },
@@ -10,6 +13,7 @@ const report: DoctorReport = {
   },
   network: { host: '127.0.0.1', port: 48721, upstream: 'https://api.example.test' },
   paths: { config: 'C:\\Users\\test\\config.json', events: 'C:\\Users\\test\\events.jsonl' },
+  modelScope: { mode: 'automatic', source: 'automatic_default', effectiveModels: [], visualPolicy: 'auto' },
   tools: {
     docker: { status: 'unavailable' },
     browser: { status: 'available', value: 'explorer.exe' },
@@ -81,5 +85,57 @@ describe('furypipe doctor renderer', () => {
       },
       intlLocale: 'not_a_locale',
     })).toBe('en');
+  });
+
+  it('reports the effective model scope from config without mutating the environment', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'furypipe-doctor-'));
+    const file = path.join(dir, 'config.json');
+    fs.writeFileSync(file, JSON.stringify({ modelScopeMode: 'explicit', models: ['claude-opus-5'], visualPolicy: 'safe_exact' }));
+    try {
+      const result = collectDoctorReport({
+        env: { FURYPIPE_CONFIG: file },
+      });
+      expect(result.modelScope).toEqual({
+        mode: 'explicit',
+        source: 'config',
+        effectiveModels: ['claude-opus-5'],
+        visualPolicy: 'safe_exact',
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports environment scope as authoritative over persisted config', () => {
+    const result = collectDoctorReport({
+      env: { FURYPIPE_MODELS: 'off', FURYPIPE_VISUAL_POLICY: 'text_only' },
+    });
+    expect(result.modelScope).toEqual({
+      mode: 'off',
+      source: 'environment',
+      effectiveModels: [],
+      visualPolicy: 'text_only',
+    });
+  });
+
+  it('fails closed when the configured doctor file exceeds the bounded read size', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'furypipe-doctor-large-'));
+    const file = path.join(dir, 'config.json');
+    fs.writeFileSync(file, JSON.stringify({ modelScopeMode: 'explicit', models: ['claude-opus-5'] })
+      + ' '.repeat(1024 * 1024));
+    try {
+      const result = collectDoctorReport({
+        env: { FURYPIPE_CONFIG: file },
+        packageVersion: 'test-version',
+      });
+      expect(result.modelScope).toEqual({
+        mode: 'automatic',
+        source: 'automatic_default',
+        effectiveModels: [],
+        visualPolicy: 'auto',
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
