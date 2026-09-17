@@ -49,6 +49,7 @@ export interface ControlPlaneRuntimeInput {
   readonly savedInputTokens: number;
   readonly savedUsd: number;
   readonly compressionEnabled: boolean;
+  /** Explicit operator model bases only. Automatic/off modes must project an empty list. */
   readonly activeModels: readonly string[];
   readonly modelScopeMode: 'automatic' | 'explicit' | 'off';
 }
@@ -63,6 +64,7 @@ export interface ControlPlaneRuntime {
   readonly savedInputTokens: number;
   readonly savedUsd: number;
   readonly compressionEnabled: boolean;
+  /** Explicit operator model bases only. Automatic discovery is represented by modelScopeMode. */
   readonly activeModels: readonly string[];
   readonly modelScopeMode: 'automatic' | 'explicit' | 'off';
 }
@@ -231,6 +233,12 @@ function boundedModelScopeMode(value: unknown): 'automatic' | 'explicit' | 'off'
  */
 export function createControlPlaneSnapshot(input: CreateControlPlaneSnapshotInput): ControlPlaneSnapshot {
   const generatedAt = boundedNumber(input.generatedAt, 'generatedAt');
+  const modelScopeMode = boundedModelScopeMode(input.runtime.modelScopeMode);
+  // Always validate the producer payload, even when the current mode does not
+  // expose a static list. Automatic Model Fabric is dynamic; the historical
+  // compatibility seed is not an operator allowlist and must not be presented
+  // as one. Off likewise has no active static models.
+  const boundedActiveModels = boundedModels(input.runtime.activeModels);
   const runtime: ControlPlaneRuntime = Object.freeze({
     status: 'AVAILABLE',
     port: boundedNumber(input.runtime.port, 'runtime.port'),
@@ -241,8 +249,8 @@ export function createControlPlaneSnapshot(input: CreateControlPlaneSnapshotInpu
     savedInputTokens: boundedNumber(input.runtime.savedInputTokens, 'runtime.savedInputTokens'),
     savedUsd: Number.isFinite(input.runtime.savedUsd) ? input.runtime.savedUsd : 0,
     compressionEnabled: input.runtime.compressionEnabled,
-    activeModels: boundedModels(input.runtime.activeModels),
-    modelScopeMode: boundedModelScopeMode(input.runtime.modelScopeMode),
+    activeModels: modelScopeMode === 'explicit' ? boundedActiveModels : Object.freeze([]),
+    modelScopeMode,
   });
   const controlRoom = input.controlRoom;
   const receipts = controlRoomSection(controlRoom, 'receipts');
