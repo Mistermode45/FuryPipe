@@ -158,7 +158,11 @@ describe('Control Plane V2 snapshot', () => {
   it('escapes hostile observations in the rendered Control Plane', () => {
     const value = createControlPlaneSnapshot({
       generatedAt: 1,
-      runtime: { ...runtime, activeModels: ['<img src=x onerror=alert(1)>'] },
+      runtime: {
+        ...runtime,
+        activeModels: ['<img src=x onerror=alert(1)>'],
+        modelScopeMode: 'explicit',
+      },
       controlRoom: null,
     });
     const html = renderControlPlaneFragment(value, 'en');
