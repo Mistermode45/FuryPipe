@@ -862,6 +862,9 @@ export interface EnvFields {
 export interface TransformInfo {
   compressed: boolean;
   reason?: string;
+  /** Stable, bounded cause for a model-scope exclusion. `reason` remains the
+   *  backward-compatible top-level transform reason and may contain detail. */
+  eligibilityCause?: 'operator_scope_excluded';
   /** Optional plaintext-free audit receipt, populated by provider wrappers on request. */
   receipt?: CompressionReceipt;
   /** Shared Context Fabric decision, exposed for safe per-request diagnostics. */

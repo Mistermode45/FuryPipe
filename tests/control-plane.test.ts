@@ -13,6 +13,7 @@ const runtime = {
   savedUsd: 0.12,
   compressionEnabled: true,
   activeModels: ['claude-fable-5'],
+  modelScopeMode: 'automatic',
 } as const;
 
 function snapshot(status: 'VERIFIED' | 'NOT_EXECUTED' = 'VERIFIED'): ControlRoomSnapshot {
@@ -100,6 +101,14 @@ describe('Control Plane V2 snapshot', () => {
       runtime: { ...runtime, activeModels: Array.from({ length: 65 }, () => 'model') },
       controlRoom: null,
     })).toThrow('activeModels exceeds 64');
+  });
+
+  it('validates the effective model scope mode instead of serializing an unknown state', () => {
+    expect(() => createControlPlaneSnapshot({
+      generatedAt: 1,
+      runtime: { ...runtime, modelScopeMode: 'future' as never },
+      controlRoom: null,
+    })).toThrow('runtime.modelScopeMode is invalid');
   });
 
   it('escapes hostile observations in the rendered Control Plane', () => {
