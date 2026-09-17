@@ -661,6 +661,21 @@ describe('serveFragment', () => {
     expect(header).toContain('aria-label=');
   });
 
+  it('renders gallery pages as keyboard-activatable controls', async () => {
+    dash.update({
+      method: 'POST', path: '/v1/messages', model: 'claude-opus-5', status: 200,
+      durationMs: 1,
+      usage: { input_tokens: 10, output_tokens: 1 },
+      info: {
+        compressed: true, imageCount: 1, imagePngs: [new Uint8Array([1])],
+        imageDims: [{ width: 10, height: 10 }], imageSourceText: 'gallery source',
+      },
+    } as never);
+    const html = await (await dash.serveFragment('context-map', url, 4711)).text();
+    expect(html).toContain('role="button" tabindex="0"');
+    expect(html).toContain("onkeydown=\"if(event.key==='Enter'||event.key===' ')");
+  });
+
   it('uses source text parallel to each captured PNG', async () => {
     const ids = dash.captureImage({
       imagePngs: [new Uint8Array([1]), new Uint8Array([2])],

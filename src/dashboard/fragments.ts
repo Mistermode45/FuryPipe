@@ -593,7 +593,7 @@ export function renderContextMapFragment(
       ids
         .map(
           (id) =>
-            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="furyPin(${id});furySource(true)" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
+            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" role="button" tabindex="0" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="furyPin(${id});furySource(true)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
         )
         .join('') +
       `</div>`
