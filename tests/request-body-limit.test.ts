@@ -128,6 +128,27 @@ function proxyWithLimit(
 }
 
 describe('the ceiling is enforced on the body, not on its declared size', () => {
+  it('contains an async telemetry observer rejection after the response settles', async () => {
+    const up = mockUpstream();
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const proxy = createProxy({
+        upstream: 'https://upstream.invalid',
+        transform: { compress: false },
+        onRequest: async () => { throw new Error('observer failure'); },
+      });
+      const res = await proxy(post('/v1/messages', JSON.stringify({ model: 'claude-fable-5', messages: [] })));
+      await res.text();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+      up.restore();
+    }
+  });
+
   it('forwards a body of exactly the limit, byte for byte', async () => {
     const up = mockUpstream();
     try {
@@ -226,6 +247,19 @@ describe('the refusal is shaped like the provider it stands in for', () => {
 });
 
 describe('label-only routes are bounded but never rejected', () => {
+  it('preserves bytes after a single chunk crosses the model-sniff prefix cap', async () => {
+    const up = mockUpstream();
+    try {
+      const payload = JSON.stringify({ model: 'some-labelled-model', input: 'z'.repeat((1 << 20) + 123) });
+      const res = await proxyWithLimit(LIMIT)(post('/v1/files', chunkedBody(payload, payload.length)));
+      expect(res.status).toBe(200);
+      expect(up.calls).toBe(1);
+      expect(up.bodies[0]).toBe(payload);
+    } finally {
+      up.restore();
+    }
+  });
+
   it('streams an oversized upload through untouched', async () => {
     const up = mockUpstream();
     try {
