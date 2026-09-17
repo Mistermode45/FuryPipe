@@ -110,6 +110,10 @@ function safeUpstream(value: string | undefined): string {
 
 function readConfigObject(file: string): Record<string, unknown> | undefined {
   try {
+    const stat = fs.statSync(file);
+    if (!stat.isFile() || stat.size > 1024 * 1024) {
+      return undefined;
+    }
     const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
       ? parsed as Record<string, unknown>
