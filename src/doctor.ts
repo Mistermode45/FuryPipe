@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { FURYPIPE_DEFAULT_HOST, FURYPIPE_DEFAULT_PORT, parseFuryPipePort } from './runtime-defaults.js';
@@ -6,6 +7,8 @@ import { discoverOpenClaw, type OpenClawDiscovery } from './openclaw.js';
 import { createI18n } from './i18n/index.js';
 import { CORE_CATALOGS } from './i18n/catalogs.js';
 import { resolveSupportedLocale } from './i18n/runtime.js';
+import { DEFAULT_MODEL_BASES } from './core/applicability.js';
+import { resolveEffectiveModelScope, type ModelScopeSource } from './model-config.js';
 
 export interface DoctorCheck {
   readonly status: 'available' | 'unavailable' | 'configured' | 'not_configured';
@@ -33,6 +36,13 @@ export interface DoctorReport {
   readonly paths: {
     readonly config: string;
     readonly events: string;
+  };
+  readonly modelScope: {
+    readonly mode: 'automatic' | 'explicit' | 'off';
+    readonly source: ModelScopeSource;
+    /** Empty in automatic mode: discovery is dynamic, not a static catalog. */
+    readonly effectiveModels: readonly string[];
+    readonly visualPolicy: string;
   };
   readonly tools: {
     readonly docker: DoctorCheck;
@@ -98,12 +108,59 @@ function safeUpstream(value: string | undefined): string {
   }
 }
 
+function readConfigObject(file: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function safeModelList(value: readonly string[]): readonly string[] {
+  return Object.freeze(value
+    .filter((model) => model.length <= 160 && !/[\u0000-\u001f\u007f]/u.test(model))
+    .slice(0, 64));
+}
+
+function scopeForDoctor(env: Readonly<Record<string, string | undefined>>, configFile: string) {
+  const config = readConfigObject(configFile);
+  const scope = resolveEffectiveModelScope({
+    envValue: env.FURYPIPE_MODELS,
+    persisted: config,
+    automaticModels: DEFAULT_MODEL_BASES,
+  });
+  const configuredPolicy = typeof config?.visualPolicy === 'string'
+    ? config.visualPolicy.trim().toLowerCase()
+    : undefined;
+  const environmentPolicy = env.FURYPIPE_VISUAL_POLICY?.trim().toLowerCase();
+  const visualPolicy = [environmentPolicy, configuredPolicy]
+    .find((value): value is string => value === 'auto'
+      || value === 'max_savings'
+      || value === 'safe_exact'
+      || value === 'text_only') ?? 'auto';
+  return {
+    mode: scope.mode,
+    source: scope.source,
+    effectiveModels: scope.mode === 'automatic' ? Object.freeze([]) : safeModelList(scope.effectiveModels),
+    visualPolicy,
+  } as const;
+}
+
+export interface DoctorCollectionOptions {
+  readonly env?: Readonly<Record<string, string | undefined>>;
+}
+
 /** Collect local platform facts only. Credentials and header values are never read. */
-export function collectDoctorReport(): DoctorReport {
+export function collectDoctorReport(options: DoctorCollectionOptions = {}): DoctorReport {
+  const env = options.env ?? process.env;
   const home = os.homedir();
+  const configFile = env.FURYPIPE_CONFIG?.trim() || path.join(home, '.config', 'furypipe', 'config.json');
   let port = FURYPIPE_DEFAULT_PORT;
   try {
-    port = parseFuryPipePort(process.env.FURYPIPE_PORT);
+    port = parseFuryPipePort(env.FURYPIPE_PORT);
   } catch {
     port = FURYPIPE_DEFAULT_PORT;
   }
@@ -112,7 +169,7 @@ export function collectDoctorReport(): DoctorReport {
     platform: {
       os: `${os.platform()} ${os.release()}`,
       arch: os.arch(),
-      shell: process.env.ComSpec ?? process.env.SHELL ?? 'unknown',
+      shell: env.ComSpec ?? env.SHELL ?? 'unknown',
       cwd: process.cwd(),
       executable: process.execPath,
     },
@@ -122,14 +179,15 @@ export function collectDoctorReport(): DoctorReport {
       pnpm: commandVersion('pnpm'),
     },
     network: {
-      host: process.env.FURYPIPE_HOST?.trim() || FURYPIPE_DEFAULT_HOST,
+      host: env.FURYPIPE_HOST?.trim() || FURYPIPE_DEFAULT_HOST,
       port,
-      upstream: safeUpstream(process.env.ANTHROPIC_UPSTREAM ?? process.env.FURYPIPE_UPSTREAM),
+      upstream: safeUpstream(env.ANTHROPIC_UPSTREAM ?? env.FURYPIPE_UPSTREAM),
     },
     paths: {
-      config: process.env.FURYPIPE_CONFIG ?? path.join(home, '.config', 'furypipe', 'config.json'),
-      events: process.env.FURYPIPE_LOG ?? path.join(home, '.furypipe', 'events.jsonl'),
+      config: configFile,
+      events: env.FURYPIPE_LOG ?? path.join(home, '.furypipe', 'events.jsonl'),
     },
+    modelScope: scopeForDoctor(env, configFile),
     tools: {
       docker: commandVersion('docker'),
       browser: browserCheck(),
@@ -216,6 +274,9 @@ export function renderDoctorReport(report: DoctorReport, json = false, locale = 
     `${t('doctor.upstream')}: ${report.network.upstream}`,
     `${t('doctor.config')}: ${report.paths.config}`,
     `${t('doctor.events')}: ${report.paths.events}`,
+    `${t('doctor.modelScope')}: ${report.modelScope.mode} (${report.modelScope.source})` +
+      (report.modelScope.effectiveModels.length > 0 ? ` [${report.modelScope.effectiveModels.join(', ')}]` : ''),
+    `${t('doctor.visualPolicy')}: ${report.modelScope.visualPolicy}`,
     `${t('doctor.docker')}: ${check(report.tools.docker)}`,
     `${t('doctor.browserOpen')}: ${check(report.tools.browser)}`,
     `${t('doctor.claude')}: ${check(report.tools.claude)}`,

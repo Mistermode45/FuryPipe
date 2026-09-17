@@ -1831,7 +1831,12 @@ let responseContentType: string | undefined;
             r.info.baselineProbeStatus = 'failed';
           }
         }
-        if (!modelOk) r.info.reason = modelSkipReason;
+        if (!modelOk) {
+          r.info.reason = modelSkipReason;
+          if (modelEligibility.source === 'operator_scope' && modelSkipReason === 'unsupported_model') {
+            r.info.eligibilityCause = 'operator_scope_excluded';
+          }
+        }
         bodyOut = r.body as unknown as BodyInit; // TS narrows Uint8Array away from BodyInit
         info = r.info;
         reqBodyBytes = r.body;

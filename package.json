@@ -369,7 +369,8 @@
     "docs/PROVIDER_EXECUTION_AUDIT_LEDGER.md",
     "docs/PROVIDER_EXECUTION_AUDIT_LEDGER_RECOVERY.md",
     "docs/PRODUCTION_PROVIDER_TRANSPORTS.md",
-    "docs/PROVIDER_TRANSPORT_HEALTH.md"
+    "docs/PROVIDER_TRANSPORT_HEALTH.md",
+    "docs/OPUS5_RUNTIME_ELIGIBILITY_INCIDENT.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",

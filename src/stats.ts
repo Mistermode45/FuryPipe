@@ -58,6 +58,7 @@ export interface Summary {
   durationMs: number[];
   firstByteMs: number[];
   skipReasons: Map<string, number>;
+  eligibilityCauses: Map<string, number>;
   byCwd: Map<string, { count: number; origChars: number; imageBytes: number }>;
   /** system_sha8 → number of times seen. High repeat count = cache should
    *  be doing its job. */
@@ -89,6 +90,7 @@ export function newSummary(): Summary {
     durationMs: [],
     firstByteMs: [],
     skipReasons: new Map(),
+    eligibilityCauses: new Map(),
     byCwd: new Map(),
     systemShaHist: new Map(),
     unknownTags: new Map(),
@@ -108,6 +110,9 @@ export function fold(s: Summary, ev: TrackEvent): Summary {
   } else if (ev.compressed === false) {
     s.passthrough++;
     if (ev.reason) s.skipReasons.set(ev.reason, (s.skipReasons.get(ev.reason) ?? 0) + 1);
+    if (ev.eligibility_cause) {
+      s.eligibilityCauses.set(ev.eligibility_cause, (s.eligibilityCauses.get(ev.eligibility_cause) ?? 0) + 1);
+    }
   }
 
   // Outside the compressed branch on purpose: the pin footer is appended on
@@ -283,6 +288,15 @@ export function renderTextReport(s: Summary): string {
     lines.push('');
   }
 
+  if (s.eligibilityCauses.size > 0) {
+    lines.push('eligibility causes:');
+    const top = [...s.eligibilityCauses.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    for (const [cause, count] of top) {
+      lines.push(`  ${count.toString().padStart(6)}  ${cause}`);
+    }
+    lines.push('');
+  }
+
   if (s.byCwd.size > 0) {
     lines.push('top working dirs (by request count):');
     const top = [...s.byCwd.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 10);
@@ -392,6 +406,7 @@ export function summaryToJson(s: Summary): Record<string, unknown> {
     firstByteP50: percentile(sortedFB, 50),
     firstByteP95: percentile(sortedFB, 95),
     skipReasons: topN(s.skipReasons),
+    eligibilityCauses: topN(s.eligibilityCauses),
     byCwd: topN(s.byCwd),
     systemShaHist: topN(s.systemShaHist),
     unknownTags: topN(s.unknownTags),

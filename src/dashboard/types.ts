@@ -73,6 +73,8 @@ export interface RecentRow {
   compressed: boolean;
   /** Exact transform/pass-through reason when the Visual Engine did not externalize text. */
   reason?: string;
+  /** Stable eligibility cause, kept separate from the legacy free-form reason. */
+  eligibility_cause?: 'operator_scope_excluded';
   cc_added?: number;
   input_tokens?: number;
   output_tokens?: number;
@@ -179,6 +181,7 @@ export interface ModelRuntimeActivity {
   compressedRequests: number;
   passthroughRequests: number;
   recentSkipReasons: Readonly<Record<string, number>>;
+  recentEligibilityCauses: Readonly<Record<string, number>>;
   lastReason?: string;
   lastObservedAt?: string;
 }
