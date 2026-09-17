@@ -593,7 +593,7 @@ export function renderContextMapFragment(
       ids
         .map(
           (id) =>
-            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="furyPin(${id});furySource(true)" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
+            `<img class="page" src="/proxy-latest-png?id=${id}" alt="page ${id}" role="button" tabindex="0" loading="lazy" title="${escapeHtml(t('dashboard.context.galleryTitle', { id }))}" onclick="furyPin(${id});furySource(true)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" onerror="this.classList.add('page-gone'); this.alt=${escapeHtml(JSON.stringify(t('dashboard.context.galleryExpired', { id })))};" />`,
         )
         .join('') +
       `</div>`
@@ -1974,7 +1974,7 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
     <label id="command-palette-title" for="command-search">${escapeHtml(t('dashboard.page.commandPalette'))}</label>
     <input id="command-search" type="search" autocomplete="off" placeholder="${escapeHtml(t('dashboard.page.commandSearch'))}" />
   </div>
-  <div class="command-results" role="list">
+  <div class="command-results">
     <a href="#overview" data-command-item data-command-search="overview runtime"><small>01 · RUNTIME</small><span>${escapeHtml(t('dashboard.page.navOverview'))}</span></a>
     <a href="#observe" data-command-item data-command-search="observe context sessions"><small>02 · OBSERVE</small><span>${escapeHtml(t('dashboard.page.navObserve'))}</span></a>
     <a href="#capabilities" data-command-item data-command-search="capabilities skills mcp agents providers"><small>03 · CAPABILITIES</small><span>${escapeHtml(t('dashboard.page.navCapabilities'))}</span></a>
