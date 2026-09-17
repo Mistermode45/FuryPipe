@@ -79,4 +79,20 @@ describe('persisted model scope migration', () => {
       automaticModels: ['claude-fable-5', 'gemini'],
     })).toEqual({ mode: 'off', source: 'config', effectiveModels: [] });
   });
+
+  it('fails closed for malformed persisted and oversized environment scopes', () => {
+    expect(resolvePersistedModelScope(['claude-opus-5', 7], true, 'explicit')).toEqual({
+      mode: 'off',
+      envValue: 'off',
+      migratedLegacyDefault: false,
+    });
+    expect(resolveEffectiveModelScope({
+      envValue: Array.from({ length: 65 }, (_, i) => `model-${i}`).join(','),
+      automaticModels: ['claude-fable-5'],
+    })).toEqual({
+      mode: 'off',
+      source: 'environment',
+      effectiveModels: [],
+    });
+  });
 });

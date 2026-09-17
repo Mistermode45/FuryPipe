@@ -10,7 +10,12 @@ import {
   type ModelVisualResolution,
 } from './model-fabric.js';
 import { stripBracketedSegments } from './safe-string.js';
-import { resolveEffectiveModelScope, type EffectiveModelScope } from '../model-config.js';
+import {
+  normalizeModelScopeEntry,
+  parseModelScopeList,
+  resolveEffectiveModelScope,
+  type EffectiveModelScope,
+} from '../model-config.js';
 
 export type FuryPipeApplicabilityReason =
   | 'eligible'
@@ -141,8 +146,10 @@ export function getFuryPipeModelScopeMode(): FuryPipeModelScopeMode {
 
 /** Set the dashboard runtime override. Empty array = compress nothing; null = automatic/default policy. */
 export function setAllowedModelBases(list: readonly string[] | null): void {
-  runtimeModelBases = list === null ? null : list.map((s) => s.trim()).filter(Boolean);
+  runtimeModelBases = list === null ? null : Object.freeze(parseModelScopeList(list.join(',')));
 }
+
+export { normalizeModelScopeEntry, parseModelScopeList };
 
 /** Gateway/provider prefixes select an upstream, not a visual reader profile. */
 function unqualifiedModelId(base: string): string | null {

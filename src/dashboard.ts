@@ -82,6 +82,8 @@ import {
   getFuryPipeModelScopeMode,
   getFuryPipeVisualPolicy,
   isFuryPipeSupportedModel,
+  normalizeModelScopeEntry,
+  parseModelScopeList,
   setAllowedModelBases,
   setFuryPipeVisualPolicy,
   type FuryPipeVisualPolicy,
@@ -1857,8 +1859,9 @@ export class DashboardState {
    *  FURYPIPE_MODELS env / built-in default. */
   handleModelsToggle(model: string, on: boolean): void {
     const next = new Set(getAllowedModelBases());
-    if (on) next.add(model);
-    else next.delete(model);
+    const normalized = normalizeModelScopeEntry(model);
+    if (on) next.add(normalized);
+    else next.delete(normalized);
     this.applyModelBases([...next]);
   }
 
@@ -1866,12 +1869,7 @@ export class DashboardState {
    *  scope from the FURYPIPE_MODELS textbox. Same CSV shape as the env var;
    *  empty or off/false/0/no/none = compress nothing. Persistence as above. */
   handleModelsSet(csv: string): void {
-    const trimmed = csv.trim();
-    const bases =
-      !trimmed || /^(0|false|no|off|none)$/i.test(trimmed)
-        ? []
-        : trimmed.split(',').map((s) => s.trim()).filter(Boolean);
-    this.applyModelBases(bases);
+    this.applyModelBases(parseModelScopeList(csv));
   }
 
   /** POST /fragments/models with {mode: "automatic"} — remove the persisted

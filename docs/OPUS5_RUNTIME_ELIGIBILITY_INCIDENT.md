@@ -133,6 +133,20 @@ Environment values remain authoritative over the file. A dashboard request to
 restore automatic clears only a scope that FuryPipe injected from the config;
 it never removes an operator-owned environment variable.
 
+An empty or whitespace-only `FURYPIPE_MODELS` value is treated as absent at the
+configuration boundary. This keeps startup, Doctor and the resolver aligned:
+the persisted `automatic`, `explicit` or `off` state is then visible instead
+of an empty environment value accidentally forcing the built-in automatic
+default. Persisted `explicit` state is fail-closed when its list is missing,
+empty, malformed, or contains non-string entries; an unknown persisted mode
+also resolves to `off`. This prevents malformed operator state from silently
+granting automatic Model Fabric eligibility.
+
+Environment, persisted, and dashboard scopes are bounded to 64 entries and
+160 characters per entry, with control characters rejected. Oversized or
+malformed input fails closed before the dashboard policy or configuration
+writer is reached; the list is never silently truncated.
+
 The mutating model endpoint accepts only `automatic`, `explicit`, or `off` and
 rejects unknown modes and contradictory mode/list payloads before applying a
 policy or writing the config.

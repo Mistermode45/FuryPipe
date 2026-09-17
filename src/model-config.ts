@@ -28,15 +28,45 @@ export interface EffectiveModelScope {
   readonly effectiveModels: readonly string[];
 }
 
+export const MODEL_SCOPE_MAX_ENTRIES = 64;
+export const MODEL_SCOPE_MAX_ENTRY_LENGTH = 160;
+
+function boundedList(list: string[]): string[] | undefined {
+  if (list.length > MODEL_SCOPE_MAX_ENTRIES) return undefined;
+  if (list.some((item) => item.length === 0
+    || item.length > MODEL_SCOPE_MAX_ENTRY_LENGTH
+    || /[\u0000-\u001f\u007f]/u.test(item))) return undefined;
+  return list;
+}
+
 function normalizedList(value: unknown): string[] | undefined {
   if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean);
+    if (value.some((item) => typeof item !== 'string')) return undefined;
+    return boundedList(value.map((item) => item.trim()).filter(Boolean));
   }
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   if (!trimmed) return [];
   if (/^(?:0|false|no|off|none)$/iu.test(trimmed)) return [];
-  return trimmed.split(',').map((item) => item.trim()).filter(Boolean);
+  return boundedList(trimmed.split(',').map((item) => item.trim()).filter(Boolean));
+}
+
+/** Parse a dashboard/environment-style CSV and reject oversized operator input. */
+export function parseModelScopeList(value: string): string[] {
+  const list = normalizedList(value);
+  if (list === undefined) {
+    throw new RangeError(`model scope must contain at most ${MODEL_SCOPE_MAX_ENTRIES} entries of ${MODEL_SCOPE_MAX_ENTRY_LENGTH} characters`);
+  }
+  return list;
+}
+
+export function normalizeModelScopeEntry(value: string): string {
+  const normalized = value.trim();
+  if (!normalized || normalized.length > MODEL_SCOPE_MAX_ENTRY_LENGTH
+    || normalized.includes(',') || /[\u0000-\u001f\u007f]/u.test(normalized)) {
+    throw new RangeError(`model scope entry must be 1-${MODEL_SCOPE_MAX_ENTRY_LENGTH} characters without commas or control characters`);
+  }
+  return normalized;
 }
 
 function sameScope(a: readonly string[], b: readonly string[]): boolean {
@@ -66,8 +96,17 @@ export function resolvePersistedModelScope(
   if (mode === 'off') {
     return Object.freeze({ mode: 'off', envValue: 'off', migratedLegacyDefault: false });
   }
+  if (mode === 'explicit' && explicit !== undefined && explicit !== true && explicit !== false) {
+    return Object.freeze({ mode: 'off', envValue: 'off', migratedLegacyDefault: false });
+  }
+  if (mode !== undefined && mode !== 'automatic' && mode !== 'explicit' && mode !== 'off') {
+    return Object.freeze({ mode: 'off', envValue: 'off', migratedLegacyDefault: false });
+  }
   const list = normalizedList(value);
   if (list === undefined) {
+    if (value !== undefined || mode === 'explicit') {
+      return Object.freeze({ mode: 'off', envValue: 'off', migratedLegacyDefault: false });
+    }
     return Object.freeze({ mode: 'absent', migratedLegacyDefault: false });
   }
 
@@ -111,10 +150,13 @@ export function resolveEffectiveModelScope(input: {
 }): EffectiveModelScope {
   const env = normalizedList(input.envValue);
   if (input.envValue !== undefined && input.envValue.trim() !== '') {
+    if (env === undefined) {
+      return Object.freeze({ mode: 'off', source: 'environment', effectiveModels: Object.freeze([]) });
+    }
     return Object.freeze({
-      mode: env?.length === 0 ? 'off' : 'explicit',
+      mode: env.length === 0 ? 'off' : 'explicit',
       source: 'environment',
-      effectiveModels: Object.freeze(env ?? []),
+      effectiveModels: Object.freeze(env),
     });
   }
 

@@ -39,7 +39,7 @@ import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
 import { runSetupWizard } from './setup-tui.js';
 import { refreshRuntimeModelCatalog } from './model-catalog-node.js';
-import { resolvePersistedModelScope } from './model-config.js';
+import { normalizeModelScopeEntry, parseModelScopeList, resolvePersistedModelScope } from './model-config.js';
 import { FURYPIPE_DEFAULT_HOST, FURYPIPE_DEFAULT_PORT, parseFuryPipePort } from './runtime-defaults.js';
 import { createControlRoomRuntime } from './control-room/runtime.js';
 import { loadControlRoomHostEvidence, type ControlRoomHostEvidence } from './control-room/evidence-file.js';
@@ -148,7 +148,7 @@ function applyConfigFileDefaults(): void {
 
   // Env wins over file config. The dashboard can still override the scope at
   // runtime (in-memory) for an emergency live flip.
-  if (process.env.FURYPIPE_MODELS === undefined) {
+  if (process.env.FURYPIPE_MODELS?.trim() === undefined || process.env.FURYPIPE_MODELS.trim() === '') {
     const scope = resolvePersistedModelScope(cfg.models, cfg.modelScopeExplicit, cfg.modelScopeMode);
     if ((scope.mode === 'explicit' || scope.mode === 'off') && scope.envValue !== undefined) {
       process.env.FURYPIPE_MODELS = scope.envValue;
@@ -186,11 +186,8 @@ function persistModelBasesToConfig(bases: readonly string[] | null): void {
       return;
     }
   }
+  const shouldClearInjectedModelScope = bases === null && configInjectedModelScope;
   if (bases === null) {
-    if (configInjectedModelScope) {
-      delete process.env.FURYPIPE_MODELS;
-      configInjectedModelScope = false;
-    }
     cfg.modelScopeMode = 'automatic';
     delete cfg.models;
     delete cfg.modelScopeExplicit;
@@ -210,6 +207,10 @@ function persistModelBasesToConfig(bases: readonly string[] | null): void {
     fs.writeFileSync(tmp, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
     fs.renameSync(tmp, file);
     fs.chmodSync(file, 0o600);
+    if (shouldClearInjectedModelScope) {
+      delete process.env.FURYPIPE_MODELS;
+      configInjectedModelScope = false;
+    }
   } catch (e) {
     try {
       fs.unlinkSync(tmp);
@@ -761,7 +762,15 @@ async function dispatchDashboard(
             headers: { 'content-type': 'application/json' },
           });
         }
-        if (policy !== null) dashboard.handleVisualPolicySet(policy);
+        try {
+          if (list !== null) parseModelScopeList(list);
+          if (model) normalizeModelScopeEntry(model);
+        } catch (error) {
+          return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'invalid model scope' }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
         if (mode === 'automatic') {
           if (list !== null || model) {
             return new Response(JSON.stringify({ error: 'automatic mode cannot include a model list' }), {
@@ -778,13 +787,21 @@ async function dispatchDashboard(
             });
           }
           dashboard.handleModelsSet('off');
-        } else if (list !== null) dashboard.handleModelsSet(list);
-        else if (model) dashboard.handleModelsToggle(model, on);
-        else if (mode === 'explicit') {
+        } else if (mode === 'explicit' && list !== null && (!list.trim() || /^(0|false|no|off|none)$/iu.test(list.trim()))) {
+          return new Response(JSON.stringify({ error: 'explicit mode requires a non-empty model list' }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          });
+        } else if (mode === 'explicit' && list === null && !model) {
           return new Response(JSON.stringify({ error: 'explicit mode requires a model or list' }), {
             status: 400,
             headers: { 'content-type': 'application/json' },
           });
+        }
+        if (policy !== null) dashboard.handleVisualPolicySet(policy);
+        if (mode === null || mode === 'explicit') {
+          if (list !== null) dashboard.handleModelsSet(list);
+          else if (model) dashboard.handleModelsToggle(model, on);
         }
         return dashboard.serveFragment('models', url, port);
       }
