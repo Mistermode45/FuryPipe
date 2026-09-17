@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -29,14 +30,25 @@ function assert(condition: unknown, message: string): asserts condition {
 function findChrome(): string {
   const candidates = [
     process.env.CHROME_BIN,
+    ...(process.platform === 'win32'
+      ? [
+          process.env.ProgramFiles ? join(process.env.ProgramFiles, 'Google', 'Chrome', 'Application', 'chrome.exe') : undefined,
+          process.env['ProgramFiles(x86)'] ? join(process.env['ProgramFiles(x86)'], 'Google', 'Chrome', 'Application', 'chrome.exe') : undefined,
+          process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe') : undefined,
+        ]
+      : []),
     'google-chrome-stable',
     'google-chrome',
     'chromium',
     'chromium-browser',
   ].filter((value): value is string => Boolean(value));
   for (const candidate of candidates) {
-    if (candidate.includes('/')) return candidate;
-    const found = spawnSync('which', [candidate], { encoding: 'utf8' });
+    if (/^[A-Za-z]:[\\/]/u.test(candidate) || candidate.includes('/') || candidate.includes('\\')) {
+      if (existsSync(candidate)) return candidate;
+      continue;
+    }
+    const locator = process.platform === 'win32' ? 'where.exe' : 'which';
+    const found = spawnSync(locator, [candidate], { encoding: 'utf8' });
     if (found.status === 0 && found.stdout.trim()) return found.stdout.trim();
   }
   throw new Error('No Chromium/Chrome executable found. Set CHROME_BIN explicitly.');
