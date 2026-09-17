@@ -16,6 +16,17 @@ describe('toTrackEvent', () => {
     expect(out.accounting_provider).toBe('openai');
     expect(out.native_injected_tokens).toBe(123);
   });
+  it('persists the stable operator-scope eligibility cause', () => {
+    const out = toTrackEvent({
+      method: 'POST', path: '/v1/messages', status: 200, durationMs: 1,
+      info: {
+        compressed: false, reason: 'unsupported_model', eligibilityCause: 'operator_scope_excluded',
+        origChars: 0, compressedChars: 0, imageCount: 0, imageBytes: 0,
+        staticChars: 0, dynamicChars: 0, dynamicBlockCount: 0,
+      },
+    });
+    expect(out.eligibility_cause).toBe('operator_scope_excluded');
+  });
   it('flattens ProxyEvent + TransformInfo + Usage into a single record', () => {
     const ev: ProxyEvent = {
       method: 'POST',

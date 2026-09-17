@@ -13,6 +13,7 @@ import * as os from 'node:os';
 import { DashboardState, dashboardPath, dashboardHostLabel } from '../src/dashboard.js';
 import {
   getAllowedModelBases,
+  getFuryPipeModelScopeMode,
   getFuryPipeVisualPolicy,
   isFuryPipeSupportedModel,
   setAllowedModelBases,
@@ -233,6 +234,7 @@ describe('serveModelsJson', () => {
           visual_pricing_unknown: 1,
           exact_guard: 1,
         },
+        recentEligibilityCauses: {},
         lastReason: 'exact_guard',
         lastObservedAt: '2026-05-19T00:02:00.000Z',
       },
@@ -245,6 +247,28 @@ describe('serveModelsJson', () => {
     )).text();
     expect(html).toContain('Runtime activity');
     expect(html).toContain('3 req · 1 visual · 2 text · exact_guard');
+  });
+
+  it('keeps operator-scope exclusions visible as a stable runtime cause', async () => {
+    registerRuntimeModelCatalog(normalizeOpenAIModelsPayload({
+      data: [{ id: 'gpt-6-astra', owned_by: 'openai' }],
+    }, '2026-09-16T00:00:00.000Z'));
+    writeEvents(tmp, [
+      ev({ model: 'gpt-6-astra', compressed: false, reason: 'unsupported_model', eligibility_cause: 'operator_scope_excluded' }),
+    ]);
+    await dash.replay(tmp.eventsFile);
+
+    const body = await dash.serveModelsJson().json();
+    expect(body.models[0].runtime).toMatchObject({
+      recentSkipReasons: { unsupported_model: 1 },
+      recentEligibilityCauses: { operator_scope_excluded: 1 },
+    });
+    const html = await (await dash.serveFragment(
+      'models',
+      new URL('http://localhost/fragments/models?locale=en'),
+      1234,
+    )).text();
+    expect(html).toContain('excluded by operator scope');
   });
 
   it('returns a bounded secret-free Model Fabric snapshot', async () => {
@@ -524,6 +548,14 @@ describe('serveFragment', () => {
       expect(getAllowedModelBases()).toEqual([]);
       dash.handleModelsSet('');
       expect(getAllowedModelBases()).toEqual([]);
+      expect(getFuryPipeModelScopeMode()).toBe('off');
+
+      dash.handleModelsAutomatic();
+      expect(getFuryPipeModelScopeMode()).toBe('automatic');
+      const automatic = await (await dash.serveFragment('models', url, 1234)).text();
+      expect(automatic).toContain('data-model-scope="automatic"');
+      expect(automatic).toContain('Automatic · Model Fabric');
+      expect(automatic).not.toContain('Use automatic');
     } finally {
       setAllowedModelBases(null);
       if (prev === undefined) delete process.env.FURYPIPE_MODELS;
@@ -536,9 +568,9 @@ describe('serveFragment', () => {
     try {
       delete process.env.FURYPIPE_MODELS;
       setAllowedModelBases(null);
-      const saved: string[][] = [];
+      const saved: Array<readonly string[] | null> = [];
       const persisting = new DashboardState(tmp, async () => new Map(), (bases) => {
-        saved.push([...bases]);
+        saved.push(bases === null ? null : [...bases]);
       });
 
       persisting.handleModelsToggle('gpt-5.6-sol', true);
@@ -549,6 +581,10 @@ describe('serveFragment', () => {
       persisting.handleModelsSet('off');
       expect(saved.at(-1)).toEqual([]);
       expect(saved).toHaveLength(3);
+
+      persisting.handleModelsAutomatic();
+      expect(saved.at(-1)).toBeNull();
+      expect(getFuryPipeModelScopeMode()).toBe('automatic');
 
       // A throwing hook must not break the live flip or the endpoint.
       const throwing = new DashboardState(tmp, async () => new Map(), () => {

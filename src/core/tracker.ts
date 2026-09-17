@@ -24,6 +24,8 @@ export interface TrackEvent {
   // From TransformInfo:
   compressed?: boolean;
   reason?: string;
+  /** Stable cause when a known request model fell outside explicit operator scope. */
+  eligibility_cause?: 'operator_scope_excluded';
   orig_chars?: number;
   /** Text-chars replaced by image blocks (slab + reminders + tool_results).
    *  Compare with image_count: textTokens(n/4) vs imageTokens(n×2500). */
@@ -242,6 +244,7 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
   if (info) {
     if (info.compressed !== undefined) out.compressed = info.compressed;
     if (info.reason) out.reason = info.reason;
+    if (info.eligibilityCause) out.eligibility_cause = info.eligibilityCause;
     if (info.origChars !== undefined) out.orig_chars = info.origChars;
     if (info.compressedChars !== undefined && info.compressedChars > 0) {
       out.compressed_chars = info.compressedChars;
