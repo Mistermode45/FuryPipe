@@ -199,12 +199,16 @@ function boundedEvidence(
     if (!id || id.length > 96) throw new RangeError('evidence contains an invalid id');
     const sourceSha = entry.sourceSha === null ? null : (SHA40.test(entry.sourceSha) ? entry.sourceSha : null);
     const evidenceSha = entry.evidenceSha === null ? null : (SHA40.test(entry.evidenceSha) ? entry.evidenceSha : null);
-    const mismatched = evidenceSha !== null && sourceCommit !== null && evidenceSha !== sourceCommit;
+    const mismatchedSource = sourceCommit !== null && sourceSha !== null && sourceSha !== sourceCommit;
+    const mismatchedEvidence = sourceCommit !== null && evidenceSha !== null && evidenceSha !== sourceCommit;
+    const unboundPositive = sourceCommit === null
+      && (entry.status === 'VERIFIED' || entry.status === 'EXECUTED')
+      && (sourceSha !== null || evidenceSha !== null);
     const runId = entry.runId === null ? null : boundedNumber(entry.runId, `evidence.${id}.runId`);
     const generatedAt = entry.generatedAt === null ? null : boundedNumber(entry.generatedAt, `evidence.${id}.generatedAt`);
     return Object.freeze({
       id,
-      status: mismatched ? 'STALE' : entry.status,
+      status: mismatchedSource || mismatchedEvidence || unboundPositive ? 'STALE' : entry.status,
       sourceSha,
       evidenceSha,
       runId,
@@ -249,7 +253,13 @@ export function createControlPlaneSnapshot(input: CreateControlPlaneSnapshotInpu
   const mcp = controlRoomSection(controlRoom, 'mcp');
   const security = controlRoomSection(controlRoom, 'security');
   const i18n = controlRoomSection(controlRoom, 'i18n');
-  const evidenceStatus = controlRoom ? fromControlRoom(controlRoom.overall === 'HEALTHY' ? 'VERIFIED' : 'PARTIAL') : 'NOT_AVAILABLE';
+  const evidenceStatus = controlRoom
+    ? controlRoom.overall === 'HEALTHY'
+      ? 'VERIFIED'
+      : controlRoom.overall === 'BLOCKED'
+        ? 'FAILED'
+        : 'PARTIAL'
+    : 'NOT_AVAILABLE';
   const visualStatus: ControlPlaneEvidenceStatus = runtime.compressionEnabled
     ? (runtime.compressedRequests > 0 ? 'EXECUTED' : 'EXECUTABLE')
     : 'DISABLED';

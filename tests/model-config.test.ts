@@ -21,6 +21,48 @@ describe('persisted model scope migration', () => {
     });
   });
 
+  it('treats modelScopeMode=explicit as authoritative over the legacy-default migration', () => {
+    expect(resolvePersistedModelScope(
+      ['claude-fable-5', 'gemini'],
+      undefined,
+      'explicit',
+    )).toEqual({
+      mode: 'explicit',
+      envValue: 'claude-fable-5,gemini',
+      migratedLegacyDefault: false,
+    });
+  });
+
+  it('preserves a valid current-format explicit scope without the legacy boolean marker', () => {
+    expect(resolvePersistedModelScope(
+      ['claude-opus-5'],
+      undefined,
+      'explicit',
+    )).toEqual({
+      mode: 'explicit',
+      envValue: 'claude-opus-5',
+      migratedLegacyDefault: false,
+    });
+  });
+
+  it('fails closed when current-format explicit state has no usable list', () => {
+    expect(resolvePersistedModelScope(undefined, undefined, 'explicit')).toEqual({
+      mode: 'off',
+      envValue: 'off',
+      migratedLegacyDefault: false,
+    });
+    expect(resolvePersistedModelScope([], undefined, 'explicit')).toEqual({
+      mode: 'off',
+      envValue: 'off',
+      migratedLegacyDefault: false,
+    });
+    expect(resolvePersistedModelScope(['claude-opus-5', 7], undefined, 'explicit')).toEqual({
+      mode: 'off',
+      envValue: 'off',
+      migratedLegacyDefault: false,
+    });
+  });
+
   it('preserves custom legacy scopes rather than broadening them', () => {
     expect(resolvePersistedModelScope(['claude-fable-5', 'claude-opus-5'], undefined)).toEqual({
       mode: 'explicit',
@@ -78,6 +120,14 @@ describe('persisted model scope migration', () => {
       persisted: { modelScopeMode: 'off' },
       automaticModels: ['claude-fable-5', 'gemini'],
     })).toEqual({ mode: 'off', source: 'config', effectiveModels: [] });
+    expect(resolveEffectiveModelScope({
+      persisted: { modelScopeMode: 'explicit', models: ['claude-fable-5', 'gemini'] },
+      automaticModels: ['claude-fable-5', 'gemini'],
+    })).toEqual({
+      mode: 'explicit',
+      source: 'config',
+      effectiveModels: ['claude-fable-5', 'gemini'],
+    });
   });
 
   it('fails closed for malformed persisted and oversized environment scopes', () => {
