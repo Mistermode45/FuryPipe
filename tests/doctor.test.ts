@@ -129,4 +129,25 @@ describe('furypipe doctor renderer', () => {
       visualPolicy: 'text_only',
     });
   });
+
+  it('fails closed when the configured doctor file exceeds the bounded read size', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'furypipe-doctor-large-'));
+    const file = path.join(dir, 'config.json');
+    fs.writeFileSync(file, JSON.stringify({ modelScopeMode: 'explicit', models: ['claude-opus-5'] })
+      + ' '.repeat(1024 * 1024));
+    try {
+      const result = collectDoctorReport({
+        env: { FURYPIPE_CONFIG: file },
+        packageVersion: 'test-version',
+      });
+      expect(result.modelScope).toEqual({
+        mode: 'automatic',
+        source: 'automatic_default',
+        effectiveModels: [],
+        visualPolicy: 'auto',
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
