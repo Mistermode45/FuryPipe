@@ -359,6 +359,7 @@ async function sniffPrefixRestoringBody(
 
   const reader = body.getReader();
   const prefixChunks: Uint8Array[] = [];
+  let overflowChunk: Uint8Array | undefined;
   let total = 0;
   let exhausted = false;
   try {
@@ -369,8 +370,15 @@ async function sniffPrefixRestoringBody(
         break;
       }
       if (!value || value.byteLength === 0) continue;
-      prefixChunks.push(value);
-      total += value.byteLength;
+      const remaining = maxPrefix - total;
+      if (value.byteLength <= remaining) {
+        prefixChunks.push(value);
+        total += value.byteLength;
+      } else {
+        prefixChunks.push(value.subarray(0, remaining));
+        overflowChunk = value.subarray(remaining);
+        total = maxPrefix;
+      }
     }
   } catch (err) {
     await reader.cancel().catch(() => {});
@@ -384,6 +392,7 @@ async function sniffPrefixRestoringBody(
   const restored = new ReadableStream<Uint8Array>({
     start(controller) {
       for (const chunk of prefixChunks) controller.enqueue(chunk);
+      if (overflowChunk && overflowChunk.byteLength > 0) controller.enqueue(overflowChunk);
     },
     async pull(controller) {
       try {
@@ -1614,7 +1623,9 @@ let responseContentType: string | undefined;
           responseContentEncoding,
         });
       };
-      void finalize();
+      // Telemetry is best-effort and must never surface as an unhandled rejection
+      // after the HTTP response has already been returned to the caller.
+      void finalize().catch(() => undefined);
     };
 
     // Transform only known shapes; everything else passes through.
@@ -2060,6 +2071,7 @@ let responseContentType: string | undefined;
     // disconnect all abort through it, so nothing can hold the socket open indefinitely.
     const upstreamAbort = new AbortController();
     let timeoutKind: 'headers' | 'idle' | undefined;
+    let streamFailure: string | undefined;
     let headersTimer: ReturnType<typeof setTimeout> | undefined;
     // Raced explicitly rather than trusting the fetch implementation to reject on
     // abort — the headers phase must be bounded even if the signal is ignored.
@@ -2102,6 +2114,7 @@ let responseContentType: string | undefined;
       // Watch the raw upstream stream, before any bridge re-encodes it.
       upstreamRes = withIdleTimeout(upstreamRes, headersTimeoutMs, idleTimeoutMs, () => {
         timeoutKind = 'idle';
+        streamFailure = `upstream_timeout: no upstream bytes for ${idleTimeoutMs}ms`;
         upstreamAbort.abort(new Error('FuryPipe: upstream stalled'));
       });
       if (bridgedGptMessages) {
@@ -2176,7 +2189,7 @@ let teed: Response;
       fire(
         upstreamRes.status,
         info,
-        undefined,
+        streamFailure,
         firstByteMs,
         usage,
         config.captureErrorReqBody ? errorBody : undefined,
