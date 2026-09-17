@@ -1333,7 +1333,6 @@ async function main(): Promise<void> {
   const opts = parseCli(cliArgv);
   const startupScope = getFuryPipeModelScope();
   const startupSource = configInjectedModelScope ? 'config' : startupScope.source;
-  console.log(`[furypipe] model scope: ${startupScope.mode} (source=${startupSource})`);
 
   // FuryLink only redirects the child's provider traffic; the existing FuryPipe
   // runtime remains the single transformation/tracking/dashboard authority.
@@ -1341,6 +1340,7 @@ async function main(): Promise<void> {
     createFuryLinkRuntime({ port: opts.port, routes: furyLinkRoutes }).launch(furyLinkCommand);
     return;
   }
+  console.log(`[furypipe] model scope: ${startupScope.mode} (source=${startupSource})`);
   // A/B harness passthrough switch (see the `transform` callback below).
   const forcePassthrough = /^(1|true|yes|on)$/i.test(process.env.FURYPIPE_DISABLE ?? '');
   if (forcePassthrough) {
