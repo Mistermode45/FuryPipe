@@ -677,6 +677,15 @@ describe('serveFragment', () => {
     expect(html).not.toContain('slab source');
   });
 
+  it('evicts dense PNGs by byte budget instead of retaining an unbounded ring', async () => {
+    const png = new Uint8Array(1024 * 1024);
+    for (let i = 0; i < 65; i++) {
+      dash.captureImage({ imagePngs: [png], imageDims: [{ width: 1, height: 1 }] } as never);
+    }
+    const recent = await dash.serveRecent().json() as { image_ids: number[] };
+    expect(recent.image_ids).toHaveLength(64);
+  });
+
   it('escapes HTML in latest source text', async () => {
     dash.captureImage({
       imagePngs: [new Uint8Array([137, 80, 78, 71])],
