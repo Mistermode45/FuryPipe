@@ -333,6 +333,53 @@ describe('Node dashboard security', () => {
     expect(fs.existsSync(configFile)).toBe(false);
   });
 
+  it('does not apply a visual policy when the model-scope command is contradictory', async () => {
+    const { base, configFile } = await startNode();
+    const headers = {
+      'content-type': 'application/json',
+      origin: base,
+      'sec-fetch-site': 'same-origin',
+    };
+    const response = await fetch(`${base}/fragments/models`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ mode: 'automatic', list: 'claude-fable-5', policy: 'text_only' }),
+    });
+    expect(response.status).toBe(400);
+    expect(fs.existsSync(configFile)).toBe(false);
+    const fragment = await (await fetch(`${base}/fragments/models`)).text();
+    expect(fragment).toContain('<option value="auto" selected>AUTO</option>');
+  });
+
+  it('rejects an oversized model scope before policy or persistence mutation', async () => {
+    const { base, configFile } = await startNode();
+    const headers = {
+      'content-type': 'application/json',
+      origin: base,
+      'sec-fetch-site': 'same-origin',
+    };
+    const list = Array.from({ length: 65 }, (_, index) => `model-${index}`).join(',');
+    const response = await fetch(`${base}/fragments/models`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ mode: 'explicit', list, policy: 'text_only' }),
+    });
+    expect(response.status).toBe(400);
+    expect(fs.existsSync(configFile)).toBe(false);
+    const fragment = await (await fetch(`${base}/fragments/models`)).text();
+    expect(fragment).toContain('<option value="auto" selected>AUTO</option>');
+  });
+
+  it('honors persisted off when the environment variable is present but empty', async () => {
+    const { base, output } = await startNode(
+      { FURYPIPE_MODELS: '' },
+      { modelScopeMode: 'off' },
+    );
+    const models = await (await fetch(`${base}/api/models.json`)).json() as { scopeMode: string };
+    expect(models.scopeMode).toBe('off');
+    expect(output()).toContain('model scope: off (source=config)');
+  });
+
   it('returns to automatic after a persisted scope was injected at startup', async () => {
     const { base, configFile, output } = await startNode(
       { FURYPIPE_MODELS: undefined },
