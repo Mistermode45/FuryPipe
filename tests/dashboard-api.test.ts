@@ -656,7 +656,7 @@ describe('serveFragment', () => {
 
   it('renders keyboard-accessible hover help for stat question marks', async () => {
     const header = await (await dash.serveFragment('header', url, 4711)).text();
-    expect(header).toContain('class="q" tabindex="0"');
+    expect(header).toContain('<button type="button" class="q"');
     expect(header).toContain('data-tip=');
     expect(header).toContain('aria-label=');
   });
