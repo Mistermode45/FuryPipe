@@ -53,6 +53,8 @@ export const DEFAULT_MODEL_BASES = Object.freeze([
 
 export type FuryPipeVisualPolicy = 'auto' | 'max_savings' | 'safe_exact' | 'text_only';
 
+export type FuryPipeModelScopeMode = 'automatic' | 'explicit' | 'off';
+
 let runtimeVisualPolicy: FuryPipeVisualPolicy | null = null;
 
 export function setFuryPipeVisualPolicy(policy: FuryPipeVisualPolicy | null): void {
@@ -119,6 +121,15 @@ export function getAllowedModelBases(): string[] {
 /** Configured policy seed, not a complete model catalog. */
 export function getConfiguredModelBases(): string[] {
   return envOrDefaultBases();
+}
+
+/** Effective scope mode, kept separate from the model list because automatic
+ * Model Fabric discovery is not equivalent to a static catalog. */
+export function getFuryPipeModelScopeMode(): FuryPipeModelScopeMode {
+  if (runtimeModelBases !== null) return runtimeModelBases.length === 0 ? 'off' : 'explicit';
+  const raw = rawModelScope();
+  if (raw === undefined || raw.trim() === '') return 'automatic';
+  return falsey(raw) ? 'off' : 'explicit';
 }
 
 /** Set the dashboard runtime override. Empty array = compress nothing; null = automatic/default policy. */

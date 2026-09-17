@@ -6,7 +6,7 @@ import { CACHE_CREATE_RATE, CACHE_READ_RATE } from '../core/baseline.js';
 import type { ControlRoomSnapshot } from '../control-room/index.js';
 import type { ControlPlaneDomainId, ControlPlaneSnapshot } from '../control-plane.js';
 import type { ModelFabricEntry } from '../core/model-fabric.js';
-import type { FuryPipeVisualPolicy } from '../core/applicability.js';
+import type { FuryPipeModelScopeMode, FuryPipeVisualPolicy } from '../core/applicability.js';
 import { createI18n } from '../i18n/index.js';
 import { CORE_CATALOGS } from '../i18n/catalogs.js';
 import type {
@@ -109,6 +109,7 @@ export function renderModelsFragment(
   discovered: readonly ModelFabricEntry[] = [],
   visualPolicy: FuryPipeVisualPolicy = 'auto',
   runtimeActivity: ReadonlyMap<string, ModelRuntimeActivity> = new Map(),
+  scopeMode: FuryPipeModelScopeMode = 'automatic',
 ): string {
   const t = (key: string): string => dashboardT(locale, key);
   const on = new Set(active);
@@ -144,6 +145,24 @@ export function renderModelsFragment(
   const moot = enabled
     ? ''
     : `<div class="models"><span class="hint">${escapeHtml(t('dashboard.models.offHint'))}</span></div>`;
+  const scopeModeLabel = scopeMode === 'automatic'
+    ? t('dashboard.models.scopeAutomatic')
+    : scopeMode === 'explicit'
+      ? t('dashboard.models.scopeExplicit')
+      : t('dashboard.models.scopeOff');
+  const scopeModeHint = scopeMode === 'automatic'
+    ? t('dashboard.models.scopeAutomaticHint')
+    : scopeMode === 'explicit'
+      ? t('dashboard.models.scopeExplicitHint')
+      : t('dashboard.models.scopeOffHint');
+  const scopeStatus = `<div class="model-scope-status" data-model-scope="${scopeMode}">` +
+    `<span class="models-label">${escapeHtml(t('dashboard.models.scopeMode'))}</span>` +
+    `<strong>${escapeHtml(scopeModeLabel)}</strong>` +
+    `<span class="hint">${escapeHtml(scopeModeHint)}</span>` +
+    (scopeMode === 'automatic' ? '' :
+      `<button class="mini-btn" type="button" hx-post="/fragments/models" hx-target="#frag-models" ` +
+      `hx-vals='${escapeHtml('{"mode":"automatic"}')}'>${escapeHtml(t('dashboard.models.restoreAutomatic'))}</button>`) +
+    `</div>`;
 
   const discoveredRows = discovered.slice(0, 250).map((model) => {
     const imageState = model.modalities.imageInput.toUpperCase();
@@ -204,7 +223,7 @@ export function renderModelsFragment(
     `<span class="hint">${escapeHtml(t('dashboard.models.csvHint'))}</span>` +
     `</div></details>`;
 
-  return modelFabric + moot + manualScope;
+  return modelFabric + moot + scopeStatus + manualScope;
 }
 
 // ---- session hero --------------------------------------------------------

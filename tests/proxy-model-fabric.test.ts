@@ -48,6 +48,49 @@ afterEach(() => {
 });
 
 describe('proxy Model Fabric enforcement', () => {
+  it('does not classify calibrated Claude Opus 5 as unsupported in automatic mode', async () => {
+    let forwarded = '';
+    const restore = mockFetch(async (request) => {
+      forwarded = await request.clone().text();
+      return new Response(JSON.stringify({
+        id: 'resp_opus_auto',
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'ok' }],
+        usage: { input_tokens: 10, output_tokens: 1 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+
+    try {
+      const captured = captureEvent();
+      const proxy = createProxy({
+        upstream: 'http://anthropic.test',
+        transform: { compress: true, charsPerToken: 1, minCompressChars: 1 },
+        onRequest: captured.onRequest,
+      });
+      const body = JSON.stringify({
+        model: 'claude-opus-5',
+        max_tokens: 64,
+        system: 'Large system context. '.repeat(1200),
+        messages: [{ role: 'user', content: 'hello' }],
+      });
+      const response = await proxy(new Request('http://localhost/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      }));
+      await response.text();
+      const event = await captured.event;
+
+      expect(response.status).toBe(200);
+      expect(event.model).toBe('claude-opus-5');
+      expect(event.info?.reason).not.toBe('unsupported_model');
+      expect(forwarded).toContain('claude-opus-5');
+    } finally {
+      restore();
+    }
+  });
+
   it('does not let a Messages→OpenAI bridge bypass TEXT_ONLY policy', async () => {
     setFuryPipeVisualPolicy('text_only');
     let forwarded = '';

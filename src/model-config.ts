@@ -19,6 +19,8 @@ export interface PersistedModelScopeResolution {
   readonly migratedLegacyDefault: boolean;
 }
 
+export type PersistedModelScopeMode = 'automatic' | 'explicit';
+
 function normalizedList(value: unknown): string[] | undefined {
   if (Array.isArray(value)) {
     return value.map((item) => String(item).trim()).filter(Boolean);
@@ -49,7 +51,11 @@ function sameScope(a: readonly string[], b: readonly string[]): boolean {
 export function resolvePersistedModelScope(
   value: unknown,
   explicit: unknown,
+  mode?: unknown,
 ): PersistedModelScopeResolution {
+  if (mode === 'automatic') {
+    return Object.freeze({ mode: 'automatic', migratedLegacyDefault: false });
+  }
   const list = normalizedList(value);
   if (list === undefined) {
     return Object.freeze({ mode: 'absent', migratedLegacyDefault: false });

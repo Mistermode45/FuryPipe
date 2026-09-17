@@ -143,7 +143,7 @@ function applyConfigFileDefaults(): void {
   // Env wins over file config. The dashboard can still override the scope at
   // runtime (in-memory) for an emergency live flip.
   if (process.env.FURYPIPE_MODELS === undefined) {
-    const scope = resolvePersistedModelScope(cfg.models, cfg.modelScopeExplicit);
+    const scope = resolvePersistedModelScope(cfg.models, cfg.modelScopeExplicit, cfg.modelScopeMode);
     if (scope.mode === 'explicit' && scope.envValue !== undefined) {
       process.env.FURYPIPE_MODELS = scope.envValue;
     } else if (scope.migratedLegacyDefault) {
@@ -163,7 +163,7 @@ function applyConfigFileDefaults(): void {
  *  are preserved; an invalid existing file is left untouched.
  *  NOTE: on the next start an explicit FURYPIPE_MODELS env still wins over the
  *  persisted value (same precedence as every other config-file default). */
-function persistModelBasesToConfig(bases: readonly string[]): void {
+function persistModelBasesToConfig(bases: readonly string[] | null): void {
   const file = process.env.FURYPIPE_CONFIG ?? defaultConfigFile();
   let cfg: Record<string, unknown> = {};
   try {
@@ -179,10 +179,17 @@ function persistModelBasesToConfig(bases: readonly string[]): void {
       return;
     }
   }
-  // Empty array round-trips as 'off'. Mark current writes as explicit so a
-  // deliberate operator scope is never confused with the <=0.15 legacy default.
-  cfg.models = [...bases];
-  cfg.modelScopeExplicit = true;
+  if (bases === null) {
+    cfg.modelScopeMode = 'automatic';
+    delete cfg.models;
+    delete cfg.modelScopeExplicit;
+  } else {
+    // Empty array round-trips as 'off'. Mark current writes as explicit so a
+    // deliberate operator scope is never confused with the <=0.15 legacy default.
+    cfg.modelScopeMode = 'explicit';
+    cfg.models = [...bases];
+    cfg.modelScopeExplicit = true;
+  }
   const tmp = `${file}.tmp-${process.pid}`;
   try {
     const parentExists = fs.existsSync(path.dirname(file));
@@ -388,7 +395,8 @@ Environment:
   FURYPIPE_VISUAL_POLICY  auto (default), max_savings, safe_exact, or text_only;
                           max_savings admits every model with positively proven image input
   FURYPIPE_CONFIG         JSON config path (default ~/.config/furypipe/config.json)
-                          supports {"models": [...]} or {"models": "off"}
+                          supports {"models": [...]} / {"models": "off"} /
+                          {"modelScopeMode": "automatic"}
   FURYPIPE_LOG            JSONL events path (default ~/.furypipe/events.jsonl)
   FURYPIPE_SOURCE_COMMIT  exact lowercase 40-char build SHA enabling Control Room runtime evidence
   FURYPIPE_CONTROL_ROOM_EVIDENCE
@@ -715,26 +723,30 @@ async function dispatchDashboard(
         let on = false;
         let list: string | null = null;
         let policy: string | null = null;
+        let mode: string | null = null;
         try {
           const raw = await readRequestBody(req);
           try {
-            const j = JSON.parse(raw) as { model?: unknown; on?: unknown; list?: unknown; policy?: unknown };
+            const j = JSON.parse(raw) as { model?: unknown; on?: unknown; list?: unknown; policy?: unknown; mode?: unknown };
             model = typeof j.model === 'string' ? j.model : '';
             on = j.on === true;
             if (typeof j.list === 'string') list = j.list;
             if (typeof j.policy === 'string') policy = j.policy;
+            if (typeof j.mode === 'string') mode = j.mode;
           } catch {
             const p = new URLSearchParams(raw);
             model = p.get('model') ?? '';
             on = p.get('on') === 'true';
             list = p.get('list');
             policy = p.get('policy');
+            mode = p.get('mode');
           }
         } catch {
           return new Response('bad request body', { status: 400 });
         }
         if (policy !== null) dashboard.handleVisualPolicySet(policy);
-        if (list !== null) dashboard.handleModelsSet(list);
+        if (mode === 'automatic') dashboard.handleModelsAutomatic();
+        else if (list !== null) dashboard.handleModelsSet(list);
         else if (model) dashboard.handleModelsToggle(model, on);
         return dashboard.serveFragment('models', url, port);
       }

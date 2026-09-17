@@ -40,4 +40,11 @@ describe('persisted model scope migration', () => {
       migratedLegacyDefault: false,
     });
   });
+
+  it('honors the explicit persisted automatic mode without migrating or exporting a scope', () => {
+    expect(resolvePersistedModelScope(['claude-fable-5'], true, 'automatic')).toEqual({
+      mode: 'automatic',
+      migratedLegacyDefault: false,
+    });
+  });
 });

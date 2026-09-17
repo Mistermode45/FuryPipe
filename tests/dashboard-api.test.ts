@@ -13,6 +13,7 @@ import * as os from 'node:os';
 import { DashboardState, dashboardPath, dashboardHostLabel } from '../src/dashboard.js';
 import {
   getAllowedModelBases,
+  getFuryPipeModelScopeMode,
   getFuryPipeVisualPolicy,
   isFuryPipeSupportedModel,
   setAllowedModelBases,
@@ -524,6 +525,14 @@ describe('serveFragment', () => {
       expect(getAllowedModelBases()).toEqual([]);
       dash.handleModelsSet('');
       expect(getAllowedModelBases()).toEqual([]);
+      expect(getFuryPipeModelScopeMode()).toBe('off');
+
+      dash.handleModelsAutomatic();
+      expect(getFuryPipeModelScopeMode()).toBe('automatic');
+      const automatic = await (await dash.serveFragment('models', url, 1234)).text();
+      expect(automatic).toContain('data-model-scope="automatic"');
+      expect(automatic).toContain('Automatic · Model Fabric');
+      expect(automatic).not.toContain('Use automatic');
     } finally {
       setAllowedModelBases(null);
       if (prev === undefined) delete process.env.FURYPIPE_MODELS;
@@ -536,9 +545,9 @@ describe('serveFragment', () => {
     try {
       delete process.env.FURYPIPE_MODELS;
       setAllowedModelBases(null);
-      const saved: string[][] = [];
+      const saved: Array<readonly string[] | null> = [];
       const persisting = new DashboardState(tmp, async () => new Map(), (bases) => {
-        saved.push([...bases]);
+        saved.push(bases === null ? null : [...bases]);
       });
 
       persisting.handleModelsToggle('gpt-5.6-sol', true);
@@ -549,6 +558,10 @@ describe('serveFragment', () => {
       persisting.handleModelsSet('off');
       expect(saved.at(-1)).toEqual([]);
       expect(saved).toHaveLength(3);
+
+      persisting.handleModelsAutomatic();
+      expect(saved.at(-1)).toBeNull();
+      expect(getFuryPipeModelScopeMode()).toBe('automatic');
 
       // A throwing hook must not break the live flip or the endpoint.
       const throwing = new DashboardState(tmp, async () => new Map(), () => {

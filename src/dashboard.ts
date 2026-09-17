@@ -79,6 +79,7 @@ import {
 import {
   getAllowedModelBases,
   getConfiguredModelBases,
+  getFuryPipeModelScopeMode,
   getFuryPipeVisualPolicy,
   isFuryPipeSupportedModel,
   setAllowedModelBases,
@@ -585,9 +586,9 @@ export class DashboardState {
 
   /** Host-provided persistence hook for the runtime model scope. The core
    *  override stays in-memory (Edge-safe); a Node host passes a saver that
-   *  writes the `models` key of the config file so chip toggles survive a
+   *  writes the model-scope keys of the config file so chip toggles survive a
    *  restart. Best-effort: failures are the hook's problem, never the API's. */
-  private readonly persistModelBases: ((bases: readonly string[]) => void) | undefined;
+  private readonly persistModelBases: ((bases: readonly string[] | null) => void) | undefined;
   /** Host-provided persistence hook for the global visual policy. */
   private readonly persistVisualPolicy: ((policy: FuryPipeVisualPolicy) => void) | undefined;
   /** Optional metadata-only Control Room provider. Runtime subsystems own the
@@ -597,7 +598,7 @@ export class DashboardState {
   constructor(
     paths?: SessionsPaths,
     ccMapFn?: () => Promise<Map<string, ClaudeCodeSessionRef>>,
-    persistModelBases?: (bases: readonly string[]) => void,
+    persistModelBases?: (bases: readonly string[] | null) => void,
     controlRoomProvider?: ControlRoomProvider,
     persistVisualPolicy?: (policy: FuryPipeVisualPolicy) => void,
   ) {
@@ -1580,6 +1581,7 @@ export class DashboardState {
         savedUsd: Number.isFinite(stats.saved_usd) ? stats.saved_usd : 0,
         compressionEnabled: this.compressionEnabled,
         activeModels: getAllowedModelBases(),
+        modelScopeMode: getFuryPipeModelScopeMode(),
       },
       controlRoom: await this.readControlRoomSnapshot(),
     });
@@ -1635,6 +1637,7 @@ export class DashboardState {
         ...model,
         runtime: runtime.get(model.id) ?? this.modelRuntimeActivity(model.id),
       })),
+      scopeMode: getFuryPipeModelScopeMode(),
     }), {
       status: 200,
       headers: {
@@ -1675,6 +1678,7 @@ export class DashboardState {
             inspectRuntimeModels(),
             getFuryPipeVisualPolicy(),
             this.modelRuntimeActivityMap(),
+            getFuryPipeModelScopeMode(),
           ),
         );
       case 'context-map': {
@@ -1856,7 +1860,13 @@ export class DashboardState {
     this.applyModelBases(bases);
   }
 
-  private applyModelBases(bases: string[]): void {
+  /** POST /fragments/models with {mode: "automatic"} — remove the persisted
+   * operator scope and return to Model Fabric discovery. */
+  handleModelsAutomatic(): void {
+    this.applyModelBases(null);
+  }
+
+  private applyModelBases(bases: readonly string[] | null): void {
     setAllowedModelBases(bases);
     try {
       this.persistModelBases?.(bases);

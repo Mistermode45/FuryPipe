@@ -50,6 +50,7 @@ export interface ControlPlaneRuntimeInput {
   readonly savedUsd: number;
   readonly compressionEnabled: boolean;
   readonly activeModels: readonly string[];
+  readonly modelScopeMode: 'automatic' | 'explicit' | 'off';
 }
 
 export interface ControlPlaneRuntime {
@@ -63,6 +64,7 @@ export interface ControlPlaneRuntime {
   readonly savedUsd: number;
   readonly compressionEnabled: boolean;
   readonly activeModels: readonly string[];
+  readonly modelScopeMode: 'automatic' | 'explicit' | 'off';
 }
 
 export interface ControlPlaneDomain {
@@ -113,6 +115,7 @@ const SHA40 = /^[0-9a-f]{40}$/u;
 const MAX_MODELS = 64;
 const MAX_WARNINGS = 32;
 const MAX_EVIDENCE = 32;
+const MODEL_SCOPE_MODES = new Set(['automatic', 'explicit', 'off']);
 
 function boundedNumber(value: number, label: string): number {
   if (!Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER) {
@@ -210,6 +213,13 @@ function boundedEvidence(
   }));
 }
 
+function boundedModelScopeMode(value: unknown): 'automatic' | 'explicit' | 'off' {
+  if (typeof value === 'string' && MODEL_SCOPE_MODES.has(value)) {
+    return value as 'automatic' | 'explicit' | 'off';
+  }
+  throw new RangeError('runtime.modelScopeMode is invalid');
+}
+
 /**
  * Builds a bounded, observation-only projection for dashboard consumers.
  * Missing runtime wiring remains explicit instead of being promoted to a
@@ -228,6 +238,7 @@ export function createControlPlaneSnapshot(input: CreateControlPlaneSnapshotInpu
     savedUsd: Number.isFinite(input.runtime.savedUsd) ? input.runtime.savedUsd : 0,
     compressionEnabled: input.runtime.compressionEnabled,
     activeModels: boundedModels(input.runtime.activeModels),
+    modelScopeMode: boundedModelScopeMode(input.runtime.modelScopeMode),
   });
   const controlRoom = input.controlRoom;
   const receipts = controlRoomSection(controlRoom, 'receipts');
