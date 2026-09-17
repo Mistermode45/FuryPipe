@@ -76,11 +76,29 @@ The default deployment is loopback-oriented. Non-loopback exposure requires an e
 
 ## Doctor
 
-`furypipe doctor` inspects runtime configuration without intentionally reading or printing provider credentials.
+`furypipe doctor` inspects runtime configuration without intentionally reading or printing provider credentials. It reports the effective model-scope mode/source and visual policy. In automatic mode the diagnostic leaves `effectiveModels` empty because Model Fabric discovery is dynamic rather than a static catalog.
 
 Upstream URLs are normalized before display so userinfo, query strings and fragments are not exposed in the report.
 
 Missing tools are reported as unavailable. `doctor` does not automatically install third-party tooling.
+
+Model scope diagnostics use this precedence: dashboard runtime override, then
+an explicit non-empty `FURYPIPE_MODELS` environment value, then persisted
+config, then automatic Model Fabric discovery. An empty or whitespace-only
+`FURYPIPE_MODELS` value is treated as absent, so a persisted `off` or explicit
+scope remains effective. `modelScopeMode` accepts `automatic`, `explicit`, or
+`off`; legacy `models` arrays remain supported and are never silently
+broadened when they contain a custom operator scope. A malformed persisted
+mode/list is rejected fail-closed as `off`, rather than being promoted to
+automatic discovery. `off` is a fail-closed visual-transformation kill switch.
+
+The protected dashboard mutation validates the complete mode/list payload
+before changing the visual policy or writing the model scope. `automatic` and
+`off` reject contradictory model lists; `explicit` requires a non-empty list.
+Operator scopes are bounded to 64 entries, with a maximum of 160 characters
+per model entry and no control characters. Oversized or malformed environment,
+config, or dashboard scope input fails closed as `off` rather than being
+truncated or broadened.
 
 Human-readable output supports locale selection, including:
 
