@@ -271,59 +271,58 @@ The durable attempt number must match the M4 receipt attempt number.
 
 A mismatch is a fail-closed integrity error.
 
-## Current foundation slice
+## Current M5 implementation
 
-The first implementation slice deliberately stops before executor wiring.
+The current implementation now includes the durable executor path and the safe
+expired pre-call reclaim primitive.
 
-It currently provides:
+Implemented properties:
 
-- an opaque host coordinator bound to hashed tenant/principal scope;
+- opaque host coordinator bound to hashed tenant/principal scope;
 - canonical content-addressed reservation, armed and terminal records;
 - atomic one-reservation-per-attempt admission through `putBounded()`;
-- restart inspection;
+- atomic Recovery presence/absence predicates under the same inter-process lock;
+- `arm` requires its exact reservation to still exist;
+- explicit expired `pre_call` reclaim requires the exact reservation to exist
+  and the matching `armed` marker to be absent;
+- reclaim and arm therefore serialize: only one transition can win;
+- restart inspection and corruption fail-closed handling;
 - cross-scope isolation;
 - known-terminal-only durable replay lineage;
-- a three-attempt durable bound;
-- a safe public inspection surface while mutation primitives remain internal.
+- three-attempt durable bound;
+- safe public inspection + expired-pre-call reclaim surface while raw mutation
+  primitives remain internal.
 
-It deliberately does **not** reclaim an expired unarmed reservation yet.
-
-Reason: the current Recovery Store serializes each operation, but it does not
-expose a single transaction/CAS primitive that can atomically prove "no armed
-marker exists" and revoke the expired reservation. Implementing
-`list -> prove absent -> delete` as automatic recovery would introduce a race
-with a process attempting to arm near lease expiry.
-
-Until that atomic revocation primitive exists, an expired unarmed reservation
-remains fail-closed. This is stricter than the final M5 target and is not treated
-as completion of the reclaim requirement.
-
-The executor now supports an explicit opt-in `durableReplay` coordinator.
+The executor supports explicit opt-in `durableReplay`.
 
 When enabled, the wire-call ordering is enforced as:
 
 ```text
 M4 process-local reservation
 -> durable pre_call reservation
--> consume M3 permit
+-> re-check and consume fresh M3 permit
 -> durable armed marker
+-> re-check permit freshness at the wire boundary
 -> exactly one callTool()
 -> durable terminal for known success/tool_error
 -> M4 terminal settlement
 -> receipt return
 ```
 
-A durable arming failure occurs before `callTool()` and therefore prevents the
-wire call. If a known tool result returns but terminal durability cannot be
-committed, FuryPipe throws the non-retriable
-`MCP_DIRECT_EXECUTION_DURABILITY_FAILED` error and leaves the durable state
-armed, which blocks restart replay.
+If durable reservation or arming fails, no tool call is permitted.
+
+If the permit expires during durable persistence, FuryPipe revokes the still-safe
+pre-wire durable state and blocks the call.
+
+If a known tool result returns but terminal durability cannot be committed,
+FuryPipe throws the non-retriable
+`MCP_DIRECT_EXECUTION_DURABILITY_FAILED` error and leaves durable evidence at
+`armed`, which blocks restart replay.
 
 For existing callers that omit `durableReplay`, M3/M4 behavior is unchanged.
 
 Restart-time creation of a new M4 replay intent from durable evidence is still
-out of scope for this slice; durable terminal evidence is evidence, not replay
-authority.
+out of scope: durable terminal evidence is evidence, not replay authority.
 
 ## Reservation lease
 
@@ -334,13 +333,20 @@ Lease expiry is not permission to delete an armed attempt.
 
 Reclaim algorithm:
 
-1. load exact reservation;
-2. verify Recovery content digest;
-3. verify durable scope/replay key;
-4. verify lease expired;
-5. prove no armed marker exists for the reservation;
-6. delete only that exact reservation;
-7. create a fresh attempt through the normal authority path.
+1. load and verify the exact reservation;
+2. verify durable scope/replay key;
+3. verify the lease is expired;
+4. enter the Recovery inter-process lock;
+5. atomically require the exact reservation to still exist;
+6. atomically require the matching armed marker count to remain zero;
+7. delete only that exact reservation;
+8. return to the prior safe durable state;
+9. any later execution must enter the normal M1→M4 authority path again.
+
+The matching `arm` transition uses the inverse predicate under the same lock:
+it may publish only while the exact reservation is still present. Therefore a
+reclaim that wins first makes the later arm fail; an arm that wins first makes
+the reclaim fail.
 
 No wall-clock inference may turn an armed record into safe replay.
 
