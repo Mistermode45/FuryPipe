@@ -201,6 +201,10 @@
       "types": "./dist/mcp.d.ts",
       "import": "./dist/mcp.js"
     },
+    "./mcp-tool-risk": {
+      "types": "./dist/mcp-tool-risk.d.ts",
+      "import": "./dist/mcp-tool-risk.js"
+    },
     "./mcp-modern": {
       "types": "./dist/mcp-modern.d.ts",
       "import": "./dist/mcp-modern.js"
