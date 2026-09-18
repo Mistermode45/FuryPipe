@@ -94,6 +94,7 @@ interface McpDirectPermitState {
   readonly policyDecisionIdSha256: string;
   readonly approvalKind: 'operator' | 'governed_policy';
   consumed: boolean;
+  recorded: boolean;
 }
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
@@ -346,6 +347,7 @@ export function createMcpDirectExecutionPermit(
     policyDecisionIdSha256: permit.policyDecisionIdSha256,
     approvalKind: permit.approvalKind,
     consumed: false,
+    recorded: false,
   });
   return permit;
 }
@@ -417,6 +419,9 @@ export function recordMcpDirectExecution(
   if (!internal.consumed) {
     throw new Error('MCP execution permit must be consumed before execution is recorded');
   }
+  if (internal.recorded) {
+    throw new Error('MCP execution permit already has an execution record');
+  }
   if (
     internal.sourceId !== state.source.sourceId
     || internal.endpointFingerprint !== state.source.endpointFingerprint
@@ -427,6 +432,7 @@ export function recordMcpDirectExecution(
   }
 
   if (evidence.resultSha256 !== undefined) assertSha(evidence.resultSha256, 'resultSha256');
+  internal.recorded = true;
 
   return freezeState({
     ...state,

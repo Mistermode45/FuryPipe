@@ -170,6 +170,11 @@ describe('direct MCP governance lifecycle', () => {
     expect(executed.executed).toBe(true);
     expect(executed.succeeded).toBe(true);
     expect(executed.verified).toBe(false);
+    expect(() => recordMcpDirectExecution(state, {
+      permit,
+      resultSha256: sha('2'),
+      isError: false,
+    })).toThrow(/already has an execution record/i);
   });
 
   it('keeps executed, succeeded and verified distinct', () => {
