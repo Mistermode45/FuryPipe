@@ -82,7 +82,10 @@ produce `require_operator`; otherwise they are denied.
 ## Exact approval binding
 
 The policy decision records a SHA-256 digest of the normalized exact policy
-configuration, including both bounded allowlists.
+configuration, including both bounded allowlists. Decisions are short-lived
+(default 30 seconds, maximum 60 seconds), are timestamp-bound in their digest,
+and are single-use for approval. Operator intent cannot outlive the policy
+decision that authorized it.
 
 A generated approval is bound to:
 

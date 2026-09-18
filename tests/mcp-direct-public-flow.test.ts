@@ -62,7 +62,12 @@ describe('supported direct MCP M1 -> M2 public flow', () => {
       }],
       operatorApprovalAllowlist: [],
     };
-    const decision = evaluateMcpDirectPolicy(selected, proposal, policy);
+    const decision = evaluateMcpDirectPolicy(
+      selected,
+      proposal,
+      policy,
+      { now: 1_000 },
+    );
     const approved = approveMcpDirectPolicyDecision(
       selected,
       proposal,

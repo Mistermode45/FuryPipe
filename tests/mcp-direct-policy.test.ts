@@ -348,7 +348,12 @@ describe('direct MCP proposal, policy and approval governance', () => {
       annotations: { readOnlyHint: true, openWorldHint: true },
     });
     const proposal = await createMcpDirectToolProposal(lifecycle, catalog, { query: 'alpha' });
-    const decision = evaluateMcpDirectPolicy(lifecycle, proposal, policy());
+    const decision = evaluateMcpDirectPolicy(
+      lifecycle,
+      proposal,
+      policy(),
+      { now: 10_000 },
+    );
     expect(decision.riskClass).toBe('trusted_read_only_open_world');
     expect(decision.outcome).toBe('require_operator');
     const intent = createMcpDirectOperatorApprovalIntent(
@@ -428,7 +433,12 @@ describe('direct MCP proposal, policy and approval governance', () => {
   it('binds the eventual execution permit to the approved input digest', async () => {
     const { lifecycle, catalog } = setup();
     const proposal = await createMcpDirectToolProposal(lifecycle, catalog, { query: 'alpha' });
-    const decision = evaluateMcpDirectPolicy(lifecycle, proposal, policy());
+    const decision = evaluateMcpDirectPolicy(
+      lifecycle,
+      proposal,
+      policy(),
+      { now: 1_000 },
+    );
     const approved = approveMcpDirectPolicyDecision(
       lifecycle,
       proposal,
@@ -497,6 +507,46 @@ describe('direct MCP proposal, policy and approval governance', () => {
     expect(decisionTwo.policyDecisionIdSha256).toBe(decisionThree.policyDecisionIdSha256);
   });
 
+  it('makes policy decisions short-lived and single-use for approval', async () => {
+    const { lifecycle, catalog } = setup();
+    const proposal = await createMcpDirectToolProposal(lifecycle, catalog, { query: 'alpha' });
+    const stale = evaluateMcpDirectPolicy(
+      lifecycle,
+      proposal,
+      policy(),
+      { now: 1_000, expiresInMs: 10 },
+    );
+    expect(() => approveMcpDirectPolicyDecision(
+      lifecycle,
+      proposal,
+      stale,
+      'governed_policy',
+      1_010,
+    )).toThrow(/policy decision is expired/i);
+
+    const fresh = evaluateMcpDirectPolicy(
+      lifecycle,
+      proposal,
+      policy(),
+      { now: 2_000, expiresInMs: 1_000 },
+    );
+    const approved = approveMcpDirectPolicyDecision(
+      lifecycle,
+      proposal,
+      fresh,
+      'governed_policy',
+      2_001,
+    );
+    expect(approved.approval?.expiresAt).toBe(3_000);
+    expect(() => approveMcpDirectPolicyDecision(
+      lifecycle,
+      proposal,
+      fresh,
+      'governed_policy',
+      2_002,
+    )).toThrow(/already used/i);
+  });
+
   it('does not let a reused sourceId authorize a different endpoint fingerprint', async () => {
     const { lifecycle, catalog } = setup();
     const proposal = await createMcpDirectToolProposal(lifecycle, catalog, { query: 'alpha' });
@@ -518,7 +568,12 @@ describe('direct MCP proposal, policy and approval governance', () => {
       annotations: { readOnlyHint: true, openWorldHint: true },
     });
     const proposal = await createMcpDirectToolProposal(lifecycle, catalog, { query: 'alpha' });
-    const decision = evaluateMcpDirectPolicy(lifecycle, proposal, policy());
+    const decision = evaluateMcpDirectPolicy(
+      lifecycle,
+      proposal,
+      policy(),
+      { now: 20_000 },
+    );
 
     expect(() => approveMcpDirectPolicyDecision(
       lifecycle,

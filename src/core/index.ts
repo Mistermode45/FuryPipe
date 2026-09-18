@@ -413,6 +413,7 @@ export {
   type McpDirectPolicyOutcome,
   type McpDirectPolicyPair,
   type McpDirectPolicy,
+  type McpDirectPolicyEvaluationOptions,
   type McpDirectOperatorApprovalIntent,
   type McpDirectOperatorIntentOptions,
   type McpDirectToolProposal,

@@ -69,6 +69,11 @@ export interface McpDirectToolProposal {
   readonly argumentsValidated: true;
 }
 
+export interface McpDirectPolicyEvaluationOptions {
+  readonly now?: number;
+  readonly expiresInMs?: number;
+}
+
 export interface McpDirectPolicyDecision {
   readonly format: 'furypipe-mcp-direct-policy-decision/v1';
   readonly policyDecisionIdSha256: string;
@@ -82,6 +87,8 @@ export interface McpDirectPolicyDecision {
   readonly inputSha256: string;
   readonly riskClass: McpToolRiskClass;
   readonly policyEvaluated: true;
+  readonly evaluatedAt: number;
+  readonly expiresAt: number;
   readonly outcome: McpDirectPolicyOutcome;
   readonly reason:
     | 'trusted_closed_world_exact_allowlist'
@@ -104,7 +111,10 @@ interface DecisionState {
   readonly proposal: McpDirectToolProposal;
   readonly policyId: string;
   readonly policySha256: string;
+  readonly evaluatedAt: number;
+  readonly expiresAt: number;
   readonly outcome: McpDirectPolicyOutcome;
+  approved: boolean;
 }
 
 interface OperatorIntentState {
@@ -124,6 +134,8 @@ const MAX_ARGUMENT_DEPTH = 64;
 const DEFAULT_OPERATOR_INTENT_TTL_MS = 30_000;
 const MAX_OPERATOR_INTENT_TTL_MS = 60_000;
 const GOVERNED_APPROVAL_TTL_MS = 30_000;
+const DEFAULT_POLICY_DECISION_TTL_MS = 30_000;
+const MAX_POLICY_DECISION_TTL_MS = 60_000;
 
 /**
  * Supported M2 selection transition. Selection identifies one listed tool but
@@ -420,10 +432,28 @@ export function evaluateMcpDirectPolicy(
   lifecycle: McpDirectLifecycleState,
   proposal: McpDirectToolProposal,
   policyInput: McpDirectPolicy,
+  options: McpDirectPolicyEvaluationOptions = {},
 ): McpDirectPolicyDecision {
   const selected = assertLifecycleSelected(lifecycle);
   assertProposalBound(lifecycle, proposal);
   const policy = normalizePolicy(policyInput);
+  const evaluatedAt = options.now ?? Date.now();
+  const expiresInMs = options.expiresInMs ?? DEFAULT_POLICY_DECISION_TTL_MS;
+  if (!Number.isSafeInteger(evaluatedAt) || evaluatedAt < 0) {
+    throw new Error('MCP policy evaluation timestamp must be a non-negative safe integer');
+  }
+  if (
+    !Number.isSafeInteger(expiresInMs)
+    || expiresInMs < 1
+    || expiresInMs > MAX_POLICY_DECISION_TTL_MS
+  ) {
+    throw new Error('MCP policy decision TTL must be between 1 and 60000 ms');
+  }
+  const expiresAt = evaluatedAt + expiresInMs;
+  if (!Number.isSafeInteger(expiresAt)) {
+    throw new Error('MCP policy decision expiry must be a safe integer');
+  }
+
   const policySha256 = digestMcpDirectJson(policy, {
     maxBytes: 256 * 1024,
     maxDepth: 16,
@@ -476,6 +506,8 @@ export function evaluateMcpDirectPolicy(
     inputSha256: proposal.inputSha256,
     riskClass: proposal.riskClass,
     policyEvaluated: true as const,
+    evaluatedAt,
+    expiresAt,
     outcome,
     reason,
   });
@@ -493,7 +525,10 @@ export function evaluateMcpDirectPolicy(
     proposal,
     policyId: policy.policyId,
     policySha256,
+    evaluatedAt,
+    expiresAt,
     outcome,
+    approved: false,
   }));
   return decision;
 }
@@ -520,6 +555,9 @@ function assertDecisionBound(
     || decision.inputSha256 !== proposal.inputSha256
     || decision.riskClass !== proposal.riskClass
     || decision.policyEvaluated !== true
+    || decision.evaluatedAt !== internal.evaluatedAt
+    || decision.expiresAt !== internal.expiresAt
+    || decision.expiresAt <= decision.evaluatedAt
     || decision.outcome !== internal.outcome
     || !SHA256.test(decision.policyDecisionIdSha256)
   ) {
@@ -537,6 +575,8 @@ function assertDecisionBound(
     inputSha256: decision.inputSha256,
     riskClass: decision.riskClass,
     policyEvaluated: true,
+    evaluatedAt: decision.evaluatedAt,
+    expiresAt: decision.expiresAt,
     outcome: decision.outcome,
     reason: decision.reason,
   }, {
@@ -579,6 +619,9 @@ export function createMcpDirectOperatorApprovalIntent(
   if (!Number.isSafeInteger(now) || now < 0) {
     throw new Error('MCP operator intent timestamp must be a non-negative safe integer');
   }
+  if (now < decision.evaluatedAt || now >= decision.expiresAt) {
+    throw new Error('MCP policy decision is expired or not yet valid for operator intent');
+  }
   if (
     !Number.isSafeInteger(expiresInMs)
     || expiresInMs < 1
@@ -586,9 +629,13 @@ export function createMcpDirectOperatorApprovalIntent(
   ) {
     throw new Error('MCP operator intent TTL must be between 1 and 60000 ms');
   }
-  const expiresAt = now + expiresInMs;
-  if (!Number.isSafeInteger(expiresAt)) {
+  const requestedExpiresAt = now + expiresInMs;
+  if (!Number.isSafeInteger(requestedExpiresAt)) {
     throw new Error('MCP operator intent expiry must be a safe integer');
+  }
+  const expiresAt = Math.min(requestedExpiresAt, decision.expiresAt);
+  if (expiresAt <= now) {
+    throw new Error('MCP operator intent cannot outlive policy decision freshness');
   }
 
   const intent: McpDirectOperatorApprovalIntent = Object.freeze({
@@ -620,6 +667,12 @@ export function approveMcpDirectPolicyDecision(
   if (!Number.isSafeInteger(now) || now < 0) {
     throw new Error('MCP approval timestamp must be a non-negative safe integer');
   }
+  if (now < decision.evaluatedAt || now >= decision.expiresAt) {
+    throw new Error('MCP policy decision is expired or not yet valid for approval');
+  }
+  if (internalDecision.approved) {
+    throw new Error('MCP policy decision was already used for approval');
+  }
   if (internalDecision.outcome === 'deny') {
     throw new Error('MCP policy denied approval for this proposal');
   }
@@ -635,7 +688,7 @@ export function approveMcpDirectPolicyDecision(
       throw new Error('MCP governed approval expiry must be a safe integer');
     }
     approvalKind = 'governed_policy';
-    approvalExpiresAt = expiresAt;
+    approvalExpiresAt = Math.min(expiresAt, decision.expiresAt);
   } else {
     if (!isGeneratedMcpDirectOperatorApprovalIntent(authority)) {
       throw new Error('MCP operator approval requires process-local explicit intent');
@@ -658,9 +711,10 @@ export function approveMcpDirectPolicyDecision(
     }
     intentState.consumed = true;
     approvalKind = 'operator';
-    approvalExpiresAt = authority.expiresAt;
+    approvalExpiresAt = Math.min(authority.expiresAt, decision.expiresAt);
   }
 
+  internalDecision.approved = true;
   return recordMcpDirectApproval(lifecycle, {
     policyDecisionIdSha256: decision.policyDecisionIdSha256,
     inputSha256: proposal.inputSha256,
