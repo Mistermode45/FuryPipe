@@ -125,6 +125,14 @@
       "types": "./dist/agent-skills-node.d.ts",
       "import": "./dist/agent-skills-node.js"
     },
+    "./agent-skill-selector": {
+      "types": "./dist/agent-skill-selector.d.ts",
+      "import": "./dist/agent-skill-selector.js"
+    },
+    "./agent-skill-activation-node": {
+      "types": "./dist/agent-skill-activation-node.d.ts",
+      "import": "./dist/agent-skill-activation-node.js"
+    },
     "./human-output-policy": {
       "types": "./dist/human-output-policy.d.ts",
       "import": "./dist/human-output-policy.js"

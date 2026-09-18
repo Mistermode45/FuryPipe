@@ -347,3 +347,12 @@ export {
   createAgentSkillActivationReceipt,
   type AgentSkillActivationReceipt,
 } from '../agent-skill-activation.js';
+export {
+  selectAgentSkillsForTask,
+  type AgentSkillSelectionCandidate,
+  type AgentSkillSelectionOptions,
+  type AgentSkillSelectionPlan,
+  type AgentSkillSelectionReason,
+  type BlockedAgentSkillSelection,
+  type SelectedAgentSkill,
+} from '../agent-skill-selector.js';
