@@ -104,6 +104,8 @@ export interface TrackEvent {
   passthrough_reasons?: { below_threshold?: number; not_profitable?: number };
   /** Plaintext-free ExactGuard attribution. Keys are rule classes; values are counts only. */
   exact_guard_classes?: Partial<Record<ExactnessClass, number>>;
+  /** Plaintext-free top-level request-region attribution for protected spans. */
+  exact_guard_regions?: Partial<Record<'system' | 'messages' | 'tools' | 'top_level_other', number>>;
   /** Unrecognized tag names in the static slab — canary for Claude Code releases adding new dynamic tags. */
   unknown_static_tags?: string[];
   /** Slab tags whose content changed within a session — proven per-turn dynamics busting the image cache. */
@@ -325,6 +327,9 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
     }
     if (info.exactGuard?.classes && Object.keys(info.exactGuard.classes).length > 0) {
       out.exact_guard_classes = info.exactGuard.classes;
+    }
+    if (info.exactGuard?.regions && Object.keys(info.exactGuard.regions).length > 0) {
+      out.exact_guard_regions = info.exactGuard.regions;
     }
     if (info.bucketChars && Object.keys(info.bucketChars).length > 0) {
       // Omit empty object so noop-pass requests stay lean; presence means at least one gate fired.
