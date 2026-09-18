@@ -402,6 +402,7 @@ export {
 } from '../mcp-direct-governance.js';
 
 export {
+  selectMcpDirectTool,
   createMcpDirectToolProposal,
   resolveMcpDirectProposalArguments,
   createMcpDirectOperatorApprovalIntent,

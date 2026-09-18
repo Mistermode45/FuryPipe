@@ -29,6 +29,12 @@ Annotations remain non-authoritative:
 annotation != trust != approval != authorization != execution
 ```
 
+## Selection
+
+The supported public M2 transition `selectMcpDirectTool()` can select exactly
+one tool from a healthy listed inventory. Selection grants no approval, permit
+or execution authority.
+
 ## Exact proposal validation
 
 A proposal can only be created from:

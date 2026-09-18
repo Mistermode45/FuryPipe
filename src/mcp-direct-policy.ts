@@ -12,6 +12,7 @@ import {
 import {
   isGeneratedMcpDirectLifecycleState,
   recordMcpDirectApproval,
+  recordMcpDirectSelection,
   type McpDirectLifecycleState,
 } from './mcp-direct-governance.js';
 import type { McpToolRiskClass } from './mcp-tool-risk.js';
@@ -123,6 +124,23 @@ const MAX_ARGUMENT_DEPTH = 64;
 const DEFAULT_OPERATOR_INTENT_TTL_MS = 30_000;
 const MAX_OPERATOR_INTENT_TTL_MS = 60_000;
 const GOVERNED_APPROVAL_TTL_MS = 30_000;
+
+/**
+ * Supported M2 selection transition. Selection identifies one listed tool but
+ * grants no approval, permit or execution authority.
+ */
+export function selectMcpDirectTool(
+  lifecycle: McpDirectLifecycleState,
+  toolName: string,
+): McpDirectLifecycleState {
+  if (!isGeneratedMcpDirectLifecycleState(lifecycle)) {
+    throw new Error('MCP lifecycle state must be process-local FuryPipe evidence');
+  }
+  if (!lifecycle.connected || !lifecycle.healthy || !lifecycle.listed || !lifecycle.inventory) {
+    throw new Error('MCP source must be connected, healthy and listed before tool selection');
+  }
+  return recordMcpDirectSelection(lifecycle, toolName);
+}
 
 function assertLifecycleSelected(
   lifecycle: McpDirectLifecycleState,

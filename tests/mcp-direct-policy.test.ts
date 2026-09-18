@@ -21,6 +21,7 @@ import {
   isGeneratedMcpDirectPolicyDecision,
   isGeneratedMcpDirectToolProposal,
   resolveMcpDirectProposalArguments,
+  selectMcpDirectTool,
   type McpDirectPolicy,
 } from '../src/mcp-direct-policy.js';
 import { assessMcpToolRisk } from '../src/mcp-tool-risk.js';
@@ -94,6 +95,41 @@ function policy(options: {
 }
 
 describe('direct MCP proposal, policy and approval governance', () => {
+  it('exposes a selection transition without granting approval or execution authority', () => {
+    const source = {
+      sourceId: 'mcp-source',
+      transport: 'stdio' as const,
+      endpointFingerprint: sha('a'),
+      trust: 'trusted' as const,
+    };
+    const inputSchemaSha256 = digestMcpDirectJson(INPUT_SCHEMA);
+    const listed = recordMcpDirectInventory(
+      recordMcpDirectConnection(createMcpDirectLifecycle(source), {
+        protocolEra: 'modern_2026',
+        handshake: 'discover',
+      }),
+      [{
+        name: 'search',
+        inputSchemaSha256,
+        risk: assessMcpToolRisk(
+          { readOnlyHint: true, openWorldHint: false },
+          'trusted',
+        ),
+      }],
+    );
+
+    const selected = selectMcpDirectTool(listed, 'search');
+    expect(selected).toMatchObject({
+      selected: true,
+      selectedTool: 'search',
+      approved: false,
+      executed: false,
+      succeeded: false,
+      verified: false,
+    });
+    expect(() => selectMcpDirectTool(listed, 'missing')).toThrow(/not present/i);
+  });
+
   it('keeps selected, arguments_validated, policy_evaluated and approved distinct', async () => {
     const { lifecycle, catalog } = setup();
     expect(lifecycle.selected).toBe(true);
