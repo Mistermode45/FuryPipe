@@ -393,6 +393,8 @@ export {
   recordMcpDirectSelection,
   recordMcpDirectApproval,
   createMcpDirectExecutionPermit,
+  consumeMcpDirectExecutionPermit,
+  isGeneratedMcpDirectExecutionPermit,
   recordMcpDirectExecution,
   recordMcpDirectVerification,
   type McpDirectTransport,
@@ -404,6 +406,7 @@ export {
   type McpDirectApprovalEvidence,
   type McpDirectExecutionPermit,
   type McpDirectExecutionEvidence,
+  type McpDirectPermitOptions,
   type McpDirectVerificationEvidence,
   type McpDirectLifecycleState,
 } from '../mcp-direct-governance.js';

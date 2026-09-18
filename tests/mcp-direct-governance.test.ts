@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  consumeMcpDirectExecutionPermit,
   createMcpDirectExecutionPermit,
   createMcpDirectLifecycle,
+  isGeneratedMcpDirectExecutionPermit,
   recordMcpDirectApproval,
   recordMcpDirectConnection,
   recordMcpDirectExecution,
@@ -9,17 +11,18 @@ import {
   recordMcpDirectInventory,
   recordMcpDirectSelection,
   recordMcpDirectVerification,
+  type McpDirectLifecycleState,
 } from '../src/mcp-direct-governance.js';
 import { assessMcpToolRisk } from '../src/mcp-tool-risk.js';
 
 const sha = (char: string) => char.repeat(64);
 
-function connected() {
+function connected(trust: 'trusted' | 'untrusted' = 'trusted') {
   return recordMcpDirectConnection(createMcpDirectLifecycle({
     sourceId: 'local-proof',
     transport: 'stdio',
     endpointFingerprint: sha('a'),
-    trust: 'trusted',
+    trust,
   }), {
     protocolEra: 'modern_2026',
     handshake: 'discover',
@@ -35,6 +38,13 @@ function listed() {
       openWorldHint: false,
     }, 'trusted'),
   }]);
+}
+
+function approved() {
+  return recordMcpDirectApproval(recordMcpDirectSelection(listed(), 'echo'), {
+    policyDecisionIdSha256: sha('e'),
+    approvalKind: 'operator',
+  });
 }
 
 describe('direct MCP governance lifecycle', () => {
@@ -68,6 +78,11 @@ describe('direct MCP governance lifecycle', () => {
     expect(connection.trusted).toBe(false);
   });
 
+  it('rejects forged lifecycle state objects', () => {
+    const forged = { ...connected() } as McpDirectLifecycleState;
+    expect(() => recordMcpDirectHealth(forged, 'list_tools_success')).toThrow(/process-local/i);
+  });
+
   it('rejects legacy ping as modern MCP 2026 health evidence', () => {
     expect(() => recordMcpDirectHealth(connected(), 'legacy_ping_success')).toThrow(/legacy ping/i);
   });
@@ -82,34 +97,87 @@ describe('direct MCP governance lifecycle', () => {
     expect(state.executed).toBe(false);
   });
 
+  it('rejects risk evidence whose trust is not bound to the source', () => {
+    expect(() => recordMcpDirectInventory(connected('untrusted'), [{
+      name: 'echo',
+      inputSchemaSha256: sha('b'),
+      risk: assessMcpToolRisk({ readOnlyHint: true, openWorldHint: false }, 'trusted'),
+    }])).toThrow(/source-bound/i);
+  });
+
   it('cannot select an unlisted tool', () => {
     expect(() => recordMcpDirectSelection(listed(), 'missing')).toThrow(/not present/i);
   });
 
   it('requires explicit policy approval before an execution permit exists', () => {
     const selected = recordMcpDirectSelection(listed(), 'echo');
-    expect(() => createMcpDirectExecutionPermit(selected, sha('d'))).toThrow(/approved/i);
+    expect(() => createMcpDirectExecutionPermit(selected, sha('d'), { now: 1_000 })).toThrow(/approved/i);
 
-    const approved = recordMcpDirectApproval(selected, {
+    const state = recordMcpDirectApproval(selected, {
       policyDecisionIdSha256: sha('e'),
       approvalKind: 'operator',
     });
-    const permit = createMcpDirectExecutionPermit(approved, sha('d'));
-    expect(approved.approved).toBe(true);
-    expect(approved.executed).toBe(false);
-    expect(permit.toolName).toBe('echo');
-    expect(permit.inputSha256).toBe(sha('d'));
+    const permit = createMcpDirectExecutionPermit(state, sha('d'), { now: 1_000 });
+    expect(isGeneratedMcpDirectExecutionPermit(permit)).toBe(true);
+    expect(permit).toMatchObject({
+      format: 'furypipe-mcp-execution-permit/v1',
+      sourceId: 'local-proof',
+      endpointFingerprint: sha('a'),
+      toolName: 'echo',
+      inputSchemaSha256: sha('b'),
+      inputSha256: sha('d'),
+      policyDecisionIdSha256: sha('e'),
+      approvalKind: 'operator',
+      issuedAt: 1_000,
+      expiresAt: 31_000,
+    });
+  });
+
+  it('rejects copied or forged permits', () => {
+    const state = approved();
+    const permit = createMcpDirectExecutionPermit(state, sha('d'), { now: 1_000 });
+    const copy = { ...permit };
+    expect(isGeneratedMcpDirectExecutionPermit(copy)).toBe(false);
+    expect(() => consumeMcpDirectExecutionPermit(state, copy, sha('d'), 1_001)).toThrow(/process-local/i);
+  });
+
+  it('binds a permit to endpoint, tool schema, input and policy evidence', () => {
+    const state = approved();
+    const permit = createMcpDirectExecutionPermit(state, sha('d'), { now: 1_000 });
+
+    expect(() => consumeMcpDirectExecutionPermit(state, permit, sha('9'), 1_001)).toThrow(/does not match/i);
+    expect(() => consumeMcpDirectExecutionPermit(state, permit, sha('d'), 31_000)).toThrow(/expired/i);
+  });
+
+  it('consumes permits exactly once before any execution receipt', () => {
+    const state = approved();
+    const permit = createMcpDirectExecutionPermit(state, sha('d'), { now: 1_000 });
+
+    expect(() => recordMcpDirectExecution(state, {
+      permit,
+      resultSha256: sha('2'),
+      isError: false,
+    })).toThrow(/consumed before/i);
+
+    consumeMcpDirectExecutionPermit(state, permit, sha('d'), 1_001);
+    expect(() => consumeMcpDirectExecutionPermit(state, permit, sha('d'), 1_002)).toThrow(/already consumed/i);
+
+    const executed = recordMcpDirectExecution(state, {
+      permit,
+      resultSha256: sha('2'),
+      isError: false,
+    });
+    expect(executed.executed).toBe(true);
+    expect(executed.succeeded).toBe(true);
+    expect(executed.verified).toBe(false);
   });
 
   it('keeps executed, succeeded and verified distinct', () => {
-    const selected = recordMcpDirectSelection(listed(), 'echo');
-    const approved = recordMcpDirectApproval(selected, {
-      policyDecisionIdSha256: sha('f'),
-      approvalKind: 'governed_policy',
-    });
-    const permit = createMcpDirectExecutionPermit(approved, sha('1'));
+    const state = approved();
+    const permit = createMcpDirectExecutionPermit(state, sha('1'), { now: 2_000 });
+    consumeMcpDirectExecutionPermit(state, permit, sha('1'), 2_001);
 
-    const executed = recordMcpDirectExecution(approved, {
+    const executed = recordMcpDirectExecution(state, {
       permit,
       resultSha256: sha('2'),
       isError: false,
@@ -126,13 +194,10 @@ describe('direct MCP governance lifecycle', () => {
   });
 
   it('records a failed call as executed but not succeeded or verified', () => {
-    const selected = recordMcpDirectSelection(listed(), 'echo');
-    const approved = recordMcpDirectApproval(selected, {
-      policyDecisionIdSha256: sha('3'),
-      approvalKind: 'operator',
-    });
-    const permit = createMcpDirectExecutionPermit(approved, sha('4'));
-    const failed = recordMcpDirectExecution(approved, {
+    const state = approved();
+    const permit = createMcpDirectExecutionPermit(state, sha('4'), { now: 3_000 });
+    consumeMcpDirectExecutionPermit(state, permit, sha('4'), 3_001);
+    const failed = recordMcpDirectExecution(state, {
       permit,
       resultSha256: sha('5'),
       isError: true,
@@ -147,18 +212,19 @@ describe('direct MCP governance lifecycle', () => {
     })).toThrow(/successfully/i);
   });
 
-  it('rejects a permit rebound to another source', () => {
-    const selected = recordMcpDirectSelection(listed(), 'echo');
-    const approved = recordMcpDirectApproval(selected, {
-      policyDecisionIdSha256: sha('6'),
-      approvalKind: 'operator',
-    });
-    const permit = createMcpDirectExecutionPermit(approved, sha('7'));
-
-    expect(() => recordMcpDirectExecution(approved, {
-      permit: { ...permit, sourceId: 'other-source' },
-      resultSha256: sha('8'),
+  it('requires execution result evidence to match verification evidence exactly', () => {
+    const state = approved();
+    const permit = createMcpDirectExecutionPermit(state, sha('6'), { now: 4_000 });
+    consumeMcpDirectExecutionPermit(state, permit, sha('6'), 4_001);
+    const executed = recordMcpDirectExecution(state, {
+      permit,
+      resultSha256: sha('7'),
       isError: false,
+    });
+
+    expect(() => recordMcpDirectVerification(executed, {
+      resultSha256: sha('8'),
+      verificationKind: 'schema',
     })).toThrow(/does not match/i);
   });
 });
