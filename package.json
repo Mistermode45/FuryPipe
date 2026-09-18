@@ -121,6 +121,10 @@
       "types": "./dist/agent-skills-standard.d.ts",
       "import": "./dist/agent-skills-standard.js"
     },
+    "./agent-skills-node": {
+      "types": "./dist/agent-skills-node.d.ts",
+      "import": "./dist/agent-skills-node.js"
+    },
     "./human-output-policy": {
       "types": "./dist/human-output-policy.d.ts",
       "import": "./dist/human-output-policy.js"
