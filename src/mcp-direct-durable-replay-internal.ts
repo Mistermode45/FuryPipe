@@ -111,6 +111,8 @@ interface DurableTerminalRecord {
   readonly attempt: number;
   readonly reservationIdSha256: string;
   readonly armedRecordSha256: string;
+  readonly reservationRecordSha256: string;
+  readonly terminalRecordSha256: string;
   readonly terminalAt: number;
   readonly replayed: boolean;
   readonly outcome: McpDirectDurableReplayOutcome;
@@ -417,7 +419,8 @@ function parseRecord(bytes: Uint8Array): DurableRecord {
       exactKeys(
         value,
         [...commonRequired, 'armedRecordSha256', 'terminalAt', 'compactedAt', 'replayed',
-          'outcome', 'resultSha256', 'retentionClass', 'retainUntil', 'lineageSha256'],
+          'outcome', 'resultSha256', 'retentionClass', 'retainUntil', 'lineageSha256',
+          'reservationRecordSha256', 'terminalRecordSha256'],
         [],
         'MCP durable tombstone',
       );
@@ -464,11 +467,15 @@ function parseRecord(bytes: Uint8Array): DurableRecord {
       }
     } else if (format === 'furypipe-mcp-direct-durable-tombstone/v1') {
       if (typeof value.armedRecordSha256 !== 'string'
+        || typeof value.reservationRecordSha256 !== 'string'
+        || typeof value.terminalRecordSha256 !== 'string'
         || typeof value.resultSha256 !== 'string'
         || typeof value.lineageSha256 !== 'string') {
         throw new Error('tombstone digest is invalid');
       }
       assertSha(value.armedRecordSha256, 'armedRecordSha256');
+      assertSha(value.reservationRecordSha256, 'reservationRecordSha256');
+      assertSha(value.terminalRecordSha256, 'terminalRecordSha256');
       assertSha(value.resultSha256, 'resultSha256');
       assertSha(value.lineageSha256, 'lineageSha256');
       if (!Number.isSafeInteger(value.terminalAt)
@@ -584,6 +591,12 @@ async function loadedRecords(
   return Object.freeze(records);
 }
 
+function recordHandleDigest(records: readonly LoadedRecord[], target: DurableRecord): string {
+  const loaded = records.find(({ record }) => record === target);
+  if (!loaded) throw new McpDirectDurableReplayError('durable-state-corrupt');
+  return loaded.handle.digest;
+}
+
 function classify(
   scopeSha256: string,
   replayKeySha256: string,
@@ -611,7 +624,12 @@ function classify(
     }
     if (records.some(({ record }) =>
       record.format !== 'furypipe-mcp-direct-durable-tombstone/v1'
-      && record.attempt > tombstone.attempt)) {
+      && (record.attempt !== tombstone.attempt
+        || ![
+          tombstone.reservationRecordSha256,
+          tombstone.armedRecordSha256,
+          tombstone.terminalRecordSha256,
+        ].includes(recordHandleDigest(records, record)))) ) {
       throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256);
     }
     return Object.freeze({
@@ -928,7 +946,37 @@ export async function compactMcpDirectDurableEvidenceInternal(
   const { store, scopeSha256 } = requiredStore(coordinator);
   const records = await loadedRecords(coordinator, replayKeySha256);
   const current = classify(scopeSha256, replayKeySha256, records, options.now);
-  if (current.state === 'compacted') return current;
+  if (current.state === 'compacted') {
+    const tombstoneLoaded = records.find(({ record }) =>
+      record.format === 'furypipe-mcp-direct-durable-tombstone/v1');
+    if (!tombstoneLoaded || tombstoneLoaded.record.format !== 'furypipe-mcp-direct-durable-tombstone/v1') {
+      throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256);
+    }
+    const remaining = records.filter(({ record }) =>
+      record.format !== 'furypipe-mcp-direct-durable-tombstone/v1');
+    if (remaining.length === 0) return current;
+    const tombstoneMetadata = metadata(scopeSha256, replayKeySha256, 'tombstone',
+      tombstoneLoaded.record.attempt, tombstoneLoaded.record.reservationIdSha256);
+    const slot = slotMetadata(scopeSha256, replayKeySha256, 'tombstone',
+      tombstoneLoaded.record.attempt) as Readonly<Record<string, string | number | boolean | null>>;
+    await store.compactBounded(
+      canonicalBytes(tombstoneLoaded.record),
+      tombstoneMetadata,
+      { metadata: slot, maxMatches: 1 },
+      remaining.map(({ handle, record }) => ({
+        handle,
+        targetMetadata: metadata(scopeSha256, replayKeySha256, recordType(record),
+          record.attempt, record.reservationIdSha256) as Readonly<Record<string, string | number | boolean | null>>,
+        matchConstraints: [{
+          metadata: metadata(scopeSha256, replayKeySha256, recordType(record),
+            record.attempt, record.reservationIdSha256) as Readonly<Record<string, string | number | boolean | null>>,
+          minMatches: 1,
+          maxMatches: 1,
+        }],
+      })),
+    );
+    return inspectMcpDirectDurableReplayStatusInternal(coordinator, replayKeySha256, options.now);
+  }
   if (
     current.state !== 'terminal'
     || (current.outcome !== 'succeeded' && current.outcome !== 'tool_error')
@@ -968,6 +1016,8 @@ export async function compactMcpDirectDurableEvidenceInternal(
     attempt,
     reservationIdSha256: reservation.record.reservationIdSha256,
     armedRecordSha256: armed.handle.digest,
+    reservationRecordSha256: reservation.handle.digest,
+    terminalRecordSha256: terminal.handle.digest,
     terminalAt: terminal.record.terminalAt,
     compactedAt: options.now,
     replayed: terminal.record.replayed,
