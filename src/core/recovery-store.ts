@@ -932,7 +932,14 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
           const digest = parseHandle(target.handle);
           const current = await readManifest(digest);
           if (current === undefined) {
-            throw new Error('recovery compaction target is missing');
+            const leftoverVariants = await objectVariants(scopedRoot, digest);
+            if (leftoverVariants.length > 0) {
+              throw new Error('recovery compaction target has orphaned object variants');
+            }
+            // Another holder may have completed this exact tombstone-first
+            // cleanup after this caller published the same content-addressed
+            // tombstone. Absence is safe only after tombstone publication.
+            continue;
           }
           await readStored(digest, current);
           if (Object.entries(target.targetMetadata)
