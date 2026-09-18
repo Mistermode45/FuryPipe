@@ -280,15 +280,15 @@ describe('Direct MCP durable replay foundation', () => {
       });
 
       const outcomes = await Promise.allSettled([
-        reclaimMcpDirectDurableExpiredPreCallInternal(
-          reclaimer,
-          KEY,
-          6_110,
-        ),
         armMcpDirectDurableExecution(
           coordinator,
           reservation,
           6_109,
+        ),
+        reclaimMcpDirectDurableExpiredPreCallInternal(
+          reclaimer,
+          KEY,
+          6_110,
         ),
       ]);
 
