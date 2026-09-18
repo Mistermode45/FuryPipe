@@ -28,7 +28,10 @@ import {
   createMcpDirectDurableReplayCoordinatorInternal,
   inspectMcpDirectDurableReplayStatusInternal,
 } from '../src/mcp-direct-durable-replay-internal.js';
-import { resetMcpDirectReplayStateForTests } from '../src/mcp-direct-replay-internal.js';
+import {
+  createMcpDirectReplayIntentInternal,
+  resetMcpDirectReplayStateForTests,
+} from '../src/mcp-direct-replay-internal.js';
 import {
   approveMcpDirectPolicyDecision,
   createMcpDirectToolProposal,
@@ -630,6 +633,74 @@ describe('Direct MCP M3 governed execution', () => {
         resultSha256: executed.receipt.resultSha256,
         succeeded: true,
       });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps M4 replay authority mandatory for durable attempt two', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m5-executor-replay-'));
+    try {
+      const store = createRecoveryStore(root, { namespace: 'mcp-m5-executor' });
+      const coordinator = createMcpDirectDurableReplayCoordinatorInternal({
+        store,
+        tenantId: 'tenant-m5',
+        principalId: 'principal-m5',
+      });
+      const fake = fakeFactory({});
+
+      const firstApproved = await approvedWithFactory(fake.factory, 'durable-replay');
+      const first = await executeMcpDirectApprovedToolInternal(
+        firstApproved.config,
+        firstApproved.lifecycle,
+        firstApproved.proposal,
+        {
+          clientInfo: { name: 'furypipe-m5-test', version: '1.0.0' },
+          factory: fake.factory,
+          durableReplay: coordinator,
+          now: () => 20_000,
+        },
+      );
+
+      const secondApproved = await approvedWithFactory(fake.factory, 'durable-replay');
+      const replayIntent = createMcpDirectReplayIntentInternal(
+        first.receipt,
+        secondApproved.lifecycle,
+        secondApproved.proposal,
+        'repeat_closed_world_read',
+        { now: 20_100, expiresInMs: 5_000 },
+      );
+      const second = await executeMcpDirectApprovedToolInternal(
+        secondApproved.config,
+        secondApproved.lifecycle,
+        secondApproved.proposal,
+        {
+          clientInfo: { name: 'furypipe-m5-test', version: '1.0.0' },
+          factory: fake.factory,
+          durableReplay: coordinator,
+          replayIntent,
+          now: () => 20_101,
+        },
+      );
+
+      expect(second.receipt).toMatchObject({
+        attempt: 2,
+        replayed: true,
+        replayReason: 'repeat_closed_world_read',
+        priorResultSha256: first.receipt.resultSha256,
+        durableAttempt: 2,
+      });
+      await expect(inspectMcpDirectDurableReplayStatusInternal(
+        coordinator,
+        second.receipt.replayKeySha256,
+      )).resolves.toMatchObject({
+        state: 'terminal',
+        attempt: 2,
+        replayed: true,
+        outcome: 'succeeded',
+        resultSha256: second.receipt.resultSha256,
+      });
+      expect(fake.counters().callCalls).toBe(2);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
