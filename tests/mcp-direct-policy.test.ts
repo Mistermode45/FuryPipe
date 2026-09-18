@@ -331,18 +331,19 @@ describe('direct MCP proposal, policy and approval governance', () => {
       proposal,
       decision,
       'governed_policy',
+      1_000,
     );
 
     expect(() => createMcpDirectExecutionPermit(
       approved,
       digestMcpDirectJson({ query: 'substituted' }),
-      { now: 1_000 },
+      { now: 1_001 },
     )).toThrow(/approved input digest/i);
 
     const permit = createMcpDirectExecutionPermit(
       approved,
       proposal.inputSha256,
-      { now: 1_000 },
+      { now: 1_001 },
     );
     expect(permit.inputSha256).toBe(proposal.inputSha256);
   });
