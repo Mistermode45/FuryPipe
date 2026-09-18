@@ -1019,7 +1019,9 @@ export async function compactMcpDirectDurableEvidenceInternal(
     reservationRecordSha256: reservation.handle.digest,
     terminalRecordSha256: terminal.handle.digest,
     terminalAt: terminal.record.terminalAt,
-    compactedAt: options.now,
+    // Deterministic identity: concurrent maintainers must publish the same
+    // content-addressed tombstone for the same terminal lineage.
+    compactedAt: terminal.record.terminalAt,
     replayed: terminal.record.replayed,
     outcome: terminal.record.outcome as 'succeeded' | 'tool_error',
     resultSha256: terminal.record.resultSha256!,
