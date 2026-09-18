@@ -433,10 +433,16 @@ export {
 
 export {
   executeMcpDirectApprovedTool,
+  executeMcpDirectReplay,
+  createMcpDirectReplayIntent,
   McpDirectExecutionEvidenceError,
   McpDirectExecutionOutcomeUnknownError,
   McpDirectExecutionVerificationError,
+  McpDirectReplayGovernanceError,
   type McpDirectGovernedExecutionOptions,
   type McpDirectExecutionReceipt,
   type McpDirectGovernedExecutionResult,
+  type McpDirectReplayIntent,
+  type McpDirectReplayReason,
+  type McpDirectReplayIntentPublicOptions,
 } from '../mcp-direct-executor-node.js';

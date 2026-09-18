@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+
 import { McpServer, fromJsonSchema } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
@@ -21,6 +23,26 @@ const outputSchema = fromJsonSchema({
 });
 
 let calls = 0;
+const counterPath = process.argv[2];
+
+function nextCallCount() {
+  if (!counterPath) {
+    calls += 1;
+    return calls;
+  }
+
+  let current = 0;
+  try {
+    const raw = readFileSync(counterPath, 'utf8').trim();
+    if (raw !== '') current = Number.parseInt(raw, 10);
+  } catch {
+    current = 0;
+  }
+  if (!Number.isSafeInteger(current) || current < 0) current = 0;
+  const next = current + 1;
+  writeFileSync(counterPath, String(next), 'utf8');
+  return next;
+}
 
 const handle = serveStdio(() => {
   const server = new McpServer({
@@ -42,8 +64,8 @@ const handle = serveStdio(() => {
       },
     },
     async ({ message }) => {
-      calls += 1;
-      const output = { echo: message, calls };
+      const callCount = nextCallCount();
+      const output = { echo: message, calls: callCount };
       return {
         content: [{ type: 'text', text: JSON.stringify(output) }],
         structuredContent: output,

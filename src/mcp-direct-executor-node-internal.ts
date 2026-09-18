@@ -25,6 +25,14 @@ import {
   resolveMcpDirectProposalArguments,
   type McpDirectToolProposal,
 } from './mcp-direct-policy-internal.js';
+import {
+  registerGeneratedMcpDirectExecutionReceipt,
+  releaseMcpDirectExecutionReservation,
+  reserveMcpDirectExecutionAttempt,
+  settleMcpDirectExecutionAttempt,
+  type McpDirectReplayIntent,
+  type McpDirectReplayReason,
+} from './mcp-direct-replay-internal.js';
 
 const DEFAULT_CALL_TIMEOUT_MS = 30_000;
 const MAX_CALL_TIMEOUT_MS = 60_000;
@@ -47,6 +55,7 @@ export interface McpDirectGovernedExecutionInternalOptions {
   readonly maxResultBytes?: number;
   readonly factory?: McpDirectSdkFactory;
   readonly now?: () => number;
+  readonly replayIntent?: McpDirectReplayIntent;
 }
 
 export interface McpDirectExecutionReceipt {
@@ -60,6 +69,11 @@ export interface McpDirectExecutionReceipt {
   readonly approvalKind: 'operator' | 'governed_policy';
   readonly permitIdSha256: string;
   readonly resultSha256: string;
+  readonly replayKeySha256: string;
+  readonly attempt: number;
+  readonly replayed: boolean;
+  readonly replayReason?: McpDirectReplayReason;
+  readonly priorResultSha256?: string;
   readonly outputSchemaSha256?: string;
   readonly protocolVersion?: string;
   readonly executed: true;
@@ -80,13 +94,23 @@ export class McpDirectExecutionOutcomeUnknownError extends Error {
   readonly sourceId: string;
   readonly toolName: string;
   readonly permitIdSha256: string;
+  readonly replayKeySha256: string;
+  readonly attempt: number;
 
-  constructor(sourceId: string, toolName: string, permitIdSha256: string) {
+  constructor(
+    sourceId: string,
+    toolName: string,
+    permitIdSha256: string,
+    replayKeySha256: string,
+    attempt: number,
+  ) {
     super('MCP tool call did not return a result; execution outcome is unknown and must not be retried automatically');
     this.name = 'McpDirectExecutionOutcomeUnknownError';
     this.sourceId = sourceId;
     this.toolName = toolName;
     this.permitIdSha256 = permitIdSha256;
+    this.replayKeySha256 = replayKeySha256;
+    this.attempt = attempt;
   }
 }
 
@@ -101,6 +125,8 @@ export class McpDirectExecutionVerificationError extends Error {
   readonly inputSha256: string;
   readonly resultSha256: string;
   readonly outputSchemaSha256: string;
+  readonly replayKeySha256: string;
+  readonly attempt: number;
 
   constructor(
     sourceId: string,
@@ -108,6 +134,8 @@ export class McpDirectExecutionVerificationError extends Error {
     inputSha256: string,
     resultSha256: string,
     outputSchemaSha256: string,
+    replayKeySha256: string,
+    attempt: number,
   ) {
     super('MCP tool returned a result that failed FuryPipe post-call verification; do not retry automatically');
     this.name = 'McpDirectExecutionVerificationError';
@@ -116,6 +144,8 @@ export class McpDirectExecutionVerificationError extends Error {
     this.inputSha256 = inputSha256;
     this.resultSha256 = resultSha256;
     this.outputSchemaSha256 = outputSchemaSha256;
+    this.replayKeySha256 = replayKeySha256;
+    this.attempt = attempt;
   }
 }
 
@@ -128,12 +158,16 @@ export class McpDirectExecutionEvidenceError extends Error {
   readonly toolName: string;
   readonly inputSha256: string;
   readonly succeeded: boolean;
+  readonly replayKeySha256: string;
+  readonly attempt: number;
 
   constructor(
     sourceId: string,
     toolName: string,
     inputSha256: string,
     succeeded: boolean,
+    replayKeySha256: string,
+    attempt: number,
   ) {
     super('MCP tool returned a result that could not be recorded safely; do not retry automatically');
     this.name = 'McpDirectExecutionEvidenceError';
@@ -141,6 +175,8 @@ export class McpDirectExecutionEvidenceError extends Error {
     this.toolName = toolName;
     this.inputSha256 = inputSha256;
     this.succeeded = succeeded;
+    this.replayKeySha256 = replayKeySha256;
+    this.attempt = attempt;
   }
 }
 
@@ -382,20 +418,34 @@ export async function executeMcpDirectApprovedToolInternal(
       { now, expiresInMs: permitTtlMs },
     );
 
-    // Critical no-replay transition. Re-check after async connect/list work.
-    // JS executes the has/add pair synchronously, so two concurrent callbacks
-    // cannot both acquire execution authority. Permit creation is deliberately
-    // before this point so an already-expired approval does not burn the state.
-    if (EXECUTION_ATTEMPTED.has(approvedLifecycle)) {
-      throw new Error('MCP approved lifecycle was already used for an execution attempt');
-    }
-    EXECUTION_ATTEMPTED.add(approvedLifecycle);
-    consumeMcpDirectExecutionPermit(
+    // M4 duplicate/replay reservation is process-local and synchronous. It
+    // blocks a second fresh M1→M2 approval for the same exact execution key
+    // unless a short-lived process-local replay intent is supplied.
+    const replayReservation = reserveMcpDirectExecutionAttempt(
       approvedLifecycle,
-      permit,
-      proposal.inputSha256,
+      proposal,
+      options.replayIntent,
       now,
     );
+
+    if (EXECUTION_ATTEMPTED.has(approvedLifecycle)) {
+      releaseMcpDirectExecutionReservation(replayReservation);
+      throw new Error('MCP approved lifecycle was already used for an execution attempt');
+    }
+
+    try {
+      consumeMcpDirectExecutionPermit(
+        approvedLifecycle,
+        permit,
+        proposal.inputSha256,
+        now,
+      );
+    } catch (error) {
+      releaseMcpDirectExecutionReservation(replayReservation);
+      throw error;
+    }
+    EXECUTION_ATTEMPTED.add(approvedLifecycle);
+
     const permitIdSha256 = digestMcpDirectJson(permit.permitId, {
       maxBytes: 1024,
       maxDepth: 2,
@@ -423,10 +473,17 @@ export async function executeMcpDirectApprovedToolInternal(
         },
       );
     } catch {
+      settleMcpDirectExecutionAttempt(
+        replayReservation,
+        'unknown',
+        { now: options.now?.() ?? Date.now() },
+      );
       throw new McpDirectExecutionOutcomeUnknownError(
         approvedLifecycle.source.sourceId,
         proposal.toolName,
         permitIdSha256,
+        replayReservation.replayKeySha256,
+        replayReservation.attempt,
       );
     } finally {
       clearTimeout(timeout);
@@ -447,11 +504,21 @@ export async function executeMcpDirectApprovedToolInternal(
         permit,
         isError,
       });
+      settleMcpDirectExecutionAttempt(
+        replayReservation,
+        'evidence_failed',
+        {
+          succeeded: !isError,
+          now: options.now?.() ?? Date.now(),
+        },
+      );
       throw new McpDirectExecutionEvidenceError(
         approvedLifecycle.source.sourceId,
         proposal.toolName,
         proposal.inputSha256,
         !isError,
+        replayReservation.replayKeySha256,
+        replayReservation.attempt,
       );
     }
     const executed = recordMcpDirectExecution(approvedLifecycle, {
@@ -469,12 +536,23 @@ export async function executeMcpDirectApprovedToolInternal(
     ) {
       const outputValid = await validateStructuredOutput(result, prepared.outputValidator);
       if (!outputValid) {
+        settleMcpDirectExecutionAttempt(
+          replayReservation,
+          'verification_failed',
+          {
+            resultSha256,
+            succeeded: true,
+            now: options.now?.() ?? Date.now(),
+          },
+        );
         throw new McpDirectExecutionVerificationError(
           approvedLifecycle.source.sourceId,
           proposal.toolName,
           proposal.inputSha256,
           resultSha256,
           prepared.outputSchemaSha256,
+          replayReservation.replayKeySha256,
+          replayReservation.attempt,
         );
       }
       finalLifecycle = recordMcpDirectVerification(executed, {
@@ -484,6 +562,16 @@ export async function executeMcpDirectApprovedToolInternal(
       });
       verified = true;
     }
+
+    settleMcpDirectExecutionAttempt(
+      replayReservation,
+      isError ? 'tool_error' : 'succeeded',
+      {
+        resultSha256,
+        succeeded: !isError,
+        now: options.now?.() ?? Date.now(),
+      },
+    );
 
     const receipt: McpDirectExecutionReceipt = Object.freeze({
       format: 'furypipe-mcp-direct-execution-receipt/v1',
@@ -496,6 +584,15 @@ export async function executeMcpDirectApprovedToolInternal(
       approvalKind: approvedLifecycle.approval!.approvalKind,
       permitIdSha256,
       resultSha256,
+      replayKeySha256: replayReservation.replayKeySha256,
+      attempt: replayReservation.attempt,
+      replayed: replayReservation.replayed,
+      ...(replayReservation.reason === undefined
+        ? {}
+        : { replayReason: replayReservation.reason }),
+      ...(replayReservation.priorResultSha256 === undefined
+        ? {}
+        : { priorResultSha256: replayReservation.priorResultSha256 }),
       ...(prepared.outputSchemaSha256 === undefined
         ? {}
         : { outputSchemaSha256: prepared.outputSchemaSha256 }),
@@ -505,6 +602,8 @@ export async function executeMcpDirectApprovedToolInternal(
       verified,
       ...(verified ? { verificationKind: 'schema' as const } : {}),
     });
+
+    registerGeneratedMcpDirectExecutionReceipt(receipt, replayReservation);
 
     return Object.freeze({
       lifecycle: finalLifecycle,
