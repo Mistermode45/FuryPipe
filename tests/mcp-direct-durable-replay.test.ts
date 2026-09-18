@@ -12,6 +12,7 @@ import {
   reserveMcpDirectDurableExecution,
   armMcpDirectDurableExecution,
   settleMcpDirectDurableExecution,
+  compactMcpDirectDurableEvidenceInternal,
   abortMcpDirectDurablePreCallReservation,
   McpDirectDurableReplayError,
 } from '../src/mcp-direct-durable-replay-internal.js';
@@ -499,5 +500,68 @@ describe('Direct MCP durable replay foundation', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('compacts known succeeded evidence without replay authority', async () => {
+    const { root, coordinator } = await fixture();
+    try {
+      const reservation = await reserveMcpDirectDurableExecution(coordinator, KEY, { now: 11_000 });
+      const armed = await armMcpDirectDurableExecution(coordinator, reservation, 11_001);
+      await settleMcpDirectDurableExecution(coordinator, armed, 'succeeded', {
+        resultSha256: RESULT, succeeded: true, now: 11_002,
+      });
+      await expect(compactMcpDirectDurableEvidenceInternal(coordinator, KEY, {
+        now: 12_000, retainUntil: 42_000,
+      })).resolves.toMatchObject({
+        state: 'compacted', attempt: 1, outcome: 'succeeded', historical: true,
+      });
+      await expect(inspectMcpDirectDurableReplayStatusInternal(coordinator, KEY, 12_001))
+        .resolves.toMatchObject({ state: 'compacted', historical: true });
+      await expect(reserveMcpDirectDurableExecution(coordinator, KEY, { now: 12_002 }))
+        .rejects.toMatchObject({ code: 'durable-state-conflict', retrySafe: false });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('compacts known tool_error evidence', async () => {
+    const { root, coordinator } = await fixture();
+    try {
+      const reservation = await reserveMcpDirectDurableExecution(coordinator, KEY, { now: 13_000 });
+      const armed = await armMcpDirectDurableExecution(coordinator, reservation, 13_001);
+      await settleMcpDirectDurableExecution(coordinator, armed, 'tool_error', {
+        resultSha256: RESULT, succeeded: false, now: 13_002,
+      });
+      await expect(compactMcpDirectDurableEvidenceInternal(coordinator, KEY, {
+        now: 14_000, retainUntil: 44_000,
+      })).resolves.toMatchObject({ state: 'compacted', outcome: 'tool_error' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['unknown', 'evidence_failed', 'verification_failed'] as const)(
+    'rejects compaction for unresolved %s evidence',
+    async (outcome) => {
+      const { root, coordinator } = await fixture();
+      try {
+        const reservation = await reserveMcpDirectDurableExecution(coordinator, KEY, { now: 15_000 });
+        const armed = await armMcpDirectDurableExecution(coordinator, reservation, 15_001);
+        await settleMcpDirectDurableExecution(coordinator, armed, outcome, {
+          ...(outcome === 'unknown' ? {} : {
+            resultSha256: RESULT,
+            succeeded: outcome === 'verification_failed',
+          }),
+          now: 15_002,
+        });
+        await expect(compactMcpDirectDurableEvidenceInternal(coordinator, KEY, {
+          now: 16_000, retainUntil: 46_000,
+        })).rejects.toMatchObject({
+          code: 'durable-maintenance-not-eligible', retrySafe: false,
+        });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
 });
