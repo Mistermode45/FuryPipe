@@ -404,7 +404,6 @@ export {
 export {
   selectMcpDirectTool,
   createMcpDirectToolProposal,
-  resolveMcpDirectProposalArguments,
   createMcpDirectOperatorApprovalIntent,
   evaluateMcpDirectPolicy,
   approveMcpDirectPolicyDecision,
