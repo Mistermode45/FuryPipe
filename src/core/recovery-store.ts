@@ -967,7 +967,7 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
           // full record is no longer authoritative; this prevents another
           // process from observing a live manifest with a missing payload.
           await rm(metadataPath(scopedRoot, digest), { force: true });
-          await Promise.all(variants.map((variant) => rm(variant, { force: true }));
+          await Promise.all(variants.map((variant) => rm(variant, { force: true })));
         }
         return handle;
       });
