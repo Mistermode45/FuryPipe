@@ -260,7 +260,7 @@ try {
   const directMcpDurableReplayExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
-    "const m = await import('furypipe/mcp-direct-durable-replay-node'); if (typeof m.createMcpDirectDurableReplayCoordinator !== 'function' || typeof m.inspectMcpDirectDurableReplayStatus !== 'function' || typeof m.McpDirectDurableReplayError !== 'function' || typeof m.reserveMcpDirectDurableExecution !== 'undefined' || typeof m.armMcpDirectDurableExecution !== 'undefined' || typeof m.settleMcpDirectDurableExecution !== 'undefined') process.exit(1);",
+    "const m = await import('furypipe/mcp-direct-durable-replay-node'); if (typeof m.createMcpDirectDurableReplayCoordinator !== 'function' || typeof m.inspectMcpDirectDurableReplayStatus !== 'function' || typeof m.reclaimMcpDirectDurableExpiredPreCall !== 'function' || typeof m.McpDirectDurableReplayError !== 'function' || typeof m.reserveMcpDirectDurableExecution !== 'undefined' || typeof m.armMcpDirectDurableExecution !== 'undefined' || typeof m.settleMcpDirectDurableExecution !== 'undefined') process.exit(1);",
   ], installDir);
   assert(directMcpDurableReplayExport.stderr === '', `Direct MCP durable replay package export wrote stderr: ${directMcpDurableReplayExport.stderr}`);
   const directMcpHiddenExports = await run(process.execPath, [
