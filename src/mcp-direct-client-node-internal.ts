@@ -85,14 +85,14 @@ export interface McpDirectInventoryProbeEvidence {
   readonly toolCount: number;
 }
 
-export interface McpDirectMcpDirectSdkListTool {
+export interface McpDirectSdkListTool {
   readonly name?: unknown;
   readonly inputSchema?: unknown;
   readonly outputSchema?: unknown;
   readonly annotations?: unknown;
 }
 
-export interface McpDirectMcpDirectSdkClientLike {
+export interface McpDirectSdkClientLike {
   connect(
     transport: unknown,
     options: { readonly timeout: number; readonly signal: AbortSignal },

@@ -74,7 +74,7 @@ function sanitizedOptions(
   });
 }
 
-export function executeMcpDirectApprovedTool(
+export async function executeMcpDirectApprovedTool(
   config: McpDirectRuntimeConfig,
   approvedLifecycle: McpDirectLifecycleState,
   proposal: McpDirectToolProposal,
