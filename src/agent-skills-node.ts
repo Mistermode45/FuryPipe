@@ -1,4 +1,5 @@
 import { open, readdir, realpath, stat, lstat } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 
@@ -195,7 +196,7 @@ export async function discoverAgentSkillsNode(
 
   for (const root of roots) {
     let rootReal: string;
-    let entries: Awaited<ReturnType<typeof readdir>>;
+    let entries: Dirent[];
     try {
       rootReal = await realpath(root.path);
       entries = await readdir(rootReal, { withFileTypes: true });
