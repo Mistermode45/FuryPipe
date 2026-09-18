@@ -2531,10 +2531,12 @@ export async function transformRequest(
     return { body: outBody, info };
   };
 
-  // ExactGuard is a real strategy gate, not receipt decoration. Until a
-  // reversible externalize/redact adapter is selected, preserve the complete
-  // native request whenever a configured rule detects a protected value.
-  // Counting only hashes/spans keeps this diagnostic plaintext-free.
+  // ExactGuard is a real strategy gate, not receipt decoration. Automatic
+  // safety modes only block on regions FuryPipe can actually transform
+  // (system/messages/tools). Protected values in untouched top-level provider
+  // metadata stay native and exact, but do not disable safe-region compression.
+  // An explicitly supplied ExactGuard policy retains historical whole-request
+  // strictness. Counting only classes/regions keeps diagnostics plaintext-free.
   const activeExactGuard = opts.exactGuard !== undefined
     ? opts.exactGuard
     : o.safetyMode === false ? false : exactGuardOptionsForMode(o.safetyMode);
@@ -2550,7 +2552,13 @@ export async function transformRequest(
       exactGuardClasses,
       exactGuardRegions,
     );
-    if (protectedSpans > 0) {
+    const automaticScope = opts.exactGuard === undefined;
+    const nativeMetadataSpans = automaticScope
+      ? (exactGuardRegions.top_level_other ?? 0)
+      : 0;
+    const blockingProtectedSpans = protectedSpans - nativeMetadataSpans;
+
+    if (blockingProtectedSpans > 0) {
       if (activeExactGuard.representationPolicy === 'externalize' && opts.recoveryStore) {
         try {
           if (!hasExternalizationBlocker(req, activeExactGuard)) {
