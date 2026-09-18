@@ -45,11 +45,12 @@ describe('Anthropic MCP observed runtime', () => {
 
     const result = await observeAnthropicMcpRuntime(body);
 
-    expect(result.connectedTools).toEqual([{
+    expect(result.exposedTools).toEqual([{
       name: 'mcp__GitHub__fetch',
       serverId: 'GitHub',
       toolId: 'fetch',
-      connectionEvidence: 'declared_current_request',
+      exposureEvidence: 'claude_code_name_convention',
+      transportVerified: false,
     }]);
     expect(result.pendingUses).toEqual([]);
     expect(result.observedResults).toHaveLength(1);
@@ -111,7 +112,7 @@ describe('Anthropic MCP observed runtime', () => {
       ],
     }));
 
-    expect(result.connectedTools).toEqual([]);
+    expect(result.exposedTools).toEqual([]);
     expect(result.pendingUses).toEqual([]);
     expect(result.observedResults).toEqual([]);
   });
@@ -136,6 +137,11 @@ describe('Anthropic MCP observed runtime', () => {
       ],
     }));
 
+    expect(result.exposedTools[0]).toMatchObject({
+      name: 'remote-search',
+      exposureEvidence: 'declared_mcp_type',
+      transportVerified: false,
+    });
     expect(result.observedResults).toHaveLength(1);
     expect(result.observedResults[0]?.isError).toBe(true);
     expect(result.observedResults[0]?.executedByFuryPipe).toBe(false);
