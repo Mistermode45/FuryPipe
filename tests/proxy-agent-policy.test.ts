@@ -34,19 +34,27 @@ describe('FuryPipe proxy agent policy', () => {
     expect(parsed.messages).toEqual(source.messages);
   });
 
-  it('appends a text block to Anthropic structured system content', () => {
+  it('keeps the policy inside an existing Anthropic cache prefix', () => {
+    const marked = { type: 'text', text: 'cached tail', cache_control: { type: 'ephemeral' } };
     const result = injectFuryProxyAgentPolicy(encode({
       model: 'claude-opus-5',
-      system: [{ type: 'text', text: 'existing' }],
+      system: [
+        { type: 'text', text: 'existing authority' },
+        marked,
+        { type: 'text', text: 'dynamic after marker' },
+      ],
       messages: [{ role: 'user', content: 'hello' }],
     }), 'anthropic-messages');
     const parsed = decode(result.body);
     const system = parsed.system as Array<Record<string, unknown>>;
 
-    expect(system.at(-1)).toEqual({
+    expect(system[0]?.text).toBe('existing authority');
+    expect(system[1]).toEqual({
       type: 'text',
       text: FURY_PROXY_AGENT_POLICY_TEXT,
     });
+    expect(system[2]).toEqual(marked);
+    expect(system[3]?.text).toBe('dynamic after marker');
   });
 
   it('inserts an OpenAI developer message after leading authority messages', () => {
