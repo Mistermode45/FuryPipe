@@ -38,10 +38,12 @@ describe('toTrackEvent', () => {
           protectedSpans: 3,
           action: 'preserve_native',
           classes: { message_id: 2, sha256: 1 },
+          regions: { system: 1, top_level_other: 2 },
         },
       },
     });
     expect(out.exact_guard_classes).toEqual({ message_id: 2, sha256: 1 });
+    expect(out.exact_guard_regions).toEqual({ system: 1, top_level_other: 2 });
     expect(JSON.stringify(out)).not.toContain('req_secret');
   });
 
