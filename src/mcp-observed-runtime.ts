@@ -1,8 +1,10 @@
-export interface ConnectedMcpTool {
+export interface ExposedMcpTool {
   readonly name: string;
   readonly serverId?: string;
   readonly toolId?: string;
-  readonly connectionEvidence: 'declared_current_request';
+  readonly exposureEvidence: 'declared_mcp_type' | 'claude_code_name_convention';
+  /** Tool exposure is not a transport health check. */
+  readonly transportVerified: false;
 }
 
 export interface PendingObservedMcpUse {
@@ -32,7 +34,7 @@ export interface ObservedExternalMcpResultReceipt {
 
 export interface AnthropicMcpObservation {
   readonly format: 'furypipe-anthropic-mcp-observation/v1';
-  readonly connectedTools: readonly ConnectedMcpTool[];
+  readonly exposedTools: readonly ExposedMcpTool[];
   readonly pendingUses: readonly PendingObservedMcpUse[];
   readonly observedResults: readonly ObservedExternalMcpResultReceipt[];
   readonly executedByFuryPipe: false;
@@ -80,9 +82,9 @@ function parseMcpName(name: string): { serverId?: string; toolId?: string } {
   return { serverId, toolId };
 }
 
-function connectedTools(root: Record<string, unknown>): readonly ConnectedMcpTool[] {
+function exposedTools(root: Record<string, unknown>): readonly ExposedMcpTool[] {
   if (!Array.isArray(root.tools)) return Object.freeze([]);
-  const out: ConnectedMcpTool[] = [];
+  const out: ExposedMcpTool[] = [];
   const seen = new Set<string>();
 
   for (const raw of root.tools.slice(0, MAX_TOOLS)) {
@@ -100,7 +102,10 @@ function connectedTools(root: Record<string, unknown>): readonly ConnectedMcpToo
     out.push(Object.freeze({
       name,
       ...parsed,
-      connectionEvidence: 'declared_current_request' as const,
+      exposureEvidence: type === 'mcp'
+        ? 'declared_mcp_type' as const
+        : 'claude_code_name_convention' as const,
+      transportVerified: false as const,
     }));
   }
 
@@ -176,8 +181,8 @@ export async function observeAnthropicMcpRuntime(
   body: Uint8Array | string,
 ): Promise<AnthropicMcpObservation> {
   const root = parseRoot(body);
-  const connected = connectedTools(root);
-  const connectedByName = new Map(connected.map((tool) => [tool.name, tool] as const));
+  const exposed = exposedTools(root);
+  const exposedByName = new Map(exposed.map((tool) => [tool.name, tool] as const));
   const uses = new Map<string, UseRecord>();
   const results = new Map<string, { readonly contentJson: string; readonly isError: boolean }>();
 
@@ -186,7 +191,7 @@ export async function observeAnthropicMcpRuntime(
       if (message.role === 'assistant' && block.type === 'tool_use') {
         const id = typeof block.id === 'string' ? block.id : undefined;
         const name = safeName(block.name);
-        if (!id || id.length > MAX_TOOL_USE_ID || id.includes('\0') || !name || !connectedByName.has(name)) {
+        if (!id || id.length > MAX_TOOL_USE_ID || id.includes('\0') || !name || !exposedByName.has(name)) {
           continue;
         }
         if (!uses.has(id)) {
@@ -236,7 +241,7 @@ export async function observeAnthropicMcpRuntime(
       continue;
     }
 
-    const tool = connectedByName.get(use.name)!;
+    const tool = exposedByName.get(use.name)!;
     observed.push(Object.freeze({
       format: 'furypipe-observed-external-mcp-result/v1' as const,
       toolName: use.name,
@@ -253,7 +258,7 @@ export async function observeAnthropicMcpRuntime(
 
   return Object.freeze({
     format: 'furypipe-anthropic-mcp-observation/v1',
-    connectedTools: connected,
+    exposedTools: exposed,
     pendingUses: Object.freeze(pending),
     observedResults: Object.freeze(observed),
     executedByFuryPipe: false,
