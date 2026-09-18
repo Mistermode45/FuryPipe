@@ -547,10 +547,10 @@ describe('Direct MCP durable replay foundation', () => {
         const reservation = await reserveMcpDirectDurableExecution(coordinator, KEY, { now: 15_000 });
         const armed = await armMcpDirectDurableExecution(coordinator, reservation, 15_001);
         await settleMcpDirectDurableExecution(coordinator, armed, outcome, {
-          ...(outcome === 'unknown' ? {} : {
+          ...(outcome === 'verification_failed' ? {
             resultSha256: RESULT,
-            succeeded: outcome === 'verification_failed',
-          }),
+            succeeded: true,
+          } : {}),
           now: 15_002,
         });
         await expect(compactMcpDirectDurableEvidenceInternal(coordinator, KEY, {
