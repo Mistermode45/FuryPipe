@@ -384,3 +384,26 @@ export {
   type ProxyMcpRuntimeEvidence,
   type ProxyMcpToolPolicyEvidence,
 } from '../mcp-proxy-evidence.js';
+
+export {
+  createMcpDirectLifecycle,
+  recordMcpDirectConnection,
+  recordMcpDirectHealth,
+  recordMcpDirectInventory,
+  recordMcpDirectSelection,
+  recordMcpDirectApproval,
+  createMcpDirectExecutionPermit,
+  recordMcpDirectExecution,
+  recordMcpDirectVerification,
+  type McpDirectTransport,
+  type McpDirectProtocolEra,
+  type McpDirectHandshake,
+  type McpDirectHealthEvidence,
+  type McpDirectSourceConfig,
+  type McpDirectInventoryTool,
+  type McpDirectApprovalEvidence,
+  type McpDirectExecutionPermit,
+  type McpDirectExecutionEvidence,
+  type McpDirectVerificationEvidence,
+  type McpDirectLifecycleState,
+} from '../mcp-direct-governance.js';
