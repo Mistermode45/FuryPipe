@@ -223,4 +223,36 @@ describe('Direct MCP M5 real process restart', () => {
       await rm(root, { recursive: true, force: true });
     }
   }, 45_000);
+  it('allows only one reservation across two real OS processes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m5-process-race-'));
+    try {
+      const results = await Promise.all([
+        runReservationRaceWorker(root),
+        runReservationRaceWorker(root),
+      ]);
+      expect(results.filter(result => result.ok)).toHaveLength(1);
+      expect(results.filter(result => !result.ok)).toHaveLength(1);
+      expect(results.find(result => !result.ok)?.code).toBe('durable-state-conflict');
+
+      const store = createRecoveryStore(root, {
+        namespace: 'mcp-m5-process-race',
+      });
+      const coordinator = createMcpDirectDurableReplayCoordinator({
+        store,
+        tenantId: 'tenant-m5-process-race',
+        principalId: 'principal-m5-process-race',
+      });
+      await expect(inspectMcpDirectDurableReplayStatus(
+        coordinator,
+        'a'.repeat(64),
+      )).resolves.toMatchObject({
+        state: 'pre_call',
+        attempt: 1,
+        replayed: false,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 45_000);
+
 });
