@@ -421,6 +421,10 @@ Environment:
   FURYPIPE_SKILL_ROOTS   additional skill roots separated by the OS path
                           delimiter; explicit operator roots are trusted for
                           instruction activation only (never script/tool authority)
+  FURYPIPE_MCP_OBSERVATION
+                          on (default) passively observes MCP tools exposed by
+                          the client and correlated tool results; off disables
+                          observation. Never executes or authorizes MCP tools.
   FURYPIPE_CONFIG         JSON config path (default ~/.config/furypipe/config.json)
                           supports {"models": [...]} / {"models": "off"} /
                           {"modelScopeMode": "automatic"}
@@ -1477,6 +1481,13 @@ async function main(): Promise<void> {
         });
       };
 
+  const mcpObservationEnabled = !/^(?:0|false|no|off)$/iu.test(
+    process.env.FURYPIPE_MCP_OBSERVATION?.trim() ?? '',
+  );
+  if (mcpObservationEnabled) {
+    console.log('[furypipe] passive MCP observation enabled (execution authority remains off)');
+  }
+
   // Transform options pass through empty — the proxy uses the DEFAULTS
   // baked into transform.ts. There are no behavior toggles: system slab,
   // reminders, tool_results, and history compression all run
@@ -1569,6 +1580,7 @@ async function main(): Promise<void> {
       process.env.FURYPIPE_HUMAN_OUTPUT_STYLE?.trim() ?? '',
     ),
     capabilityPlanner,
+    mcpObservation: mcpObservationEnabled,
     // Per-request transform options:
     //   1. Runtime kill switch — when the dashboard "passthrough" toggle
     //      is off, force compress=false so /v1/messages forwards
@@ -1621,6 +1633,13 @@ async function main(): Promise<void> {
       if ((e.capability?.blockedSkillIds.length ?? 0) > 0) {
         extra.push(`skills-blocked=${e.capability!.blockedSkillIds.length}`);
       }
+      if ((e.mcp?.observation.exposedTools.length ?? 0) > 0) {
+        extra.push(`mcp=${e.mcp!.observation.exposedTools.length}`);
+      }
+      if ((e.mcp?.observation.observedResults.length ?? 0) > 0) {
+        extra.push(`mcp-result=${e.mcp!.observation.observedResults.length}`);
+      }
+      if (e.mcpError) extra.push('mcp-observe-error');
       const extraTag = extra.length > 0 ? ` (${extra.join(' ')})` : '';
       const tag = e.info?.compressed
         ? `compressed ${e.info.origChars}ch → ${e.info.imageCount}img/${e.info.imageBytes}B${extraTag}`
