@@ -34,6 +34,7 @@ import {
   type McpDirectReplayReason,
 } from './mcp-direct-replay-internal.js';
 import {
+  abortMcpDirectDurableArmedBeforeCall,
   abortMcpDirectDurablePreCallReservation,
   armMcpDirectDurableExecution,
   isGeneratedMcpDirectDurableReplayCoordinator,
@@ -530,11 +531,14 @@ export async function executeMcpDirectApprovedToolInternal(
     }
 
     try {
+      const permitConsumeAt = options.durableReplay === undefined
+        ? now
+        : (options.now?.() ?? Date.now());
       consumeMcpDirectExecutionPermit(
         approvedLifecycle,
         permit,
         proposal.inputSha256,
-        now,
+        permitConsumeAt,
       );
     } catch (error) {
       if (durableReservation !== undefined && options.durableReplay !== undefined) {
@@ -562,6 +566,16 @@ export async function executeMcpDirectApprovedToolInternal(
         ).catch(() => undefined);
         releaseMcpDirectExecutionReservation(replayReservation);
         throw error;
+      }
+
+      const wireReadyAt = options.now?.() ?? Date.now();
+      if (wireReadyAt < permit.issuedAt || wireReadyAt >= permit.expiresAt) {
+        await abortMcpDirectDurableArmedBeforeCall(
+          options.durableReplay,
+          durableArmed,
+        ).catch(() => undefined);
+        releaseMcpDirectExecutionReservation(replayReservation);
+        throw new Error('MCP execution permit expired before the durable wire-call boundary');
       }
     }
 
