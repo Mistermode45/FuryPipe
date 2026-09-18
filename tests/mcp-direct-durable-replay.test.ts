@@ -623,4 +623,32 @@ describe('Direct MCP durable replay foundation', () => {
     }
   });
 
+
+  it('makes two-process-style compaction race converge on one historical tombstone', async () => {
+    const { root, store, coordinator } = await fixture();
+    try {
+      const second = createMcpDirectDurableReplayCoordinatorInternal({
+        store, tenantId: 'tenant-a', principalId: 'principal-a',
+      });
+      const reservation = await reserveMcpDirectDurableExecution(coordinator, KEY, { now: 20_000 });
+      const armed = await armMcpDirectDurableExecution(coordinator, reservation, 20_001);
+      await settleMcpDirectDurableExecution(coordinator, armed, 'tool_error', {
+        resultSha256: RESULT, succeeded: false, now: 20_002,
+      });
+      const results = await Promise.allSettled([
+        compactMcpDirectDurableEvidenceInternal(coordinator, KEY, {
+          now: 21_000, retainUntil: 51_000,
+        }),
+        compactMcpDirectDurableEvidenceInternal(second, KEY, {
+          now: 21_001, retainUntil: 51_000,
+        }),
+      ]);
+      expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(2);
+      expect(await inspectMcpDirectDurableReplayStatusInternal(second, KEY, 21_002))
+        .toMatchObject({ state: 'compacted', historical: true, outcome: 'tool_error' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
 });
