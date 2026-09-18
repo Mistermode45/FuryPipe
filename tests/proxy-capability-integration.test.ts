@@ -144,3 +144,78 @@ describe('live proxy Agent Skill instruction runtime', () => {
       expect(JSON.parse(forwarded)).toEqual(JSON.parse(source));
     },
   );
+
+  it('fails open when optional capability planning throws', async () => {
+    let forwarded = '';
+    restore.push(mockFetch(async (request) => {
+      forwarded = await request.clone().text();
+      return okResponse();
+    }));
+    const captured = captureEvent();
+    const proxy = createProxy({
+      upstream: 'http://anthropic.test',
+      humanOutputPolicy: false,
+      capabilityPlanner: async () => {
+        throw new Error('fixture planner unavailable');
+      },
+      transform: { compress: false },
+      onRequest: captured.onRequest,
+    });
+
+    const source = JSON.stringify({
+      model: 'claude-opus-5',
+      messages: [{ role: 'user', content: 'Debug this regression.' }],
+    });
+    const response = await proxy(new Request('http://localhost/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: source,
+    }));
+    await response.text();
+    const event = await captured.event;
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(forwarded)).toEqual(JSON.parse(source));
+    expect(event.capability).toBeUndefined();
+    expect(event.capabilityError).toContain('fixture planner unavailable');
+  });
+
+  it('persists lifecycle evidence without SKILL.md plaintext', async () => {
+    let forwarded = '';
+    restore.push(mockFetch(async (request) => {
+      forwarded = await request.clone().text();
+      return okResponse();
+    }));
+    const captured = captureEvent();
+    const proxy = createProxy({
+      upstream: 'http://anthropic.test',
+      humanOutputPolicy: false,
+      capabilityPlanner: async () => plan(),
+      transform: { compress: false },
+      onRequest: captured.onRequest,
+    });
+
+    const response = await proxy(new Request('http://localhost/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-opus-5',
+        messages: [{ role: 'user', content: 'Debug this regression.' }],
+      }),
+    }));
+    await response.text();
+    const event = await captured.event;
+    const tracked = toTrackEvent(event);
+    const serialized = JSON.stringify(tracked);
+
+    expect(tracked.capability_selected_skills).toEqual(['systematic-debugging']);
+    expect(tracked.capability_activated_skills).toEqual([{
+      skill_id: 'systematic-debugging',
+      instruction_bytes: 42,
+      instruction_sha256: 'a'.repeat(64),
+    }]);
+    expect(tracked.capability_execution_authorized).toBe(false);
+    expect(serialized).not.toContain('SECRET_SKILL_BODY_MARKER');
+    expect(forwarded).toContain('SECRET_SKILL_BODY_MARKER');
+  });
+});
