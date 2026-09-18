@@ -1234,6 +1234,10 @@ const DYNAMIC_BLOCK_TAGS = [
   'cc_automode_permissions',
   'severity',
   'category',
+  // FuryPipe-owned compact-human generation guidance. It must remain native
+  // text: hiding the policy inside a Visual Engine image would make exact/
+  // machine-sensitive output boundaries less reliable.
+  'furypipe_runtime_instruction',
 ] as const;
 
 // Known-static slab tags — suppresses first-sighting `unknownStaticTags` noise
