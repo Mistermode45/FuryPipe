@@ -271,6 +271,21 @@ function requiredStore(
   };
 }
 
+function slotMetadata(
+  scopeSha256: string,
+  replayKeySha256: string,
+  recordType: 'reservation' | 'armed' | 'terminal',
+  attempt: number,
+): RecoveryMetadata {
+  return Object.freeze({
+    system: SYSTEM,
+    scopeSha256,
+    replayKeySha256,
+    recordType,
+    attempt,
+  });
+}
+
 function metadata(
   scopeSha256: string,
   replayKeySha256: string,
@@ -279,11 +294,7 @@ function metadata(
   reservationIdSha256: string,
 ): RecoveryMetadata {
   return Object.freeze({
-    system: SYSTEM,
-    scopeSha256,
-    replayKeySha256,
-    recordType,
-    attempt,
+    ...slotMetadata(scopeSha256, replayKeySha256, recordType, attempt),
     reservationIdSha256,
   });
 }
@@ -901,7 +912,12 @@ export async function reserveMcpDirectDurableExecution(
       canonicalBytes(record),
       recordMetadata,
       {
-        metadata: recordMetadata as Readonly<Record<string, string | number | boolean | null>>,
+        metadata: slotMetadata(
+          scopeSha256,
+          replayKeySha256,
+          'reservation',
+          attempt,
+        ) as Readonly<Record<string, string | number | boolean | null>>,
         maxMatches: 1,
       },
     );
@@ -1019,7 +1035,12 @@ export async function armMcpDirectDurableExecution(
       canonicalBytes(record),
       recordMetadata,
       {
-        metadata: recordMetadata as Readonly<Record<string, string | number | boolean | null>>,
+        metadata: slotMetadata(
+          scopeSha256,
+          reservation.replayKeySha256,
+          'armed',
+          reservation.attempt,
+        ) as Readonly<Record<string, string | number | boolean | null>>,
         maxMatches: 1,
         matchConstraints: [{
           metadata: reservationMetadata as Readonly<Record<string, string | number | boolean | null>>,
@@ -1152,7 +1173,12 @@ export async function settleMcpDirectDurableExecution(
     canonicalBytes(record),
     recordMetadata,
     {
-      metadata: recordMetadata as Readonly<Record<string, string | number | boolean | null>>,
+      metadata: slotMetadata(
+        scopeSha256,
+        armed.replayKeySha256,
+        'terminal',
+        armed.attempt,
+      ) as Readonly<Record<string, string | number | boolean | null>>,
       maxMatches: 1,
       matchConstraints: [{
         metadata: armedMetadata as Readonly<Record<string, string | number | boolean | null>>,
