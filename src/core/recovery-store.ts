@@ -941,7 +941,17 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
             // tombstone. Absence is safe only after tombstone publication.
             continue;
           }
-          await readStored(digest, current);
+          try {
+            await readStored(digest, current);
+          } catch (caught) {
+            if (isErrno(caught, 'ENOENT')) {
+              // Tombstone was already verified above. A concurrent maintainer
+              // may have removed this target's object before its manifest;
+              // cleanup is already safely complete for this target.
+              continue;
+            }
+            throw caught;
+          }
           if (Object.entries(target.targetMetadata)
             .some(([key, value]) => current.metadata?.[key] !== value)) {
             throw new Error('recovery compaction target metadata mismatch');
