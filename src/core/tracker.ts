@@ -306,12 +306,10 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
   if (ev.mcp) {
     const riskByName = new Map(ev.mcp.tools.map((item) => [item.toolName, item.assessment] as const));
     if (ev.mcp.observation.exposedTools.length > 0) {
-      out.mcp_exposed_tools = ev.mcp.observation.exposedTools.map((tool) => {
+      const exposed = ev.mcp.observation.exposedTools.flatMap((tool) => {
         const assessment = riskByName.get(tool.name);
-        if (!assessment) {
-          throw new Error('MCP evidence missing risk assessment for exposed tool');
-        }
-        return {
+        if (!assessment) return [];
+        return [{
           tool_name: tool.name,
           ...(tool.serverId === undefined ? {} : { server_id: tool.serverId }),
           ...(tool.toolId === undefined ? {} : { tool_id: tool.toolId }),
@@ -322,8 +320,9 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
           closed_world_read_candidate: assessment.closedWorldReadCandidate,
           authorization_granted: false as const,
           requires_policy_gate: true as const,
-        };
+        }];
       });
+      if (exposed.length > 0) out.mcp_exposed_tools = exposed;
     }
     if (ev.mcp.observation.pendingUses.length > 0) {
       out.mcp_pending_uses = ev.mcp.observation.pendingUses.map((item) => ({
