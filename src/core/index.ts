@@ -436,6 +436,7 @@ export {
   executeMcpDirectReplay,
   createMcpDirectReplayIntent,
   McpDirectExecutionEvidenceError,
+  McpDirectExecutionDurabilityError,
   McpDirectExecutionOutcomeUnknownError,
   McpDirectExecutionVerificationError,
   McpDirectReplayGovernanceError,
