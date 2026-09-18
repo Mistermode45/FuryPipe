@@ -3,7 +3,7 @@ import type { FuryHumanOutputPolicyDecision } from './human-output-policy.js';
 const RUNTIME_TAG = 'furypipe_runtime_instruction';
 const MAX_INSTRUCTION_CHARS = 8_192;
 
-function parseObject(body: Uint8Array): Record<string, unknown> {
+function parseObject(body: Uint8Array<ArrayBuffer>): Record<string, unknown> {
   const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body)) as unknown;
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('Anthropic request body must be a JSON object');
@@ -28,9 +28,9 @@ function systemContainsTag(system: unknown): boolean {
  * User messages, tools and provider metadata are left byte-semantically intact.
  */
 export function applyAnthropicHumanOutputInstruction(
-  body: Uint8Array,
+  body: Uint8Array<ArrayBuffer>,
   decision: FuryHumanOutputPolicyDecision,
-): Uint8Array {
+): Uint8Array<ArrayBuffer> {
   if (!decision.instruction) return body;
   if (decision.instruction.length > MAX_INSTRUCTION_CHARS || decision.instruction.includes('\0')) {
     throw new Error('human output instruction exceeds its bound');
@@ -50,7 +50,10 @@ export function applyAnthropicHumanOutputInstruction(
     throw new Error('Anthropic system field has an unsupported shape');
   }
 
-  return new TextEncoder().encode(JSON.stringify(root));
+  const encoded = new TextEncoder().encode(JSON.stringify(root));
+  const owned = new ArrayBuffer(encoded.byteLength);
+  new Uint8Array(owned).set(encoded);
+  return new Uint8Array(owned);
 }
 
 export const FURYPIPE_RUNTIME_INSTRUCTION_TAG = RUNTIME_TAG;
