@@ -43,6 +43,12 @@ export interface McpDirectStdioRuntimeConfig {
   readonly command: string;
   readonly args?: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
+  /**
+   * Stable non-secret principal identity for secret/runtime env context.
+   * Required whenever env is supplied. Token/password values remain excluded
+   * from evidence so credential rotation does not change source identity.
+   */
+  readonly principalId?: string;
   readonly cwd?: string;
   readonly maxBufferBytes?: number;
 }
@@ -61,6 +67,11 @@ export interface McpDirectHttpRuntimeConfig {
    * copied into FuryPipe lifecycle evidence or receipts.
    */
   readonly headers?: Readonly<Record<string, string>>;
+  /**
+   * Stable non-secret principal identity for runtime HTTP header credentials.
+   * Required whenever headers are supplied.
+   */
+  readonly principalId?: string;
   readonly maxResponseBytes?: number;
 }
 
@@ -318,6 +329,28 @@ function assertClientInfo(info: McpDirectClientInfo): void {
   }
 }
 
+function validatedPrincipalId(
+  value: string | undefined,
+  required: boolean,
+  label: string,
+): string | null {
+  if (value === undefined) {
+    if (required) {
+      throw new Error(`${label} requires an explicit non-secret principalId`);
+    }
+    return null;
+  }
+  if (
+    value.length < 1
+    || value.length > 128
+    || value !== value.trim()
+    || /[\u0000-\u001f\u007f]/u.test(value)
+  ) {
+    throw new Error('MCP principalId must be a bounded printable non-secret identity');
+  }
+  return value;
+}
+
 function assertStdioConfig(config: McpDirectStdioRuntimeConfig): void {
   if (
     typeof config.command !== 'string'
@@ -349,6 +382,7 @@ function assertStdioConfig(config: McpDirectStdioRuntimeConfig): void {
 
   if (config.env !== undefined) {
     const entries = Object.entries(config.env);
+    validatedPrincipalId(config.principalId, entries.length > 0, 'MCP stdio env');
     if (entries.length > MAX_STDIO_ENV) {
       throw new Error('MCP stdio env exceeds the 128 variable bound');
     }
@@ -360,6 +394,8 @@ function assertStdioConfig(config: McpDirectStdioRuntimeConfig): void {
         throw new Error('MCP stdio env value is invalid or too large');
       }
     }
+  } else {
+    validatedPrincipalId(config.principalId, false, 'MCP stdio principal');
   }
 }
 
@@ -378,6 +414,8 @@ function isLoopbackHost(host: string): boolean {
 function validatedHttpConfig(config: McpDirectHttpRuntimeConfig): {
   readonly url: URL;
   readonly headers: Readonly<Record<string, string>>;
+  readonly principalId: string | null;
+  readonly headerNames: readonly string[];
 } {
   let url: URL;
   try {
@@ -412,6 +450,11 @@ function validatedHttpConfig(config: McpDirectHttpRuntimeConfig): {
   }
 
   const entries = Object.entries(config.headers ?? {});
+  const principalId = validatedPrincipalId(
+    config.principalId,
+    entries.length > 0,
+    'MCP HTTP headers',
+  );
   if (entries.length > MAX_HTTP_HEADERS) {
     throw new Error('MCP HTTP headers exceed the 64 header bound');
   }
@@ -442,7 +485,12 @@ function validatedHttpConfig(config: McpDirectHttpRuntimeConfig): {
     headers[name] = value;
   }
 
-  return Object.freeze({ url, headers: Object.freeze(headers) });
+  return Object.freeze({
+    url,
+    headers: Object.freeze(headers),
+    principalId,
+    headerNames: Object.freeze(Object.keys(headers).map(name => name.toLowerCase()).sort()),
+  });
 }
 
 function behaviorHints(value: unknown): McpToolBehaviorHints | undefined {
@@ -545,7 +593,11 @@ function transportFor(
     16 * 1024 * 1024,
     'MCP HTTP maxResponseBytes',
   );
-  return factory.createHttpTransport({ ...http, maxResponseBytes });
+  return factory.createHttpTransport({
+    url: http.url,
+    headers: http.headers,
+    maxResponseBytes,
+  });
 }
 
 /**
@@ -560,11 +612,19 @@ export function deriveMcpDirectEndpointFingerprint(
   if (config.source.transport === 'stdio') {
     if (!('command' in config)) throw new Error('MCP source transport/config mismatch');
     assertStdioConfig(config);
+    const envNames = Object.keys(config.env ?? {}).sort();
+    const principalId = validatedPrincipalId(
+      config.principalId,
+      envNames.length > 0,
+      'MCP stdio env',
+    );
     return digestMcpDirectJson({
       transport: 'stdio',
       command: config.command,
       args: [...(config.args ?? [])],
       cwd: config.cwd ?? null,
+      principalId,
+      envNames,
     });
   }
   if (!('url' in config)) throw new Error('MCP source transport/config mismatch');
@@ -572,6 +632,8 @@ export function deriveMcpDirectEndpointFingerprint(
   return digestMcpDirectJson({
     transport: 'streamable_http',
     url: http.url.toString(),
+    principalId: http.principalId,
+    headerNames: http.headerNames,
   });
 }
 
@@ -594,6 +656,7 @@ export async function withMcpDirectFreshInventory<T>(
   config: McpDirectRuntimeConfig,
   options: McpDirectInventoryProbeOptions,
   use: (context: McpDirectFreshInventoryContext) => Promise<T> | T,
+  behavior: { readonly suppressCloseErrorAfterUse?: boolean } = {},
 ): Promise<T> {
   assertClientInfo(options.clientInfo);
   const connectTimeoutMs = boundedInteger(
@@ -635,6 +698,7 @@ export async function withMcpDirectFreshInventory<T>(
   const client = factory.createClient(options.clientInfo, { listMaxPages, probeTimeoutMs });
   const transport = transportFor(config, factory);
   let primaryError: unknown;
+  let useCompleted = false;
 
   try {
     const connectDeadline = createTimeout(connectTimeoutMs, 'MCP connect');
@@ -671,13 +735,15 @@ export async function withMcpDirectFreshInventory<T>(
     lifecycle = recordMcpDirectInventory(lifecycle, normalized.inventory);
     const protocolVersion = client.getNegotiatedProtocolVersion();
 
-    return await use(Object.freeze({
+    const value = await use(Object.freeze({
       lifecycle,
       catalog: normalized.catalog,
       tools: Object.freeze([...result.tools]),
       client,
       ...(protocolVersion === undefined ? {} : { protocolVersion }),
     }));
+    useCompleted = true;
+    return value;
   } catch (caught) {
     primaryError = caught;
     throw caught;
@@ -685,7 +751,12 @@ export async function withMcpDirectFreshInventory<T>(
     try {
       await client.close();
     } catch (closeError) {
-      if (primaryError === undefined) throw closeError;
+      if (
+        primaryError === undefined
+        && !(useCompleted && behavior.suppressCloseErrorAfterUse === true)
+      ) {
+        throw closeError;
+      }
     }
   }
 }

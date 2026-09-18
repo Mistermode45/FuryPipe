@@ -41,6 +41,7 @@ function httpConfig(options: {
   readonly trust?: 'trusted' | 'untrusted';
   readonly allowedHosts?: readonly string[];
   readonly headers?: Readonly<Record<string, string>>;
+  readonly principalId?: string;
   readonly maxResponseBytes?: number;
 }): McpDirectRuntimeConfig {
   const config: McpDirectRuntimeConfig = {
@@ -53,6 +54,7 @@ function httpConfig(options: {
     url: options.url,
     ...(options.allowedHosts === undefined ? {} : { allowedHosts: options.allowedHosts }),
     ...(options.headers === undefined ? {} : { headers: options.headers }),
+    ...(options.principalId === undefined ? {} : { principalId: options.principalId }),
     ...(options.maxResponseBytes === undefined ? {} : { maxResponseBytes: options.maxResponseBytes }),
   };
   return {
@@ -275,6 +277,60 @@ describe('direct MCP client inventory transport', () => {
     })).rejects.toThrow(/must not contain credentials/i);
   });
 
+  it('requires explicit non-secret principal binding for runtime credentials', async () => {
+    const fake = fakeFactory({});
+
+    const http: McpDirectRuntimeConfig = {
+      source: {
+        sourceId: 'principal-http',
+        transport: 'streamable_http',
+        endpointFingerprint: sha('0'),
+        trust: 'trusted',
+      },
+      url: 'https://mcp.example.test/v1',
+      allowedHosts: ['mcp.example.test'],
+      headers: { Authorization: 'Bearer secret' },
+    };
+    expect(() => deriveMcpDirectEndpointFingerprint(http)).toThrow(/principalId/i);
+
+    const stdio: McpDirectRuntimeConfig = {
+      source: {
+        sourceId: 'principal-stdio',
+        transport: 'stdio',
+        endpointFingerprint: sha('0'),
+        trust: 'trusted',
+      },
+      command: 'fixture-server',
+      args: ['--stdio'],
+      env: { API_TOKEN: 'secret' },
+    };
+    expect(() => deriveMcpDirectEndpointFingerprint(stdio)).toThrow(/principalId/i);
+
+    expect(fake.counters()).toEqual({ closeCalls: 0, connectCalls: 0, listCalls: 0 });
+  });
+
+  it('binds endpoint identity to principal id and header names without hashing credential values', () => {
+    const make = (principalId: string, token: string): McpDirectRuntimeConfig => ({
+      source: {
+        sourceId: 'principal-rotation',
+        transport: 'streamable_http',
+        endpointFingerprint: sha('0'),
+        trust: 'trusted',
+      },
+      url: 'https://mcp.example.test/v1',
+      allowedHosts: ['mcp.example.test'],
+      headers: { Authorization: token },
+      principalId,
+    });
+
+    const a = deriveMcpDirectEndpointFingerprint(make('service-a', 'Bearer token-a'));
+    const rotated = deriveMcpDirectEndpointFingerprint(make('service-a', 'Bearer token-b'));
+    const differentPrincipal = deriveMcpDirectEndpointFingerprint(make('service-b', 'Bearer token-a'));
+
+    expect(rotated).toBe(a);
+    expect(differentPrincipal).not.toBe(a);
+  });
+
   it('does not persist runtime HTTP credentials in returned evidence', async () => {
     const fake = fakeFactory({});
     const secret = 'Bearer MCP_SECRET_CANARY_77';
@@ -284,6 +340,7 @@ describe('direct MCP client inventory transport', () => {
       url: 'https://mcp.example.test/v1',
       allowedHosts: ['mcp.example.test'],
       headers: { Authorization: secret },
+      principalId: 'remote-service-account',
     }), {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
@@ -449,6 +506,7 @@ describe('direct MCP client inventory transport', () => {
     await probeMcpDirectInventoryInternal({
       ...stdioConfig(),
       env: { SAFE_VAR: 'value' },
+      principalId: 'stdio-service-account',
       maxBufferBytes: 1024 * 1024,
     }, {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },

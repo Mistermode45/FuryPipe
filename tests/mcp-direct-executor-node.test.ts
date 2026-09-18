@@ -16,6 +16,7 @@ import {
 } from '../src/mcp-direct-executor-node.js';
 import {
   executeMcpDirectApprovedToolInternal,
+  McpDirectExecutionEvidenceError,
   McpDirectExecutionOutcomeUnknownError,
 } from '../src/mcp-direct-executor-node-internal.js';
 import {
@@ -78,6 +79,7 @@ function fakeFactory(options: {
   readonly eraSequence?: readonly ('modern' | 'legacy')[];
   readonly result?: unknown;
   readonly callError?: Error;
+  readonly closeErrorSequence?: readonly (Error | undefined)[];
 }) {
   let clients = 0;
   let connectCalls = 0;
@@ -123,6 +125,8 @@ function fakeFactory(options: {
         ),
         async close() {
           closeCalls += 1;
+          const closeError = options.closeErrorSequence?.[clientIndex];
+          if (closeError) throw closeError;
         },
       };
     },
@@ -326,12 +330,14 @@ describe('Direct MCP M3 governed execution', () => {
     expect(caught).toMatchObject({
       code: 'MCP_DIRECT_EXECUTION_VERIFICATION_FAILED',
       retrySafe: false,
-      lifecycle: expect.objectContaining({
-        executed: true,
-        succeeded: true,
-        verified: false,
-      }),
+      executed: true,
+      succeeded: true,
+      verified: false,
+      sourceId: approved.lifecycle.source.sourceId,
+      toolName: 'governed-echo',
+      inputSha256: approved.proposal.inputSha256,
     });
+    expect(JSON.stringify(caught)).not.toContain('permitId');
     expect(fake.counters().callCalls).toBe(1);
   });
 
@@ -408,6 +414,107 @@ describe('Direct MCP M3 governed execution', () => {
       executed: true,
       succeeded: false,
       verified: false,
+    });
+  });
+
+  it('does not erase a successful tool result when client close fails afterward', async () => {
+    const fake = fakeFactory({
+      closeErrorSequence: [undefined, new Error('close failed after execution')],
+    });
+    const approved = await approvedWithFactory(fake.factory, 'alpha');
+
+    const executed = await executeMcpDirectApprovedToolInternal(
+      approved.config,
+      approved.lifecycle,
+      approved.proposal,
+      {
+        clientInfo: { name: 'furypipe-m3-test', version: '1.0.0' },
+        factory: fake.factory,
+      },
+    );
+
+    expect(executed.receipt).toMatchObject({
+      executed: true,
+      succeeded: true,
+      verified: true,
+    });
+    expect(fake.counters()).toMatchObject({ callCalls: 1, closeCalls: 2 });
+  });
+
+  it('reports post-call digest/evidence failure as executed and non-retriable without raw result leakage', async () => {
+    const resultCanary = 'M3_OVERSIZED_RESULT_CANARY_A91C';
+    const fake = fakeFactory({
+      result: {
+        content: [{ type: 'text', text: resultCanary.repeat(4096) }],
+      },
+    });
+    const approved = await approvedWithFactory(fake.factory, 'alpha');
+
+    let caught: unknown;
+    try {
+      await executeMcpDirectApprovedToolInternal(
+        approved.config,
+        approved.lifecycle,
+        approved.proposal,
+        {
+          clientInfo: { name: 'furypipe-m3-test', version: '1.0.0' },
+          maxResultBytes: 1024,
+          factory: fake.factory,
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(McpDirectExecutionEvidenceError);
+    expect(caught).toMatchObject({
+      code: 'MCP_DIRECT_EXECUTION_EVIDENCE_FAILED',
+      retrySafe: false,
+      executed: true,
+      succeeded: true,
+      verified: false,
+    });
+    expect(JSON.stringify(caught)).not.toContain(resultCanary);
+    expect(fake.counters().callCalls).toBe(1);
+  });
+
+  it('rejects execution rebinding to a different runtime principal before connecting', async () => {
+    const fake = fakeFactory({});
+    const approved = await approvedWithFactory(fake.factory, 'alpha');
+    const provisional: McpDirectRuntimeConfig = {
+      source: {
+        ...approved.config.source,
+        endpointFingerprint: sha('0'),
+      },
+      command: 'fixture-server',
+      args: ['--stdio'],
+      env: { API_TOKEN: 'secret-b' },
+      principalId: 'principal-b',
+    };
+    const rebound: McpDirectRuntimeConfig = {
+      ...provisional,
+      source: {
+        ...provisional.source,
+        endpointFingerprint: deriveMcpDirectEndpointFingerprint(provisional),
+      },
+    };
+
+    await expect(executeMcpDirectApprovedToolInternal(
+      rebound,
+      approved.lifecycle,
+      approved.proposal,
+      {
+        clientInfo: { name: 'furypipe-m3-test', version: '1.0.0' },
+        factory: fake.factory,
+      },
+    )).rejects.toThrow(/not bound to the approved lifecycle/i);
+
+    expect(fake.counters()).toEqual({
+      clients: 1,
+      connectCalls: 1,
+      listCalls: 1,
+      callCalls: 0,
+      closeCalls: 1,
     });
   });
 
@@ -499,11 +606,13 @@ describe('Direct MCP M3 governed execution', () => {
         calls: 1,
       },
     });
-    expect(execution.lifecycle).toMatchObject({
+    expect(execution.receipt).toMatchObject({
       executed: true,
       succeeded: true,
       verified: true,
+      verificationKind: 'schema',
     });
     expect(execution.receipt.resultSha256).toMatch(/^[0-9a-f]{64}$/u);
+    expect('lifecycle' in execution).toBe(false);
   }, 30_000);
 });

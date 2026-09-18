@@ -67,7 +67,7 @@ export interface McpDirectExecutionReceipt {
   readonly verificationKind?: 'schema';
 }
 
-export interface McpDirectGovernedExecutionResult {
+export interface McpDirectGovernedExecutionInternalResult {
   readonly lifecycle: McpDirectLifecycleState;
   readonly receipt: McpDirectExecutionReceipt;
   readonly result: unknown;
@@ -92,14 +92,51 @@ export class McpDirectExecutionOutcomeUnknownError extends Error {
 export class McpDirectExecutionVerificationError extends Error {
   readonly code = 'MCP_DIRECT_EXECUTION_VERIFICATION_FAILED';
   readonly retrySafe = false;
-  readonly lifecycle: McpDirectLifecycleState;
+  readonly executed = true;
+  readonly succeeded = true;
+  readonly verified = false;
+  readonly sourceId: string;
+  readonly toolName: string;
+  readonly inputSha256: string;
   readonly resultSha256: string;
 
-  constructor(lifecycle: McpDirectLifecycleState, resultSha256: string) {
+  constructor(
+    sourceId: string,
+    toolName: string,
+    inputSha256: string,
+    resultSha256: string,
+  ) {
     super('MCP tool returned a result that failed FuryPipe post-call verification; do not retry automatically');
     this.name = 'McpDirectExecutionVerificationError';
-    this.lifecycle = lifecycle;
+    this.sourceId = sourceId;
+    this.toolName = toolName;
+    this.inputSha256 = inputSha256;
     this.resultSha256 = resultSha256;
+  }
+}
+
+export class McpDirectExecutionEvidenceError extends Error {
+  readonly code = 'MCP_DIRECT_EXECUTION_EVIDENCE_FAILED';
+  readonly retrySafe = false;
+  readonly executed = true;
+  readonly verified = false;
+  readonly sourceId: string;
+  readonly toolName: string;
+  readonly inputSha256: string;
+  readonly succeeded: boolean;
+
+  constructor(
+    sourceId: string,
+    toolName: string,
+    inputSha256: string,
+    succeeded: boolean,
+  ) {
+    super('MCP tool returned a result that could not be recorded safely; do not retry automatically');
+    this.name = 'McpDirectExecutionEvidenceError';
+    this.sourceId = sourceId;
+    this.toolName = toolName;
+    this.inputSha256 = inputSha256;
+    this.succeeded = succeeded;
   }
 }
 
@@ -238,7 +275,7 @@ export async function executeMcpDirectApprovedToolInternal(
   approvedLifecycle: McpDirectLifecycleState,
   proposal: McpDirectToolProposal,
   options: McpDirectGovernedExecutionInternalOptions,
-): Promise<McpDirectGovernedExecutionResult> {
+): Promise<McpDirectGovernedExecutionInternalResult> {
   const approvedSelected = assertApprovedBinding(config, approvedLifecycle, proposal);
   if (EXECUTION_ATTEMPTED.has(approvedLifecycle)) {
     throw new Error('MCP approved lifecycle was already used for an execution attempt');
@@ -326,19 +363,21 @@ export async function executeMcpDirectApprovedToolInternal(
       throw new Error('MCP runtime client does not expose governed callTool capability');
     }
 
-    // Critical no-replay transition. Re-check after async connect/list work so
-    // concurrent invocations cannot both consume the same approved state.
-    if (EXECUTION_ATTEMPTED.has(approvedLifecycle)) {
-      throw new Error('MCP approved lifecycle was already used for an execution attempt');
-    }
-    EXECUTION_ATTEMPTED.add(approvedLifecycle);
-
     const now = options.now?.() ?? Date.now();
     const permit = createMcpDirectExecutionPermit(
       approvedLifecycle,
       proposal.inputSha256,
       { now, expiresInMs: permitTtlMs },
     );
+
+    // Critical no-replay transition. Re-check after async connect/list work.
+    // JS executes the has/add pair synchronously, so two concurrent callbacks
+    // cannot both acquire execution authority. Permit creation is deliberately
+    // before this point so an already-expired approval does not burn the state.
+    if (EXECUTION_ATTEMPTED.has(approvedLifecycle)) {
+      throw new Error('MCP approved lifecycle was already used for an execution attempt');
+    }
+    EXECUTION_ATTEMPTED.add(approvedLifecycle);
     consumeMcpDirectExecutionPermit(
       approvedLifecycle,
       permit,
@@ -381,12 +420,28 @@ export async function executeMcpDirectApprovedToolInternal(
       clearTimeout(timeout);
     }
 
-    const resultSha256 = digestMcpDirectJson(result, {
-      maxBytes: maxResultBytes,
-      maxDepth: MAX_JSON_DEPTH,
-      label: 'MCP tool result',
-    });
     const isError = resultIsToolError(result);
+    let resultSha256: string;
+    try {
+      resultSha256 = digestMcpDirectJson(result, {
+        maxBytes: maxResultBytes,
+        maxDepth: MAX_JSON_DEPTH,
+        label: 'MCP tool result',
+      });
+    } catch {
+      // The remote tool returned, so execution is known even when the raw
+      // result is too large/non-JSON to persist as digest evidence.
+      recordMcpDirectExecution(approvedLifecycle, {
+        permit,
+        isError,
+      });
+      throw new McpDirectExecutionEvidenceError(
+        approvedLifecycle.source.sourceId,
+        proposal.toolName,
+        proposal.inputSha256,
+        !isError,
+      );
+    }
     const executed = recordMcpDirectExecution(approvedLifecycle, {
       permit,
       resultSha256,
@@ -396,7 +451,12 @@ export async function executeMcpDirectApprovedToolInternal(
     if (!isError) {
       const outputValid = await validateStructuredOutput(result, prepared.outputValidator);
       if (!outputValid) {
-        throw new McpDirectExecutionVerificationError(executed, resultSha256);
+        throw new McpDirectExecutionVerificationError(
+          approvedLifecycle.source.sourceId,
+          proposal.toolName,
+          proposal.inputSha256,
+          resultSha256,
+        );
       }
     }
 
@@ -430,5 +490,9 @@ export async function executeMcpDirectApprovedToolInternal(
       receipt,
       result,
     });
+  }, {
+    // A close failure after a returned tool result must never erase successful
+    // execution evidence and invite a duplicate retry.
+    suppressCloseErrorAfterUse: true,
   });
 }

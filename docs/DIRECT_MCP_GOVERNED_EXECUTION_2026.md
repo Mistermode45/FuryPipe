@@ -209,3 +209,33 @@ A returned tool-level error is observable execution but not success. A thrown
 call after permit consumption becomes
 `MCP_DIRECT_EXECUTION_OUTCOME_UNKNOWN`, is marked non-retry-safe, and the
 approved lifecycle cannot be reused for another attempt.
+
+## M3 authority hardening
+
+Credential-bearing runtime configuration is principal-bound without persisting
+credential material.
+
+When explicit HTTP headers or stdio environment variables are supplied,
+`principalId` is mandatory. It is a stable **non-secret** identity such as an
+account/service-principal label. Endpoint evidence binds to that principal id
+and to the set of header/env names, but never to their secret values. This
+allows token rotation for the same principal while preventing an approval from
+being silently rebound to another principal.
+
+Post-call failures are deliberately non-retryable:
+
+- a transport/SDK throw after permit consumption is
+  `MCP_DIRECT_EXECUTION_OUTCOME_UNKNOWN`;
+- a returned result that cannot be safely canonicalized/digested is
+  `MCP_DIRECT_EXECUTION_EVIDENCE_FAILED`;
+- a returned result that fails post-call output verification is
+  `MCP_DIRECT_EXECUTION_VERIFICATION_FAILED`.
+
+These errors expose only bounded, digest-safe metadata. They never embed the
+raw MCP result, raw arguments, credential values, or raw execution permit.
+
+The supported public executor returns only the raw process-local tool result and
+the digest-only execution receipt. It does not return the internal
+permit-bearing lifecycle object. A transport close failure that occurs *after*
+the tool result and receipt are complete cannot erase successful execution
+evidence or turn a completed call into a retry candidate.

@@ -1,23 +1,29 @@
 import {
   executeMcpDirectApprovedToolInternal,
+  McpDirectExecutionEvidenceError,
   McpDirectExecutionOutcomeUnknownError,
   McpDirectExecutionVerificationError,
   type McpDirectExecutionReceipt,
   type McpDirectGovernedExecutionInternalOptions,
-  type McpDirectGovernedExecutionResult,
 } from './mcp-direct-executor-node-internal.js';
 import type { McpDirectRuntimeConfig } from './mcp-direct-client-node.js';
 import type { McpDirectLifecycleState } from './mcp-direct-governance.js';
 import type { McpDirectToolProposal } from './mcp-direct-policy.js';
 
 export {
+  McpDirectExecutionEvidenceError,
   McpDirectExecutionOutcomeUnknownError,
   McpDirectExecutionVerificationError,
 };
 export type {
   McpDirectExecutionReceipt,
-  McpDirectGovernedExecutionResult,
 };
+
+export interface McpDirectGovernedExecutionResult {
+  readonly receipt: McpDirectExecutionReceipt;
+  /** Raw tool result. Process-local only; do not persist it as FuryPipe evidence. */
+  readonly result: unknown;
+}
 
 export type McpDirectGovernedExecutionOptions = Omit<
   McpDirectGovernedExecutionInternalOptions,
@@ -80,10 +86,14 @@ export async function executeMcpDirectApprovedTool(
   proposal: McpDirectToolProposal,
   options: McpDirectGovernedExecutionOptions,
 ): Promise<McpDirectGovernedExecutionResult> {
-  return executeMcpDirectApprovedToolInternal(
+  const execution = await executeMcpDirectApprovedToolInternal(
     config,
     approvedLifecycle,
     proposal,
     sanitizedOptions(options),
   );
+  return Object.freeze({
+    receipt: execution.receipt,
+    result: execution.result,
+  });
 }
