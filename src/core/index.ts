@@ -455,6 +455,7 @@ export {
 export {
   createMcpDirectDurableReplayCoordinator,
   inspectMcpDirectDurableReplayStatus,
+  reclaimMcpDirectDurableExpiredPreCall,
   McpDirectDurableReplayError,
   type McpDirectDurableReplayCoordinator,
   type McpDirectDurableReplayStatus,
