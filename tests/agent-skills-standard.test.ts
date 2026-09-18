@@ -25,16 +25,39 @@ Inspect architecture, then verify findings.
     expect(parsed.instructions).toContain('Inspect architecture');
   });
 
-  it('exposes metadata without granting execution authority', () => {
+  it('discovers metadata from frontmatter alone without loading the skill body', () => {
     const metadata = inspectAgentSkillMetadata(`---
 name: docs-current
 description: Load current documentation only when relevant.
 ---
-
-Use the current official documentation.
 `);
     expect(metadata.name).toBe('docs-current');
     expect(metadata).not.toHaveProperty('execute');
+  });
+
+  it('supports the optional standard license, compatibility and metadata fields', () => {
+    const parsed = parseAgentSkillManifest(`---
+name: pdf-processing
+description: Extract PDF text and merge documents when the task involves PDFs.
+license: Apache-2.0
+compatibility: Requires Python 3.14+ and uv
+metadata:
+  author: example-org
+  version: "1.0"
+allowed-tools: "Read Bash(pdftotext:*)"
+---
+
+Process the document safely.
+`, 'pdf-processing');
+
+    expect(parsed.metadata).toEqual({
+      name: 'pdf-processing',
+      description: 'Extract PDF text and merge documents when the task involves PDFs.',
+      license: 'Apache-2.0',
+      compatibility: 'Requires Python 3.14+ and uv',
+      metadata: { author: 'example-org', version: '1.0' },
+      allowedTools: 'Read Bash(pdftotext:*)',
+    });
   });
 
   it.each([
@@ -61,7 +84,7 @@ body
 `, 'different-name')).toThrow(/directory name/);
   });
 
-  it('fails closed on unsupported nested or multiline YAML instead of misparsing it', () => {
+  it('fails closed on unsupported multiline YAML outside the standard metadata map', () => {
     expect(() => parseAgentSkillManifest(`---
 name: repo-audit
 description: >
