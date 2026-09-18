@@ -213,6 +213,18 @@
       "types": "./dist/mcp.d.ts",
       "import": "./dist/mcp.js"
     },
+    "./mcp-observed-runtime": {
+      "types": "./dist/mcp-observed-runtime.d.ts",
+      "import": "./dist/mcp-observed-runtime.js"
+    },
+    "./mcp-tool-risk": {
+      "types": "./dist/mcp-tool-risk.d.ts",
+      "import": "./dist/mcp-tool-risk.js"
+    },
+    "./mcp-proxy-evidence": {
+      "types": "./dist/mcp-proxy-evidence.d.ts",
+      "import": "./dist/mcp-proxy-evidence.js"
+    },
     "./mcp-modern": {
       "types": "./dist/mcp-modern.d.ts",
       "import": "./dist/mcp-modern.js"
@@ -358,6 +370,7 @@
     "docs/CLI.md",
     "docs/MCP.md",
     "docs/MCP_HOSTED_CONFORMANCE.md",
+    "docs/MCP_LIVE_OBSERVABILITY_2026.md",
     "docs/FURY_PROMPT.md",
     "docs/INSTRUCTION_PROFILES.md",
     "docs/SKILL_ECOSYSTEM_2026.md",

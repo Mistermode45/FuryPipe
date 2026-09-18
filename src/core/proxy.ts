@@ -33,6 +33,11 @@ import {
   type ProxyCapabilityRuntimeEvidence,
 } from '../proxy-capability-runtime.js';
 import { applyAnthropicCapabilityInstructions } from '../proxy-capability-augment.js';
+import {
+  inspectAnthropicMcpEvidence,
+  type McpToolTrustResolver,
+  type ProxyMcpRuntimeEvidence,
+} from '../mcp-proxy-evidence.js';
 
 export interface ProxyConfig {
   /** 'cloudflare-ai-gateway': routes both families through gatewayBaseUrl;
@@ -86,6 +91,16 @@ export interface ProxyConfig {
    * skills or connects MCP by itself; it only applies a validated host plan.
    */
   capabilityPlanner?: ProxyCapabilityPlanner;
+  /**
+   * Passively observe MCP tools already exposed by the client and correlate
+   * historical tool_use/tool_result blocks. This never executes an MCP tool.
+   */
+  mcpObservation?: boolean;
+  /**
+   * Optional host trust resolver used only for risk classification.
+   * Trust never grants execution authority by itself.
+   */
+  mcpTrustResolver?: McpToolTrustResolver;
   /** Persist 4xx diagnostics: the gzipped request body plus the upstream error
    *  body. Off by default because either side may contain prompts or secrets. */
   captureErrorReqBody?: boolean;
@@ -159,6 +174,10 @@ export interface ProxyEvent {
   capability?: ProxyCapabilityRuntimeEvidence;
   /** Bounded diagnostic when optional capability planning failed open. */
   capabilityError?: string;
+  /** Passive MCP exposure/selection/result evidence; never an execution receipt. */
+  mcp?: ProxyMcpRuntimeEvidence;
+  /** Bounded diagnostic when passive MCP observation failed open. */
+  mcpError?: string;
 }
 
 /** Max chars of 4xx error body captured on ProxyEvent — enough for Anthropic's full error JSON. */
@@ -1554,6 +1573,8 @@ let responseContentType: string | undefined;
     let transformMs: number | undefined;
     let capabilityEvidence: ProxyCapabilityRuntimeEvidence | undefined;
     let capabilityError: string | undefined;
+    let mcpEvidence: ProxyMcpRuntimeEvidence | undefined;
+    let mcpError: string | undefined;
 
     const fire = (
       status: number,
@@ -1648,6 +1669,8 @@ let responseContentType: string | undefined;
           responseContentEncoding,
           capability: capabilityEvidence,
           capabilityError,
+          mcp: mcpEvidence,
+          mcpError,
         });
       };
       // Telemetry is best-effort and must never surface as an unhandled rejection
@@ -1737,6 +1760,20 @@ let responseContentType: string | undefined;
       }
       let bodyIn = bounded.bytes;
       try {
+        if (isMessages && config.mcpObservation === true) {
+          try {
+            const observed = await inspectAnthropicMcpEvidence(bodyIn, config.mcpTrustResolver);
+            if (observed.observation.exposedTools.length > 0
+              || observed.observation.pendingUses.length > 0
+              || observed.observation.observedResults.length > 0) {
+              mcpEvidence = observed;
+            }
+          } catch (caught) {
+            const message = caught instanceof Error ? caught.message : 'unknown MCP observation failure';
+            mcpError = ('mcp_observation_failed: ' + message).slice(0, 512);
+          }
+        }
+
         if (isMessages && (config.humanOutputPolicy === true || config.capabilityPlanner !== undefined)) {
           const task = extractProxyTaskEnvelope(bodyIn, 'anthropic-messages');
           if (task) {

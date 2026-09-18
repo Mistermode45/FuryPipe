@@ -363,3 +363,24 @@ export {
   type ProxyCapabilityPlanner,
   type ProxyCapabilityRuntimeEvidence,
 } from '../proxy-capability-runtime.js';
+export {
+  observeAnthropicMcpRuntime,
+  type AnthropicMcpObservation,
+  type ExposedMcpTool,
+  type ObservedExternalMcpResultReceipt,
+  type PendingObservedMcpUse,
+} from '../mcp-observed-runtime.js';
+export {
+  assessMcpToolRisk,
+  type McpResolvedToolHints,
+  type McpToolBehaviorHints,
+  type McpToolRiskAssessment,
+  type McpToolRiskClass,
+  type McpToolTrust,
+} from '../mcp-tool-risk.js';
+export {
+  inspectAnthropicMcpEvidence,
+  type McpToolTrustResolver,
+  type ProxyMcpRuntimeEvidence,
+  type ProxyMcpToolPolicyEvidence,
+} from '../mcp-proxy-evidence.js';
