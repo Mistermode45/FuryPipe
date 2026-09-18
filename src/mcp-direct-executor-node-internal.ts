@@ -801,7 +801,7 @@ export async function executeMcpDirectApprovedToolInternal(
       succeeded: !isError,
       verified,
       ...(verified ? { verificationKind: 'schema' as const } : {}),
-      ...(durableTerminal === undefined || options.durableReplay === undefined
+      ...(durableTerminal?.state !== 'terminal' || options.durableReplay === undefined
         ? {}
         : {
             durableScopeSha256: options.durableReplay.scopeSha256,
