@@ -125,6 +125,12 @@ export interface RecoveryDeleteBound {
   readonly matchConstraints: readonly RecoveryMatchConstraint[];
 }
 
+export interface RecoveryCompactionTarget {
+  readonly handle: RecoveryHandle;
+  readonly targetMetadata: Readonly<Record<string, string | number | boolean | null>>;
+  readonly matchConstraints: readonly RecoveryMatchConstraint[];
+}
+
 export interface RecoveryStore {
   put(bytes: Uint8Array | ArrayBuffer, metadata?: RecoveryMetadata): Promise<RecoveryHandle>;
   /** Optional atomic capacity/predicate primitive; createRecoveryStore implements it. */
@@ -139,6 +145,13 @@ export interface RecoveryStore {
   delete(handle: RecoveryHandle | string): Promise<boolean>;
   /** Optional exact conditional delete under the same inter-process Recovery lock. */
   deleteBounded?(handle: RecoveryHandle | string, bound: RecoveryDeleteBound): Promise<boolean>;
+  /** Optional atomic tombstone publication plus exact target cleanup under one lock. */
+  compactBounded?(
+    bytes: Uint8Array | ArrayBuffer,
+    metadata: RecoveryMetadata | undefined,
+    bound: RecoveryPutBound,
+    targets: readonly RecoveryCompactionTarget[],
+  ): Promise<RecoveryHandle>;
   gc(now?: Date): Promise<{ expired: number; orphaned: number; bytesFreed: number }>;
   backup(destination: string): Promise<RecoveryBackupSummary>;
   restore(source: string): Promise<RecoveryBackupSummary>;
@@ -897,6 +910,67 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
 
     putBounded(bytes, metadata, bound) {
       return enqueue(() => putUnlocked(bytes, metadata, bound));
+    },
+
+    compactBounded(bytes, metadata, bound, targets) {
+      return enqueue(async () => {
+        if (!Array.isArray(targets) || targets.length < 1 || targets.length > 8) {
+          throw new RangeError('recovery bounded compaction targets must contain 1 to 8 entries');
+        }
+        const handle = await putUnlocked(bytes, metadata, bound);
+        const verified = await readStored(handle.digest, await readManifest(handle.digest));
+        if (digestBytes(verified) !== handle.digest) {
+          throw new Error('recovery compaction tombstone verification failed');
+        }
+        for (const target of targets) {
+          if (!target || typeof target !== 'object'
+            || !target.handle || !target.targetMetadata
+            || !Array.isArray(target.matchConstraints)
+            || target.matchConstraints.length < 1) {
+            throw new RangeError('recovery compaction target is invalid');
+          }
+          const digest = parseHandle(target.handle);
+          const current = await readManifest(digest);
+          if (current === undefined) {
+            const leftoverVariants = await objectVariants(scopedRoot, digest);
+            // The tombstone was verified before target cleanup. A prior
+            // holder may have removed the manifest and crashed before deleting
+            // the now-unreferenced payload variants; clean those variants.
+            await Promise.all(leftoverVariants.map((variant) => rm(variant, { force: true })));
+            // Another holder may have completed this exact tombstone-first
+            // cleanup after this caller published the same content-addressed
+            // tombstone. Absence is safe only after tombstone publication.
+            continue;
+          }
+          try {
+            await readStored(digest, current);
+          } catch (caught) {
+            if (isErrno(caught, 'ENOENT')) {
+              // Tombstone was already verified above. A concurrent maintainer
+              // may have removed this target's object before its manifest;
+              // cleanup is already safely complete for this target.
+              continue;
+            }
+            throw caught;
+          }
+          if (Object.entries(target.targetMetadata)
+            .some(([key, value]) => current.metadata?.[key] !== value)) {
+            throw new Error('recovery compaction target metadata mismatch');
+          }
+          const constraints = normalizeMatchConstraints(
+            target.matchConstraints,
+            'recovery bounded compaction matchConstraints',
+          );
+          await assertMatchConstraints(constraints, 'recovery bounded compaction');
+          const variants = await objectVariants(scopedRoot, digest);
+          // Remove the manifest first. Once the tombstone is verified, the
+          // full record is no longer authoritative; this prevents another
+          // process from observing a live manifest with a missing payload.
+          await rm(metadataPath(scopedRoot, digest), { force: true });
+          await Promise.all(variants.map((variant) => rm(variant, { force: true })));
+        }
+        return handle;
+      });
     },
 
     get(handle) {
