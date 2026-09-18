@@ -425,11 +425,18 @@ function parseRecord(bytes: Uint8Array): DurableRecord {
         throw new Error('terminal succeeded classification is inconsistent');
       }
       if (
-        (value.outcome === 'unknown' || value.outcome === 'evidence_failed')
-        && value.succeeded !== undefined
-        && typeof value.succeeded !== 'boolean'
+        (value.outcome === 'succeeded'
+          || value.outcome === 'tool_error'
+          || value.outcome === 'verification_failed')
+        && value.resultSha256 === undefined
       ) {
-        throw new Error('terminal known-success classification is invalid');
+        throw new Error('known MCP durable terminal outcome requires resultSha256');
+      }
+      if (
+        (value.outcome === 'unknown' || value.outcome === 'evidence_failed')
+        && value.resultSha256 !== undefined
+      ) {
+        throw new Error('non-digest terminal outcome must not claim resultSha256');
       }
     }
 
@@ -501,17 +508,30 @@ function classify(
   }
 
   const byAttempt = new Map<number, {
-    reservation?: DurableReservationRecord;
-    armed?: DurableArmedRecord;
-    terminal?: DurableTerminalRecord;
+    reservation?: LoadedRecord & { readonly record: DurableReservationRecord };
+    armed?: LoadedRecord & { readonly record: DurableArmedRecord };
+    terminal?: LoadedRecord & { readonly record: DurableTerminalRecord };
   }>();
-  for (const { record } of records) {
+
+  for (const loaded of records) {
+    const { record } = loaded;
     const group = byAttempt.get(record.attempt) ?? {};
-    const type = recordType(record);
-    if (group[type] !== undefined) {
-      throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, record.attempt);
+    if (record.format === 'furypipe-mcp-direct-durable-reservation/v1') {
+      if (group.reservation !== undefined) {
+        throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, record.attempt);
+      }
+      group.reservation = loaded as LoadedRecord & { readonly record: DurableReservationRecord };
+    } else if (record.format === 'furypipe-mcp-direct-durable-armed/v1') {
+      if (group.armed !== undefined) {
+        throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, record.attempt);
+      }
+      group.armed = loaded as LoadedRecord & { readonly record: DurableArmedRecord };
+    } else {
+      if (group.terminal !== undefined) {
+        throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, record.attempt);
+      }
+      group.terminal = loaded as LoadedRecord & { readonly record: DurableTerminalRecord };
     }
-    group[type] = record as never;
     byAttempt.set(record.attempt, group);
   }
 
@@ -522,22 +542,62 @@ function classify(
 
   for (const attempt of attempts) {
     const group = byAttempt.get(attempt)!;
-    if (!group.reservation) {
+    const reservationLoaded = group.reservation;
+    if (!reservationLoaded) {
       throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, attempt);
     }
-    if (group.armed && (
-      group.armed.reservationIdSha256 !== group.reservation.reservationIdSha256
-      || group.armed.replayed !== group.reservation.replayed
-    )) {
-      throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, attempt);
+    const reservation = reservationLoaded.record;
+
+    if (attempt === 1) {
+      if (
+        reservation.replayed
+        || reservation.replayReason !== undefined
+        || reservation.priorResultSha256 !== undefined
+      ) {
+        throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, attempt);
+      }
+    } else {
+      const previous = byAttempt.get(attempt - 1)?.terminal?.record;
+      if (
+        !reservation.replayed
+        || !previous
+        || (previous.outcome !== 'succeeded' && previous.outcome !== 'tool_error')
+        || previous.resultSha256 === undefined
+        || reservation.priorResultSha256 !== previous.resultSha256
+        || (previous.outcome === 'succeeded' && reservation.replayReason !== 'repeat_closed_world_read')
+        || (previous.outcome === 'tool_error' && reservation.replayReason !== 'retry_known_tool_error')
+        || reservation.createdAt < previous.terminalAt
+      ) {
+        throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, attempt);
+      }
     }
-    if (group.terminal && (
-      !group.armed
-      || group.terminal.reservationIdSha256 !== group.reservation.reservationIdSha256
-      || group.terminal.replayed !== group.reservation.replayed
-    )) {
-      throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, attempt);
+
+    if (group.armed) {
+      const armed = group.armed.record;
+      if (
+        armed.reservationIdSha256 !== reservation.reservationIdSha256
+        || armed.replayed !== reservation.replayed
+        || armed.armedAt < reservation.createdAt
+        || armed.armedAt >= reservation.leaseExpiresAt
+      ) {
+        throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, attempt);
+      }
     }
+
+    if (group.terminal) {
+      const terminal = group.terminal.record;
+      const armedLoaded = group.armed;
+      if (
+        !armedLoaded
+        || terminal.reservationIdSha256 !== reservation.reservationIdSha256
+        || terminal.replayed !== reservation.replayed
+        || terminal.armedRecordSha256 !== armedLoaded.handle.digest
+        || terminal.terminalAt < armedLoaded.record.armedAt
+      ) {
+        throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, attempt);
+      }
+    }
+
     if (attempt < attempts[attempts.length - 1]! && !group.terminal) {
       throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, attempt);
     }
@@ -545,19 +605,20 @@ function classify(
 
   const attempt = attempts[attempts.length - 1]!;
   const group = byAttempt.get(attempt)!;
-  const reservation = group.reservation!;
+  const reservation = group.reservation!.record;
 
   if (group.terminal) {
+    const terminal = group.terminal.record;
     return Object.freeze({
       format: 'furypipe-mcp-direct-durable-status/v1',
       scopeSha256,
       replayKeySha256,
       state: 'terminal',
       attempt,
-      replayed: group.terminal.replayed,
-      outcome: group.terminal.outcome,
-      ...(group.terminal.resultSha256 === undefined ? {} : { resultSha256: group.terminal.resultSha256 }),
-      ...(group.terminal.succeeded === undefined ? {} : { succeeded: group.terminal.succeeded }),
+      replayed: terminal.replayed,
+      outcome: terminal.outcome,
+      ...(terminal.resultSha256 === undefined ? {} : { resultSha256: terminal.resultSha256 }),
+      ...(terminal.succeeded === undefined ? {} : { succeeded: terminal.succeeded }),
     });
   }
   if (group.armed) {
@@ -567,7 +628,7 @@ function classify(
       replayKeySha256,
       state: 'armed',
       attempt,
-      replayed: group.armed.replayed,
+      replayed: group.armed.record.replayed,
     });
   }
   return Object.freeze({
