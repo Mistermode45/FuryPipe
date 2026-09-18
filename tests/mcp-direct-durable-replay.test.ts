@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, pathToFileURL } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
@@ -646,6 +647,80 @@ describe('Direct MCP durable replay foundation', () => {
       expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(2);
       expect(await inspectMcpDirectDurableReplayStatusInternal(second, KEY, 21_002))
         .toMatchObject({ state: 'compacted', historical: true, outcome: 'tool_error' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+
+  it('proves compaction and restart across real OS processes', async () => {
+    const { root } = await fixture();
+    try {
+      const internalUrl = pathToFileURL(join(process.cwd(), 'src/mcp-direct-durable-replay-internal.ts')).href;
+      const storeUrl = pathToFileURL(join(process.cwd(), 'src/core/recovery-store.ts')).href;
+      const run = (mode: 'seed' | 'compact' | 'inspect' | 'reserve') => new Promise<string>((resolve, reject) => {
+        const script = `
+          import { createRecoveryStore } from ${JSON.stringify(storeUrl)};
+          import {
+            createMcpDirectDurableReplayCoordinatorInternal,
+            reserveMcpDirectDurableExecution,
+            armMcpDirectDurableExecution,
+            settleMcpDirectDurableExecution,
+            compactMcpDirectDurableEvidenceInternal,
+            inspectMcpDirectDurableReplayStatusInternal,
+          } from ${JSON.stringify(internalUrl)};
+          const root = process.argv[1];
+          const mode = process.argv[2];
+          const store = createRecoveryStore(root, {
+            namespace: 'mcp-direct-durable-replay',
+            maxObjectBytes: 64 * 1024,
+            maxTotalBytes: 8 * 1024 * 1024,
+            maxGlobalBytes: 16 * 1024 * 1024,
+          });
+          const coordinator = createMcpDirectDurableReplayCoordinatorInternal({
+            store, tenantId: 'tenant-a', principalId: 'principal-a',
+          });
+          const key = ${JSON.stringify(KEY)};
+          if (mode === 'seed') {
+            const reservation = await reserveMcpDirectDurableExecution(coordinator, key, { now: 30_000 });
+            const armed = await armMcpDirectDurableExecution(coordinator, reservation, 30_001);
+            await settleMcpDirectDurableExecution(coordinator, armed, 'succeeded', {
+              resultSha256: ${JSON.stringify(RESULT)}, succeeded: true, now: 30_002,
+            });
+          } else if (mode === 'compact') {
+            await compactMcpDirectDurableEvidenceInternal(coordinator, key, {
+              now: 31_000, retainUntil: 61_000,
+            });
+          } else if (mode === 'inspect') {
+            console.log(JSON.stringify(await inspectMcpDirectDurableReplayStatusInternal(coordinator, key, 31_001)));
+          } else {
+            try {
+              await reserveMcpDirectDurableExecution(coordinator, key, { now: 31_002 });
+              process.exitCode = 2;
+            } catch (error) {
+              console.log(JSON.stringify({ code: error?.code, retrySafe: error?.retrySafe }));
+            }
+          }
+        `;
+        const child = spawn(process.execPath, ['--import', 'tsx/esm', '--input-type=module', '-e', script, root, mode], {
+          cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', chunk => { stdout += chunk; });
+        child.stderr.on('data', chunk => { stderr += chunk; });
+        child.on('error', reject);
+        child.on('close', code => {
+          if (code !== 0) reject(new Error(`child ${mode} exited ${code}: ${stderr}`));
+          else resolve(stdout);
+        });
+      });
+
+      await run('seed');
+      await Promise.all([run('compact'), run('compact')]);
+      const inspected = JSON.parse(await run('inspect')) as { state: string; historical?: boolean; attempt?: number };
+      expect(inspected).toMatchObject({ state: 'compacted', historical: true, attempt: 1 });
+      expect(JSON.parse(await run('reserve'))).toMatchObject({ code: 'durable-state-conflict', retrySafe: false });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
