@@ -1089,7 +1089,7 @@ export async function reserveMcpDirectDurableExecution(
   } else {
     assertSha(options.replay.priorResultSha256, 'priorResultSha256');
     if (
-      (current.state !== 'terminal' && current.state !== 'compacted')
+      current.state !== 'terminal'
       || (current.outcome !== 'succeeded' && current.outcome !== 'tool_error')
       || current.attempt !== options.replay.priorAttempt
       || current.resultSha256 !== options.replay.priorResultSha256
