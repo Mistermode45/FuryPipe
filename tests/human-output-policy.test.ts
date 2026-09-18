@@ -17,6 +17,9 @@ describe('Fury human output policy', () => {
     'Respond exactly OK',
     'Réponds exactement : FURYPIPE_OK',
     'Return strictly the string PASS',
+    'Output only OK',
+    'Return only the string PASS',
+    'Réponds seulement : OK',
     'Sortie exacte demandée',
   ])('yields completely to exact output contracts: %s', (objective) => {
     expect(resolveFuryHumanOutputPolicy({ objective })).toEqual({
