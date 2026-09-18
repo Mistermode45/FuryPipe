@@ -6,6 +6,7 @@
 
 import type { ProxyEvent } from './proxy.js';
 import { bytesToBase64 } from './png.js';
+import type { ExactnessClass } from './exact-guard.js';
 
 /** Flat record persisted per request. Adding a field is non-breaking for readers. */
 export interface TrackEvent {
@@ -101,6 +102,8 @@ export interface TrackEvent {
   dropped_codepoints_top?: Record<string, number>;
   /** Blocks that weren't image-compressed this request; only emitted when at least one counter > 0. */
   passthrough_reasons?: { below_threshold?: number; not_profitable?: number };
+  /** Plaintext-free ExactGuard attribution. Keys are rule classes; values are counts only. */
+  exact_guard_classes?: Partial<Record<ExactnessClass, number>>;
   /** Unrecognized tag names in the static slab — canary for Claude Code releases adding new dynamic tags. */
   unknown_static_tags?: string[];
   /** Slab tags whose content changed within a session — proven per-turn dynamics busting the image cache. */
@@ -319,6 +322,9 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
       if (Object.values(pr).some((n) => (n ?? 0) > 0)) {
         out.passthrough_reasons = pr;
       }
+    }
+    if (info.exactGuard?.classes && Object.keys(info.exactGuard.classes).length > 0) {
+      out.exact_guard_classes = info.exactGuard.classes;
     }
     if (info.bucketChars && Object.keys(info.bucketChars).length > 0) {
       // Omit empty object so noop-pass requests stay lean; presence means at least one gate fired.
