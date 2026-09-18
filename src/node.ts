@@ -79,6 +79,8 @@ interface RuntimeConfig {
    *  (16 MiB). Raise it only if a real client needs more; the default binding is
    *  loopback, but HOST can expose this process to a network. */
   maxRequestBytes?: number;
+  /** Default-on bounded system policy for capability use + compact human prose. */
+  proxyAgentPolicy: boolean;
 }
 
 const DEFAULT_CONFIG_FILE = path.join(os.homedir(), '.config', 'furypipe', 'config.json');
@@ -322,6 +324,7 @@ function parseCli(argv: string[]): RuntimeConfig {
     // Opt in for debugging only. (issue #69)
     captureErrorReqBody: process.env.FURYPIPE_DEBUG_CAPTURE_4XX === '1',
     maxRequestBytes: parseMaxRequestBytes(process.env.FURYPIPE_MAX_REQUEST_BYTES),
+    proxyAgentPolicy: !/^(?:0|false|no|off)$/i.test(process.env.FURYPIPE_AGENT_POLICY?.trim() ?? ''),
   };
 }
 
@@ -427,6 +430,9 @@ Environment:
   FURYPIPE_DEBUG_CAPTURE_4XX debug: set to 1 to persist full 4xx request and
                           upstream error bodies (prompts + any secrets in
                           context) to disk. Off by default.
+  FURYPIPE_AGENT_POLICY   default on. Adds FuryPipe's bounded agent-capability
+                          and compact human-output system policy. Set off/0/false
+                          only as an emergency compatibility kill switch.
 
 Use with Claude Code:
   ANTHROPIC_BASE_URL=http://127.0.0.1:48721 claude
@@ -1489,6 +1495,7 @@ async function main(): Promise<void> {
     ...(omniRouteConfig ?? {}),
     captureErrorReqBody: opts.captureErrorReqBody,
     maxRequestBytes: opts.maxRequestBytes,
+    proxyAgentPolicy: opts.proxyAgentPolicy,
     // Per-request transform options:
     //   1. Runtime kill switch — when the dashboard "passthrough" toggle
     //      is off, force compress=false so /v1/messages forwards
@@ -1659,6 +1666,7 @@ async function main(): Promise<void> {
       );
     }
     console.log('[furypipe] event tracking enabled');
+    console.log(`[furypipe] agent policy ${opts.proxyAgentPolicy ? 'enabled' : 'disabled'}`);
     if (opts.captureErrorReqBody) {
       console.warn(
         '[furypipe] FURYPIPE_DEBUG_CAPTURE_4XX=1 — persisting full 4xx request and upstream error bodies; debugging only.',
