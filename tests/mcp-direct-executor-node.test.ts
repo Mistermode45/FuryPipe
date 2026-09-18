@@ -757,6 +757,80 @@ describe('Direct MCP M3 governed execution', () => {
     }
   });
 
+  it('rechecks permit freshness after the async durable reservation before consuming authority', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m5-executor-permit-expiry-'));
+    try {
+      const store = createRecoveryStore(root, { namespace: 'mcp-m5-executor' });
+      const coordinator = createMcpDirectDurableReplayCoordinatorInternal({
+        store,
+        tenantId: 'tenant-m5',
+        principalId: 'principal-m5',
+      });
+      const fake = fakeFactory({});
+      const approved = await approvedWithFactory(fake.factory, 'durable-permit-expiry');
+      const times = [30_000, 30_200];
+
+      await expect(executeMcpDirectApprovedToolInternal(
+        approved.config,
+        approved.lifecycle,
+        approved.proposal,
+        {
+          clientInfo: { name: 'furypipe-m5-test', version: '1.0.0' },
+          factory: fake.factory,
+          durableReplay: coordinator,
+          permitTtlMs: 100,
+          now: () => times.shift() ?? 30_200,
+        },
+      )).rejects.toThrow(/permit is expired or not yet valid/i);
+
+      expect(fake.counters().callCalls).toBe(0);
+      const handles = await store.list!({
+        metadata: { system: 'mcp-direct-durable-replay' },
+        limit: 100,
+      });
+      expect(handles).toHaveLength(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('aborts a durable armed marker if permit freshness expires before the wire call', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m5-executor-wire-expiry-'));
+    try {
+      const store = createRecoveryStore(root, { namespace: 'mcp-m5-executor' });
+      const coordinator = createMcpDirectDurableReplayCoordinatorInternal({
+        store,
+        tenantId: 'tenant-m5',
+        principalId: 'principal-m5',
+      });
+      const fake = fakeFactory({});
+      const approved = await approvedWithFactory(fake.factory, 'durable-wire-expiry');
+      const times = [40_000, 40_050, 40_080, 40_200];
+
+      await expect(executeMcpDirectApprovedToolInternal(
+        approved.config,
+        approved.lifecycle,
+        approved.proposal,
+        {
+          clientInfo: { name: 'furypipe-m5-test', version: '1.0.0' },
+          factory: fake.factory,
+          durableReplay: coordinator,
+          permitTtlMs: 100,
+          now: () => times.shift() ?? 40_200,
+        },
+      )).rejects.toThrow(/permit expired before the durable wire-call boundary/i);
+
+      expect(fake.counters().callCalls).toBe(0);
+      const handles = await store.list!({
+        metadata: { system: 'mcp-direct-durable-replay' },
+        limit: 100,
+      });
+      expect(handles).toHaveLength(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('fails before callTool when durable arming cannot be committed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'furypipe-m5-executor-arm-fail-'));
     try {
