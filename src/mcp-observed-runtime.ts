@@ -1,3 +1,5 @@
+import type { McpToolBehaviorHints } from './mcp-tool-risk.js';
+
 export interface ExposedMcpTool {
   readonly name: string;
   readonly serverId?: string;
@@ -5,6 +7,8 @@ export interface ExposedMcpTool {
   readonly exposureEvidence: 'declared_mcp_type' | 'claude_code_name_convention';
   /** Tool exposure is not a transport health check. */
   readonly transportVerified: false;
+  /** MCP ToolAnnotations normalized to booleans only; never authority. */
+  readonly annotations?: McpToolBehaviorHints;
 }
 
 export interface PendingObservedMcpUse {
@@ -72,6 +76,22 @@ function safeName(value: unknown): string | undefined {
   return name.length <= MAX_NAME && SAFE_NAME.test(name) ? name : undefined;
 }
 
+function behaviorHints(value: unknown): McpToolBehaviorHints | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const out: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    idempotentHint?: boolean;
+    openWorldHint?: boolean;
+  } = {};
+  if (typeof source.readOnlyHint === 'boolean') out.readOnlyHint = source.readOnlyHint;
+  if (typeof source.destructiveHint === 'boolean') out.destructiveHint = source.destructiveHint;
+  if (typeof source.idempotentHint === 'boolean') out.idempotentHint = source.idempotentHint;
+  if (typeof source.openWorldHint === 'boolean') out.openWorldHint = source.openWorldHint;
+  return Object.keys(out).length > 0 ? Object.freeze(out) : undefined;
+}
+
 function parseMcpName(name: string): { serverId?: string; toolId?: string } {
   if (!name.startsWith('mcp__')) return {};
   const separator = name.indexOf('__', 5);
@@ -99,6 +119,7 @@ function exposedTools(root: Record<string, unknown>): readonly ExposedMcpTool[] 
 
     seen.add(name);
     const parsed = parseMcpName(name);
+    const annotations = behaviorHints(tool.annotations);
     out.push(Object.freeze({
       name,
       ...parsed,
@@ -106,6 +127,7 @@ function exposedTools(root: Record<string, unknown>): readonly ExposedMcpTool[] 
         ? 'declared_mcp_type' as const
         : 'claude_code_name_convention' as const,
       transportVerified: false as const,
+      ...(annotations === undefined ? {} : { annotations }),
     }));
   }
 
