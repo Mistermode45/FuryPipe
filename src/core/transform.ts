@@ -634,6 +634,15 @@ function bumpPassthrough(
 
 /** Plaintext-free ExactGuard attribution used only for counts in telemetry. */
 type ExactGuardClassCounts = Partial<Record<ExactnessClass, number>>;
+type ExactGuardRegion = 'system' | 'messages' | 'tools' | 'top_level_other';
+type ExactGuardRegionCounts = Partial<Record<ExactGuardRegion, number>>;
+
+function exactGuardRegionForTopLevelKey(key: string): ExactGuardRegion {
+  if (key === 'system') return 'system';
+  if (key === 'messages') return 'messages';
+  if (key === 'tools') return 'tools';
+  return 'top_level_other';
+}
 
 /** Count protected spans without retaining their plaintext in telemetry. */
 function countProtectedRequestSpans(
@@ -643,6 +652,8 @@ function countProtectedRequestSpans(
   key?: string,
   skipToolResultContent = false,
   classCounts?: ExactGuardClassCounts,
+  regionCounts?: ExactGuardRegionCounts,
+  region: ExactGuardRegion = 'top_level_other',
 ): number {
   if (depth > 8) return 0;
   // This header is consumed as transport metadata before the lossy stages;
@@ -664,6 +675,9 @@ function countProtectedRequestSpans(
         classCounts[span.class] = (classCounts[span.class] ?? 0) + 1;
       }
     }
+    if (regionCounts && spans.length > 0) {
+      regionCounts[region] = (regionCounts[region] ?? 0) + spans.length;
+    }
     return spans.length;
   }
   if (!value || typeof value !== 'object') return 0;
@@ -674,17 +688,18 @@ function countProtectedRequestSpans(
     let metadataCount = 0;
     for (const [childKey, item] of Object.entries(value as Record<string, unknown>)) {
       if (childKey !== 'content') {
-        metadataCount += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent, classCounts);
+        metadataCount += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent, classCounts, regionCounts, region);
       }
     }
     return metadataCount;
   }
   let count = 0;
   if (Array.isArray(value)) {
-    for (const item of value) count += countProtectedRequestSpans(item, options, depth + 1, undefined, skipToolResultContent, classCounts);
+    for (const item of value) count += countProtectedRequestSpans(item, options, depth + 1, undefined, skipToolResultContent, classCounts, regionCounts, region);
   } else {
     for (const [childKey, item] of Object.entries(value as Record<string, unknown>)) {
-      count += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent, classCounts);
+      const childRegion = depth === 0 ? exactGuardRegionForTopLevelKey(childKey) : region;
+      count += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent, classCounts, regionCounts, childRegion);
     }
   }
   return count;
@@ -1024,6 +1039,8 @@ export interface TransformInfo {
     recoveryHandles?: readonly string[];
     /** Plaintext-free count by ExactGuard class; values only, never matched text. */
     classes?: Partial<Record<ExactnessClass, number>>;
+    /** Plaintext-free count by request region; never stores keys below the top-level bucket. */
+    regions?: Partial<Record<'system' | 'messages' | 'tools' | 'top_level_other', number>>;
   };
   /** Slab gate diagnostics — imageTokens, textTokens, burn terms, and verdict.
    *  Lets hosts measure flap-prevention efficacy and tune amortization horizon. */
@@ -2523,6 +2540,7 @@ export async function transformRequest(
     : o.safetyMode === false ? false : exactGuardOptionsForMode(o.safetyMode);
   if (activeExactGuard !== false) {
     const exactGuardClasses: ExactGuardClassCounts = {};
+    const exactGuardRegions: ExactGuardRegionCounts = {};
     const protectedSpans = countProtectedRequestSpans(
       req,
       activeExactGuard,
@@ -2530,6 +2548,7 @@ export async function transformRequest(
       undefined,
       opts.exactGuard === undefined,
       exactGuardClasses,
+      exactGuardRegions,
     );
     if (protectedSpans > 0) {
       if (activeExactGuard.representationPolicy === 'externalize' && opts.recoveryStore) {
@@ -2544,6 +2563,7 @@ export async function transformRequest(
                 action: 'externalize',
                 recoveryHandles: externalized.recoveryHandles,
                 classes: exactGuardClasses,
+                regions: exactGuardRegions,
               };
               bumpPassthrough(info, 'exact_guard');
               return finish(externalizedBody);
@@ -2554,7 +2574,12 @@ export async function transformRequest(
         }
       }
       info.reason = `exact_guard (preserve_native, spans=${protectedSpans})`;
-      info.exactGuard = { protectedSpans, action: 'preserve_native', classes: exactGuardClasses };
+      info.exactGuard = {
+        protectedSpans,
+        action: 'preserve_native',
+        classes: exactGuardClasses,
+        regions: exactGuardRegions,
+      };
       bumpPassthrough(info, 'exact_guard');
       return finish(exactGuardBody);
     }
