@@ -71,7 +71,7 @@ describe('FuryPipe proxy agent policy', () => {
 
     expect(messages[0]).toEqual(source.messages[0]);
     expect(messages[1]).toEqual(source.messages[1]);
-    expect(messages[2]?.role).toBe('developer');
+    expect(messages[2]?.role).toBe('system');
     expect(messages[2]?.content).toContain(FURY_PROXY_AGENT_POLICY_SENTINEL);
     expect(messages[3]).toEqual(source.messages[2]);
   });
