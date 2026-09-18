@@ -350,7 +350,7 @@ export {
 export {
   observeAnthropicMcpRuntime,
   type AnthropicMcpObservation,
-  type ConnectedMcpTool,
+  type ExposedMcpTool,
   type ObservedExternalMcpResultReceipt,
   type PendingObservedMcpUse,
 } from '../mcp-observed-runtime.js';
