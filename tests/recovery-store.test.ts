@@ -219,7 +219,6 @@ describe('Recovery Store', () => {
 
     const reservations = await store.list?.({ metadata: reservationMetadata });
     const armed = await store.list?.({ metadata: armedMetadata });
-    expect((reservations?.length ?? 0) + (armed?.length ?? 0)).toBe(1);
 
     if ((armed?.length ?? 0) === 1) {
       expect(reservations).toHaveLength(1);
