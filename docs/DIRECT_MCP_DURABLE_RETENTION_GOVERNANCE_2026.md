@@ -66,6 +66,7 @@ Required tombstone fields:
 - final `attempt`;
 - exact `reservationIdSha256`;
 - `armedRecordSha256`;
+- exact `reservationRecordSha256` and `terminalRecordSha256`;
 - `outcome` (`succeeded` or `tool_error`);
 - `resultSha256`;
 - `terminalAt`;
@@ -79,7 +80,7 @@ No raw arguments, raw results, tenant IDs, principal IDs, credentials, permits,
 headers, or environment values are stored.
 
 The tombstone is content-addressed. Its handle is the compaction evidence.
-The lineage digest binds the canonical set of records that was compacted.
+The lineage digest binds the canonical set of records that was compacted. The logical `compactedAt` is derived from the terminal timestamp so concurrent maintainers produce one content-addressed tombstone.
 
 ## Atomic protocol
 
@@ -97,8 +98,7 @@ Under the RecoveryStore inter-process lock:
 8. A concurrent reservation observes either the pre-compaction lineage or the
    tombstone, never an invented clear state.
 
-No `list -> decide -> delete` sequence is authoritative. The public maintenance
-operation is bounded and opaque; raw delete/compact primitives remain internal.
+No `list -> decide -> delete` sequence is authoritative. The internal maintenance operation is bounded and opaque; raw delete/compact primitives remain internal and no maintenance primitive is exported.
 
 ## Replay and attempt rules
 
