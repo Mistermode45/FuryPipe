@@ -2,12 +2,16 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { isGeneratedMcpDirectCatalogHandle } from '../src/mcp-direct-catalog.js';
 import {
   deriveMcpDirectEndpointFingerprint,
   probeMcpDirectInventory,
   type McpDirectRuntimeConfig,
-  type McpDirectSdkFactory,
 } from '../src/mcp-direct-client-node.js';
+import {
+  probeMcpDirectInventory as probeMcpDirectInventoryInternal,
+  type McpDirectSdkFactory,
+} from '../src/mcp-direct-client-node-internal.js';
 
 const sha = (char: string) => char.repeat(64);
 
@@ -118,13 +122,21 @@ describe('direct MCP client inventory transport', () => {
       }],
     });
 
-    const result = await probeMcpDirectInventory(stdioConfig(), {
+    const result = await probeMcpDirectInventoryInternal(stdioConfig(), {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     });
 
     expect(result.protocolVersion).toBe('2026-07-28');
     expect(result.toolCount).toBe(1);
+    expect(isGeneratedMcpDirectCatalogHandle(result.catalog)).toBe(true);
+    expect(result.catalog).toMatchObject({
+      format: 'furypipe-mcp-direct-catalog/v1',
+      sourceId: 'fixture',
+      endpointFingerprint: result.lifecycle.source.endpointFingerprint,
+      toolCount: 1,
+    });
+    expect(result.catalog.inventorySha256).toMatch(/^[0-9a-f]{64}$/u);
     expect(result.lifecycle).toMatchObject({
       connected: true,
       healthy: true,
@@ -154,7 +166,7 @@ describe('direct MCP client inventory transport', () => {
       era: 'legacy',
       protocolVersion: '2025-11-25',
     });
-    const result = await probeMcpDirectInventory(stdioConfig(), {
+    const result = await probeMcpDirectInventoryInternal(stdioConfig(), {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     });
@@ -171,7 +183,7 @@ describe('direct MCP client inventory transport', () => {
         annotations: { readOnlyHint: true, openWorldHint: false },
       }],
     });
-    const result = await probeMcpDirectInventory(stdioConfig('untrusted'), {
+    const result = await probeMcpDirectInventoryInternal(stdioConfig('untrusted'), {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     });
@@ -191,7 +203,7 @@ describe('direct MCP client inventory transport', () => {
         inputSchema: { type: 'object' },
       })),
     });
-    await expect(probeMcpDirectInventory(stdioConfig(), {
+    await expect(probeMcpDirectInventoryInternal(stdioConfig(), {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     })).rejects.toThrow(/256 tool bound/i);
@@ -200,7 +212,7 @@ describe('direct MCP client inventory transport', () => {
 
   it('closes the client after connect failure', async () => {
     const fake = fakeFactory({ connectError: new Error('offline') });
-    await expect(probeMcpDirectInventory(stdioConfig(), {
+    await expect(probeMcpDirectInventoryInternal(stdioConfig(), {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     })).rejects.toThrow('offline');
@@ -216,7 +228,7 @@ describe('direct MCP client inventory transport', () => {
       trust: 'untrusted' as const,
     };
 
-    await expect(probeMcpDirectInventory({
+    await expect(probeMcpDirectInventoryInternal({
       source,
       url: 'http://example.com/mcp',
       allowedHosts: ['example.com'],
@@ -225,7 +237,7 @@ describe('direct MCP client inventory transport', () => {
       factory: fake.factory,
     })).rejects.toThrow(/must use https/i);
 
-    await expect(probeMcpDirectInventory({
+    await expect(probeMcpDirectInventoryInternal({
       source,
       url: 'https://example.com/mcp',
     }, {
@@ -243,7 +255,7 @@ describe('direct MCP client inventory transport', () => {
       trust: 'trusted' as const,
     };
 
-    const result = await probeMcpDirectInventory(httpConfig({
+    const result = await probeMcpDirectInventoryInternal(httpConfig({
       url: 'http://127.0.0.1:3000/mcp',
       sourceId: source.sourceId,
       trust: source.trust,
@@ -253,7 +265,7 @@ describe('direct MCP client inventory transport', () => {
     });
     expect(result.lifecycle.connected).toBe(true);
 
-    await expect(probeMcpDirectInventory({
+    await expect(probeMcpDirectInventoryInternal({
       source,
       url: 'https://user:secret@example.com/mcp',
       allowedHosts: ['example.com'],
@@ -266,7 +278,7 @@ describe('direct MCP client inventory transport', () => {
   it('does not persist runtime HTTP credentials in returned evidence', async () => {
     const fake = fakeFactory({});
     const secret = 'Bearer MCP_SECRET_CANARY_77';
-    const result = await probeMcpDirectInventory(httpConfig({
+    const result = await probeMcpDirectInventoryInternal(httpConfig({
       sourceId: 'remote',
       trust: 'untrusted',
       url: 'https://mcp.example.test/v1',
@@ -291,7 +303,7 @@ describe('direct MCP client inventory transport', () => {
       ...config,
       source: { ...config.source, endpointFingerprint: sha('f') },
     };
-    await expect(probeMcpDirectInventory(forged, {
+    await expect(probeMcpDirectInventoryInternal(forged, {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     })).rejects.toThrow(/fingerprint does not match/i);
@@ -310,7 +322,7 @@ describe('direct MCP client inventory transport', () => {
       url: 'https://mcp.example.test/v1?token=secret',
       allowedHosts: ['mcp.example.test'],
     };
-    await expect(probeMcpDirectInventory(config, {
+    await expect(probeMcpDirectInventoryInternal(config, {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     })).rejects.toThrow(/must not contain a query string/i);
@@ -318,7 +330,7 @@ describe('direct MCP client inventory transport', () => {
 
   it('passes a bounded HTTP response ceiling to the transport', async () => {
     const fake = fakeFactory({});
-    await probeMcpDirectInventory(httpConfig({
+    await probeMcpDirectInventoryInternal(httpConfig({
       url: 'https://mcp.example.test/v1',
       allowedHosts: ['mcp.example.test'],
     }), {
@@ -328,6 +340,18 @@ describe('direct MCP client inventory transport', () => {
     expect(fake.transportConfig()).toMatchObject({
       maxResponseBytes: 8 * 1024 * 1024,
     });
+  });
+
+  it('public inventory probe rejects test-only factory injection', async () => {
+    const fake = fakeFactory({});
+    await expect(probeMcpDirectInventory(
+      stdioConfig(),
+      {
+        clientInfo: { name: 'furypipe-test', version: '1.0.0' },
+        factory: fake.factory,
+      } as never,
+    )).rejects.toThrow(/unsupported or unsafe fields/i);
+    expect(fake.counters()).toEqual({ closeCalls: 0, connectCalls: 0, listCalls: 0 });
   });
 
   it('uses the real official v2 stdio client against a real dual-era server', async () => {
@@ -385,9 +409,44 @@ describe('direct MCP client inventory transport', () => {
     });
   }, 20_000);
 
+  it('rejects non-JSON schema values instead of hashing a lossy serialization', async () => {
+    const fake = fakeFactory({
+      tools: [{
+        name: 'bad-schema',
+        inputSchema: { type: 'object', hidden: undefined },
+      }],
+    });
+    await expect(probeMcpDirectInventoryInternal(stdioConfig(), {
+      clientInfo: { name: 'furypipe-test', version: '1.0.0' },
+      factory: fake.factory,
+    })).rejects.toThrow(/non-JSON value/i);
+  });
+
+  it('keeps raw schemas out of serialized inventory evidence', async () => {
+    const secretDescription = 'SCHEMA_PRIVATE_CANARY_1847';
+    const fake = fakeFactory({
+      tools: [{
+        name: 'safe-schema',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: secretDescription },
+          },
+        },
+      }],
+    });
+    const result = await probeMcpDirectInventoryInternal(stdioConfig(), {
+      clientInfo: { name: 'furypipe-test', version: '1.0.0' },
+      factory: fake.factory,
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(secretDescription);
+    expect(serialized).not.toContain('description');
+  });
+
   it('uses bounded stdio parameters and does not invoke a shell', async () => {
     const fake = fakeFactory({});
-    await probeMcpDirectInventory({
+    await probeMcpDirectInventoryInternal({
       ...stdioConfig(),
       env: { SAFE_VAR: 'value' },
       maxBufferBytes: 1024 * 1024,

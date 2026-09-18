@@ -239,6 +239,24 @@ try {
     "const m = await import('furypipe/mcp-http-node'); if (typeof m.listenMcpHttpNode !== 'function') process.exit(1);",
   ], installDir);
   assert(nodeHttpExport.stderr === '', `Node MCP HTTP package export wrote stderr: ${nodeHttpExport.stderr}`);
+  const directMcpClientExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/mcp-direct-client-node'); if (typeof m.probeMcpDirectInventory !== 'function' || typeof m.deriveMcpDirectEndpointFingerprint !== 'function') process.exit(1);",
+  ], installDir);
+  assert(directMcpClientExport.stderr === '', `Direct MCP client package export wrote stderr: ${directMcpClientExport.stderr}`);
+  const directMcpPolicyExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/mcp-direct-policy'); if (typeof m.selectMcpDirectTool !== 'function' || typeof m.createMcpDirectToolProposal !== 'function' || typeof m.evaluateMcpDirectPolicy !== 'function' || typeof m.approveMcpDirectPolicyDecision !== 'function' || typeof m.resolveMcpDirectProposalArguments !== 'undefined') process.exit(1);",
+  ], installDir);
+  assert(directMcpPolicyExport.stderr === '', `Direct MCP policy package export wrote stderr: ${directMcpPolicyExport.stderr}`);
+  const directMcpHiddenExports = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "for (const subpath of ['mcp-direct-governance','mcp-direct-client-node-internal','mcp-direct-policy-internal','mcp-direct-catalog','mcp-direct-json']) { try { await import('furypipe/' + subpath); process.exit(2); } catch (error) { if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }",
+  ], installDir);
+  assert(directMcpHiddenExports.stderr === '', `Hidden Direct MCP package path smoke wrote stderr: ${directMcpHiddenExports.stderr}`);
   const furyPromptExport = await run(process.execPath, [
     '--input-type=module',
     '-e',

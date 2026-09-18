@@ -1,0 +1,42 @@
+import { readFileSync } from 'node:fs';
+
+import { describe, expect, it } from 'vitest';
+
+import * as FuryPipe from '../src/core/index.js';
+
+const packageJson = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+) as { readonly exports: Readonly<Record<string, unknown>> };
+
+describe('direct MCP supported public authority surface', () => {
+  it('exports the real inventory probe but not test injection or raw lifecycle mutation', () => {
+    const root = FuryPipe as Record<string, unknown>;
+
+    expect(root.probeMcpDirectInventory).toBeTypeOf('function');
+    expect(root.deriveMcpDirectEndpointFingerprint).toBeTypeOf('function');
+    expect(root.selectMcpDirectTool).toBeTypeOf('function');
+
+    expect(root.createMcpDirectLifecycle).toBeUndefined();
+    expect(root.recordMcpDirectConnection).toBeUndefined();
+    expect(root.recordMcpDirectHealth).toBeUndefined();
+    expect(root.recordMcpDirectInventory).toBeUndefined();
+    expect(root.recordMcpDirectSelection).toBeUndefined();
+    expect(root.recordMcpDirectApproval).toBeUndefined();
+    expect(root.createMcpDirectExecutionPermit).toBeUndefined();
+    expect(root.consumeMcpDirectExecutionPermit).toBeUndefined();
+    expect(root.recordMcpDirectExecution).toBeUndefined();
+    expect(root.recordMcpDirectVerification).toBeUndefined();
+    expect(root.resolveMcpDirectProposalArguments).toBeUndefined();
+  });
+
+  it('publishes only the safe M1/M2 subpaths, not raw governance or internals', () => {
+    expect(packageJson.exports['./mcp-direct-governance']).toBeUndefined();
+    expect(packageJson.exports['./mcp-direct-client-node-internal']).toBeUndefined();
+    expect(packageJson.exports['./mcp-direct-catalog']).toBeUndefined();
+    expect(packageJson.exports['./mcp-direct-json']).toBeUndefined();
+
+    expect(packageJson.exports['./mcp-direct-client-node']).toBeDefined();
+    expect(packageJson.exports['./mcp-direct-policy']).toBeDefined();
+    expect(packageJson.exports['./mcp-direct-policy-internal']).toBeUndefined();
+  });
+});

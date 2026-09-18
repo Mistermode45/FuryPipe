@@ -4,6 +4,7 @@ import {
   createMcpDirectExecutionPermit,
   createMcpDirectLifecycle,
   isGeneratedMcpDirectExecutionPermit,
+  isGeneratedMcpDirectLifecycleState,
   recordMcpDirectApproval,
   recordMcpDirectConnection,
   recordMcpDirectExecution,
@@ -40,10 +41,13 @@ function listed() {
   }]);
 }
 
-function approved() {
+function approved(inputChar = 'd') {
   return recordMcpDirectApproval(recordMcpDirectSelection(listed(), 'echo'), {
     policyDecisionIdSha256: sha('e'),
+    inputSha256: sha(inputChar),
     approvalKind: 'operator',
+    approvedAt: 0,
+    expiresAt: 60_000,
   });
 }
 
@@ -80,6 +84,7 @@ describe('direct MCP governance lifecycle', () => {
 
   it('rejects forged lifecycle state objects', () => {
     const forged = { ...connected() } as McpDirectLifecycleState;
+    expect(isGeneratedMcpDirectLifecycleState(forged)).toBe(false);
     expect(() => recordMcpDirectHealth(forged, 'list_tools_success')).toThrow(/process-local/i);
   });
 
@@ -115,7 +120,10 @@ describe('direct MCP governance lifecycle', () => {
 
     const state = recordMcpDirectApproval(selected, {
       policyDecisionIdSha256: sha('e'),
+      inputSha256: sha('d'),
       approvalKind: 'operator',
+      approvedAt: 0,
+      expiresAt: 60_000,
     });
     const permit = createMcpDirectExecutionPermit(state, sha('d'), { now: 1_000 });
     expect(isGeneratedMcpDirectExecutionPermit(permit)).toBe(true);
@@ -133,12 +141,51 @@ describe('direct MCP governance lifecycle', () => {
     });
   });
 
+  it('cannot mint a fresh permit from stale approval evidence', () => {
+    const selected = recordMcpDirectSelection(listed(), 'echo');
+    const state = recordMcpDirectApproval(selected, {
+      policyDecisionIdSha256: sha('e'),
+      inputSha256: sha('d'),
+      approvalKind: 'operator',
+      approvedAt: 1_000,
+      expiresAt: 2_000,
+    });
+    expect(() => createMcpDirectExecutionPermit(
+      state,
+      sha('d'),
+      { now: 2_000 },
+    )).toThrow(/approval is expired/i);
+  });
+
+  it('caps permit expiry at the approval freshness boundary', () => {
+    const selected = recordMcpDirectSelection(listed(), 'echo');
+    const state = recordMcpDirectApproval(selected, {
+      policyDecisionIdSha256: sha('e'),
+      inputSha256: sha('d'),
+      approvalKind: 'operator',
+      approvedAt: 1_000,
+      expiresAt: 1_500,
+    });
+    const permit = createMcpDirectExecutionPermit(
+      state,
+      sha('d'),
+      { now: 1_400, expiresInMs: 30_000 },
+    );
+    expect(permit.expiresAt).toBe(1_500);
+  });
+
   it('rejects copied or forged permits', () => {
     const state = approved();
     const permit = createMcpDirectExecutionPermit(state, sha('d'), { now: 1_000 });
     const copy = { ...permit };
     expect(isGeneratedMcpDirectExecutionPermit(copy)).toBe(false);
     expect(() => consumeMcpDirectExecutionPermit(state, copy, sha('d'), 1_001)).toThrow(/process-local/i);
+  });
+
+  it('binds approval to the exact input digest before a permit can exist', () => {
+    const state = approved();
+    expect(() => createMcpDirectExecutionPermit(state, sha('9'), { now: 1_000 }))
+      .toThrow(/approved input digest/i);
   });
 
   it('binds a permit to endpoint, tool schema, input and policy evidence', () => {
@@ -178,7 +225,7 @@ describe('direct MCP governance lifecycle', () => {
   });
 
   it('keeps executed, succeeded and verified distinct', () => {
-    const state = approved();
+    const state = approved('1');
     const permit = createMcpDirectExecutionPermit(state, sha('1'), { now: 2_000 });
     consumeMcpDirectExecutionPermit(state, permit, sha('1'), 2_001);
 
@@ -199,7 +246,7 @@ describe('direct MCP governance lifecycle', () => {
   });
 
   it('records a failed call as executed but not succeeded or verified', () => {
-    const state = approved();
+    const state = approved('4');
     const permit = createMcpDirectExecutionPermit(state, sha('4'), { now: 3_000 });
     consumeMcpDirectExecutionPermit(state, permit, sha('4'), 3_001);
     const failed = recordMcpDirectExecution(state, {
@@ -218,7 +265,7 @@ describe('direct MCP governance lifecycle', () => {
   });
 
   it('requires execution result evidence to match verification evidence exactly', () => {
-    const state = approved();
+    const state = approved('6');
     const permit = createMcpDirectExecutionPermit(state, sha('6'), { now: 4_000 });
     consumeMcpDirectExecutionPermit(state, permit, sha('6'), 4_001);
     const executed = recordMcpDirectExecution(state, {

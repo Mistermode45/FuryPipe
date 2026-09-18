@@ -386,17 +386,7 @@ export {
 } from '../mcp-proxy-evidence.js';
 
 export {
-  createMcpDirectLifecycle,
-  recordMcpDirectConnection,
-  recordMcpDirectHealth,
-  recordMcpDirectInventory,
-  recordMcpDirectSelection,
-  recordMcpDirectApproval,
-  createMcpDirectExecutionPermit,
-  consumeMcpDirectExecutionPermit,
-  isGeneratedMcpDirectExecutionPermit,
-  recordMcpDirectExecution,
-  recordMcpDirectVerification,
+  isGeneratedMcpDirectLifecycleState,
   type McpDirectTransport,
   type McpDirectProtocolEra,
   type McpDirectHandshake,
@@ -410,3 +400,33 @@ export {
   type McpDirectVerificationEvidence,
   type McpDirectLifecycleState,
 } from '../mcp-direct-governance.js';
+
+export {
+  selectMcpDirectTool,
+  createMcpDirectToolProposal,
+  createMcpDirectOperatorApprovalIntent,
+  evaluateMcpDirectPolicy,
+  approveMcpDirectPolicyDecision,
+  isGeneratedMcpDirectToolProposal,
+  isGeneratedMcpDirectPolicyDecision,
+  isGeneratedMcpDirectOperatorApprovalIntent,
+  type McpDirectPolicyOutcome,
+  type McpDirectPolicyPair,
+  type McpDirectPolicy,
+  type McpDirectPolicyEvaluationOptions,
+  type McpDirectOperatorApprovalIntent,
+  type McpDirectOperatorIntentOptions,
+  type McpDirectToolProposal,
+  type McpDirectPolicyDecision,
+} from '../mcp-direct-policy.js';
+
+export {
+  deriveMcpDirectEndpointFingerprint,
+  probeMcpDirectInventory,
+  type McpDirectClientInfo,
+  type McpDirectStdioRuntimeConfig,
+  type McpDirectHttpRuntimeConfig,
+  type McpDirectRuntimeConfig,
+  type McpDirectInventoryProbeOptions,
+  type McpDirectInventoryProbeEvidence,
+} from '../mcp-direct-client-node.js';

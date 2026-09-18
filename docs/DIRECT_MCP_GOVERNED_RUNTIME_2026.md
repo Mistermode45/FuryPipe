@@ -68,6 +68,9 @@ source id
 + issue/expiry window
 ```
 
+An approval is bound to the exact validated input digest. Permit creation fails
+closed if a caller attempts to substitute a different input after approval.
+
 Copies/serialized permits are not executable because process-local provenance is
 held outside the public object in a WeakMap. A consumed permit cannot be replayed.
 
