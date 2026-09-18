@@ -145,6 +145,55 @@ describe('live proxy Agent Skill instruction runtime', () => {
     },
   );
 
+  it('keeps exact-output precedence when Claude Code appends reminder/tool-result-only user turns', async () => {
+    let forwarded = '';
+    restore.push(mockFetch(async (request) => {
+      forwarded = await request.clone().text();
+      return okResponse();
+    }));
+    let plannerCalls = 0;
+    const proxy = createProxy({
+      upstream: 'http://anthropic.test',
+      humanOutputPolicy: true,
+      capabilityPlanner: async () => {
+        plannerCalls += 1;
+        return plan();
+      },
+      transform: { compress: false },
+    });
+
+    const source = JSON.stringify({
+      model: 'claude-opus-5',
+      messages: [
+        { role: 'user', content: 'Réponds exactement : FURYPIPE_SKILL_EXACT_OK' },
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file: 'x' } }],
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 't1', content: 'transport data' },
+            { type: 'text', text: '<system-reminder>dynamic Claude Code state</system-reminder>' },
+          ],
+        },
+      ],
+    });
+
+    const response = await proxy(new Request('http://localhost/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: source,
+    }));
+    await response.text();
+
+    expect(response.status).toBe(200);
+    expect(plannerCalls).toBe(0);
+    expect(forwarded).not.toContain('furypipe_active_skill');
+    expect(forwarded).not.toContain('furypipe_runtime_instruction');
+    expect(JSON.parse(forwarded)).toEqual(JSON.parse(source));
+  });
+
   it('fails open when optional capability planning throws', async () => {
     let forwarded = '';
     restore.push(mockFetch(async (request) => {
