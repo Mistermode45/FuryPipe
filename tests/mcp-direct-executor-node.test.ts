@@ -600,8 +600,9 @@ describe('Direct MCP M3 governed execution', () => {
         tenantId: 'tenant-m5',
         principalId: 'principal-m5',
       });
+      const durableCanary = 'M5_DURABLE_ARGUMENT_CANARY_9F31';
       const fake = fakeFactory({});
-      const approved = await approvedWithFactory(fake.factory, 'durable-success');
+      const approved = await approvedWithFactory(fake.factory, durableCanary);
 
       const executed = await executeMcpDirectApprovedToolInternal(
         approved.config,
@@ -633,6 +634,13 @@ describe('Direct MCP M3 governed execution', () => {
         resultSha256: executed.receipt.resultSha256,
         succeeded: true,
       });
+      const durableHandles = await store.list!({ limit: 100 });
+      let durableSerialized = '';
+      for (const handle of durableHandles) {
+        durableSerialized += new TextDecoder().decode(await store.get(handle));
+        durableSerialized += JSON.stringify(handle.metadata ?? {});
+      }
+      expect(durableSerialized).not.toContain(durableCanary);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
