@@ -395,6 +395,7 @@ export {
   createMcpDirectExecutionPermit,
   consumeMcpDirectExecutionPermit,
   isGeneratedMcpDirectExecutionPermit,
+  isGeneratedMcpDirectLifecycleState,
   recordMcpDirectExecution,
   recordMcpDirectVerification,
   type McpDirectTransport,

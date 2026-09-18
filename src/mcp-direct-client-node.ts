@@ -1,8 +1,12 @@
-import { createHash } from 'node:crypto';
-
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
+import {
+  createMcpDirectCatalogHandle,
+  type McpDirectCatalogHandle,
+  type McpDirectCatalogInputTool,
+} from './mcp-direct-catalog.js';
+import { digestMcpDirectJson } from './mcp-direct-json.js';
 import {
   createMcpDirectLifecycle,
   recordMcpDirectConnection,
@@ -76,6 +80,7 @@ export interface McpDirectInventoryProbeOptions {
 export interface McpDirectInventoryProbeEvidence {
   readonly format: 'furypipe-mcp-direct-inventory-probe/v1';
   readonly lifecycle: McpDirectLifecycleState;
+  readonly catalog: McpDirectCatalogHandle;
   readonly protocolVersion?: string;
   readonly toolCount: number;
 }
@@ -414,35 +419,6 @@ function validatedHttpConfig(config: McpDirectHttpRuntimeConfig): {
   return Object.freeze({ url, headers: Object.freeze(headers) });
 }
 
-function canonicalJson(value: unknown): string {
-  const serialized = JSON.stringify(value);
-  if (typeof serialized !== 'string') {
-    throw new Error('MCP tool input schema is not JSON-serializable');
-  }
-  if (new TextEncoder().encode(serialized).byteLength > MAX_SCHEMA_BYTES) {
-    throw new Error('MCP tool input schema exceeds the 1 MiB bound');
-  }
-  const parsed = JSON.parse(serialized) as unknown;
-
-  const normalize = (input: unknown, depth: number): unknown => {
-    if (depth > MAX_JSON_DEPTH) throw new Error('MCP tool input schema exceeds the depth bound');
-    if (input === null || typeof input !== 'object') return input;
-    if (Array.isArray(input)) return input.map((entry) => normalize(entry, depth + 1));
-    const object = input as Record<string, unknown>;
-    return Object.fromEntries(
-      Object.keys(object)
-        .sort()
-        .map((key) => [key, normalize(object[key], depth + 1)]),
-    );
-  };
-
-  return JSON.stringify(normalize(parsed, 0));
-}
-
-function sha256Json(value: unknown): string {
-  return createHash('sha256').update(canonicalJson(value), 'utf8').digest('hex');
-}
-
 function behaviorHints(value: unknown): McpToolBehaviorHints | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const source = value as Record<string, unknown>;
@@ -459,23 +435,43 @@ function behaviorHints(value: unknown): McpToolBehaviorHints | undefined {
   return Object.keys(hints).length === 0 ? undefined : Object.freeze(hints);
 }
 
-function normalizedInventory(
+function normalizedCatalog(
   tools: readonly SdkListTool[],
   source: McpDirectSourceConfig,
-): Parameters<typeof recordMcpDirectInventory>[1] {
+): {
+  readonly inventory: Parameters<typeof recordMcpDirectInventory>[1];
+  readonly catalog: McpDirectCatalogHandle;
+} {
   if (!Array.isArray(tools) || tools.length > MAX_TOOL_COUNT) {
     throw new Error('MCP tool inventory exceeds the 256 tool bound');
   }
-  return Object.freeze(tools.map((tool) => {
+
+  const catalogTools: McpDirectCatalogInputTool[] = [];
+  const inventory = tools.map((tool) => {
     if (!tool || typeof tool !== 'object') throw new Error('MCP tool definition must be an object');
     if (typeof tool.name !== 'string') throw new Error('MCP tool name is missing');
     if (tool.inputSchema === undefined) throw new Error('MCP tool input schema is missing');
+    const inputSchemaSha256 = digestMcpDirectJson(tool.inputSchema, {
+      maxBytes: MAX_SCHEMA_BYTES,
+      maxDepth: MAX_JSON_DEPTH,
+      label: 'MCP tool input schema',
+    });
+    catalogTools.push(Object.freeze({
+      name: tool.name,
+      inputSchema: tool.inputSchema,
+      inputSchemaSha256,
+    }));
     return Object.freeze({
       name: tool.name,
-      inputSchemaSha256: sha256Json(tool.inputSchema),
+      inputSchemaSha256,
       risk: assessMcpToolRisk(behaviorHints(tool.annotations), source.trust),
     });
-  }));
+  });
+
+  return Object.freeze({
+    inventory: Object.freeze(inventory),
+    catalog: createMcpDirectCatalogHandle(source, catalogTools),
+  });
 }
 
 function createTimeout(
@@ -538,7 +534,7 @@ export function deriveMcpDirectEndpointFingerprint(
   if (config.source.transport === 'stdio') {
     if (!('command' in config)) throw new Error('MCP source transport/config mismatch');
     assertStdioConfig(config);
-    return sha256Json({
+    return digestMcpDirectJson({
       transport: 'stdio',
       command: config.command,
       args: [...(config.args ?? [])],
@@ -547,7 +543,7 @@ export function deriveMcpDirectEndpointFingerprint(
   }
   if (!('url' in config)) throw new Error('MCP source transport/config mismatch');
   const http = validatedHttpConfig(config);
-  return sha256Json({
+  return digestMcpDirectJson({
     transport: 'streamable_http',
     url: http.url.toString(),
   });
@@ -636,16 +632,17 @@ export async function probeMcpDirectInventory(
       listDeadline.cancel();
     }
 
-    const inventory = normalizedInventory(result.tools, config.source);
-    lifecycle = recordMcpDirectInventory(lifecycle, inventory);
+    const normalized = normalizedCatalog(result.tools, config.source);
+    lifecycle = recordMcpDirectInventory(lifecycle, normalized.inventory);
 
     return Object.freeze({
       format: 'furypipe-mcp-direct-inventory-probe/v1',
       lifecycle,
+      catalog: normalized.catalog,
       ...(client.getNegotiatedProtocolVersion() === undefined
         ? {}
         : { protocolVersion: client.getNegotiatedProtocolVersion() }),
-      toolCount: inventory.length,
+      toolCount: normalized.inventory.length,
     });
   } catch (caught) {
     primaryError = caught;

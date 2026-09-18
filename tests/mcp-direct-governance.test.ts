@@ -4,6 +4,7 @@ import {
   createMcpDirectExecutionPermit,
   createMcpDirectLifecycle,
   isGeneratedMcpDirectExecutionPermit,
+  isGeneratedMcpDirectLifecycleState,
   recordMcpDirectApproval,
   recordMcpDirectConnection,
   recordMcpDirectExecution,
@@ -43,6 +44,7 @@ function listed() {
 function approved() {
   return recordMcpDirectApproval(recordMcpDirectSelection(listed(), 'echo'), {
     policyDecisionIdSha256: sha('e'),
+    inputSha256: sha('d'),
     approvalKind: 'operator',
   });
 }
@@ -80,6 +82,7 @@ describe('direct MCP governance lifecycle', () => {
 
   it('rejects forged lifecycle state objects', () => {
     const forged = { ...connected() } as McpDirectLifecycleState;
+    expect(isGeneratedMcpDirectLifecycleState(forged)).toBe(false);
     expect(() => recordMcpDirectHealth(forged, 'list_tools_success')).toThrow(/process-local/i);
   });
 
@@ -139,6 +142,12 @@ describe('direct MCP governance lifecycle', () => {
     const copy = { ...permit };
     expect(isGeneratedMcpDirectExecutionPermit(copy)).toBe(false);
     expect(() => consumeMcpDirectExecutionPermit(state, copy, sha('d'), 1_001)).toThrow(/process-local/i);
+  });
+
+  it('binds approval to the exact input digest before a permit can exist', () => {
+    const state = approved();
+    expect(() => createMcpDirectExecutionPermit(state, sha('9'), { now: 1_000 }))
+      .toThrow(/approved input digest/i);
   });
 
   it('binds a permit to endpoint, tool schema, input and policy evidence', () => {

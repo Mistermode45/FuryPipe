@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { isGeneratedMcpDirectCatalogHandle } from '../src/mcp-direct-catalog.js';
 import {
   deriveMcpDirectEndpointFingerprint,
   probeMcpDirectInventory,
@@ -125,6 +126,14 @@ describe('direct MCP client inventory transport', () => {
 
     expect(result.protocolVersion).toBe('2026-07-28');
     expect(result.toolCount).toBe(1);
+    expect(isGeneratedMcpDirectCatalogHandle(result.catalog)).toBe(true);
+    expect(result.catalog).toMatchObject({
+      format: 'furypipe-mcp-direct-catalog/v1',
+      sourceId: 'fixture',
+      endpointFingerprint: result.lifecycle.source.endpointFingerprint,
+      toolCount: 1,
+    });
+    expect(result.catalog.inventorySha256).toMatch(/^[0-9a-f]{64}$/u);
     expect(result.lifecycle).toMatchObject({
       connected: true,
       healthy: true,
@@ -384,6 +393,41 @@ describe('direct MCP client inventory transport', () => {
       requiresPolicyGate: true,
     });
   }, 20_000);
+
+  it('rejects non-JSON schema values instead of hashing a lossy serialization', async () => {
+    const fake = fakeFactory({
+      tools: [{
+        name: 'bad-schema',
+        inputSchema: { type: 'object', hidden: undefined },
+      }],
+    });
+    await expect(probeMcpDirectInventory(stdioConfig(), {
+      clientInfo: { name: 'furypipe-test', version: '1.0.0' },
+      factory: fake.factory,
+    })).rejects.toThrow(/non-JSON value/i);
+  });
+
+  it('keeps raw schemas out of serialized inventory evidence', async () => {
+    const secretDescription = 'SCHEMA_PRIVATE_CANARY_1847';
+    const fake = fakeFactory({
+      tools: [{
+        name: 'safe-schema',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: secretDescription },
+          },
+        },
+      }],
+    });
+    const result = await probeMcpDirectInventory(stdioConfig(), {
+      clientInfo: { name: 'furypipe-test', version: '1.0.0' },
+      factory: fake.factory,
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(secretDescription);
+    expect(serialized).not.toContain('description');
+  });
 
   it('uses bounded stdio parameters and does not invoke a shell', async () => {
     const fake = fakeFactory({});
