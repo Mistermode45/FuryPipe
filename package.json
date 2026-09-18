@@ -360,6 +360,10 @@
     "./mcp-direct-governance": {
       "types": "./dist/mcp-direct-governance.d.ts",
       "import": "./dist/mcp-direct-governance.js"
+    },
+    "./mcp-direct-client-node": {
+      "types": "./dist/mcp-direct-client-node.d.ts",
+      "import": "./dist/mcp-direct-client-node.js"
     }
   },
   "files": [
@@ -376,6 +380,7 @@
     "docs/MCP_HOSTED_CONFORMANCE.md",
     "docs/MCP_LIVE_OBSERVABILITY_2026.md",
     "docs/DIRECT_MCP_GOVERNED_RUNTIME_2026.md",
+    "docs/DIRECT_MCP_CLIENT_TRANSPORT_2026.md",
     "docs/FURY_PROMPT.md",
     "docs/INSTRUCTION_PROFILES.md",
     "docs/SKILL_ECOSYSTEM_2026.md",
@@ -477,6 +482,7 @@
     "wrangler": "^4.131.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/client": "2.0.0",
     "@modelcontextprotocol/server": "2.0.0",
     "gpt-tokenizer": "^4.0.0",
     "json5": "^2.2.3"
