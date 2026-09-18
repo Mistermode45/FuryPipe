@@ -205,6 +205,12 @@ export function selectAgentSkillsForTask(
       continue;
     }
 
+    // Explicit activation is authoritative for this turn. Once the user names
+    // at least one known skill, do not opportunistically add lexical matches:
+    // "$skill-a" means use skill-a, not skill-a plus two unrelated candidates
+    // that happened to share generic words such as "test", "code", or "review".
+    if (explicit.size > 0) continue;
+
     const score = descriptionScore(
       objectiveTokenSet,
       candidateTokenMap.get(candidate.name) ?? [],
