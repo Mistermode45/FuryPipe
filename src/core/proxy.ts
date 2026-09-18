@@ -1740,17 +1740,26 @@ let responseContentType: string | undefined;
         if (isMessages && (config.humanOutputPolicy === true || config.capabilityPlanner !== undefined)) {
           const task = extractProxyTaskEnvelope(bodyIn, 'anthropic-messages');
           if (task) {
-            const humanOutput = resolveFuryHumanOutputPolicy({
+            // Classify output constraints independently from whether the
+            // optional compact-human style is enabled. Exact-output precedence
+            // must still block capability augmentation when style is disabled.
+            const outputContext = resolveFuryHumanOutputPolicy({
               objective: task.objective,
               structuredOutput: task.structuredOutput,
-              enabled: config.humanOutputPolicy === true,
             });
+            const humanOutput = config.humanOutputPolicy === true
+              ? outputContext
+              : resolveFuryHumanOutputPolicy({
+                  objective: task.objective,
+                  structuredOutput: task.structuredOutput,
+                  enabled: false,
+                });
 
             // Exact-response probes must stay untouched by optional capability
             // augmentation. The request can still pass through ExactGuard and
             // provider transport, but no Skill/style instruction is injected.
             if (config.capabilityPlanner !== undefined
-              && humanOutput.reason !== 'exact_output_contract') {
+              && outputContext.reason !== 'exact_output_contract') {
               try {
                 const capabilityPlan = await config.capabilityPlanner(task);
                 if (capabilityPlan !== undefined) {
