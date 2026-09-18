@@ -778,6 +778,7 @@ export async function reclaimMcpDirectDurableExpiredPreCallInternal(
     deleted = await store.deleteBounded(
       reservationLoaded.handle,
       {
+        targetMetadata: reservationMetadata as Readonly<Record<string, string | number | boolean | null>>,
         matchConstraints: [
           {
             metadata: reservationMetadata as Readonly<Record<string, string | number | boolean | null>>,
