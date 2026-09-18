@@ -205,6 +205,17 @@ export interface TrackEvent {
   req_body_sample_b64?: string;
   /** Node host only: path to gzipped sidecar when inline cap exceeded. Workers drop oversized samples. */
   req_body_sample_path?: string;
+
+  // Capability Runtime — IDs/digests only; never SKILL.md plaintext.
+  capability_selected_skills?: string[];
+  capability_activated_skills?: Array<{
+    skill_id: string;
+    instruction_bytes: number;
+    instruction_sha256: string;
+  }>;
+  capability_blocked_skills?: string[];
+  capability_execution_authorized?: false;
+  capability_error?: string;
 }
 
 /** Max inline base64 body per JSONL row (32 KiB). Larger goes to sidecar (Node) or is dropped (Workers). */
@@ -236,6 +247,23 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
   if (ev.error) out.error = ev.error;
   if (ev.errorBody) out.error_body = ev.errorBody;
   if (ev.reqBodySha8) out.req_body_sha8 = ev.reqBodySha8;
+  if (ev.capability) {
+    if (ev.capability.selectedSkillIds.length > 0) {
+      out.capability_selected_skills = [...ev.capability.selectedSkillIds];
+    }
+    if (ev.capability.activatedSkills.length > 0) {
+      out.capability_activated_skills = ev.capability.activatedSkills.map((receipt) => ({
+        skill_id: receipt.skillId,
+        instruction_bytes: receipt.instructionBytes,
+        instruction_sha256: receipt.instructionSha256,
+      }));
+    }
+    if (ev.capability.blockedSkillIds.length > 0) {
+      out.capability_blocked_skills = [...ev.capability.blockedSkillIds];
+    }
+    out.capability_execution_authorized = false;
+  }
+  if (ev.capabilityError) out.capability_error = ev.capabilityError;
   // Body sample: sidecar path (Node) > inline base64 if it fits > drop (Workers, oversized).
   if (ev.reqBodySamplePath) {
     out.req_body_sample_path = ev.reqBodySamplePath;

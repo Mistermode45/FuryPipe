@@ -49,6 +49,68 @@ function textFromContent(value: unknown, allowedTypes: ReadonlySet<string>): str
   return out;
 }
 
+const RENDERED_CONTEXT_BOUNDARY = '[End of rendered context.]';
+
+function stripLeadingSystemReminders(value: string): string {
+  let rest = value.trim();
+  for (;;) {
+    const lower = rest.toLowerCase();
+    const open = '<system-reminder>';
+    const close = '</system-reminder>';
+    if (!lower.startsWith(open)) break;
+    const end = lower.indexOf(close, open.length);
+    if (end < 0) return '';
+    rest = rest.slice(end + close.length).trimStart();
+  }
+  return rest.trim();
+}
+
+function anthropicHumanTextFromContent(value: unknown): string {
+  if (typeof value === 'string') {
+    const boundary = value.indexOf(RENDERED_CONTEXT_BOUNDARY);
+    const candidate = boundary >= 0
+      ? value.slice(boundary + RENDERED_CONTEXT_BOUNDARY.length)
+      : value;
+    return stripLeadingSystemReminders(candidate);
+  }
+  if (!Array.isArray(value)) return '';
+
+  const boundaryIdx = value.findIndex((item) =>
+    item && typeof item === 'object' && !Array.isArray(item)
+    && (item as Record<string, unknown>).type === 'text'
+    && (item as Record<string, unknown>).text === RENDERED_CONTEXT_BOUNDARY);
+
+  const parts: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    if (boundaryIdx >= 0 && index <= boundaryIdx) continue;
+    const item = value[index];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const block = item as Record<string, unknown>;
+    if (block.type !== 'text' || typeof block.text !== 'string') continue;
+    const text = stripLeadingSystemReminders(block.text);
+    if (text) parts.push(text);
+  }
+  return parts.join('\n\n').trim();
+}
+
+/**
+ * Claude Code can append user-role turns that contain only tool_result blocks or
+ * <system-reminder> scaffolding. Walk backward until we find actual user-authored
+ * text instead of treating the newest transport/scaffolding turn as the task.
+ */
+function latestAnthropicHumanText(messages: unknown): string {
+  if (!Array.isArray(messages)) return '';
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const raw = messages[index];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const message = raw as Record<string, unknown>;
+    if (message.role !== 'user') continue;
+    const text = anthropicHumanTextFromContent(message.content);
+    if (text) return text.slice(0, MAX_OBJECTIVE_CHARS);
+  }
+  return '';
+}
+
 function latestRoleText(
   messages: unknown,
   role: string,
@@ -148,7 +210,7 @@ export function extractProxyTaskEnvelope(
 
   switch (wire) {
     case 'anthropic-messages':
-      objective = latestRoleText(root.messages, 'user', new Set(['text']));
+      objective = latestAnthropicHumanText(root.messages);
       structuredOutput = root.output_config !== undefined;
       break;
     case 'openai-chat':

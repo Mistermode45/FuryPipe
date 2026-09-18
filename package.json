@@ -133,6 +133,10 @@
       "types": "./dist/agent-skill-activation-node.d.ts",
       "import": "./dist/agent-skill-activation-node.js"
     },
+    "./proxy-capability-runtime": {
+      "types": "./dist/proxy-capability-runtime.d.ts",
+      "import": "./dist/proxy-capability-runtime.js"
+    },
     "./human-output-policy": {
       "types": "./dist/human-output-policy.d.ts",
       "import": "./dist/human-output-policy.js"

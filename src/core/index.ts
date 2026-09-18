@@ -356,3 +356,10 @@ export {
   type BlockedAgentSkillSelection,
   type SelectedAgentSkill,
 } from '../agent-skill-selector.js';
+export {
+  validateProxyCapabilityInstructionPlan,
+  type ProxyCapabilityInstructionBlock,
+  type ProxyCapabilityInstructionPlan,
+  type ProxyCapabilityPlanner,
+  type ProxyCapabilityRuntimeEvidence,
+} from '../proxy-capability-runtime.js';

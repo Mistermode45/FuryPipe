@@ -30,6 +30,69 @@ describe('proxy task envelope', () => {
     ]);
   });
 
+  it('falls back past a trailing Claude Code system-reminder-only user turn', () => {
+    const result = extractProxyTaskEnvelope(JSON.stringify({
+      model: 'claude-opus-5',
+      messages: [
+        { role: 'user', content: 'Réponds exactement : FURYPIPE_EXACT_181_OK' },
+        { role: 'assistant', content: [{ type: 'text', text: 'intermediate' }] },
+        {
+          role: 'user',
+          content: [{ type: 'text', text: '<system-reminder>dynamic harness state</system-reminder>' }],
+        },
+      ],
+    }), 'anthropic-messages');
+
+    expect(result?.objective).toBe('Réponds exactement : FURYPIPE_EXACT_181_OK');
+  });
+
+  it('ignores tool_result/reminder-only transport turns when recovering the human task', () => {
+    const result = extractProxyTaskEnvelope(JSON.stringify({
+      model: 'claude-opus-5',
+      messages: [
+        { role: 'user', content: 'Debug this regression.' },
+        { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }] },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 't1', content: 'tool data' },
+            { type: 'text', text: '<system-reminder>tool loop metadata</system-reminder>' },
+          ],
+        },
+      ],
+    }), 'anthropic-messages');
+
+    expect(result?.objective).toBe('Debug this regression.');
+  });
+
+  it('strips leading system-reminder scaffolding but keeps human text in the same user message', () => {
+    const result = extractProxyTaskEnvelope(JSON.stringify({
+      model: 'claude-opus-5',
+      messages: [{
+        role: 'user',
+        content: '<system-reminder>project instructions</system-reminder>\n\nFix the parser.',
+      }],
+    }), 'anthropic-messages');
+
+    expect(result?.objective).toBe('Fix the parser.');
+  });
+
+  it('uses only text after the rendered-context boundary for Anthropic task routing', () => {
+    const result = extractProxyTaskEnvelope(JSON.stringify({
+      model: 'claude-opus-5',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: '<system-reminder>standing instructions</system-reminder>' },
+          { type: 'text', text: '[End of rendered context.]' },
+          { type: 'text', text: 'Audit the current implementation.' },
+        ],
+      }],
+    }), 'anthropic-messages');
+
+    expect(result?.objective).toBe('Audit the current implementation.');
+  });
+
   it('extracts OpenAI Responses user input and detects structured output', () => {
     const result = extractProxyTaskEnvelope(JSON.stringify({
       input: [{

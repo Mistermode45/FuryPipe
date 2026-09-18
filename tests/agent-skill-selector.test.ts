@@ -40,6 +40,21 @@ describe('Agent Skill task selector', () => {
     ]);
   });
 
+  it('treats explicit activation as exclusive over automatic relevance matches', () => {
+    const plan = selectAgentSkillsForTask(
+      'Use $seo-audit while debugging this failing test and root cause.',
+      candidates,
+    );
+
+    expect(plan.selected).toEqual([
+      expect.objectContaining({
+        name: 'seo-audit',
+        reason: 'explicit_user_activation',
+      }),
+    ]);
+    expect(plan.selected.map((item) => item.name)).not.toContain('systematic-debugging');
+  });
+
   it('does not activate an explicitly requested untrusted skill', () => {
     const plan = selectAgentSkillsForTask(
       'Please use /untrusted-deploy now.',

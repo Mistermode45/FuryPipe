@@ -28,6 +28,11 @@ import { resolveGptProfile } from './gpt-model-profiles.js';
 import { extractProxyTaskEnvelope } from '../proxy-task-envelope.js';
 import { resolveFuryHumanOutputPolicy } from '../human-output-policy.js';
 import { applyAnthropicHumanOutputInstruction } from '../proxy-human-output.js';
+import {
+  type ProxyCapabilityPlanner,
+  type ProxyCapabilityRuntimeEvidence,
+} from '../proxy-capability-runtime.js';
+import { applyAnthropicCapabilityInstructions } from '../proxy-capability-augment.js';
 
 export interface ProxyConfig {
   /** 'cloudflare-ai-gateway': routes both families through gatewayBaseUrl;
@@ -76,6 +81,11 @@ export interface ProxyConfig {
    * enables it unless the operator opts out.
    */
   humanOutputPolicy?: boolean;
+  /**
+   * Optional host-owned capability planner. Core never discovers filesystem
+   * skills or connects MCP by itself; it only applies a validated host plan.
+   */
+  capabilityPlanner?: ProxyCapabilityPlanner;
   /** Persist 4xx diagnostics: the gzipped request body plus the upstream error
    *  body. Off by default because either side may contain prompts or secrets. */
   captureErrorReqBody?: boolean;
@@ -145,6 +155,10 @@ export interface ProxyEvent {
   /** Upstream response media/encoding metadata for scanner diagnostics. */
   responseContentType?: string;
   responseContentEncoding?: string;
+  /** Plaintext-free evidence for host-selected instruction capabilities. */
+  capability?: ProxyCapabilityRuntimeEvidence;
+  /** Bounded diagnostic when optional capability planning failed open. */
+  capabilityError?: string;
 }
 
 /** Max chars of 4xx error body captured on ProxyEvent — enough for Anthropic's full error JSON. */
@@ -1538,6 +1552,8 @@ let responseContentType: string | undefined;
     let reqBodySha256: string | undefined;
     // Set once the transform returns; read by fire() at event time.
     let transformMs: number | undefined;
+    let capabilityEvidence: ProxyCapabilityRuntimeEvidence | undefined;
+    let capabilityError: string | undefined;
 
     const fire = (
       status: number,
@@ -1630,6 +1646,8 @@ let responseContentType: string | undefined;
           stopReason,
           responseContentType,
           responseContentEncoding,
+          capability: capabilityEvidence,
+          capabilityError,
         });
       };
       // Telemetry is best-effort and must never surface as an unhandled rejection
@@ -1719,14 +1737,44 @@ let responseContentType: string | undefined;
       }
       let bodyIn = bounded.bytes;
       try {
-        if (isMessages && config.humanOutputPolicy === true) {
+        if (isMessages && (config.humanOutputPolicy === true || config.capabilityPlanner !== undefined)) {
           const task = extractProxyTaskEnvelope(bodyIn, 'anthropic-messages');
           if (task) {
-            const humanOutput = resolveFuryHumanOutputPolicy({
+            // Classify output constraints independently from whether the
+            // optional compact-human style is enabled. Exact-output precedence
+            // must still block capability augmentation when style is disabled.
+            const outputContext = resolveFuryHumanOutputPolicy({
               objective: task.objective,
               structuredOutput: task.structuredOutput,
             });
-            bodyIn = applyAnthropicHumanOutputInstruction(bodyIn, humanOutput);
+            const humanOutput = config.humanOutputPolicy === true
+              ? outputContext
+              : resolveFuryHumanOutputPolicy({
+                  objective: task.objective,
+                  structuredOutput: task.structuredOutput,
+                  enabled: false,
+                });
+
+            // Exact-response probes must stay untouched by optional capability
+            // augmentation. The request can still pass through ExactGuard and
+            // provider transport, but no Skill/style instruction is injected.
+            if (config.capabilityPlanner !== undefined
+              && outputContext.reason !== 'exact_output_contract') {
+              try {
+                const capabilityPlan = await config.capabilityPlanner(task);
+                if (capabilityPlan !== undefined) {
+                  bodyIn = applyAnthropicCapabilityInstructions(bodyIn, capabilityPlan);
+                  capabilityEvidence = capabilityPlan.evidence;
+                }
+              } catch (caught) {
+                const message = caught instanceof Error ? caught.message : 'unknown capability runtime failure';
+                capabilityError = ('capability_runtime_failed: ' + message).slice(0, 512);
+              }
+            }
+
+            if (config.humanOutputPolicy === true) {
+              bodyIn = applyAnthropicHumanOutputInstruction(bodyIn, humanOutput);
+            }
           }
         }
         const transformOpts =
