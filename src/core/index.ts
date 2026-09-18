@@ -411,3 +411,17 @@ export {
   type McpDirectVerificationEvidence,
   type McpDirectLifecycleState,
 } from '../mcp-direct-governance.js';
+
+export {
+  createMcpDirectToolProposal,
+  resolveMcpDirectProposalArguments,
+  evaluateMcpDirectPolicy,
+  approveMcpDirectPolicyDecision,
+  isGeneratedMcpDirectToolProposal,
+  isGeneratedMcpDirectPolicyDecision,
+  type McpDirectPolicyOutcome,
+  type McpDirectPolicyPair,
+  type McpDirectPolicy,
+  type McpDirectToolProposal,
+  type McpDirectPolicyDecision,
+} from '../mcp-direct-policy.js';
