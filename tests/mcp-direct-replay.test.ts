@@ -31,7 +31,10 @@ import {
   selectMcpDirectTool,
   type McpDirectPolicy,
 } from '../src/mcp-direct-policy.js';
-import { resetMcpDirectReplayStateForTests } from '../src/mcp-direct-replay-internal.js';
+import {
+  reserveMcpDirectExecutionAttempt,
+  resetMcpDirectReplayStateForTests,
+} from '../src/mcp-direct-replay-internal.js';
 
 const sha = (char: string) => char.repeat(64);
 
@@ -67,6 +70,28 @@ function config(): McpDirectRuntimeConfig {
     },
     command: 'fixture-server',
     args: ['--stdio'],
+  };
+  return {
+    ...provisional,
+    source: {
+      ...provisional.source,
+      endpointFingerprint: deriveMcpDirectEndpointFingerprint(provisional),
+    },
+  };
+}
+
+function principalConfig(principalId: string): McpDirectRuntimeConfig {
+  const provisional: McpDirectRuntimeConfig = {
+    source: {
+      sourceId: 'm4-principal-fixture',
+      transport: 'stdio',
+      endpointFingerprint: sha('0'),
+      trust: 'trusted',
+    },
+    command: 'fixture-server',
+    args: ['--stdio'],
+    env: { API_TOKEN: 'runtime-secret-not-in-evidence' },
+    principalId,
   };
   return {
     ...provisional,
@@ -117,12 +142,12 @@ function fakeFactory(options: {
   };
 }
 
-async function approved(
+async function approvedWithRuntime(
   factory: McpDirectSdkFactory,
+  runtime: McpDirectRuntimeConfig,
   message: string,
   options: { readonly operator?: boolean } = {},
 ) {
-  const runtime = config();
   const inventory = await probeMcpDirectInventoryInternal(runtime, {
     clientInfo: { name: 'furypipe-m4-test', version: '1.0.0' },
     factory,
@@ -155,6 +180,14 @@ async function approved(
     authority,
   );
   return { runtime, lifecycle, proposal };
+}
+
+async function approved(
+  factory: McpDirectSdkFactory,
+  message: string,
+  options: { readonly operator?: boolean } = {},
+) {
+  return approvedWithRuntime(factory, config(), message, options);
 }
 
 async function approvedPublic(
@@ -453,6 +486,184 @@ describe('Direct MCP M4 replay governance', () => {
       }),
     });
     expect(fake.counts().callCalls).toBe(1);
+  });
+
+  it('binds duplicate suppression to the principal-bound endpoint identity', async () => {
+    const fake = fakeFactory({});
+    const principalA = await approvedWithRuntime(
+      fake.factory,
+      principalConfig('principal-a'),
+      'principal-bound',
+    );
+    const first = await executeMcpDirectApprovedToolInternal(
+      principalA.runtime,
+      principalA.lifecycle,
+      principalA.proposal,
+      {
+        clientInfo: { name: 'furypipe-m4-test', version: '1.0.0' },
+        factory: fake.factory,
+      },
+    );
+
+    const principalB = await approvedWithRuntime(
+      fake.factory,
+      principalConfig('principal-b'),
+      'principal-bound',
+    );
+    const second = await executeMcpDirectApprovedToolInternal(
+      principalB.runtime,
+      principalB.lifecycle,
+      principalB.proposal,
+      {
+        clientInfo: { name: 'furypipe-m4-test', version: '1.0.0' },
+        factory: fake.factory,
+      },
+    );
+
+    expect(principalA.runtime.source.endpointFingerprint)
+      .not.toBe(principalB.runtime.source.endpointFingerprint);
+    expect(first.receipt.replayKeySha256).not.toBe(second.receipt.replayKeySha256);
+    expect(JSON.stringify(first.receipt)).not.toContain('runtime-secret-not-in-evidence');
+    expect(JSON.stringify(second.receipt)).not.toContain('runtime-secret-not-in-evidence');
+    expect(fake.counts().callCalls).toBe(2);
+  });
+
+  it('expires replay intent and keeps copied intent objects non-authoritative', async () => {
+    const fake = fakeFactory({});
+    const first = await approved(fake.factory, 'expiry');
+    const original = await executeMcpDirectApprovedToolInternal(
+      first.runtime,
+      first.lifecycle,
+      first.proposal,
+      {
+        clientInfo: { name: 'furypipe-m4-test', version: '1.0.0' },
+        factory: fake.factory,
+      },
+    );
+    const second = await approved(fake.factory, 'expiry');
+    const intent = createMcpDirectReplayIntent(
+      original.receipt,
+      second.lifecycle,
+      second.proposal,
+      'repeat_closed_world_read',
+      { expiresInMs: 1 },
+    );
+
+    const copied = { ...intent };
+    expect(() => reserveMcpDirectExecutionAttempt(
+      second.lifecycle,
+      second.proposal,
+      copied,
+      intent.issuedAt,
+    )).toThrow(/not authorized/i);
+
+    expect(() => reserveMcpDirectExecutionAttempt(
+      second.lifecycle,
+      second.proposal,
+      intent,
+      intent.expiresAt,
+    )).toThrow(/not authorized/i);
+    expect(fake.counts().callCalls).toBe(1);
+  });
+
+  it('keeps replay intent and replay receipt free of raw argument/result plaintext', async () => {
+    const canary = 'M4_REPLAY_PLAINTEXT_CANARY_14C7';
+    const fake = fakeFactory({});
+    const first = await approved(fake.factory, canary);
+    const original = await executeMcpDirectApprovedToolInternal(
+      first.runtime,
+      first.lifecycle,
+      first.proposal,
+      {
+        clientInfo: { name: 'furypipe-m4-test', version: '1.0.0' },
+        factory: fake.factory,
+      },
+    );
+
+    const second = await approved(fake.factory, canary);
+    const intent = createMcpDirectReplayIntent(
+      original.receipt,
+      second.lifecycle,
+      second.proposal,
+      'repeat_closed_world_read',
+    );
+    expect(JSON.stringify(intent)).not.toContain(canary);
+
+    const replay = await executeMcpDirectApprovedToolInternal(
+      second.runtime,
+      second.lifecycle,
+      second.proposal,
+      {
+        clientInfo: { name: 'furypipe-m4-test', version: '1.0.0' },
+        factory: fake.factory,
+        replayIntent: intent,
+      },
+    );
+    expect(JSON.stringify(replay.receipt)).not.toContain(canary);
+    expect(replay.result).toMatchObject({
+      structuredContent: { echo: canary },
+    });
+  });
+
+  it('caps a replay key at three total governed attempts inside the suppression window', async () => {
+    const fake = fakeFactory({});
+
+    const first = await approved(fake.factory, 'bounded');
+    const one = await executeMcpDirectApprovedToolInternal(
+      first.runtime,
+      first.lifecycle,
+      first.proposal,
+      {
+        clientInfo: { name: 'furypipe-m4-test', version: '1.0.0' },
+        factory: fake.factory,
+      },
+    );
+
+    const second = await approved(fake.factory, 'bounded');
+    const intent2 = createMcpDirectReplayIntent(
+      one.receipt,
+      second.lifecycle,
+      second.proposal,
+      'repeat_closed_world_read',
+    );
+    const two = await executeMcpDirectApprovedToolInternal(
+      second.runtime,
+      second.lifecycle,
+      second.proposal,
+      {
+        clientInfo: { name: 'furypipe-m4-test', version: '1.0.0' },
+        factory: fake.factory,
+        replayIntent: intent2,
+      },
+    );
+
+    const third = await approved(fake.factory, 'bounded');
+    const intent3 = createMcpDirectReplayIntent(
+      two.receipt,
+      third.lifecycle,
+      third.proposal,
+      'repeat_closed_world_read',
+    );
+    const three = await executeMcpDirectApprovedToolInternal(
+      third.runtime,
+      third.lifecycle,
+      third.proposal,
+      {
+        clientInfo: { name: 'furypipe-m4-test', version: '1.0.0' },
+        factory: fake.factory,
+        replayIntent: intent3,
+      },
+    );
+    expect(three.receipt.attempt).toBe(3);
+
+    const fourth = await approved(fake.factory, 'bounded');
+    expect(() => createMcpDirectReplayIntent(
+      three.receipt,
+      fourth.lifecycle,
+      fourth.proposal,
+      'repeat_closed_world_read',
+    )).toThrow(/attempt limit/i);
+    expect(fake.counts().callCalls).toBe(3);
   });
 
   it('proves one original plus one explicit replay with the real official v2 stdio stack and no hidden third call', async () => {
