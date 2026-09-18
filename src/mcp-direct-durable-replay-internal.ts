@@ -944,7 +944,21 @@ export async function compactMcpDirectDurableEvidenceInternal(
     throw new Error('MCP durable compaction timestamps are invalid');
   }
   const { store, scopeSha256 } = requiredStore(coordinator);
-  const records = await loadedRecords(coordinator, replayKeySha256);
+  let records: readonly LoadedRecord[];
+  try {
+    records = await loadedRecords(coordinator, replayKeySha256);
+  } catch (caught) {
+    // A separate maintainer may have published the tombstone after list()
+    // but before get(). Re-read the post-race state; unresolved reads still
+    // fail closed and never become replay authority.
+    const afterRace = await inspectMcpDirectDurableReplayStatusInternal(
+      coordinator,
+      replayKeySha256,
+      options.now,
+    ).catch(() => undefined);
+    if (afterRace?.state === 'compacted') return afterRace;
+    throw caught;
+  }
   const current = classify(scopeSha256, replayKeySha256, records, options.now);
   if (current.state === 'compacted') {
     const tombstoneLoaded = records.find(({ record }) =>
