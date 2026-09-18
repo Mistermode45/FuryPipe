@@ -8,6 +8,7 @@ import { createRecoveryStore } from '../src/core/recovery-store.js';
 import {
   createMcpDirectDurableReplayCoordinatorInternal,
   inspectMcpDirectDurableReplayStatusInternal,
+  reclaimMcpDirectDurableExpiredPreCallInternal,
   reserveMcpDirectDurableExecution,
   armMcpDirectDurableExecution,
   settleMcpDirectDurableExecution,
@@ -228,32 +229,89 @@ describe('Direct MCP durable replay foundation', () => {
     }
   });
 
-  it('does not automatically reclaim an expired unarmed reservation in the foundation slice', async () => {
+  it('reclaims only an expired unarmed reservation and restores the prior safe state', async () => {
     const { root, coordinator } = await fixture();
     try {
       await reserveMcpDirectDurableExecution(
         coordinator,
         KEY,
-        { now: 6_000, leaseMs: 1 },
+        { now: 6_000, leaseMs: 10 },
       );
-      const status = await inspectMcpDirectDurableReplayStatusInternal(
-        coordinator,
-        KEY,
-        6_001,
-      );
-      expect(status).toMatchObject({
-        state: 'pre_call',
-        leaseExpired: true,
-      });
 
-      await expect(reserveMcpDirectDurableExecution(
+      await expect(reclaimMcpDirectDurableExpiredPreCallInternal(
         coordinator,
         KEY,
-        { now: 6_002 },
+        6_009,
       )).rejects.toMatchObject({
-        code: 'durable-state-conflict',
+        code: 'durable-reclaim-not-safe',
         retrySafe: false,
       });
+
+      const reclaimed = await reclaimMcpDirectDurableExpiredPreCallInternal(
+        coordinator,
+        KEY,
+        6_010,
+      );
+      expect(reclaimed).toMatchObject({ state: 'clear' });
+
+      const fresh = await reserveMcpDirectDurableExecution(
+        coordinator,
+        KEY,
+        { now: 6_011 },
+      );
+      expect(fresh).toMatchObject({ attempt: 1, replayed: false });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('serializes expired reclaim against arm so exactly one transition wins', async () => {
+    const { root, store, coordinator } = await fixture();
+    try {
+      const reservation = await reserveMcpDirectDurableExecution(
+        coordinator,
+        KEY,
+        { now: 6_100, leaseMs: 10 },
+      );
+      const reclaimer = createMcpDirectDurableReplayCoordinatorInternal({
+        store,
+        tenantId: 'tenant-a',
+        principalId: 'principal-a',
+      });
+
+      const outcomes = await Promise.allSettled([
+        reclaimMcpDirectDurableExpiredPreCallInternal(
+          reclaimer,
+          KEY,
+          6_110,
+        ),
+        armMcpDirectDurableExecution(
+          coordinator,
+          reservation,
+          6_109,
+        ),
+      ]);
+
+      expect(outcomes.filter(outcome => outcome.status === 'fulfilled')).toHaveLength(1);
+      expect(outcomes.filter(outcome => outcome.status === 'rejected')).toHaveLength(1);
+
+      const final = await inspectMcpDirectDurableReplayStatusInternal(
+        reclaimer,
+        KEY,
+        6_111,
+      );
+      expect(['clear', 'armed']).toContain(final.state);
+
+      if (final.state === 'armed') {
+        await expect(reclaimMcpDirectDurableExpiredPreCallInternal(
+          reclaimer,
+          KEY,
+          99_000,
+        )).rejects.toMatchObject({
+          code: 'durable-reclaim-not-safe',
+          retrySafe: false,
+        });
+      }
     } finally {
       await rm(root, { recursive: true, force: true });
     }
