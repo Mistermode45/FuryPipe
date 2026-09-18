@@ -51,14 +51,18 @@ function canonicalValue(
   ancestors.add(object);
   try {
     if (Array.isArray(value)) {
-      const parts: string[] = [];
-      for (let index = 0; index < value.length; index += 1) {
-        if (!Object.hasOwn(value, index)) throw new Error(`${label} contains a sparse array`);
-        parts.push(canonicalValue(value[index], depth + 1, maxDepth, ancestors, label));
-      }
       const ownNames = Object.getOwnPropertyNames(value);
       if (ownNames.some((name) => name !== 'length' && !/^(?:0|[1-9][0-9]*)$/u.test(name))) {
         throw new Error(`${label} array contains non-index properties`);
+      }
+      const parts: string[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!descriptor) throw new Error(`${label} contains a sparse array`);
+        if (!descriptor.enumerable || !('value' in descriptor)) {
+          throw new Error(`${label} array contains hidden or accessor elements`);
+        }
+        parts.push(canonicalValue(descriptor.value, depth + 1, maxDepth, ancestors, label));
       }
       return `[${parts.join(',')}]`;
     }

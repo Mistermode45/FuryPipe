@@ -50,7 +50,7 @@ executor. Copying or serializing the proposal destroys its authority.
 
 There are no wildcard or implicit allow rules.
 
-A policy contains two bounded exact `sourceId + toolName` allowlists:
+A policy contains two bounded exact `sourceId + endpointFingerprint + toolName` allowlists:
 
 - `governedPolicyAllowlist`: candidates for policy approval;
 - `operatorApprovalAllowlist`: candidates that an operator may explicitly approve.
@@ -65,7 +65,7 @@ Automatic policy approval is possible only when all of these are true:
 - the normal policy gate remains required.
 
 Untrusted, open-world, additive-mutation and destructive tools never receive
-governed-policy approval. If their exact pair is operator-allowlisted they
+governed-policy approval. If their exact tuple is operator-allowlisted they
 produce `require_operator`; otherwise they are denied.
 
 ## Exact approval binding
@@ -83,6 +83,10 @@ policy decision digest
 + approval kind
 ```
 
+Operator approval additionally requires a short-lived, process-local,
+single-use intent object. The host/UI must create that object only after fresh
+human intent; copied or serialized intent is not authority.
+
 The M0 execution-permit factory now requires the requested input digest to equal
 the input digest that was actually approved. A caller cannot validate/approve
 one argument object and substitute another before permit creation.
@@ -90,7 +94,7 @@ one argument object and substitute another before permit creation.
 ## Privacy
 
 Raw tool arguments and raw schemas do not appear in proposal, policy decision,
-approval, lifecycle or permit evidence. Tests use plaintext canaries to enforce
+operator intent, approval, lifecycle or permit evidence. Tests use plaintext canaries to enforce
 this property.
 
 ## Authority boundary

@@ -5,7 +5,7 @@ import {
   type McpDirectCatalogHandle,
 } from './mcp-direct-catalog.js';
 import {
-  cloneMcpDirectJson,
+  canonicalizeMcpDirectJson,
   digestMcpDirectJson,
 } from './mcp-direct-json.js';
 import {
@@ -22,7 +22,22 @@ export type McpDirectPolicyOutcome =
 
 export interface McpDirectPolicyPair {
   readonly sourceId: string;
+  readonly endpointFingerprint: string;
   readonly toolName: string;
+}
+
+export interface McpDirectOperatorApprovalIntent {
+  readonly format: 'furypipe-mcp-direct-operator-intent/v1';
+  readonly intentId: string;
+  readonly proposalSha256: string;
+  readonly policyDecisionIdSha256: string;
+  readonly issuedAt: number;
+  readonly expiresAt: number;
+}
+
+export interface McpDirectOperatorIntentOptions {
+  readonly now?: number;
+  readonly expiresInMs?: number;
 }
 
 export interface McpDirectPolicy {
@@ -88,13 +103,22 @@ interface DecisionState {
   readonly outcome: McpDirectPolicyOutcome;
 }
 
+interface OperatorIntentState {
+  readonly proposal: McpDirectToolProposal;
+  readonly decision: McpDirectPolicyDecision;
+  consumed: boolean;
+}
+
 const PROPOSAL_STATE = new WeakMap<object, ProposalState>();
 const DECISION_STATE = new WeakMap<object, DecisionState>();
+const OPERATOR_INTENT_STATE = new WeakMap<object, OperatorIntentState>();
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const MAX_POLICY_PAIRS = 256;
 const MAX_ARGUMENT_BYTES = 1024 * 1024;
 const MAX_ARGUMENT_DEPTH = 64;
+const DEFAULT_OPERATOR_INTENT_TTL_MS = 30_000;
+const MAX_OPERATOR_INTENT_TTL_MS = 60_000;
 
 function assertLifecycleSelected(
   lifecycle: McpDirectLifecycleState,
@@ -156,20 +180,23 @@ function normalizedPairs(value: unknown, label: string): readonly McpDirectPolic
   const seen = new Set<string>();
   const pairs = value.map((entry) => {
     const record = ownRecord(entry, label);
-    assertExactKeys(record, ['sourceId', 'toolName'], label);
+    assertExactKeys(record, ['sourceId', 'endpointFingerprint', 'toolName'], label);
     if (
       typeof record.sourceId !== 'string'
       || !SAFE_ID.test(record.sourceId)
+      || typeof record.endpointFingerprint !== 'string'
+      || !SHA256.test(record.endpointFingerprint)
       || typeof record.toolName !== 'string'
       || !SAFE_ID.test(record.toolName)
     ) {
-      throw new Error(`${label} contains an invalid source/tool identifier`);
+      throw new Error(`${label} contains an invalid source/endpoint/tool identity`);
     }
-    const key = `${record.sourceId}\u0000${record.toolName}`;
-    if (seen.has(key)) throw new Error(`${label} contains duplicate source/tool pairs`);
+    const key = `${record.sourceId}\u0000${record.endpointFingerprint}\u0000${record.toolName}`;
+    if (seen.has(key)) throw new Error(`${label} contains duplicate source/endpoint/tool pairs`);
     seen.add(key);
     return Object.freeze({
       sourceId: record.sourceId,
+      endpointFingerprint: record.endpointFingerprint,
       toolName: record.toolName,
     });
   });
@@ -207,9 +234,14 @@ function normalizePolicy(value: McpDirectPolicy): McpDirectPolicy {
 function includesPair(
   pairs: readonly McpDirectPolicyPair[],
   sourceId: string,
+  endpointFingerprint: string,
   toolName: string,
 ): boolean {
-  return pairs.some((pair) => pair.sourceId === sourceId && pair.toolName === toolName);
+  return pairs.some((pair) =>
+    pair.sourceId === sourceId
+    && pair.endpointFingerprint === endpointFingerprint
+    && pair.toolName === toolName
+  );
 }
 
 function assertProposalBound(
@@ -281,19 +313,22 @@ export async function createMcpDirectToolProposal(
 ): Promise<McpDirectToolProposal> {
   const selected = assertLifecycleSelected(lifecycle);
   const schema = resolveMcpDirectSelectedToolSchema(catalog, lifecycle);
-  const canonicalArgs = JSON.stringify(cloneMcpDirectJson(args, {
+  const normalizedArgs = args === undefined
+    ? Object.freeze({})
+    : ownRecord(args, 'MCP tool arguments');
+  const canonicalArgs = canonicalizeMcpDirectJson(normalizedArgs, {
     maxBytes: MAX_ARGUMENT_BYTES,
     maxDepth: MAX_ARGUMENT_DEPTH,
     label: 'MCP tool arguments',
-  }));
-  const validatedArgs = JSON.parse(canonicalArgs) as unknown;
+  });
+  const validatedArgs = JSON.parse(canonicalArgs) as Readonly<Record<string, unknown>>;
   const inputSha256 = digestMcpDirectJson(validatedArgs, {
     maxBytes: MAX_ARGUMENT_BYTES,
     maxDepth: MAX_ARGUMENT_DEPTH,
     label: 'MCP tool arguments',
   });
 
-  let validation: Awaited<ReturnType<ReturnType<typeof fromJsonSchema>['~standard']['validate']>>;
+  let validation: { readonly issues?: readonly unknown[] };
   try {
     const validator = fromJsonSchema(schema as Parameters<typeof fromJsonSchema>[0]);
     validation = await validator['~standard'].validate(validatedArgs);
@@ -361,11 +396,13 @@ export function evaluateMcpDirectPolicy(
   const autoAllowlisted = includesPair(
     policy.governedPolicyAllowlist,
     proposal.sourceId,
+    proposal.endpointFingerprint,
     proposal.toolName,
   );
   const operatorAllowlisted = includesPair(
     policy.operatorApprovalAllowlist,
     proposal.sourceId,
+    proposal.endpointFingerprint,
     proposal.toolName,
   );
   const safePolicyCandidate = lifecycle.source.trust === 'trusted'
@@ -422,13 +459,10 @@ export function evaluateMcpDirectPolicy(
   return decision;
 }
 
-export function approveMcpDirectPolicyDecision(
-  lifecycle: McpDirectLifecycleState,
+function assertDecisionBound(
   proposal: McpDirectToolProposal,
   decision: McpDirectPolicyDecision,
-  approvalKind: 'operator' | 'governed_policy',
-): McpDirectLifecycleState {
-  assertProposalBound(lifecycle, proposal);
+): DecisionState {
   if (!isGeneratedMcpDirectPolicyDecision(decision)) {
     throw new Error('MCP policy decision must be process-local FuryPipe evidence');
   }
@@ -471,21 +505,111 @@ export function approveMcpDirectPolicyDecision(
   if (expectedDecisionId !== decision.policyDecisionIdSha256) {
     throw new Error('MCP policy decision digest does not match its evidence');
   }
+  return internal;
+}
 
-  if (decision.outcome === 'deny') {
+export function isGeneratedMcpDirectOperatorApprovalIntent(
+  value: unknown,
+): value is McpDirectOperatorApprovalIntent {
+  return typeof value === 'object' && value !== null && OPERATOR_INTENT_STATE.has(value);
+}
+
+/**
+ * Records a short-lived explicit operator action. The host/UI is responsible
+ * for calling this only after fresh human intent; serialized/copied objects
+ * are never accepted as operator authority.
+ */
+export function createMcpDirectOperatorApprovalIntent(
+  proposal: McpDirectToolProposal,
+  decision: McpDirectPolicyDecision,
+  options: McpDirectOperatorIntentOptions = {},
+): McpDirectOperatorApprovalIntent {
+  if (!isGeneratedMcpDirectToolProposal(proposal)) {
+    throw new Error('MCP tool proposal must be process-local FuryPipe evidence');
+  }
+  const internalDecision = assertDecisionBound(proposal, decision);
+  if (internalDecision.outcome === 'deny') {
+    throw new Error('MCP policy denied operator approval for this proposal');
+  }
+
+  const now = options.now ?? Date.now();
+  const expiresInMs = options.expiresInMs ?? DEFAULT_OPERATOR_INTENT_TTL_MS;
+  if (!Number.isSafeInteger(now) || now < 0) {
+    throw new Error('MCP operator intent timestamp must be a non-negative safe integer');
+  }
+  if (
+    !Number.isSafeInteger(expiresInMs)
+    || expiresInMs < 1
+    || expiresInMs > MAX_OPERATOR_INTENT_TTL_MS
+  ) {
+    throw new Error('MCP operator intent TTL must be between 1 and 60000 ms');
+  }
+  const expiresAt = now + expiresInMs;
+  if (!Number.isSafeInteger(expiresAt)) {
+    throw new Error('MCP operator intent expiry must be a safe integer');
+  }
+
+  const intent: McpDirectOperatorApprovalIntent = Object.freeze({
+    format: 'furypipe-mcp-direct-operator-intent/v1',
+    intentId: `mcpop_${crypto.randomUUID()}`,
+    proposalSha256: proposal.proposalSha256,
+    policyDecisionIdSha256: decision.policyDecisionIdSha256,
+    issuedAt: now,
+    expiresAt,
+  });
+  OPERATOR_INTENT_STATE.set(intent, {
+    proposal,
+    decision,
+    consumed: false,
+  });
+  return intent;
+}
+
+export function approveMcpDirectPolicyDecision(
+  lifecycle: McpDirectLifecycleState,
+  proposal: McpDirectToolProposal,
+  decision: McpDirectPolicyDecision,
+  authority: 'governed_policy' | McpDirectOperatorApprovalIntent,
+  now: number = Date.now(),
+): McpDirectLifecycleState {
+  assertProposalBound(lifecycle, proposal);
+  const internalDecision = assertDecisionBound(proposal, decision);
+
+  if (!Number.isSafeInteger(now) || now < 0) {
+    throw new Error('MCP approval timestamp must be a non-negative safe integer');
+  }
+  if (internalDecision.outcome === 'deny') {
     throw new Error('MCP policy denied approval for this proposal');
   }
-  if (
-    approvalKind === 'governed_policy'
-    && decision.outcome !== 'allow_governed_policy'
-  ) {
-    throw new Error('MCP governed-policy approval is not authorized by this decision');
-  }
-  if (
-    approvalKind !== 'operator'
-    && approvalKind !== 'governed_policy'
-  ) {
-    throw new Error('unsupported MCP approval kind');
+
+  let approvalKind: 'operator' | 'governed_policy';
+  if (authority === 'governed_policy') {
+    if (internalDecision.outcome !== 'allow_governed_policy') {
+      throw new Error('MCP governed-policy approval is not authorized by this decision');
+    }
+    approvalKind = 'governed_policy';
+  } else {
+    if (!isGeneratedMcpDirectOperatorApprovalIntent(authority)) {
+      throw new Error('MCP operator approval requires process-local explicit intent');
+    }
+    const intentState = OPERATOR_INTENT_STATE.get(authority)!;
+    if (
+      authority.format !== 'furypipe-mcp-direct-operator-intent/v1'
+      || intentState.proposal !== proposal
+      || intentState.decision !== decision
+      || authority.proposalSha256 !== proposal.proposalSha256
+      || authority.policyDecisionIdSha256 !== decision.policyDecisionIdSha256
+    ) {
+      throw new Error('MCP operator intent is not bound to the exact proposal and policy decision');
+    }
+    if (now < authority.issuedAt || now >= authority.expiresAt) {
+      throw new Error('MCP operator intent is expired or not yet valid');
+    }
+    if (intentState.consumed) {
+      throw new Error('MCP operator intent was already consumed');
+    }
+    intentState.consumed = true;
+    approvalKind = 'operator';
   }
 
   return recordMcpDirectApproval(lifecycle, {

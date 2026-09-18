@@ -15,6 +15,7 @@ import {
 } from '../src/mcp-direct-governance.js';
 import {
   approveMcpDirectPolicyDecision,
+  createMcpDirectOperatorApprovalIntent,
   createMcpDirectToolProposal,
   evaluateMcpDirectPolicy,
   isGeneratedMcpDirectPolicyDecision,
@@ -85,10 +86,10 @@ function policy(options: {
     policyId: 'policy-main',
     governedPolicyAllowlist: options.auto === false
       ? []
-      : [{ sourceId: 'mcp-source', toolName: 'search' }],
+      : [{ sourceId: 'mcp-source', endpointFingerprint: sha('a'), toolName: 'search' }],
     operatorApprovalAllowlist: options.operator === false
       ? []
-      : [{ sourceId: 'mcp-source', toolName: 'search' }],
+      : [{ sourceId: 'mcp-source', endpointFingerprint: sha('a'), toolName: 'search' }],
   };
 }
 
@@ -129,6 +130,47 @@ describe('direct MCP proposal, policy and approval governance', () => {
       catalog,
       { query: 42 },
     )).rejects.toThrow(/failed input schema validation/i);
+  });
+
+  it('normalizes omitted no-arg input to an exact empty object and rejects array arguments', async () => {
+    const source = {
+      sourceId: 'mcp-source',
+      transport: 'stdio' as const,
+      endpointFingerprint: sha('a'),
+      trust: 'trusted' as const,
+    };
+    const noArgSchema = {
+      type: 'object',
+      additionalProperties: false,
+    } as const;
+    const inputSchemaSha256 = digestMcpDirectJson(noArgSchema);
+    const catalog = createMcpDirectCatalogHandle(source, [{
+      name: 'search',
+      inputSchema: noArgSchema,
+      inputSchemaSha256,
+    }]);
+    const lifecycle = recordMcpDirectSelection(
+      recordMcpDirectInventory(
+        recordMcpDirectConnection(createMcpDirectLifecycle(source), {
+          protocolEra: 'modern_2026',
+          handshake: 'discover',
+        }),
+        [{
+          name: 'search',
+          inputSchemaSha256,
+          risk: assessMcpToolRisk({ readOnlyHint: true, openWorldHint: false }, 'trusted'),
+        }],
+      ),
+      'search',
+    );
+
+    const proposal = await createMcpDirectToolProposal(lifecycle, catalog, undefined);
+    expect(resolveMcpDirectProposalArguments(proposal)).toEqual({});
+    await expect(createMcpDirectToolProposal(
+      lifecycle,
+      catalog,
+      [],
+    )).rejects.toThrow(/plain object/i);
   });
 
   it('rejects copied catalog handles before argument validation', async () => {
@@ -199,11 +241,17 @@ describe('direct MCP proposal, policy and approval governance', () => {
     const decision = evaluateMcpDirectPolicy(lifecycle, proposal, policy());
     expect(decision.riskClass).toBe('trusted_read_only_open_world');
     expect(decision.outcome).toBe('require_operator');
+    const intent = createMcpDirectOperatorApprovalIntent(
+      proposal,
+      decision,
+      { now: 10_000 },
+    );
     const approved = approveMcpDirectPolicyDecision(
       lifecycle,
       proposal,
       decision,
-      'operator',
+      intent,
+      10_001,
     );
     expect(approved.approval).toMatchObject({
       inputSha256: proposal.inputSha256,
@@ -236,11 +284,10 @@ describe('direct MCP proposal, policy and approval governance', () => {
       policy({ auto: false, operator: false }),
     );
     expect(decision.outcome).toBe('deny');
-    expect(() => approveMcpDirectPolicyDecision(
-      lifecycle,
+    expect(() => createMcpDirectOperatorApprovalIntent(
       proposal,
       decision,
-      'operator',
+      { now: 10_000 },
     )).toThrow(/denied/i);
   });
 
@@ -303,13 +350,92 @@ describe('direct MCP proposal, policy and approval governance', () => {
     expect(() => evaluateMcpDirectPolicy(lifecycle, proposal, {
       ...policy(),
       governedPolicyAllowlist: [
-        { sourceId: 'mcp-source', toolName: 'search' },
-        { sourceId: 'mcp-source', toolName: 'search' },
+        { sourceId: 'mcp-source', endpointFingerprint: sha('a'), toolName: 'search' },
+        { sourceId: 'mcp-source', endpointFingerprint: sha('a'), toolName: 'search' },
       ],
     })).toThrow(/duplicate/i);
   });
 
-  it('operator approval is impossible unless the exact source/tool pair is operator-allowlisted', async () => {
+  it('does not let a reused sourceId authorize a different endpoint fingerprint', async () => {
+    const { lifecycle, catalog } = setup();
+    const proposal = await createMcpDirectToolProposal(lifecycle, catalog, { query: 'alpha' });
+    const mismatched = {
+      ...policy(),
+      governedPolicyAllowlist: [{
+        sourceId: 'mcp-source',
+        endpointFingerprint: sha('f'),
+        toolName: 'search',
+      }],
+      operatorApprovalAllowlist: [],
+    };
+    const decision = evaluateMcpDirectPolicy(lifecycle, proposal, mismatched);
+    expect(decision.outcome).toBe('deny');
+  });
+
+  it('requires a fresh one-time process-local operator intent', async () => {
+    const { lifecycle, catalog } = setup({
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    });
+    const proposal = await createMcpDirectToolProposal(lifecycle, catalog, { query: 'alpha' });
+    const decision = evaluateMcpDirectPolicy(lifecycle, proposal, policy());
+
+    expect(() => approveMcpDirectPolicyDecision(
+      lifecycle,
+      proposal,
+      decision,
+      'governed_policy',
+      20_001,
+    )).toThrow(/not authorized/i);
+
+    const expired = createMcpDirectOperatorApprovalIntent(
+      proposal,
+      decision,
+      { now: 20_000, expiresInMs: 10 },
+    );
+    expect(() => approveMcpDirectPolicyDecision(
+      lifecycle,
+      proposal,
+      decision,
+      expired,
+      20_010,
+    )).toThrow(/expired/i);
+
+    const fresh = createMcpDirectOperatorApprovalIntent(
+      proposal,
+      decision,
+      { now: 30_000, expiresInMs: 1_000 },
+    );
+    const approved = approveMcpDirectPolicyDecision(
+      lifecycle,
+      proposal,
+      decision,
+      fresh,
+      30_001,
+    );
+    expect(approved.approval?.approvalKind).toBe('operator');
+    expect(() => approveMcpDirectPolicyDecision(
+      lifecycle,
+      proposal,
+      decision,
+      fresh,
+      30_002,
+    )).toThrow(/already consumed/i);
+
+    const copied = { ...createMcpDirectOperatorApprovalIntent(
+      proposal,
+      decision,
+      { now: 40_000 },
+    ) };
+    expect(() => approveMcpDirectPolicyDecision(
+      lifecycle,
+      proposal,
+      decision,
+      copied,
+      40_001,
+    )).toThrow(/process-local explicit intent/i);
+  });
+
+  it('operator approval is impossible unless the exact source/endpoint/tool tuple is operator-allowlisted', async () => {
     const { lifecycle, catalog } = setup({
       annotations: { readOnlyHint: true, openWorldHint: true },
     });
@@ -320,11 +446,10 @@ describe('direct MCP proposal, policy and approval governance', () => {
       policy({ auto: false, operator: false }),
     );
     expect(decision.outcome).toBe('deny');
-    expect(() => approveMcpDirectPolicyDecision(
-      lifecycle,
+    expect(() => createMcpDirectOperatorApprovalIntent(
       proposal,
       decision,
-      'operator',
+      { now: 10_000 },
     )).toThrow(/denied/i);
   });
 });

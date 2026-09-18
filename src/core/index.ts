@@ -415,13 +415,17 @@ export {
 export {
   createMcpDirectToolProposal,
   resolveMcpDirectProposalArguments,
+  createMcpDirectOperatorApprovalIntent,
   evaluateMcpDirectPolicy,
   approveMcpDirectPolicyDecision,
   isGeneratedMcpDirectToolProposal,
   isGeneratedMcpDirectPolicyDecision,
+  isGeneratedMcpDirectOperatorApprovalIntent,
   type McpDirectPolicyOutcome,
   type McpDirectPolicyPair,
   type McpDirectPolicy,
+  type McpDirectOperatorApprovalIntent,
+  type McpDirectOperatorIntentOptions,
   type McpDirectToolProposal,
   type McpDirectPolicyDecision,
 } from '../mcp-direct-policy.js';
