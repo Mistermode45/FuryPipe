@@ -71,6 +71,7 @@ export interface McpDirectPolicyDecision {
   readonly format: 'furypipe-mcp-direct-policy-decision/v1';
   readonly policyDecisionIdSha256: string;
   readonly policyId: string;
+  readonly policySha256: string;
   readonly proposalSha256: string;
   readonly sourceId: string;
   readonly endpointFingerprint: string;
@@ -100,6 +101,7 @@ interface ProposalState {
 interface DecisionState {
   readonly proposal: McpDirectToolProposal;
   readonly policyId: string;
+  readonly policySha256: string;
   readonly outcome: McpDirectPolicyOutcome;
 }
 
@@ -119,6 +121,7 @@ const MAX_ARGUMENT_BYTES = 1024 * 1024;
 const MAX_ARGUMENT_DEPTH = 64;
 const DEFAULT_OPERATOR_INTENT_TTL_MS = 30_000;
 const MAX_OPERATOR_INTENT_TTL_MS = 60_000;
+const GOVERNED_APPROVAL_TTL_MS = 30_000;
 
 function assertLifecycleSelected(
   lifecycle: McpDirectLifecycleState,
@@ -199,6 +202,11 @@ function normalizedPairs(value: unknown, label: string): readonly McpDirectPolic
       endpointFingerprint: record.endpointFingerprint,
       toolName: record.toolName,
     });
+  });
+  pairs.sort((left, right) => {
+    const leftKey = `${left.sourceId}\u0000${left.endpointFingerprint}\u0000${left.toolName}`;
+    const rightKey = `${right.sourceId}\u0000${right.endpointFingerprint}\u0000${right.toolName}`;
+    return leftKey.localeCompare(rightKey);
   });
   return Object.freeze(pairs);
 }
@@ -392,6 +400,11 @@ export function evaluateMcpDirectPolicy(
   const selected = assertLifecycleSelected(lifecycle);
   assertProposalBound(lifecycle, proposal);
   const policy = normalizePolicy(policyInput);
+  const policySha256 = digestMcpDirectJson(policy, {
+    maxBytes: 256 * 1024,
+    maxDepth: 16,
+    label: 'MCP direct policy',
+  });
 
   const autoAllowlisted = includesPair(
     policy.governedPolicyAllowlist,
@@ -430,6 +443,7 @@ export function evaluateMcpDirectPolicy(
 
   const decisionCore = Object.freeze({
     policyId: policy.policyId,
+    policySha256,
     proposalSha256: proposal.proposalSha256,
     sourceId: proposal.sourceId,
     endpointFingerprint: proposal.endpointFingerprint,
@@ -454,6 +468,7 @@ export function evaluateMcpDirectPolicy(
   DECISION_STATE.set(decision, Object.freeze({
     proposal,
     policyId: policy.policyId,
+    policySha256,
     outcome,
   }));
   return decision;
@@ -471,6 +486,8 @@ function assertDecisionBound(
     internal.proposal !== proposal
     || decision.format !== 'furypipe-mcp-direct-policy-decision/v1'
     || decision.policyId !== internal.policyId
+    || decision.policySha256 !== internal.policySha256
+    || !SHA256.test(decision.policySha256)
     || decision.proposalSha256 !== proposal.proposalSha256
     || decision.sourceId !== proposal.sourceId
     || decision.endpointFingerprint !== proposal.endpointFingerprint
@@ -487,6 +504,7 @@ function assertDecisionBound(
 
   const expectedDecisionId = digestMcpDirectJson({
     policyId: decision.policyId,
+    policySha256: decision.policySha256,
     proposalSha256: decision.proposalSha256,
     sourceId: decision.sourceId,
     endpointFingerprint: decision.endpointFingerprint,
@@ -583,11 +601,17 @@ export function approveMcpDirectPolicyDecision(
   }
 
   let approvalKind: 'operator' | 'governed_policy';
+  let approvalExpiresAt: number;
   if (authority === 'governed_policy') {
     if (internalDecision.outcome !== 'allow_governed_policy') {
       throw new Error('MCP governed-policy approval is not authorized by this decision');
     }
+    const expiresAt = now + GOVERNED_APPROVAL_TTL_MS;
+    if (!Number.isSafeInteger(expiresAt)) {
+      throw new Error('MCP governed approval expiry must be a safe integer');
+    }
     approvalKind = 'governed_policy';
+    approvalExpiresAt = expiresAt;
   } else {
     if (!isGeneratedMcpDirectOperatorApprovalIntent(authority)) {
       throw new Error('MCP operator approval requires process-local explicit intent');
@@ -610,11 +634,14 @@ export function approveMcpDirectPolicyDecision(
     }
     intentState.consumed = true;
     approvalKind = 'operator';
+    approvalExpiresAt = authority.expiresAt;
   }
 
   return recordMcpDirectApproval(lifecycle, {
     policyDecisionIdSha256: decision.policyDecisionIdSha256,
     inputSha256: proposal.inputSha256,
     approvalKind,
+    approvedAt: now,
+    expiresAt: approvalExpiresAt,
   });
 }

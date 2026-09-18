@@ -108,6 +108,7 @@ describe('direct MCP proposal, policy and approval governance', () => {
     const decision = evaluateMcpDirectPolicy(lifecycle, proposal, policy());
     expect(isGeneratedMcpDirectPolicyDecision(decision)).toBe(true);
     expect(decision.policyEvaluated).toBe(true);
+    expect(decision.policySha256).toMatch(/^[0-9a-f]{64}$/u);
     expect(decision.outcome).toBe('allow_governed_policy');
     expect(lifecycle.approved).toBe(false);
 
@@ -118,6 +119,12 @@ describe('direct MCP proposal, policy and approval governance', () => {
       'governed_policy',
     );
     expect(approved.approved).toBe(true);
+    expect(approved.approval).toMatchObject({
+      approvalKind: 'governed_policy',
+      approvedAt: expect.any(Number),
+      expiresAt: expect.any(Number),
+    });
+    expect((approved.approval?.expiresAt ?? 0) - (approved.approval?.approvedAt ?? 0)).toBe(30_000);
     expect(approved.executed).toBe(false);
     expect(approved.succeeded).toBe(false);
     expect(approved.verified).toBe(false);
@@ -257,6 +264,8 @@ describe('direct MCP proposal, policy and approval governance', () => {
       inputSha256: proposal.inputSha256,
       policyDecisionIdSha256: decision.policyDecisionIdSha256,
       approvalKind: 'operator',
+      approvedAt: 10_001,
+      expiresAt: 40_000,
     });
   });
 
@@ -354,6 +363,34 @@ describe('direct MCP proposal, policy and approval governance', () => {
         { sourceId: 'mcp-source', endpointFingerprint: sha('a'), toolName: 'search' },
       ],
     })).toThrow(/duplicate/i);
+  });
+
+  it('derives the same policy digest from semantically identical allowlists in different order', async () => {
+    const { lifecycle, catalog } = setup();
+    const proposal = await createMcpDirectToolProposal(lifecycle, catalog, { query: 'alpha' });
+
+    const first = policy();
+    const second: McpDirectPolicy = {
+      ...first,
+      governedPolicyAllowlist: [
+        { sourceId: 'zzz', endpointFingerprint: sha('b'), toolName: 'other' },
+        ...first.governedPolicyAllowlist,
+      ],
+      operatorApprovalAllowlist: [
+        { sourceId: 'zzz', endpointFingerprint: sha('b'), toolName: 'other' },
+        ...first.operatorApprovalAllowlist,
+      ],
+    };
+    const third: McpDirectPolicy = {
+      ...second,
+      governedPolicyAllowlist: [...second.governedPolicyAllowlist].reverse(),
+      operatorApprovalAllowlist: [...second.operatorApprovalAllowlist].reverse(),
+    };
+
+    const decisionTwo = evaluateMcpDirectPolicy(lifecycle, proposal, second);
+    const decisionThree = evaluateMcpDirectPolicy(lifecycle, proposal, third);
+    expect(decisionTwo.policySha256).toBe(decisionThree.policySha256);
+    expect(decisionTwo.policyDecisionIdSha256).toBe(decisionThree.policyDecisionIdSha256);
   });
 
   it('does not let a reused sourceId authorize a different endpoint fingerprint', async () => {

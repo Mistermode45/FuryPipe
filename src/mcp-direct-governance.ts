@@ -30,6 +30,8 @@ export interface McpDirectApprovalEvidence {
   readonly policyDecisionIdSha256: string;
   readonly inputSha256: string;
   readonly approvalKind: 'operator' | 'governed_policy';
+  readonly approvedAt: number;
+  readonly expiresAt: number;
 }
 
 export interface McpDirectExecutionPermit {
@@ -301,6 +303,11 @@ export function recordMcpDirectApproval(
   selectedInventoryTool(state);
   assertSha(evidence.policyDecisionIdSha256, 'policyDecisionIdSha256');
   assertSha(evidence.inputSha256, 'inputSha256');
+  assertTimestamp(evidence.approvedAt, 'approval approvedAt');
+  assertTimestamp(evidence.expiresAt, 'approval expiresAt');
+  if (evidence.expiresAt <= evidence.approvedAt) {
+    throw new Error('MCP approval expiry must be after approval time');
+  }
   if (evidence.approvalKind !== 'operator' && evidence.approvalKind !== 'governed_policy') {
     throw new Error('unsupported MCP approval kind');
   }
@@ -329,11 +336,18 @@ export function createMcpDirectExecutionPermit(
   const now = options.now ?? Date.now();
   const expiresInMs = options.expiresInMs ?? DEFAULT_PERMIT_TTL_MS;
   assertTimestamp(now, 'permit now');
+  if (now < state.approval.approvedAt || now >= state.approval.expiresAt) {
+    throw new Error('MCP approval is expired or not yet valid');
+  }
   if (!Number.isSafeInteger(expiresInMs) || expiresInMs < 1 || expiresInMs > MAX_PERMIT_TTL_MS) {
     throw new Error('MCP execution permit TTL must be between 1 and 60000 ms');
   }
-  const expiresAt = now + expiresInMs;
-  assertTimestamp(expiresAt, 'permit expiresAt');
+  const requestedExpiresAt = now + expiresInMs;
+  assertTimestamp(requestedExpiresAt, 'permit expiresAt');
+  const expiresAt = Math.min(requestedExpiresAt, state.approval.expiresAt);
+  if (expiresAt <= now) {
+    throw new Error('MCP execution permit cannot outlive approval freshness');
+  }
 
   const permit: McpDirectExecutionPermit = Object.freeze({
     format: 'furypipe-mcp-execution-permit/v1',

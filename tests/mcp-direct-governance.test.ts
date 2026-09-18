@@ -46,6 +46,8 @@ function approved(inputChar = 'd') {
     policyDecisionIdSha256: sha('e'),
     inputSha256: sha(inputChar),
     approvalKind: 'operator',
+    approvedAt: 0,
+    expiresAt: 60_000,
   });
 }
 
@@ -120,6 +122,8 @@ describe('direct MCP governance lifecycle', () => {
       policyDecisionIdSha256: sha('e'),
       inputSha256: sha('d'),
       approvalKind: 'operator',
+      approvedAt: 0,
+      expiresAt: 60_000,
     });
     const permit = createMcpDirectExecutionPermit(state, sha('d'), { now: 1_000 });
     expect(isGeneratedMcpDirectExecutionPermit(permit)).toBe(true);
@@ -135,6 +139,39 @@ describe('direct MCP governance lifecycle', () => {
       issuedAt: 1_000,
       expiresAt: 31_000,
     });
+  });
+
+  it('cannot mint a fresh permit from stale approval evidence', () => {
+    const selected = recordMcpDirectSelection(listed(), 'echo');
+    const state = recordMcpDirectApproval(selected, {
+      policyDecisionIdSha256: sha('e'),
+      inputSha256: sha('d'),
+      approvalKind: 'operator',
+      approvedAt: 1_000,
+      expiresAt: 2_000,
+    });
+    expect(() => createMcpDirectExecutionPermit(
+      state,
+      sha('d'),
+      { now: 2_000 },
+    )).toThrow(/approval is expired/i);
+  });
+
+  it('caps permit expiry at the approval freshness boundary', () => {
+    const selected = recordMcpDirectSelection(listed(), 'echo');
+    const state = recordMcpDirectApproval(selected, {
+      policyDecisionIdSha256: sha('e'),
+      inputSha256: sha('d'),
+      approvalKind: 'operator',
+      approvedAt: 1_000,
+      expiresAt: 1_500,
+    });
+    const permit = createMcpDirectExecutionPermit(
+      state,
+      sha('d'),
+      { now: 1_400, expiresInMs: 30_000 },
+    );
+    expect(permit.expiresAt).toBe(1_500);
   });
 
   it('rejects copied or forged permits', () => {

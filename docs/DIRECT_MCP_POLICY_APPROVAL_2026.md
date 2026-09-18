@@ -70,6 +70,9 @@ produce `require_operator`; otherwise they are denied.
 
 ## Exact approval binding
 
+The policy decision records a SHA-256 digest of the normalized exact policy
+configuration, including both bounded allowlists.
+
 A generated approval is bound to:
 
 ```text
@@ -81,14 +84,18 @@ policy decision digest
 + listed schema digest
 + exact input digest
 + approval kind
++ approval timestamp
++ approval expiry
 ```
 
 Operator approval additionally requires a short-lived, process-local,
-single-use intent object. The host/UI must create that object only after fresh
+single-use intent object. The resulting approval cannot outlive that intent.
+Governed-policy approvals receive a 30-second freshness window. The host/UI must create that object only after fresh
 human intent; copied or serialized intent is not authority.
 
-The M0 execution-permit factory now requires the requested input digest to equal
-the input digest that was actually approved. A caller cannot validate/approve
+The M0 execution-permit factory now requires a still-fresh approval and the
+requested input digest to equal the input digest that was actually approved.
+Permit expiry is capped at the approval expiry boundary. A caller cannot validate/approve
 one argument object and substitute another before permit creation.
 
 ## Privacy
