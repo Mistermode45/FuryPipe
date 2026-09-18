@@ -141,7 +141,12 @@ describe('direct MCP proposal, policy and approval governance', () => {
     expect(proposal.inputSha256).toMatch(/^[0-9a-f]{64}$/u);
     expect(lifecycle.approved).toBe(false);
 
-    const decision = evaluateMcpDirectPolicy(lifecycle, proposal, policy());
+    const decision = evaluateMcpDirectPolicy(
+      lifecycle,
+      proposal,
+      policy(),
+      { now: 1_000 },
+    );
     expect(isGeneratedMcpDirectPolicyDecision(decision)).toBe(true);
     expect(decision.policyEvaluated).toBe(true);
     expect(decision.policySha256).toMatch(/^[0-9a-f]{64}$/u);
@@ -153,6 +158,7 @@ describe('direct MCP proposal, policy and approval governance', () => {
       proposal,
       decision,
       'governed_policy',
+      1_000,
     );
     expect(approved.approved).toBe(true);
     expect(approved.approval).toMatchObject({
