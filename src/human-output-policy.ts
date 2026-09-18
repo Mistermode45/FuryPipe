@@ -34,7 +34,7 @@ export const FURY_COMPACT_HUMAN_INSTRUCTION = [
   'Use normal explicit prose for security warnings, irreversible/high-impact confirmations, or any sequence where terse fragments could create ambiguity.',
 ].join(' ');
 
-const EXACT_OUTPUT = /(?:\brespond|\breply|\breturn|\boutput|\br[eé]ponds?|\brenvoie|\bretourne|\bsors?)\s+(?:exactly|strictly|uniquement|exactement|strictement)\b|\bexact\s+(?:response|output|string|text)\b|\btexte\s+exact\b|\bsortie\s+exacte\b/iu;
+const EXACT_OUTPUT = /(?:\brespond|\breply|\breturn|\boutput|\br[eé]ponds?|\brenvoie|\bretourne|\bsors?)\s+(?:exactly|strictly|only|uniquement|exactement|strictement|seulement)\b|\bexact\s+(?:response|output|string|text)\b|\btexte\s+exact\b|\bsortie\s+exacte\b/iu;
 
 const HIGH_IMPACT = /\b(?:delete|remove permanently|destroy|drop database|deploy(?:ment)?\s+(?:to\s+)?production|publish|release|send money|transfer funds|pay(?:ment)?|refund|sign contract|legal commitment|supprimer d[eé]finitivement|d[eé]ployer?\s+(?:en\s+)?production|publier|payer|rembourser|virer des fonds|signer(?:\s+un)?\s+contrat)\b/iu;
 
