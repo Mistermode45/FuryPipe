@@ -74,6 +74,10 @@ Legacy SSE is not selected or silently attempted by this track.
 
 ## Real transport proof
 
+The supported public probe has no injectable SDK factory. Test-only transport
+factories live in an internal module that is not present in the package exports,
+and the public facade rejects unknown runtime option fields.
+
 The automated suite includes an end-to-end stdio fixture using the real
 `@modelcontextprotocol/server@2.0.0` dual-era server entry and the real
 `@modelcontextprotocol/client@2.0.0` client transport. It proves modern

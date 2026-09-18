@@ -99,14 +99,11 @@ this property.
 
 ## Authority boundary
 
-The raw governance module is not a supported package subpath. Privileged state
-mutation helpers for approval, permit consumption, execution recording and
-verification are not exported from the root API. M2 approval must flow through
-the governed policy module.
-
-The execution-permit constructor may be used only with an M2-generated approved
-state; there is still no supported public consumer that can turn that permit
-into a tool call before M3.
+The raw governance module and client test seam are not supported package
+subpaths. Raw lifecycle constructors/mutators, permit constructors/consumers,
+approval mutation, execution recording and verification are not exported from
+the root API. The supported path is the real M1 inventory probe followed by M2
+proposal/policy/approval governance.
 
 M2 introduces no `callTool()`, no transport execution callback, no retry
 authority and no replay authority.

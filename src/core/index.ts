@@ -386,13 +386,6 @@ export {
 } from '../mcp-proxy-evidence.js';
 
 export {
-  createMcpDirectLifecycle,
-  recordMcpDirectConnection,
-  recordMcpDirectHealth,
-  recordMcpDirectInventory,
-  recordMcpDirectSelection,
-  createMcpDirectExecutionPermit,
-  isGeneratedMcpDirectExecutionPermit,
   isGeneratedMcpDirectLifecycleState,
   type McpDirectTransport,
   type McpDirectProtocolEra,
@@ -425,3 +418,14 @@ export {
   type McpDirectToolProposal,
   type McpDirectPolicyDecision,
 } from '../mcp-direct-policy.js';
+
+export {
+  deriveMcpDirectEndpointFingerprint,
+  probeMcpDirectInventory,
+  type McpDirectClientInfo,
+  type McpDirectStdioRuntimeConfig,
+  type McpDirectHttpRuntimeConfig,
+  type McpDirectRuntimeConfig,
+  type McpDirectInventoryProbeOptions,
+  type McpDirectInventoryProbeEvidence,
+} from '../mcp-direct-client-node.js';
