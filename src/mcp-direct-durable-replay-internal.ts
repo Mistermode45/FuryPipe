@@ -185,7 +185,8 @@ export type McpDirectDurableReplayErrorCode =
   | 'durable-state-corrupt'
   | 'durable-attempt-limit'
   | 'durable-replay-not-authorized'
-  | 'durable-reservation-expired';
+  | 'durable-reservation-expired'
+  | 'durable-reclaim-not-safe';
 
 const ERROR_MESSAGES: Readonly<Record<McpDirectDurableReplayErrorCode, string>> = Object.freeze({
   'invalid-coordinator': 'MCP durable replay coordinator is not process-local FuryPipe evidence.',
@@ -195,6 +196,7 @@ const ERROR_MESSAGES: Readonly<Record<McpDirectDurableReplayErrorCode, string>> 
   'durable-attempt-limit': 'MCP durable replay attempt limit has been reached for this execution key.',
   'durable-replay-not-authorized': 'MCP durable replay does not have exact prior terminal evidence.',
   'durable-reservation-expired': 'MCP durable pre-call reservation lease expired before the execution was armed.',
+  'durable-reclaim-not-safe': 'MCP durable pre-call reservation cannot be reclaimed safely.',
 });
 
 export class McpDirectDurableReplayError extends Error {
@@ -254,14 +256,18 @@ function coordinatorState(
 function requiredStore(
   coordinator: McpDirectDurableReplayCoordinator,
 ): CoordinatorState & {
-  readonly store: RecoveryStore & Required<Pick<RecoveryStore, 'list' | 'putBounded'>>;
+  readonly store: RecoveryStore & Required<Pick<RecoveryStore, 'list' | 'putBounded' | 'deleteBounded'>>;
 } {
   const state = coordinatorState(coordinator);
-  if (typeof state.store.list !== 'function' || typeof state.store.putBounded !== 'function') {
+  if (
+    typeof state.store.list !== 'function'
+    || typeof state.store.putBounded !== 'function'
+    || typeof state.store.deleteBounded !== 'function'
+  ) {
     throw new McpDirectDurableReplayError('store-capability-missing');
   }
   return state as CoordinatorState & {
-    readonly store: RecoveryStore & Required<Pick<RecoveryStore, 'list' | 'putBounded'>>;
+    readonly store: RecoveryStore & Required<Pick<RecoveryStore, 'list' | 'putBounded' | 'deleteBounded'>>;
   };
 }
 
@@ -270,6 +276,7 @@ function metadata(
   replayKeySha256: string,
   recordType: 'reservation' | 'armed' | 'terminal',
   attempt: number,
+  reservationIdSha256: string,
 ): RecoveryMetadata {
   return Object.freeze({
     system: SYSTEM,
@@ -277,6 +284,7 @@ function metadata(
     replayKeySha256,
     recordType,
     attempt,
+    reservationIdSha256,
   });
 }
 
@@ -488,6 +496,7 @@ async function loadedRecords(
       || handle.metadata?.replayKeySha256 !== replayKeySha256
       || handle.metadata?.recordType !== recordType(record)
       || handle.metadata?.attempt !== record.attempt
+      || handle.metadata?.reservationIdSha256 !== record.reservationIdSha256
     ) {
       throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256, record.attempt);
     }
@@ -657,7 +666,11 @@ export function createMcpDirectDurableReplayCoordinatorInternal(
   if (!options.store || typeof options.store !== 'object') {
     throw new Error('MCP durable replay coordinator requires a RecoveryStore');
   }
-  if (typeof options.store.list !== 'function' || typeof options.store.putBounded !== 'function') {
+  if (
+    typeof options.store.list !== 'function'
+    || typeof options.store.putBounded !== 'function'
+    || typeof options.store.deleteBounded !== 'function'
+  ) {
     throw new McpDirectDurableReplayError('store-capability-missing');
   }
 
@@ -698,6 +711,93 @@ export async function inspectMcpDirectDurableReplayStatusInternal(
     scopeSha256,
     replayKeySha256,
     await loadedRecords(coordinator, replayKeySha256),
+    now,
+  );
+}
+
+export async function reclaimMcpDirectDurableExpiredPreCallInternal(
+  coordinator: McpDirectDurableReplayCoordinator,
+  replayKeySha256: string,
+  nowValue?: number,
+): Promise<McpDirectDurableReplayStatus> {
+  assertSha(replayKeySha256, 'replayKeySha256');
+  const { store, scopeSha256 } = requiredStore(coordinator);
+  const now = timestamp(nowValue);
+  const records = await loadedRecords(coordinator, replayKeySha256);
+  const current = classify(scopeSha256, replayKeySha256, records, now);
+  if (current.state !== 'pre_call' || !current.leaseExpired) {
+    throw new McpDirectDurableReplayError(
+      'durable-reclaim-not-safe',
+      replayKeySha256,
+      'attempt' in current ? current.attempt : undefined,
+    );
+  }
+
+  const reservationLoaded = records.find(({ record }) =>
+    record.format === 'furypipe-mcp-direct-durable-reservation/v1'
+    && record.attempt === current.attempt);
+  if (
+    !reservationLoaded
+    || reservationLoaded.record.format !== 'furypipe-mcp-direct-durable-reservation/v1'
+  ) {
+    throw new McpDirectDurableReplayError(
+      'durable-state-corrupt',
+      replayKeySha256,
+      current.attempt,
+    );
+  }
+  const reservation = reservationLoaded.record;
+  const reservationMetadata = metadata(
+    scopeSha256,
+    replayKeySha256,
+    'reservation',
+    reservation.attempt,
+    reservation.reservationIdSha256,
+  );
+  const armedMetadata = metadata(
+    scopeSha256,
+    replayKeySha256,
+    'armed',
+    reservation.attempt,
+    reservation.reservationIdSha256,
+  );
+
+  let deleted: boolean;
+  try {
+    deleted = await store.deleteBounded(
+      reservationLoaded.handle,
+      {
+        matchConstraints: [
+          {
+            metadata: reservationMetadata as Readonly<Record<string, string | number | boolean | null>>,
+            minMatches: 1,
+            maxMatches: 1,
+          },
+          {
+            metadata: armedMetadata as Readonly<Record<string, string | number | boolean | null>>,
+            maxMatches: 0,
+          },
+        ],
+      },
+    );
+  } catch {
+    throw new McpDirectDurableReplayError(
+      'durable-reclaim-not-safe',
+      replayKeySha256,
+      current.attempt,
+    );
+  }
+  if (!deleted) {
+    throw new McpDirectDurableReplayError(
+      'durable-reclaim-not-safe',
+      replayKeySha256,
+      current.attempt,
+    );
+  }
+
+  return inspectMcpDirectDurableReplayStatusInternal(
+    coordinator,
+    replayKeySha256,
     now,
   );
 }
@@ -788,7 +888,13 @@ export async function reserveMcpDirectDurableExecution(
     ...(replayReason === undefined ? {} : { replayReason }),
     ...(priorResultSha256 === undefined ? {} : { priorResultSha256 }),
   });
-  const recordMetadata = metadata(scopeSha256, replayKeySha256, 'reservation', attempt);
+  const recordMetadata = metadata(
+    scopeSha256,
+    replayKeySha256,
+    'reservation',
+    attempt,
+    reservationIdSha256,
+  );
   let handle: RecoveryHandle;
   try {
     handle = await store.putBounded(
@@ -898,15 +1004,45 @@ export async function armMcpDirectDurableExecution(
     reservation.replayKeySha256,
     'armed',
     reservation.attempt,
+    reservation.reservationIdSha256,
   );
-  const handle = await store.putBounded(
-    canonicalBytes(record),
-    recordMetadata,
-    {
-      metadata: recordMetadata as Readonly<Record<string, string | number | boolean | null>>,
-      maxMatches: 1,
-    },
+  const reservationMetadata = metadata(
+    scopeSha256,
+    reservation.replayKeySha256,
+    'reservation',
+    reservation.attempt,
+    reservation.reservationIdSha256,
   );
+  let handle: RecoveryHandle;
+  try {
+    handle = await store.putBounded(
+      canonicalBytes(record),
+      recordMetadata,
+      {
+        metadata: recordMetadata as Readonly<Record<string, string | number | boolean | null>>,
+        maxMatches: 1,
+        matchConstraints: [{
+          metadata: reservationMetadata as Readonly<Record<string, string | number | boolean | null>>,
+          minMatches: 1,
+          maxMatches: 1,
+        }],
+      },
+    );
+  } catch (caught) {
+    const current = await inspectMcpDirectDurableReplayStatusInternal(
+      coordinator,
+      reservation.replayKeySha256,
+      now,
+    ).catch(() => undefined);
+    if (current?.state !== 'pre_call' || current.attempt !== reservation.attempt) {
+      throw new McpDirectDurableReplayError(
+        'durable-state-conflict',
+        reservation.replayKeySha256,
+        reservation.attempt,
+      );
+    }
+    throw caught;
+  }
   const armedRecordSha256 = handle.digest;
   const armed = Object.freeze({
     format: 'furypipe-mcp-direct-durable-armed-evidence/v1' as const,
@@ -1003,6 +1139,14 @@ export async function settleMcpDirectDurableExecution(
     armed.replayKeySha256,
     'terminal',
     armed.attempt,
+    armed.reservationIdSha256,
+  );
+  const armedMetadata = metadata(
+    scopeSha256,
+    armed.replayKeySha256,
+    'armed',
+    armed.attempt,
+    armed.reservationIdSha256,
   );
   await store.putBounded(
     canonicalBytes(record),
@@ -1010,6 +1154,11 @@ export async function settleMcpDirectDurableExecution(
     {
       metadata: recordMetadata as Readonly<Record<string, string | number | boolean | null>>,
       maxMatches: 1,
+      matchConstraints: [{
+        metadata: armedMetadata as Readonly<Record<string, string | number | boolean | null>>,
+        minMatches: 1,
+        maxMatches: 1,
+      }],
     },
   );
   SETTLED.add(armed as object);
