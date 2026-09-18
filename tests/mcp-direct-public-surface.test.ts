@@ -20,8 +20,13 @@ describe('direct MCP supported public authority surface', () => {
     expect(root.createMcpDirectReplayIntent).toBeTypeOf('function');
     expect(root.McpDirectReplayGovernanceError).toBeTypeOf('function');
     expect(root.McpDirectExecutionEvidenceError).toBeTypeOf('function');
+    expect(root.McpDirectExecutionDurabilityError).toBeTypeOf('function');
     expect(root.McpDirectExecutionOutcomeUnknownError).toBeTypeOf('function');
     expect(root.McpDirectExecutionVerificationError).toBeTypeOf('function');
+    expect(root.createMcpDirectDurableReplayCoordinator).toBeTypeOf('function');
+    expect(root.inspectMcpDirectDurableReplayStatus).toBeTypeOf('function');
+    expect(root.reclaimMcpDirectDurableExpiredPreCall).toBeTypeOf('function');
+    expect(root.McpDirectDurableReplayError).toBeTypeOf('function');
 
     expect(root.createMcpDirectLifecycle).toBeUndefined();
     expect(root.recordMcpDirectConnection).toBeUndefined();
@@ -34,6 +39,11 @@ describe('direct MCP supported public authority surface', () => {
     expect(root.recordMcpDirectExecution).toBeUndefined();
     expect(root.recordMcpDirectVerification).toBeUndefined();
     expect(root.resolveMcpDirectProposalArguments).toBeUndefined();
+    expect(root.reserveMcpDirectDurableExecution).toBeUndefined();
+    expect(root.armMcpDirectDurableExecution).toBeUndefined();
+    expect(root.settleMcpDirectDurableExecution).toBeUndefined();
+    expect(root.abortMcpDirectDurablePreCallReservation).toBeUndefined();
+    expect(root.abortMcpDirectDurableArmedBeforeCall).toBeUndefined();
   });
 
   it('publishes only the safe M1/M2 subpaths, not raw governance or internals', () => {
@@ -45,8 +55,10 @@ describe('direct MCP supported public authority surface', () => {
     expect(packageJson.exports['./mcp-direct-client-node']).toBeDefined();
     expect(packageJson.exports['./mcp-direct-policy']).toBeDefined();
     expect(packageJson.exports['./mcp-direct-executor-node']).toBeDefined();
+    expect(packageJson.exports['./mcp-direct-durable-replay-node']).toBeDefined();
     expect(packageJson.exports['./mcp-direct-policy-internal']).toBeUndefined();
     expect(packageJson.exports['./mcp-direct-executor-node-internal']).toBeUndefined();
     expect(packageJson.exports['./mcp-direct-replay-internal']).toBeUndefined();
+    expect(packageJson.exports['./mcp-direct-durable-replay-internal']).toBeUndefined();
   });
 });

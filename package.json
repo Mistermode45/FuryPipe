@@ -368,6 +368,10 @@
     "./mcp-direct-executor-node": {
       "types": "./dist/mcp-direct-executor-node.d.ts",
       "import": "./dist/mcp-direct-executor-node.js"
+    },
+    "./mcp-direct-durable-replay-node": {
+      "types": "./dist/mcp-direct-durable-replay-node.d.ts",
+      "import": "./dist/mcp-direct-durable-replay-node.js"
     }
   },
   "files": [
@@ -388,6 +392,7 @@
     "docs/DIRECT_MCP_POLICY_APPROVAL_2026.md",
     "docs/DIRECT_MCP_GOVERNED_EXECUTION_2026.md",
     "docs/DIRECT_MCP_REPLAY_GOVERNANCE_2026.md",
+    "docs/DIRECT_MCP_DURABLE_REPLAY_RECOVERY_2026.md",
     "docs/FURY_PROMPT.md",
     "docs/INSTRUCTION_PROFILES.md",
     "docs/SKILL_ECOSYSTEM_2026.md",

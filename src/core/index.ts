@@ -115,6 +115,10 @@ export {
   type RecoveryEncryptionOptions,
   type RecoveryStorage,
   type RecoveryRekeySummary,
+  type RecoveryCapacityBound,
+  type RecoveryMatchConstraint,
+  type RecoveryPutBound,
+  type RecoveryDeleteBound,
 } from './recovery-store.js';
 export {
   createContextIR,
@@ -436,6 +440,7 @@ export {
   executeMcpDirectReplay,
   createMcpDirectReplayIntent,
   McpDirectExecutionEvidenceError,
+  McpDirectExecutionDurabilityError,
   McpDirectExecutionOutcomeUnknownError,
   McpDirectExecutionVerificationError,
   McpDirectReplayGovernanceError,
@@ -446,3 +451,13 @@ export {
   type McpDirectReplayReason,
   type McpDirectReplayIntentPublicOptions,
 } from '../mcp-direct-executor-node.js';
+
+export {
+  createMcpDirectDurableReplayCoordinator,
+  inspectMcpDirectDurableReplayStatus,
+  reclaimMcpDirectDurableExpiredPreCall,
+  McpDirectDurableReplayError,
+  type McpDirectDurableReplayCoordinator,
+  type McpDirectDurableReplayStatus,
+  type McpDirectDurableReplayOptions,
+} from '../mcp-direct-durable-replay-node.js';

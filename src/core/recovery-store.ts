@@ -94,6 +94,15 @@ export interface RecoveryCapacityBound {
   readonly maxMatches: number;
 }
 
+export interface RecoveryMatchConstraint {
+  /** Exact metadata values counted under the same Recovery write lock. */
+  readonly metadata: Readonly<Record<string, string | number | boolean | null>>;
+  /** Optional minimum required matching manifests. */
+  readonly minMatches?: number;
+  /** Optional maximum allowed matching manifests; zero expresses absence. */
+  readonly maxMatches?: number;
+}
+
 export interface RecoveryPutBound extends RecoveryCapacityBound {
   /**
    * Additional capacity/uniqueness constraints evaluated atomically under the
@@ -101,11 +110,24 @@ export interface RecoveryPutBound extends RecoveryCapacityBound {
    * quota and a narrow uniqueness key without a list→put race.
    */
   readonly additionalBounds?: readonly RecoveryCapacityBound[];
+  /**
+   * Presence/absence predicates evaluated atomically before the object is
+   * published. Unlike capacity bounds, these predicates do not need to match
+   * the new object's metadata.
+   */
+  readonly matchConstraints?: readonly RecoveryMatchConstraint[];
+}
+
+export interface RecoveryDeleteBound {
+  /** Exact metadata that the target handle must still carry under the same lock. */
+  readonly targetMetadata?: Readonly<Record<string, string | number | boolean | null>>;
+  /** Presence/absence predicates evaluated atomically before exact deletion. */
+  readonly matchConstraints: readonly RecoveryMatchConstraint[];
 }
 
 export interface RecoveryStore {
   put(bytes: Uint8Array | ArrayBuffer, metadata?: RecoveryMetadata): Promise<RecoveryHandle>;
-  /** Optional atomic capacity primitive; createRecoveryStore implements it. */
+  /** Optional atomic capacity/predicate primitive; createRecoveryStore implements it. */
   putBounded?(bytes: Uint8Array | ArrayBuffer, metadata: RecoveryMetadata | undefined, bound: RecoveryPutBound): Promise<RecoveryHandle>;
   get(handle: RecoveryHandle | string): Promise<Uint8Array>;
   fetchRange(handle: RecoveryHandle | string, start: number, endExclusive?: number): Promise<Uint8Array>;
@@ -115,6 +137,8 @@ export interface RecoveryStore {
   /** Optional for backward-compatible custom stores; createRecoveryStore implements it. */
   list?(options?: RecoveryListOptions): Promise<readonly (RecoveryHandle & { metadata?: RecoveryMetadata })[]>;
   delete(handle: RecoveryHandle | string): Promise<boolean>;
+  /** Optional exact conditional delete under the same inter-process Recovery lock. */
+  deleteBounded?(handle: RecoveryHandle | string, bound: RecoveryDeleteBound): Promise<boolean>;
   gc(now?: Date): Promise<{ expired: number; orphaned: number; bytesFreed: number }>;
   backup(destination: string): Promise<RecoveryBackupSummary>;
   restore(source: string): Promise<RecoveryBackupSummary>;
@@ -724,6 +748,54 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
     return matches;
   }
 
+  function normalizeMatchConstraints(
+    constraints: readonly RecoveryMatchConstraint[] | undefined,
+    label: string,
+  ): readonly RecoveryMatchConstraint[] {
+    if (constraints === undefined) return [];
+    if (!Array.isArray(constraints) || constraints.length > 8) {
+      throw new RangeError(`${label} must contain at most 8 constraints`);
+    }
+    return constraints.map((constraint) => {
+      if (!constraint || typeof constraint !== 'object'
+        || !constraint.metadata || typeof constraint.metadata !== 'object'
+        || Array.isArray(constraint.metadata)
+        || (constraint.minMatches === undefined && constraint.maxMatches === undefined)) {
+        throw new RangeError(`${label} entries require metadata and at least one bound`);
+      }
+      const minMatches = constraint.minMatches ?? 0;
+      const maxMatches = constraint.maxMatches;
+      if (!Number.isSafeInteger(minMatches) || minMatches < 0 || minMatches > 10_000
+        || (maxMatches !== undefined
+          && (!Number.isSafeInteger(maxMatches) || maxMatches < 0 || maxMatches > 10_000))
+        || (maxMatches !== undefined && minMatches > maxMatches)) {
+        throw new RangeError(`${label} match bounds must be integers from 0 to 10000 with min <= max`);
+      }
+      return Object.freeze({
+        metadata: constraint.metadata,
+        ...(constraint.minMatches === undefined ? {} : { minMatches }),
+        ...(maxMatches === undefined ? {} : { maxMatches }),
+      });
+    });
+  }
+
+  async function assertMatchConstraints(
+    constraints: readonly RecoveryMatchConstraint[],
+    label: string,
+  ): Promise<void> {
+    for (const constraint of constraints) {
+      const minMatches = constraint.minMatches ?? 0;
+      const maxMatches = constraint.maxMatches;
+      const stopAt = maxMatches === undefined
+        ? Math.max(1, minMatches)
+        : Math.max(1, maxMatches + 1);
+      const matches = await countMatchingManifests(constraint.metadata, stopAt);
+      if (matches < minMatches || (maxMatches !== undefined && matches > maxMatches)) {
+        throw new Error(`${label} match constraint failed`);
+      }
+    }
+  }
+
   async function putUnlocked(
     bytes: Uint8Array | ArrayBuffer,
     metadata?: RecoveryMetadata,
@@ -732,12 +804,17 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
     const view = asUint8Array(bytes);
     if (view.byteLength > maxObjectBytes) throw new Error('recovery object exceeds the configured object quota');
     let capacityBounds: readonly RecoveryCapacityBound[] = [];
+    let matchConstraints: readonly RecoveryMatchConstraint[] = [];
     if (bound !== undefined) {
       if (!bound || typeof bound !== 'object'
         || (bound.additionalBounds !== undefined
           && (!Array.isArray(bound.additionalBounds) || bound.additionalBounds.length > 7))) {
         throw new RangeError('recovery bounded put additionalBounds must contain at most 7 constraints');
       }
+      matchConstraints = normalizeMatchConstraints(
+        bound.matchConstraints,
+        'recovery bounded put matchConstraints',
+      );
       capacityBounds = [bound, ...(bound.additionalBounds ?? [])];
       for (const capacityBound of capacityBounds) {
         if (!capacityBound || typeof capacityBound !== 'object'
@@ -751,6 +828,8 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
         }
       }
     }
+    await assertMatchConstraints(matchConstraints, 'recovery bounded put');
+
     const digest = digestBytes(view);
     const manifestFile = metadataPath(scopedRoot, digest);
     const existingManifest = await readManifest(digest);
@@ -896,6 +975,39 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
         await Promise.all(variants.map((variant) => rm(variant, { force: true })));
         await rm(manifest, { force: true });
         return existed;
+      });
+    },
+
+    deleteBounded(handle, bound) {
+      return enqueue(async () => {
+        if (!bound || typeof bound !== 'object') {
+          throw new RangeError('recovery bounded delete requires constraints');
+        }
+        const constraints = normalizeMatchConstraints(
+          bound.matchConstraints,
+          'recovery bounded delete matchConstraints',
+        );
+        if (constraints.length < 1) {
+          throw new RangeError('recovery bounded delete requires at least one match constraint');
+        }
+        const digest = parseHandle(handle);
+        const current = await readManifest(digest);
+        const variants = await objectVariants(scopedRoot, digest);
+        if (current === undefined) {
+          if (variants.length > 0) {
+            throw new Error('recovery bounded delete target has no manifest');
+          }
+          return false;
+        }
+        await readStored(digest, current);
+        if (bound.targetMetadata !== undefined
+          && Object.entries(bound.targetMetadata).some(([key, value]) => current.metadata?.[key] !== value)) {
+          throw new Error('recovery bounded delete target metadata mismatch');
+        }
+        await assertMatchConstraints(constraints, 'recovery bounded delete');
+        await Promise.all(variants.map((variant) => rm(variant, { force: true })));
+        await rm(metadataPath(scopedRoot, digest), { force: true });
+        return true;
       });
     },
 
