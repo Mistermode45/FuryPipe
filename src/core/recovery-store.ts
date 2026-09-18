@@ -119,6 +119,8 @@ export interface RecoveryPutBound extends RecoveryCapacityBound {
 }
 
 export interface RecoveryDeleteBound {
+  /** Exact metadata that the target handle must still carry under the same lock. */
+  readonly targetMetadata?: Readonly<Record<string, string | number | boolean | null>>;
   /** Presence/absence predicates evaluated atomically before exact deletion. */
   readonly matchConstraints: readonly RecoveryMatchConstraint[];
 }
@@ -998,6 +1000,10 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
           return false;
         }
         await readStored(digest, current);
+        if (bound.targetMetadata !== undefined
+          && Object.entries(bound.targetMetadata).some(([key, value]) => current.metadata?.[key] !== value)) {
+          throw new Error('recovery bounded delete target metadata mismatch');
+        }
         await assertMatchConstraints(constraints, 'recovery bounded delete');
         await Promise.all(variants.map((variant) => rm(variant, { force: true })));
         await rm(metadataPath(scopedRoot, digest), { force: true });
