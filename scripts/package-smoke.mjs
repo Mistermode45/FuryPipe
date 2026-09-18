@@ -254,7 +254,7 @@ try {
   const directMcpExecutorExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
-    "const m = await import('furypipe/mcp-direct-executor-node'); if (typeof m.executeMcpDirectApprovedTool !== 'function' || typeof m.executeMcpDirectReplay !== 'function' || typeof m.createMcpDirectReplayIntent !== 'function' || typeof m.McpDirectReplayGovernanceError !== 'function' || typeof m.McpDirectExecutionOutcomeUnknownError !== 'function' || typeof m.McpDirectExecutionVerificationError !== 'function' || typeof m.McpDirectExecutionEvidenceError !== 'function') process.exit(1);",
+    "const m = await import('furypipe/mcp-direct-executor-node'); if (typeof m.executeMcpDirectApprovedTool !== 'function' || typeof m.executeMcpDirectReplay !== 'function' || typeof m.createMcpDirectReplayIntent !== 'function' || typeof m.McpDirectReplayGovernanceError !== 'function' || typeof m.McpDirectExecutionOutcomeUnknownError !== 'function' || typeof m.McpDirectExecutionVerificationError !== 'function' || typeof m.McpDirectExecutionEvidenceError !== 'function' || typeof m.McpDirectExecutionDurabilityError !== 'function') process.exit(1);",
   ], installDir);
   assert(directMcpExecutorExport.stderr === '', `Direct MCP executor package export wrote stderr: ${directMcpExecutorExport.stderr}`);
   const directMcpDurableReplayExport = await run(process.execPath, [
