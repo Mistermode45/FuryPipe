@@ -596,6 +596,19 @@ describe('direct MCP proposal, policy and approval governance', () => {
       20_010,
     )).toThrow(/expired/i);
 
+    const copied = { ...createMcpDirectOperatorApprovalIntent(
+      proposal,
+      decision,
+      { now: 25_000 },
+    ) };
+    expect(() => approveMcpDirectPolicyDecision(
+      lifecycle,
+      proposal,
+      decision,
+      copied,
+      25_001,
+    )).toThrow(/process-local explicit intent/i);
+
     const fresh = createMcpDirectOperatorApprovalIntent(
       proposal,
       decision,
@@ -615,20 +628,12 @@ describe('direct MCP proposal, policy and approval governance', () => {
       decision,
       fresh,
       30_002,
-    )).toThrow(/already consumed/i);
-
-    const copied = { ...createMcpDirectOperatorApprovalIntent(
+    )).toThrow(/already used/i);
+    expect(() => createMcpDirectOperatorApprovalIntent(
       proposal,
       decision,
-      { now: 40_000 },
-    ) };
-    expect(() => approveMcpDirectPolicyDecision(
-      lifecycle,
-      proposal,
-      decision,
-      copied,
-      40_001,
-    )).toThrow(/process-local explicit intent/i);
+      { now: 30_003 },
+    )).toThrow(/already used/i);
   });
 
   it('operator approval is impossible unless the exact source/endpoint/tool tuple is operator-allowlisted', async () => {

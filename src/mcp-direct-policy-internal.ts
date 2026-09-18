@@ -613,6 +613,9 @@ export function createMcpDirectOperatorApprovalIntent(
   if (internalDecision.outcome === 'deny') {
     throw new Error('MCP policy denied operator approval for this proposal');
   }
+  if (internalDecision.approved) {
+    throw new Error('MCP policy decision was already used for approval');
+  }
 
   const now = options.now ?? Date.now();
   const expiresInMs = options.expiresInMs ?? DEFAULT_OPERATOR_INTENT_TTL_MS;
