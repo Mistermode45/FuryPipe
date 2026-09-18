@@ -53,6 +53,20 @@ describe('Agent Skill task selector', () => {
     });
   });
 
+  it('normalizes sentence-final periods without destroying internal identifier dots', () => {
+    const plan = selectAgentSkillsForTask(
+      'Debug this failing test and find the root cause.',
+      [{
+        name: 'systematic-debugging',
+        description: 'Investigate bugs and root causes before changing code.',
+        activationEligible: true,
+      }],
+    );
+    expect(plan.selected).toEqual([
+      expect.objectContaining({ name: 'systematic-debugging', reason: 'description_relevance' }),
+    ]);
+  });
+
   it('does not select skills for unrelated objectives', () => {
     const plan = selectAgentSkillsForTask('Translate this sentence into French.', candidates);
     expect(plan.selected).toEqual([]);
