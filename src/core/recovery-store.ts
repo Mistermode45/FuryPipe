@@ -933,9 +933,10 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
           const current = await readManifest(digest);
           if (current === undefined) {
             const leftoverVariants = await objectVariants(scopedRoot, digest);
-            if (leftoverVariants.length > 0) {
-              throw new Error('recovery compaction target has orphaned object variants');
-            }
+            // The tombstone was verified before target cleanup. A prior
+            // holder may have removed the manifest and crashed before deleting
+            // the now-unreferenced payload variants; clean those variants.
+            await Promise.all(leftoverVariants.map((variant) => rm(variant, { force: true })));
             // Another holder may have completed this exact tombstone-first
             // cleanup after this caller published the same content-addressed
             // tombstone. Absence is safe only after tombstone publication.
@@ -962,8 +963,11 @@ export function createRecoveryStore(root: string, options: RecoveryStoreOptions 
           );
           await assertMatchConstraints(constraints, 'recovery bounded compaction');
           const variants = await objectVariants(scopedRoot, digest);
-          await Promise.all(variants.map((variant) => rm(variant, { force: true })));
+          // Remove the manifest first. Once the tombstone is verified, the
+          // full record is no longer authoritative; this prevents another
+          // process from observing a live manifest with a missing payload.
           await rm(metadataPath(scopedRoot, digest), { force: true });
+          await Promise.all(variants.map((variant) => rm(variant, { force: true }));
         }
         return handle;
       });
