@@ -172,6 +172,83 @@ describe('Recovery Store', () => {
     )).rejects.toThrow(/matching-object limit exceeded/);
   });
 
+  it('enforces atomic presence and absence predicates for bounded put/delete transitions', async () => {
+    const { root, store } = await createStoreFixture();
+    const peer = createRecoveryStore(root, { namespace: 'test-tenant' });
+
+    const reservationMetadata = {
+      source: 'atomic-transition',
+      key: 'key-1',
+      recordType: 'reservation',
+    };
+    const armedMetadata = {
+      source: 'atomic-transition',
+      key: 'key-1',
+      recordType: 'armed',
+    };
+    const reservation = await store.put(
+      new TextEncoder().encode('reservation'),
+      reservationMetadata,
+    );
+
+    const race = await Promise.allSettled([
+      peer.deleteBounded!(
+        reservation,
+        {
+          matchConstraints: [
+            { metadata: reservationMetadata, minMatches: 1, maxMatches: 1 },
+            { metadata: armedMetadata, maxMatches: 0 },
+          ],
+        },
+      ),
+      store.putBounded!(
+        new TextEncoder().encode('armed'),
+        armedMetadata,
+        {
+          metadata: armedMetadata,
+          maxMatches: 1,
+          matchConstraints: [
+            { metadata: reservationMetadata, minMatches: 1, maxMatches: 1 },
+          ],
+        },
+      ),
+    ]);
+
+    expect(race.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(race.filter(result => result.status === 'rejected')).toHaveLength(1);
+
+    const reservations = await store.list?.({ metadata: reservationMetadata });
+    const armed = await store.list?.({ metadata: armedMetadata });
+    expect((reservations?.length ?? 0) + (armed?.length ?? 0)).toBe(1);
+
+    if ((armed?.length ?? 0) === 1) {
+      expect(reservations).toHaveLength(1);
+      await expect(peer.deleteBounded!(
+        reservation,
+        {
+          matchConstraints: [
+            { metadata: reservationMetadata, minMatches: 1, maxMatches: 1 },
+            { metadata: armedMetadata, maxMatches: 0 },
+          ],
+        },
+      )).rejects.toThrow(/match constraint failed/);
+    } else {
+      expect(reservations).toHaveLength(0);
+      expect(armed).toHaveLength(0);
+      await expect(store.putBounded!(
+        new TextEncoder().encode('late-armed'),
+        armedMetadata,
+        {
+          metadata: armedMetadata,
+          maxMatches: 1,
+          matchConstraints: [
+            { metadata: reservationMetadata, minMatches: 1, maxMatches: 1 },
+          ],
+        },
+      )).rejects.toThrow(/match constraint failed/);
+    }
+  });
+
   it('keeps a collision-free immutable object and rejects malformed handles', async () => {
     const { root, store } = await createStoreFixture();
     const bytes = new TextEncoder().encode('same content');
