@@ -117,6 +117,37 @@ describe('Anthropic MCP observed runtime', () => {
     expect(result.observedResults).toEqual([]);
   });
 
+  it('does not re-emit an old tool_result after the conversation advances', async () => {
+    const result = await observeAnthropicMcpRuntime(JSON.stringify({
+      tools: [{ name: 'mcp__GitHub__fetch', input_schema: { type: 'object' } }],
+      messages: [
+        {
+          role: 'assistant',
+          content: [{
+            type: 'tool_use',
+            id: 'toolu_old_done',
+            name: 'mcp__GitHub__fetch',
+            input: { id: 1 },
+          }],
+        },
+        {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'toolu_old_done',
+            content: 'OLD_RESULT',
+          }],
+        },
+        { role: 'assistant', content: [{ type: 'text', text: 'Done.' }] },
+        { role: 'user', content: [{ type: 'text', text: 'What next?' }] },
+      ],
+    }));
+
+    expect(result.observedResults).toEqual([]);
+    expect(result.pendingUses).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain('OLD_RESULT');
+  });
+
   it('records MCP error results without exposing result plaintext', async () => {
     const result = await observeAnthropicMcpRuntime(JSON.stringify({
       tools: [{ type: 'mcp', name: 'remote-search', input_schema: { type: 'object' } }],
