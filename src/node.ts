@@ -406,6 +406,9 @@ Environment:
                           default compatibility seed claude-fable-5,gemini; off disables visual transformation
   FURYPIPE_VISUAL_POLICY  auto (default), max_savings, safe_exact, or text_only;
                           max_savings admits every model with positively proven image input
+  FURYPIPE_HUMAN_OUTPUT_STYLE
+                          compact (default) adds FuryPipe's human-facing compact
+                          prose guidance; normal/off disables that guidance
   FURYPIPE_CONFIG         JSON config path (default ~/.config/furypipe/config.json)
                           supports {"models": [...]} / {"models": "off"} /
                           {"modelScopeMode": "automatic"}
@@ -1489,6 +1492,9 @@ async function main(): Promise<void> {
     ...(omniRouteConfig ?? {}),
     captureErrorReqBody: opts.captureErrorReqBody,
     maxRequestBytes: opts.maxRequestBytes,
+    humanOutputPolicy: !/^(?:normal|off|false|0|no)$/iu.test(
+      process.env.FURYPIPE_HUMAN_OUTPUT_STYLE?.trim() ?? '',
+    ),
     // Per-request transform options:
     //   1. Runtime kill switch — when the dashboard "passthrough" toggle
     //      is off, force compress=false so /v1/messages forwards
