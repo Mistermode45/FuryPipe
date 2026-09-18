@@ -25,6 +25,10 @@ import { pinCommandResponse, pinCommandResponseOpenAI } from './pin.js';
 import { isGoogleInferencePath, parseGoogleModelFromPath, transformGoogleGenerateContent } from './google.js';
 import { isGeminiModel } from './gemini-model-profiles.js';
 import { resolveGptProfile } from './gpt-model-profiles.js';
+import {
+  injectFuryProxyAgentPolicy,
+  type FuryProxyAgentPolicyResult,
+} from './proxy-agent-policy.js';
 
 export interface ProxyConfig {
   /** 'cloudflare-ai-gateway': routes both families through gatewayBaseUrl;
@@ -65,6 +69,12 @@ export interface ProxyConfig {
   /** Pass a function to inject dynamic values per-request (e.g. live charsPerToken);
    *  static object for Workers/tests. */
   transform?: TransformOptions | (() => TransformOptions);
+  /**
+   * Inject FuryPipe's bounded agent-use + compact human-output policy after
+   * visual transformation so the policy itself always remains native text.
+   * Core embedders opt in explicitly; the Node host enables it by default.
+   */
+  proxyAgentPolicy?: boolean;
   /** Called after every request — useful for logging / metrics in the host. */
   onRequest?: (event: ProxyEvent) => void | Promise<void>;
   /** Persist 4xx diagnostics: the gzipped request body plus the upstream error
@@ -136,6 +146,8 @@ export interface ProxyEvent {
   /** Upstream response media/encoding metadata for scanner diagnostics. */
   responseContentType?: string;
   responseContentEncoding?: string;
+  /** Plaintext-free evidence that FuryPipe's system-level agent policy was considered/applied. */
+  agentPolicy?: Omit<FuryProxyAgentPolicyResult, 'body'>;
 }
 
 /** Max chars of 4xx error body captured on ProxyEvent — enough for Anthropic's full error JSON. */
@@ -1527,6 +1539,7 @@ export function createProxy(config: ProxyConfig = {}) {
 let responseContentType: string | undefined;
     let responseContentEncoding: string | undefined;
     let reqBodySha256: string | undefined;
+    let agentPolicy: Omit<FuryProxyAgentPolicyResult, 'body'> | undefined;
     // Set once the transform returns; read by fire() at event time.
     let transformMs: number | undefined;
 
@@ -1621,6 +1634,7 @@ let responseContentType: string | undefined;
           stopReason,
           responseContentType,
           responseContentEncoding,
+          agentPolicy,
         });
       };
       // Telemetry is best-effort and must never surface as an unhandled rejection
@@ -1791,6 +1805,24 @@ let responseContentType: string | undefined;
           : bridgedChatMessages
             ? anthropicMessagesToOpenAIChat(bodyIn, chatStamp ?? undefined)
             : bodyIn;
+
+        // Policy text is intentionally injected AFTER Visual Engine processing:
+        // human/tool governance instructions must remain native text and must
+        // never be hidden inside a rendered context image. A matching policy
+        // body is built separately for uncompressed baseline probes so the
+        // policy's constant token cost cancels out of savings comparisons.
+        const inboundPolicyProtocol = isGoogle
+          ? 'google'
+          : isMessages
+            ? 'anthropic-messages'
+            : isOpenAIChat
+              ? 'openai-chat'
+              : 'openai-responses';
+        const baselinePolicy = config.proxyAgentPolicy === true
+          ? injectFuryProxyAgentPolicy(bodyIn, inboundPolicyProtocol)
+          : undefined;
+        const baselineBody = baselinePolicy?.applied ? baselinePolicy.body : bodyIn;
+
         // Local render+encode cost only. The Google branch below issues upstream
         // count_tokens probes, so the timer closes here rather than after them —
         // otherwise network latency would be charged to our own CPU.
@@ -1806,6 +1838,18 @@ let responseContentType: string | undefined;
             : isOpenAIChat
               ? await transformOpenAIChatCompletions(bodyIn, effectiveOpts)
               : await transformOpenAIResponses(bodyIn, effectiveOpts);
+
+        if (config.proxyAgentPolicy === true) {
+          const outboundPolicyProtocol = bridgedGptMessages
+            ? 'openai-responses'
+            : bridgedChatMessages
+              ? 'openai-chat'
+              : inboundPolicyProtocol;
+          const policyResult = injectFuryProxyAgentPolicy(r.body, outboundPolicyProtocol);
+          const { body: policyBody, ...policyTelemetry } = policyResult;
+          agentPolicy = policyTelemetry;
+          if (policyResult.applied) r = { body: policyBody, info: r.info };
+        }
         transformMs = Date.now() - tTransform;
         if (isGoogle && r.info.compressed) {
           const countHeaders = applyGatewayHeaders(filterHeaders(req.headers, STRIP_REQ_HEADERS));
@@ -1819,7 +1863,7 @@ let responseContentType: string | undefined;
           for (const [key, value] of url.searchParams) countUrl.searchParams.append(key, value);
           countUrl.searchParams.delete('alt');
           const [baseline, transformed] = await Promise.all([
-            countGoogleTokensUpstream(applyGatewayUrlIsolation(countUrl.toString()), bodyIn, countHeaders, model!),
+            countGoogleTokensUpstream(applyGatewayUrlIsolation(countUrl.toString()), baselineBody, countHeaders, model!),
             countGoogleTokensUpstream(applyGatewayUrlIsolation(countUrl.toString()), r.body, countHeaders, model!),
           ]);
           if (baseline !== null && transformed !== null) {
@@ -1880,7 +1924,7 @@ let responseContentType: string | undefined;
           baselineStatusApplies = true;
           // Probes fire on the ORIGINAL body before the main forward so all three overlap.
           // count_tokens is not billed; ~30-80ms latency is hidden by the main forward.
-          const ctBody = buildBaselineCountTokensBody(bodyIn);
+          const ctBody = buildBaselineCountTokensBody(baselineBody);
           if (ctBody) {
             const ctHeaders = applyGatewayHeaders(filterHeaders(req.headers, STRIP_REQ_HEADERS));
             ctHeaders.set('content-type', 'application/json');
@@ -1896,7 +1940,7 @@ let responseContentType: string | undefined;
             const ctUrl = applyGatewayUrlIsolation(ctBase + url.pathname + '/count_tokens');
             baselinePromise = countTokensUpstream(ctUrl, ctBody, ctHeaders);
             // Null = no markers → cacheable=0 by definition, no probe needed.
-            const ctCacheableBody = buildCacheablePrefixCountTokensBody(bodyIn);
+            const ctCacheableBody = buildCacheablePrefixCountTokensBody(baselineBody);
             if (ctCacheableBody) {
               baselineCacheablePromise = countTokensUpstream(
                 ctUrl,

@@ -47,6 +47,23 @@ describe('toTrackEvent', () => {
     expect(JSON.stringify(out)).not.toContain('req_secret');
   });
 
+  it('persists plaintext-free proxy agent policy evidence', () => {
+    const out = toTrackEvent({
+      method: 'POST', path: '/v1/messages', status: 200, durationMs: 1,
+      agentPolicy: {
+        applied: true,
+        version: '1.0.0',
+        protocol: 'anthropic-messages',
+        instructionBytes: 777,
+      },
+    });
+    expect(out.agent_policy_applied).toBe(true);
+    expect(out.agent_policy_version).toBe('1.0.0');
+    expect(out.agent_policy_protocol).toBe('anthropic-messages');
+    expect(out.agent_policy_instruction_bytes).toBe(777);
+    expect(JSON.stringify(out)).not.toContain('human prompt');
+  });
+
   it('flattens ProxyEvent + TransformInfo + Usage into a single record', () => {
     const ev: ProxyEvent = {
       method: 'POST',
