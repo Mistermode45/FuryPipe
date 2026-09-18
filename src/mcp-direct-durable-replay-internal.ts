@@ -111,8 +111,6 @@ interface DurableTerminalRecord {
   readonly attempt: number;
   readonly reservationIdSha256: string;
   readonly armedRecordSha256: string;
-  readonly reservationRecordSha256: string;
-  readonly terminalRecordSha256: string;
   readonly terminalAt: number;
   readonly replayed: boolean;
   readonly outcome: McpDirectDurableReplayOutcome;
@@ -127,6 +125,8 @@ interface DurableTombstoneRecord {
   readonly attempt: number;
   readonly reservationIdSha256: string;
   readonly armedRecordSha256: string;
+  readonly reservationRecordSha256: string;
+  readonly terminalRecordSha256: string;
   readonly terminalAt: number;
   readonly compactedAt: number;
   readonly replayed: boolean;
