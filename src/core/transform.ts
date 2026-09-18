@@ -2537,6 +2537,7 @@ export async function transformRequest(
   // metadata stay native and exact, but do not disable safe-region compression.
   // An explicitly supplied ExactGuard policy retains historical whole-request
   // strictness. Counting only classes/regions keeps diagnostics plaintext-free.
+  // Retarget note: this invariant is intentionally re-checked against the integration branch.
   const activeExactGuard = opts.exactGuard !== undefined
     ? opts.exactGuard
     : o.safetyMode === false ? false : exactGuardOptionsForMode(o.safetyMode);
