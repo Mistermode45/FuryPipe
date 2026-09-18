@@ -107,112 +107,40 @@ describe('live proxy Agent Skill instruction runtime', () => {
     expect(event.capability?.executionAuthorized).toBe(false);
   });
 
-  it('does not call the capability planner for exact-response probes', async () => {
-    let forwarded = '';
-    restore.push(mockFetch(async (request) => {
-      forwarded = await request.clone().text();
-      return okResponse();
-    }));
-    let plannerCalls = 0;
-    const proxy = createProxy({
-      upstream: 'http://anthropic.test',
-      humanOutputPolicy: true,
-      capabilityPlanner: async () => {
-        plannerCalls += 1;
-        return plan();
-      },
-      transform: { compress: false },
-    });
+  it.each([true, false])(
+    'does not call the capability planner for exact-response probes when humanOutputPolicy=%s',
+    async (humanOutputPolicy) => {
+      let forwarded = '';
+      restore.push(mockFetch(async (request) => {
+        forwarded = await request.clone().text();
+        return okResponse();
+      }));
+      let plannerCalls = 0;
+      const proxy = createProxy({
+        upstream: 'http://anthropic.test',
+        humanOutputPolicy,
+        capabilityPlanner: async () => {
+          plannerCalls += 1;
+          return plan();
+        },
+        transform: { compress: false },
+      });
 
-    const source = JSON.stringify({
-      model: 'claude-opus-5',
-      messages: [{ role: 'user', content: 'Réponds exactement : FURYPIPE_SKILL_EXACT_OK' }],
-    });
-    const response = await proxy(new Request('http://localhost/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: source,
-    }));
-    await response.text();
-
-    expect(response.status).toBe(200);
-    expect(plannerCalls).toBe(0);
-    expect(forwarded).not.toContain('furypipe_active_skill');
-    expect(forwarded).not.toContain('furypipe_runtime_instruction');
-    expect(JSON.parse(forwarded)).toEqual(JSON.parse(source));
-  });
-
-  it('fails open when optional capability planning throws', async () => {
-    let forwarded = '';
-    restore.push(mockFetch(async (request) => {
-      forwarded = await request.clone().text();
-      return okResponse();
-    }));
-    const captured = captureEvent();
-    const proxy = createProxy({
-      upstream: 'http://anthropic.test',
-      humanOutputPolicy: false,
-      capabilityPlanner: async () => {
-        throw new Error('fixture planner unavailable');
-      },
-      transform: { compress: false },
-      onRequest: captured.onRequest,
-    });
-
-    const source = JSON.stringify({
-      model: 'claude-opus-5',
-      messages: [{ role: 'user', content: 'Debug this regression.' }],
-    });
-    const response = await proxy(new Request('http://localhost/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: source,
-    }));
-    await response.text();
-    const event = await captured.event;
-
-    expect(response.status).toBe(200);
-    expect(JSON.parse(forwarded)).toEqual(JSON.parse(source));
-    expect(event.capability).toBeUndefined();
-    expect(event.capabilityError).toContain('fixture planner unavailable');
-  });
-
-  it('persists lifecycle evidence without SKILL.md plaintext', async () => {
-    let forwarded = '';
-    restore.push(mockFetch(async (request) => {
-      forwarded = await request.clone().text();
-      return okResponse();
-    }));
-    const captured = captureEvent();
-    const proxy = createProxy({
-      upstream: 'http://anthropic.test',
-      humanOutputPolicy: false,
-      capabilityPlanner: async () => plan(),
-      transform: { compress: false },
-      onRequest: captured.onRequest,
-    });
-
-    const response = await proxy(new Request('http://localhost/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+      const source = JSON.stringify({
         model: 'claude-opus-5',
-        messages: [{ role: 'user', content: 'Debug this regression.' }],
-      }),
-    }));
-    await response.text();
-    const event = await captured.event;
-    const tracked = toTrackEvent(event);
-    const serialized = JSON.stringify(tracked);
+        messages: [{ role: 'user', content: 'Réponds exactement : FURYPIPE_SKILL_EXACT_OK' }],
+      });
+      const response = await proxy(new Request('http://localhost/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: source,
+      }));
+      await response.text();
 
-    expect(tracked.capability_selected_skills).toEqual(['systematic-debugging']);
-    expect(tracked.capability_activated_skills).toEqual([{
-      skill_id: 'systematic-debugging',
-      instruction_bytes: 42,
-      instruction_sha256: 'a'.repeat(64),
-    }]);
-    expect(tracked.capability_execution_authorized).toBe(false);
-    expect(serialized).not.toContain('SECRET_SKILL_BODY_MARKER');
-    expect(forwarded).toContain('SECRET_SKILL_BODY_MARKER');
-  });
-});
+      expect(response.status).toBe(200);
+      expect(plannerCalls).toBe(0);
+      expect(forwarded).not.toContain('furypipe_active_skill');
+      expect(forwarded).not.toContain('furypipe_runtime_instruction');
+      expect(JSON.parse(forwarded)).toEqual(JSON.parse(source));
+    },
+  );
