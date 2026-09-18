@@ -215,6 +215,7 @@ describe('Direct MCP M3 governed execution', () => {
       succeeded: true,
       verified: true,
       verificationKind: 'schema',
+      outputSchemaSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
       protocolVersion: '2026-07-28',
     });
     expect(JSON.stringify({ lifecycle: executed.lifecycle, receipt: executed.receipt }))
@@ -336,6 +337,7 @@ describe('Direct MCP M3 governed execution', () => {
       sourceId: approved.lifecycle.source.sourceId,
       toolName: 'governed-echo',
       inputSha256: approved.proposal.inputSha256,
+      outputSchemaSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
     expect(JSON.stringify(caught)).not.toContain('permitId');
     expect(fake.counters().callCalls).toBe(1);
@@ -379,6 +381,44 @@ describe('Direct MCP M3 governed execution', () => {
       },
     )).rejects.toThrow(/already used/i);
     expect(fake.counters().callCalls).toBe(1);
+  });
+
+  it('does not claim schema verification when the tool advertises no output schema', async () => {
+    const toolWithoutOutput = {
+      name: SAFE_TOOL.name,
+      inputSchema: SAFE_TOOL.inputSchema,
+      annotations: SAFE_TOOL.annotations,
+    };
+    const fake = fakeFactory({
+      toolSequence: [[toolWithoutOutput], [toolWithoutOutput]],
+      result: {
+        content: [{ type: 'text', text: 'successful result without output schema' }],
+      },
+    });
+    const approved = await approvedWithFactory(fake.factory, 'alpha');
+
+    const executed = await executeMcpDirectApprovedToolInternal(
+      approved.config,
+      approved.lifecycle,
+      approved.proposal,
+      {
+        clientInfo: { name: 'furypipe-m3-test', version: '1.0.0' },
+        factory: fake.factory,
+      },
+    );
+
+    expect(executed.lifecycle).toMatchObject({
+      executed: true,
+      succeeded: true,
+      verified: false,
+    });
+    expect(executed.receipt).toMatchObject({
+      executed: true,
+      succeeded: true,
+      verified: false,
+    });
+    expect(executed.receipt).not.toHaveProperty('verificationKind');
+    expect(executed.receipt).not.toHaveProperty('outputSchemaSha256');
   });
 
   it('records a returned tool error as executed but not succeeded or verified', async () => {
@@ -611,6 +651,7 @@ describe('Direct MCP M3 governed execution', () => {
       succeeded: true,
       verified: true,
       verificationKind: 'schema',
+      outputSchemaSha256: expect.stringMatching(/^[0-9a-f]{64}$/u),
     });
     expect(execution.receipt.resultSha256).toMatch(/^[0-9a-f]{64}$/u);
     expect('lifecycle' in execution).toBe(false);

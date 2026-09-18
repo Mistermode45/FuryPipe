@@ -241,8 +241,25 @@ describe('direct MCP governance lifecycle', () => {
     const verified = recordMcpDirectVerification(executed, {
       resultSha256: sha('2'),
       verificationKind: 'schema',
+      schemaSha256: sha('9'),
     });
     expect(verified.verified).toBe(true);
+  });
+
+  it('refuses to claim schema verification without the exact schema digest', () => {
+    const state = approved('a');
+    const permit = createMcpDirectExecutionPermit(state, sha('a'), { now: 3_500 });
+    consumeMcpDirectExecutionPermit(state, permit, sha('a'), 3_501);
+    const executed = recordMcpDirectExecution(state, {
+      permit,
+      resultSha256: sha('b'),
+      isError: false,
+    });
+
+    expect(() => recordMcpDirectVerification(executed, {
+      resultSha256: sha('b'),
+      verificationKind: 'schema',
+    })).toThrow(/schema SHA-256/i);
   });
 
   it('records a failed call as executed but not succeeded or verified', () => {
@@ -277,6 +294,7 @@ describe('direct MCP governance lifecycle', () => {
     expect(() => recordMcpDirectVerification(executed, {
       resultSha256: sha('8'),
       verificationKind: 'schema',
+      schemaSha256: sha('9'),
     })).toThrow(/does not match/i);
   });
 });

@@ -239,3 +239,24 @@ the digest-only execution receipt. It does not return the internal
 permit-bearing lifecycle object. A transport close failure that occurs *after*
 the tool result and receipt are complete cannot erase successful execution
 evidence or turn a completed call into a retry candidate.
+
+## Verification claim precision
+
+`succeeded` and `verified` remain separate after M3 execution.
+
+A successful tool call with **no advertised output schema** is:
+
+```text
+executed = true
+succeeded = true
+verified = false
+```
+
+FuryPipe emits `verified = true` with `verificationKind = schema` only when
+the fresh same-session tool definition actually advertises an output schema and
+the returned structured output validates against it. The execution receipt and
+internal verification evidence both carry the exact output-schema SHA-256 used
+for that claim.
+
+This prevents `schema verified` from becoming a synonym for merely
+`callTool returned without isError`.

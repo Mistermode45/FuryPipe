@@ -60,6 +60,7 @@ export interface McpDirectExecutionReceipt {
   readonly approvalKind: 'operator' | 'governed_policy';
   readonly permitIdSha256: string;
   readonly resultSha256: string;
+  readonly outputSchemaSha256?: string;
   readonly protocolVersion?: string;
   readonly executed: true;
   readonly succeeded: boolean;
@@ -99,12 +100,14 @@ export class McpDirectExecutionVerificationError extends Error {
   readonly toolName: string;
   readonly inputSha256: string;
   readonly resultSha256: string;
+  readonly outputSchemaSha256: string;
 
   constructor(
     sourceId: string,
     toolName: string,
     inputSha256: string,
     resultSha256: string,
+    outputSchemaSha256: string,
   ) {
     super('MCP tool returned a result that failed FuryPipe post-call verification; do not retry automatically');
     this.name = 'McpDirectExecutionVerificationError';
@@ -112,6 +115,7 @@ export class McpDirectExecutionVerificationError extends Error {
     this.toolName = toolName;
     this.inputSha256 = inputSha256;
     this.resultSha256 = resultSha256;
+    this.outputSchemaSha256 = outputSchemaSha256;
   }
 }
 
@@ -214,6 +218,7 @@ function cloneSchema(value: unknown, label: string): unknown {
 function buildFreshToolDefinition(tool: McpDirectSdkListTool): {
   readonly definition: Readonly<Record<string, unknown>>;
   readonly outputValidator?: ReturnType<typeof fromJsonSchema>;
+  readonly outputSchemaSha256?: string;
 } {
   if (!tool || typeof tool !== 'object' || typeof tool.name !== 'string') {
     throw new Error('MCP fresh selected tool definition is invalid');
@@ -228,8 +233,14 @@ function buildFreshToolDefinition(tool: McpDirectSdkListTool): {
   };
 
   let outputValidator: ReturnType<typeof fromJsonSchema> | undefined;
+  let outputSchemaSha256: string | undefined;
   if (tool.outputSchema !== undefined) {
     const outputSchema = cloneSchema(tool.outputSchema, 'MCP fresh tool output schema');
+    outputSchemaSha256 = digestMcpDirectJson(outputSchema, {
+      maxBytes: MAX_SCHEMA_BYTES,
+      maxDepth: MAX_JSON_DEPTH,
+      label: 'MCP fresh tool output schema',
+    });
     definition.outputSchema = outputSchema;
     try {
       outputValidator = fromJsonSchema(
@@ -244,6 +255,7 @@ function buildFreshToolDefinition(tool: McpDirectSdkListTool): {
   return Object.freeze({
     definition: Object.freeze(definition),
     ...(outputValidator === undefined ? {} : { outputValidator }),
+    ...(outputSchemaSha256 === undefined ? {} : { outputSchemaSha256 }),
   });
 }
 
@@ -448,7 +460,13 @@ export async function executeMcpDirectApprovedToolInternal(
       isError,
     });
 
-    if (!isError) {
+    let finalLifecycle = executed;
+    let verified = false;
+    if (
+      !isError
+      && prepared.outputValidator !== undefined
+      && prepared.outputSchemaSha256 !== undefined
+    ) {
       const outputValid = await validateStructuredOutput(result, prepared.outputValidator);
       if (!outputValid) {
         throw new McpDirectExecutionVerificationError(
@@ -456,16 +474,16 @@ export async function executeMcpDirectApprovedToolInternal(
           proposal.toolName,
           proposal.inputSha256,
           resultSha256,
+          prepared.outputSchemaSha256,
         );
       }
+      finalLifecycle = recordMcpDirectVerification(executed, {
+        resultSha256,
+        verificationKind: 'schema',
+        schemaSha256: prepared.outputSchemaSha256,
+      });
+      verified = true;
     }
-
-    const finalLifecycle = isError
-      ? executed
-      : recordMcpDirectVerification(executed, {
-          resultSha256,
-          verificationKind: 'schema',
-        });
 
     const receipt: McpDirectExecutionReceipt = Object.freeze({
       format: 'furypipe-mcp-direct-execution-receipt/v1',
@@ -478,11 +496,14 @@ export async function executeMcpDirectApprovedToolInternal(
       approvalKind: approvedLifecycle.approval!.approvalKind,
       permitIdSha256,
       resultSha256,
+      ...(prepared.outputSchemaSha256 === undefined
+        ? {}
+        : { outputSchemaSha256: prepared.outputSchemaSha256 }),
       ...(fresh.protocolVersion === undefined ? {} : { protocolVersion: fresh.protocolVersion }),
       executed: true,
       succeeded: !isError,
-      verified: !isError,
-      ...(!isError ? { verificationKind: 'schema' as const } : {}),
+      verified,
+      ...(verified ? { verificationKind: 'schema' as const } : {}),
     });
 
     return Object.freeze({
