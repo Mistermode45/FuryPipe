@@ -100,7 +100,7 @@ function openAIChat(root: Record<string, unknown>): boolean {
     insertAt += 1;
   }
   messages.splice(insertAt, 0, {
-    role: 'developer',
+    role: 'system',
     content: FURY_PROXY_AGENT_POLICY_TEXT,
   });
   root.messages = messages;
