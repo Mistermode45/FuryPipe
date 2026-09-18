@@ -727,4 +727,73 @@ describe('Direct MCP durable replay foundation', () => {
     }
   });
 
+
+  it('rejects duplicate tombstone evidence and fails closed', async () => {
+    const { root, store, coordinator } = await fixture();
+    try {
+      const reservation = await reserveMcpDirectDurableExecution(coordinator, KEY, { now: 32_000 });
+      const armed = await armMcpDirectDurableExecution(coordinator, reservation, 32_001);
+      await settleMcpDirectDurableExecution(coordinator, armed, 'succeeded', {
+        resultSha256: RESULT, succeeded: true, now: 32_002,
+      });
+      await compactMcpDirectDurableEvidenceInternal(coordinator, KEY, {
+        now: 33_000, retainUntil: 63_000,
+      });
+      const tombstones = await store.list({ metadata: {
+        system: 'mcp-direct-durable-replay',
+        scopeSha256: coordinator.scopeSha256,
+        replayKeySha256: KEY,
+        recordType: 'tombstone',
+      }});
+      expect(tombstones).toHaveLength(1);
+      const parsed = JSON.parse(new TextDecoder().decode(await store.get(tombstones[0]!))) as Record<string, unknown>;
+      parsed.retainUntil = 64_000;
+      await store.put(
+        new TextEncoder().encode(JSON.stringify(parsed)),
+        tombstones[0]!.metadata,
+      );
+      await expect(inspectMcpDirectDurableReplayStatusInternal(coordinator, KEY, 33_001))
+        .rejects.toMatchObject({ code: 'durable-state-corrupt', retrySafe: false });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps full terminal evidence when quota blocks tombstone publication', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-mcp-durable-quota-'));
+    const maxTotalBytes = 100_000;
+    const store = createRecoveryStore(root, {
+      namespace: 'mcp-direct-durable-replay',
+      maxObjectBytes: maxTotalBytes,
+      maxTotalBytes,
+      maxGlobalBytes: maxTotalBytes * 2,
+    });
+    const coordinator = createMcpDirectDurableReplayCoordinatorInternal({
+      store, tenantId: 'tenant-a', principalId: 'principal-a',
+    });
+    try {
+      const reservation = await reserveMcpDirectDurableExecution(coordinator, KEY, { now: 34_000 });
+      const armed = await armMcpDirectDurableExecution(coordinator, reservation, 34_001);
+      await settleMcpDirectDurableExecution(coordinator, armed, 'succeeded', {
+        resultSha256: RESULT, succeeded: true, now: 34_002,
+      });
+      const current = await store.list({ metadata: {
+        system: 'mcp-direct-durable-replay',
+        scopeSha256: coordinator.scopeSha256,
+        replayKeySha256: KEY,
+      }});
+      const used = current.reduce((total, handle) => total + handle.bytes, 0);
+      await store.put(new Uint8Array(maxTotalBytes - used - 1), {
+        system: 'quota-filler',
+      });
+      await expect(compactMcpDirectDurableEvidenceInternal(coordinator, KEY, {
+        now: 35_000, retainUntil: 65_000,
+      })).rejects.toBeDefined();
+      await expect(inspectMcpDirectDurableReplayStatusInternal(coordinator, KEY, 35_001))
+        .resolves.toMatchObject({ state: 'terminal', attempt: 1, outcome: 'succeeded' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
 });
