@@ -337,3 +337,13 @@ export {
   type FuryHumanOutputPolicyDecision,
   type FuryHumanOutputPolicyInput,
 } from '../human-output-policy.js';
+export {
+  extractProxyTaskEnvelope,
+  type ProxyTaskEnvelope,
+  type ProxyTaskWire,
+  type ProxyToolMetadata,
+} from '../proxy-task-envelope.js';
+export {
+  createAgentSkillActivationReceipt,
+  type AgentSkillActivationReceipt,
+} from '../agent-skill-activation.js';
