@@ -438,6 +438,9 @@ function parseRecord(bytes: Uint8Array): DurableRecord {
       ) {
         throw new Error('non-digest terminal outcome must not claim resultSha256');
       }
+      if (value.outcome === 'unknown' && value.succeeded !== undefined) {
+        throw new Error('unknown MCP durable terminal outcome must not claim succeeded');
+      }
     }
 
     const canonical = canonicalizeMcpDirectJson(parsed, {
@@ -940,6 +943,7 @@ export async function settleMcpDirectDurableExecution(
     (outcome === 'succeeded' && evidence.succeeded !== true)
     || (outcome === 'tool_error' && evidence.succeeded !== false)
     || (outcome === 'verification_failed' && evidence.succeeded !== true)
+    || (outcome === 'unknown' && evidence.succeeded !== undefined)
   ) {
     throw new Error('MCP durable terminal outcome has inconsistent succeeded evidence');
   }
