@@ -53,7 +53,9 @@ function normalizeText(value: string): string {
 }
 
 function canonicalToken(token: string): string {
-  let value = token;
+  // Keep internal dots for identifiers such as node.js, but sentence-final
+  // punctuation must not turn "cause." into a different routing token.
+  let value = token.replace(/\.+$/u, '');
   // Small deterministic morphology bridge for routing only. This is not a
   // linguistic stemmer and never rewrites prompt content.
   if (value.length > 5 && value.endsWith('ing')) {
