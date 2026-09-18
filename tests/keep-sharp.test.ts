@@ -80,6 +80,45 @@ describe('keepSharp fidelity hint', () => {
     expect(info.passthroughReasons?.exact_guard).toBe(1);
   });
 
+  it('does not let untouched top-level provider metadata block automatic compression', async () => {
+    const uuidA = '123e4567-e89b-12d3-a456-426614174000';
+    const uuidB = '123e4567-e89b-12d3-a456-426614174001';
+    const digest = 'a'.repeat(64);
+    const parsed = parse(makeReq([{ type: 'text', text: 'summarize this context' }]));
+    parsed.metadata = {
+      session_uuid: uuidA,
+      trace_uuid: uuidB,
+      request_digest: digest,
+    };
+    const source = enc.encode(JSON.stringify(parsed));
+
+    const { body, info } = await transformRequest(source, { charsPerToken: 2 });
+    const outgoing = parse(body);
+
+    expect(info.compressed).toBe(true);
+    expect(body).not.toEqual(source);
+    expect(outgoing.metadata).toEqual(parsed.metadata);
+  });
+
+  it('keeps explicit ExactGuard whole-request strictness for top-level metadata', async () => {
+    const parsed = parse(makeReq([{ type: 'text', text: 'summarize this context' }]));
+    parsed.metadata = {
+      session_uuid: '123e4567-e89b-12d3-a456-426614174000',
+      request_digest: 'b'.repeat(64),
+    };
+    const source = enc.encode(JSON.stringify(parsed));
+
+    const { body, info } = await transformRequest(source, {
+      charsPerToken: 2,
+      exactGuard: {},
+    });
+
+    expect(body).toEqual(source);
+    expect(info.compressed).toBe(false);
+    expect(info.exactGuard).toMatchObject({ action: 'preserve_native' });
+    expect(info.exactGuard?.regions?.top_level_other).toBe(2);
+  });
+
   it('protects exact-looking tool output under the automatic balanced default', async () => {
     const source = makeReq([
       { type: 'tool_result', tool_use_id: 'toolu_exact', content: `${BIG}\nchecksum=${'a'.repeat(64)}` },
