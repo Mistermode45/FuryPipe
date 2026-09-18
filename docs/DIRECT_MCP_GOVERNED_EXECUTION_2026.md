@@ -189,3 +189,23 @@ M3 is not mergeable until all of the following are true:
   remain green.
 
 No release, tag, npm publish or deploy is part of M3.
+
+## Implemented M3 surface
+
+The supported Node execution entry point is
+`executeMcpDirectApprovedTool()` from `furypipe/mcp-direct-executor-node`.
+
+Its public options intentionally exclude the internal SDK factory and clock test
+seams. The internal executor module is not a package export.
+
+The first implementation opens a new official client session, refreshes
+`tools/list`, compares the selected schema/risk/protocol evidence, constructs
+the exact fresh tool definition, consumes one permit, and issues one
+`Client.callTool()`. The fresh tool definition is passed explicitly to the
+SDK so the call uses the same-session input/output schema and does not enter
+the SDK's missing-header refresh/retry branch.
+
+A returned tool-level error is observable execution but not success. A thrown
+call after permit consumption becomes
+`MCP_DIRECT_EXECUTION_OUTCOME_UNKNOWN`, is marked non-retry-safe, and the
+approved lifecycle cannot be reused for another attempt.

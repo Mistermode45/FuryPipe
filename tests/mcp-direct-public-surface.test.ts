@@ -15,6 +15,7 @@ describe('direct MCP supported public authority surface', () => {
     expect(root.probeMcpDirectInventory).toBeTypeOf('function');
     expect(root.deriveMcpDirectEndpointFingerprint).toBeTypeOf('function');
     expect(root.selectMcpDirectTool).toBeTypeOf('function');
+    expect(root.executeMcpDirectApprovedTool).toBeTypeOf('function');
 
     expect(root.createMcpDirectLifecycle).toBeUndefined();
     expect(root.recordMcpDirectConnection).toBeUndefined();
@@ -37,6 +38,8 @@ describe('direct MCP supported public authority surface', () => {
 
     expect(packageJson.exports['./mcp-direct-client-node']).toBeDefined();
     expect(packageJson.exports['./mcp-direct-policy']).toBeDefined();
+    expect(packageJson.exports['./mcp-direct-executor-node']).toBeDefined();
     expect(packageJson.exports['./mcp-direct-policy-internal']).toBeUndefined();
+    expect(packageJson.exports['./mcp-direct-executor-node-internal']).toBeUndefined();
   });
 });

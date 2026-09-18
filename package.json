@@ -364,6 +364,10 @@
     "./mcp-direct-policy": {
       "types": "./dist/mcp-direct-policy.d.ts",
       "import": "./dist/mcp-direct-policy.js"
+    },
+    "./mcp-direct-executor-node": {
+      "types": "./dist/mcp-direct-executor-node.d.ts",
+      "import": "./dist/mcp-direct-executor-node.js"
     }
   },
   "files": [
@@ -382,6 +386,7 @@
     "docs/DIRECT_MCP_GOVERNED_RUNTIME_2026.md",
     "docs/DIRECT_MCP_CLIENT_TRANSPORT_2026.md",
     "docs/DIRECT_MCP_POLICY_APPROVAL_2026.md",
+    "docs/DIRECT_MCP_GOVERNED_EXECUTION_2026.md",
     "docs/FURY_PROMPT.md",
     "docs/INSTRUCTION_PROFILES.md",
     "docs/SKILL_ECOSYSTEM_2026.md",

@@ -430,3 +430,12 @@ export {
   type McpDirectInventoryProbeOptions,
   type McpDirectInventoryProbeEvidence,
 } from '../mcp-direct-client-node.js';
+
+export {
+  executeMcpDirectApprovedTool,
+  McpDirectExecutionOutcomeUnknownError,
+  McpDirectExecutionVerificationError,
+  type McpDirectGovernedExecutionOptions,
+  type McpDirectExecutionReceipt,
+  type McpDirectGovernedExecutionResult,
+} from '../mcp-direct-executor-node.js';

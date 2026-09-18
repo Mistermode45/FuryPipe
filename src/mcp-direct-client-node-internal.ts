@@ -85,13 +85,14 @@ export interface McpDirectInventoryProbeEvidence {
   readonly toolCount: number;
 }
 
-interface SdkListTool {
+export interface McpDirectMcpDirectSdkListTool {
   readonly name?: unknown;
   readonly inputSchema?: unknown;
+  readonly outputSchema?: unknown;
   readonly annotations?: unknown;
 }
 
-interface SdkClientLike {
+export interface McpDirectMcpDirectSdkClientLike {
   connect(
     transport: unknown,
     options: { readonly timeout: number; readonly signal: AbortSignal },
@@ -100,7 +101,18 @@ interface SdkClientLike {
     readonly timeout: number;
     readonly signal: AbortSignal;
     readonly cacheMode: 'refresh';
-  }): Promise<{ readonly tools: readonly SdkListTool[] }>;
+  }): Promise<{ readonly tools: readonly McpDirectSdkListTool[] }>;
+  callTool?(
+    params: {
+      readonly name: string;
+      readonly arguments?: Readonly<Record<string, unknown>>;
+    },
+    options: {
+      readonly timeout: number;
+      readonly signal: AbortSignal;
+      readonly toolDefinition: unknown;
+    },
+  ): Promise<unknown>;
   getProtocolEra(): 'modern' | 'legacy' | undefined;
   getNegotiatedProtocolVersion(): string | undefined;
   close(): Promise<void>;
@@ -113,7 +125,7 @@ export interface McpDirectSdkFactory {
       readonly listMaxPages: number;
       readonly probeTimeoutMs: number;
     },
-  ): SdkClientLike;
+  ): McpDirectSdkClientLike;
   createStdioTransport(config: {
     readonly command: string;
     readonly args: readonly string[];
@@ -212,6 +224,20 @@ const DEFAULT_FACTORY: McpDirectSdkFactory = Object.freeze({
         ...listOptions,
         cacheMode: 'refresh',
       }),
+      callTool: (
+        params: {
+          readonly name: string;
+          readonly arguments?: Readonly<Record<string, unknown>>;
+        },
+        callOptions: {
+          readonly timeout: number;
+          readonly signal: AbortSignal;
+          readonly toolDefinition: unknown;
+        },
+      ) => client.callTool(
+        params as Parameters<Client['callTool']>[0],
+        callOptions as Parameters<Client['callTool']>[1],
+      ),
       getProtocolEra: () => client.getProtocolEra(),
       getNegotiatedProtocolVersion: () => client.getNegotiatedProtocolVersion(),
       close: () => client.close(),
@@ -436,7 +462,7 @@ function behaviorHints(value: unknown): McpToolBehaviorHints | undefined {
 }
 
 function normalizedCatalog(
-  tools: readonly SdkListTool[],
+  tools: readonly McpDirectSdkListTool[],
   source: McpDirectSourceConfig,
 ): {
   readonly inventory: Parameters<typeof recordMcpDirectInventory>[1];
@@ -549,17 +575,26 @@ export function deriveMcpDirectEndpointFingerprint(
   });
 }
 
+export interface McpDirectFreshInventoryContext {
+  readonly lifecycle: McpDirectLifecycleState;
+  readonly catalog: McpDirectCatalogHandle;
+  readonly tools: readonly McpDirectSdkListTool[];
+  readonly client: McpDirectSdkClientLike;
+  readonly protocolVersion?: string;
+}
+
 /**
- * Connects a FuryPipe-owned MCP client, negotiates protocol era, performs one
- * bounded tools/list inventory request, then closes the client.
+ * Internal same-session primitive used by M1 and M3. It opens one hardened
+ * client, performs exactly one fresh tools/list, invokes the callback while
+ * that client remains connected, then closes it.
  *
- * M1 is deliberately inventory-only. This function has no tool-execution
- * method and returns no execution authority.
+ * This is intentionally not a supported package export.
  */
-export async function probeMcpDirectInventory(
+export async function withMcpDirectFreshInventory<T>(
   config: McpDirectRuntimeConfig,
   options: McpDirectInventoryProbeOptions,
-): Promise<McpDirectInventoryProbeEvidence> {
+  use: (context: McpDirectFreshInventoryContext) => Promise<T> | T,
+): Promise<T> {
   assertClientInfo(options.clientInfo);
   const connectTimeoutMs = boundedInteger(
     options.connectTimeoutMs,
@@ -621,7 +656,7 @@ export async function probeMcpDirectInventory(
       : { protocolEra: 'legacy_2025', handshake: 'initialize' });
 
     const listDeadline = createTimeout(listTimeoutMs, 'MCP tools/list');
-    let result: { readonly tools: readonly SdkListTool[] };
+    let result: { readonly tools: readonly McpDirectSdkListTool[] };
     try {
       result = await client.listTools({
         timeout: listTimeoutMs,
@@ -634,16 +669,15 @@ export async function probeMcpDirectInventory(
 
     const normalized = normalizedCatalog(result.tools, config.source);
     lifecycle = recordMcpDirectInventory(lifecycle, normalized.inventory);
+    const protocolVersion = client.getNegotiatedProtocolVersion();
 
-    return Object.freeze({
-      format: 'furypipe-mcp-direct-inventory-probe/v1',
+    return await use(Object.freeze({
       lifecycle,
       catalog: normalized.catalog,
-      ...(client.getNegotiatedProtocolVersion() === undefined
-        ? {}
-        : { protocolVersion: client.getNegotiatedProtocolVersion() }),
-      toolCount: normalized.inventory.length,
-    });
+      tools: Object.freeze([...result.tools]),
+      client,
+      ...(protocolVersion === undefined ? {} : { protocolVersion }),
+    }));
   } catch (caught) {
     primaryError = caught;
     throw caught;
@@ -654,4 +688,26 @@ export async function probeMcpDirectInventory(
       if (primaryError === undefined) throw closeError;
     }
   }
+}
+
+/**
+ * Connects a FuryPipe-owned MCP client, negotiates protocol era, performs one
+ * bounded tools/list inventory request, then closes the client.
+ *
+ * M1 is deliberately inventory-only. This function has no tool-execution
+ * method and returns no execution authority.
+ */
+export async function probeMcpDirectInventory(
+  config: McpDirectRuntimeConfig,
+  options: McpDirectInventoryProbeOptions,
+): Promise<McpDirectInventoryProbeEvidence> {
+  return withMcpDirectFreshInventory(config, options, context => Object.freeze({
+    format: 'furypipe-mcp-direct-inventory-probe/v1',
+    lifecycle: context.lifecycle,
+    catalog: context.catalog,
+    ...(context.protocolVersion === undefined
+      ? {}
+      : { protocolVersion: context.protocolVersion }),
+    toolCount: context.lifecycle.inventory?.length ?? 0,
+  }));
 }
