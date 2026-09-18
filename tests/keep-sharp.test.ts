@@ -76,6 +76,7 @@ describe('keepSharp fidelity hint', () => {
     expect(info.compressed).toBe(false);
     expect(info.exactGuard).toMatchObject({ action: 'preserve_native' });
     expect(info.exactGuard?.classes?.minecraft_uuid).toBe(1);
+    expect(info.exactGuard?.regions?.messages).toBe(1);
     expect(info.passthroughReasons?.exact_guard).toBe(1);
   });
 
