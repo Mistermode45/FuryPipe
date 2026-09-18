@@ -108,6 +108,7 @@ Different instructions.
     expect(result.blocked).toContainEqual({
       name: 'systematic-debugging',
       reason: 'changed_since_discovery',
+      detail: 'identity_changed',
     });
   });
 });
