@@ -20,10 +20,10 @@ import {
   evaluateMcpDirectPolicy,
   isGeneratedMcpDirectPolicyDecision,
   isGeneratedMcpDirectToolProposal,
-  resolveMcpDirectProposalArguments,
   selectMcpDirectTool,
   type McpDirectPolicy,
 } from '../src/mcp-direct-policy.js';
+import { resolveMcpDirectProposalArguments } from '../src/mcp-direct-policy-internal.js';
 import { assessMcpToolRisk } from '../src/mcp-tool-risk.js';
 
 const sha = (char: string) => char.repeat(64);

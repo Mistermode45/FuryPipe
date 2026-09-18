@@ -36,5 +36,6 @@ describe('direct MCP supported public authority surface', () => {
 
     expect(packageJson.exports['./mcp-direct-client-node']).toBeDefined();
     expect(packageJson.exports['./mcp-direct-policy']).toBeDefined();
+    expect(packageJson.exports['./mcp-direct-policy-internal']).toBeUndefined();
   });
 });

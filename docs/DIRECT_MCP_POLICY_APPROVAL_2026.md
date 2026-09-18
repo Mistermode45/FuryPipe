@@ -54,7 +54,8 @@ state must never make one proposal validate against another server's schema.
 
 Public proposal evidence contains only identifiers and SHA-256 digests. The raw
 arguments remain behind process-local WeakMap provenance for the future M3
-executor. Copying or serializing the proposal destroys its authority.
+executor. The raw-argument resolver lives only in an internal module that is not
+a package export. Copying or serializing the proposal destroys its authority.
 
 ## Policy
 
