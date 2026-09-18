@@ -57,6 +57,8 @@ export interface McpDirectExecutionEvidence {
 export interface McpDirectVerificationEvidence {
   readonly resultSha256: string;
   readonly verificationKind: 'schema' | 'semantic' | 'operator';
+  /** Required exactly when verificationKind is schema. */
+  readonly schemaSha256?: string;
 }
 
 export interface McpDirectLifecycleState {
@@ -484,6 +486,14 @@ export function recordMcpDirectVerification(
   }
   if (!['schema', 'semantic', 'operator'].includes(evidence.verificationKind)) {
     throw new Error('unsupported MCP verification kind');
+  }
+  if (evidence.verificationKind === 'schema') {
+    if (evidence.schemaSha256 === undefined) {
+      throw new Error('schema verification requires an exact schema SHA-256 digest');
+    }
+    assertSha(evidence.schemaSha256, 'verification schemaSha256');
+  } else if (evidence.schemaSha256 !== undefined) {
+    throw new Error('non-schema verification must not carry a schema digest');
   }
   return freezeState({
     ...state,

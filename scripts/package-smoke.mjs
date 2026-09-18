@@ -251,10 +251,16 @@ try {
     "const m = await import('furypipe/mcp-direct-policy'); if (typeof m.selectMcpDirectTool !== 'function' || typeof m.createMcpDirectToolProposal !== 'function' || typeof m.evaluateMcpDirectPolicy !== 'function' || typeof m.approveMcpDirectPolicyDecision !== 'function' || typeof m.resolveMcpDirectProposalArguments !== 'undefined') process.exit(1);",
   ], installDir);
   assert(directMcpPolicyExport.stderr === '', `Direct MCP policy package export wrote stderr: ${directMcpPolicyExport.stderr}`);
+  const directMcpExecutorExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/mcp-direct-executor-node'); if (typeof m.executeMcpDirectApprovedTool !== 'function' || typeof m.McpDirectExecutionOutcomeUnknownError !== 'function' || typeof m.McpDirectExecutionVerificationError !== 'function' || typeof m.McpDirectExecutionEvidenceError !== 'function') process.exit(1);",
+  ], installDir);
+  assert(directMcpExecutorExport.stderr === '', `Direct MCP executor package export wrote stderr: ${directMcpExecutorExport.stderr}`);
   const directMcpHiddenExports = await run(process.execPath, [
     '--input-type=module',
     '-e',
-    "for (const subpath of ['mcp-direct-governance','mcp-direct-client-node-internal','mcp-direct-policy-internal','mcp-direct-catalog','mcp-direct-json']) { try { await import('furypipe/' + subpath); process.exit(2); } catch (error) { if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }",
+    "for (const subpath of ['mcp-direct-governance','mcp-direct-client-node-internal','mcp-direct-policy-internal','mcp-direct-executor-node-internal','mcp-direct-catalog','mcp-direct-json']) { try { await import('furypipe/' + subpath); process.exit(2); } catch (error) { if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }",
   ], installDir);
   assert(directMcpHiddenExports.stderr === '', `Hidden Direct MCP package path smoke wrote stderr: ${directMcpHiddenExports.stderr}`);
   const furyPromptExport = await run(process.execPath, [
