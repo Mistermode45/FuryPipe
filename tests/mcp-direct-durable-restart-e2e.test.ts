@@ -62,6 +62,28 @@ async function runCrashWorker(
   };
 }
 
+async function runReservationRaceWorker(root: string): Promise<{ readonly ok: boolean; readonly code?: string }> {
+  const worker = fileURLToPath(
+    new URL('./fixtures/mcp-direct-durable-reservation-race-worker.ts', import.meta.url),
+  );
+  const tsx = join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  const child = spawn(
+    process.execPath,
+    [tsx, worker, JSON.stringify({ root })],
+    { stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => { stdout += chunk; });
+  child.stderr.on('data', (chunk: string) => { stderr += chunk; });
+  const [code] = await once(child, 'close') as [number | null, NodeJS.Signals | null];
+  expect(code).toBe(0);
+  expect(stderr.trim()).toBe('');
+  return JSON.parse(stdout.trim()) as { readonly ok: boolean; readonly code?: string };
+}
+
 function config(counterPath: string): McpDirectRuntimeConfig {
   const serverPath = fileURLToPath(
     new URL('./fixtures/mcp-direct-execution-stdio-server.mjs', import.meta.url),
