@@ -183,7 +183,7 @@ describe('direct MCP client inventory transport', () => {
         annotations: { readOnlyHint: true, openWorldHint: false },
       }],
     });
-    const result = await probeMcpDirectInventory(stdioConfig('untrusted'), {
+    const result = await probeMcpDirectInventoryInternal(stdioConfig('untrusted'), {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     });
@@ -303,7 +303,7 @@ describe('direct MCP client inventory transport', () => {
       ...config,
       source: { ...config.source, endpointFingerprint: sha('f') },
     };
-    await expect(probeMcpDirectInventory(forged, {
+    await expect(probeMcpDirectInventoryInternal(forged, {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     })).rejects.toThrow(/fingerprint does not match/i);
@@ -322,7 +322,7 @@ describe('direct MCP client inventory transport', () => {
       url: 'https://mcp.example.test/v1?token=secret',
       allowedHosts: ['mcp.example.test'],
     };
-    await expect(probeMcpDirectInventory(config, {
+    await expect(probeMcpDirectInventoryInternal(config, {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     })).rejects.toThrow(/must not contain a query string/i);
