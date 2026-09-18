@@ -52,10 +52,28 @@ function normalizeText(value: string): string {
     .toLowerCase();
 }
 
+function canonicalToken(token: string): string {
+  let value = token;
+  // Small deterministic morphology bridge for routing only. This is not a
+  // linguistic stemmer and never rewrites prompt content.
+  if (value.length > 5 && value.endsWith('ing')) {
+    value = value.slice(0, -3);
+    if (value.length > 2 && value.at(-1) === value.at(-2)) value = value.slice(0, -1);
+  }
+  if (value.length > 4 && value.endsWith('s')
+    && !value.endsWith('ss') && !value.endsWith('us') && !value.endsWith('is')) {
+    value = value.slice(0, -1);
+  }
+  return value;
+}
+
 function tokens(value: string): readonly string[] {
   const normalized = normalizeText(value);
   const matches = normalized.match(/[a-z0-9][a-z0-9._+-]{1,63}/gu) ?? [];
-  return Object.freeze(matches.filter((token) => !STOPWORDS.has(token)));
+  return Object.freeze(matches
+    .filter((token) => !STOPWORDS.has(token))
+    .map(canonicalToken)
+    .filter((token) => token.length > 1 && !STOPWORDS.has(token)));
 }
 
 function unique(values: readonly string[]): readonly string[] {
