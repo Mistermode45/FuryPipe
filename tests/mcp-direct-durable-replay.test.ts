@@ -564,4 +564,63 @@ describe('Direct MCP durable replay foundation', () => {
     },
   );
 
+
+  it('retains historical existence across restart and never treats a tombstone as replay authority', async () => {
+    const { root, store, coordinator } = await fixture();
+    try {
+      const reservation = await reserveMcpDirectDurableExecution(coordinator, KEY, { now: 17_000 });
+      const armed = await armMcpDirectDurableExecution(coordinator, reservation, 17_001);
+      await settleMcpDirectDurableExecution(coordinator, armed, 'succeeded', {
+        resultSha256: RESULT, succeeded: true, now: 17_002,
+      });
+      await compactMcpDirectDurableEvidenceInternal(coordinator, KEY, {
+        now: 18_000, retainUntil: 48_000,
+      });
+
+      const reopened = createMcpDirectDurableReplayCoordinatorInternal({
+        store, tenantId: 'tenant-a', principalId: 'principal-a',
+      });
+      await expect(inspectMcpDirectDurableReplayStatusInternal(reopened, KEY, 18_001))
+        .resolves.toMatchObject({ state: 'compacted', historical: true, attempt: 1 });
+      await expect(reserveMcpDirectDurableExecution(reopened, KEY, { now: 18_002 }))
+        .rejects.toMatchObject({ code: 'durable-state-conflict', retrySafe: false });
+      await expect(reserveMcpDirectDurableExecution(reopened, KEY, {
+        now: 18_003,
+        replay: {
+          priorAttempt: 1,
+          priorResultSha256: RESULT,
+          reason: 'repeat_closed_world_read',
+        },
+      })).rejects.toMatchObject({ code: 'durable-replay-not-authorized', retrySafe: false });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed on a corrupt tombstone and exposes no plaintext identity or payload', async () => {
+    const { root, store, coordinator } = await fixture();
+    try {
+      const corrupt = new TextEncoder().encode('{"format":"furypipe-mcp-direct-durable-tombstone/v1"}');
+      await store.put(corrupt, {
+        system: 'mcp-direct-durable-replay',
+        scopeSha256: coordinator.scopeSha256,
+        replayKeySha256: KEY,
+        recordType: 'tombstone',
+        attempt: 1,
+        reservationIdSha256: RESULT,
+      });
+      await expect(inspectMcpDirectDurableReplayStatusInternal(coordinator, KEY, 19_000))
+        .rejects.toMatchObject({ code: 'durable-state-corrupt', retrySafe: false });
+      const manifests = await store.list({ metadata: {
+        system: 'mcp-direct-durable-replay',
+        scopeSha256: coordinator.scopeSha256,
+        replayKeySha256: KEY,
+      }});
+      expect(JSON.stringify(manifests)).not.toContain('tenant-a');
+      expect(JSON.stringify(manifests)).not.toContain('principal-a');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
 });
