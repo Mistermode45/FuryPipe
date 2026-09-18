@@ -1041,7 +1041,8 @@ export async function compactMcpDirectDurableEvidenceInternal(
     minMatches: 1,
     maxMatches: 1,
   }));
-  await store.compactBounded(
+  try {
+    await store.compactBounded(
     canonicalBytes(tombstone),
     tombstoneMetadata,
     { metadata: slot, maxMatches: 1, matchConstraints: fullConstraints },
@@ -1057,6 +1058,15 @@ export async function compactMcpDirectDurableEvidenceInternal(
       }],
     })),
   );
+  } catch (caught) {
+    const afterRace = await inspectMcpDirectDurableReplayStatusInternal(
+      coordinator,
+      replayKeySha256,
+      options.now,
+    ).catch(() => undefined);
+    if (afterRace?.state === 'compacted') return afterRace;
+    throw caught;
+  }
   return inspectMcpDirectDurableReplayStatusInternal(coordinator, replayKeySha256, options.now);
 }
 
