@@ -347,3 +347,10 @@ export {
   createAgentSkillActivationReceipt,
   type AgentSkillActivationReceipt,
 } from '../agent-skill-activation.js';
+export {
+  observeAnthropicMcpRuntime,
+  type AnthropicMcpObservation,
+  type ConnectedMcpTool,
+  type ObservedExternalMcpResultReceipt,
+  type PendingObservedMcpUse,
+} from '../mcp-observed-runtime.js';
