@@ -27,6 +27,26 @@ describe('toTrackEvent', () => {
     });
     expect(out.eligibility_cause).toBe('operator_scope_excluded');
   });
+  it('persists plaintext-free ExactGuard class counts', () => {
+    const out = toTrackEvent({
+      method: 'POST', path: '/v1/messages', status: 200, durationMs: 1,
+      info: {
+        compressed: false,
+        reason: 'exact_guard (preserve_native, spans=3)',
+        origChars: 0,
+        exactGuard: {
+          protectedSpans: 3,
+          action: 'preserve_native',
+          classes: { message_id: 2, sha256: 1 },
+          regions: { system: 1, top_level_other: 2 },
+        },
+      },
+    });
+    expect(out.exact_guard_classes).toEqual({ message_id: 2, sha256: 1 });
+    expect(out.exact_guard_regions).toEqual({ system: 1, top_level_other: 2 });
+    expect(JSON.stringify(out)).not.toContain('req_secret');
+  });
+
   it('flattens ProxyEvent + TransformInfo + Usage into a single record', () => {
     const ev: ProxyEvent = {
       method: 'POST',
