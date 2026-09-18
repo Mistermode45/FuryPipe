@@ -225,7 +225,7 @@ function normalizedPairs(value: unknown, label: string): readonly McpDirectPolic
   pairs.sort((left, right) => {
     const leftKey = `${left.sourceId}\u0000${left.endpointFingerprint}\u0000${left.toolName}`;
     const rightKey = `${right.sourceId}\u0000${right.endpointFingerprint}\u0000${right.toolName}`;
-    return leftKey.localeCompare(rightKey);
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
   });
   return Object.freeze(pairs);
 }

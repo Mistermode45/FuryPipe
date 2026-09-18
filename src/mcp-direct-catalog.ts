@@ -83,7 +83,9 @@ export function createMcpDirectCatalogHandle(
     digestRows.push(Object.freeze({ name: tool.name, inputSchemaSha256: derived }));
   }
 
-  digestRows.sort((left, right) => left.name.localeCompare(right.name));
+  digestRows.sort((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0
+  );
   const inventorySha256 = digestMcpDirectJson(digestRows, {
     maxBytes: 1024 * 1024,
     maxDepth: 16,
