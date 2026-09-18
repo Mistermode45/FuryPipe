@@ -114,7 +114,6 @@ interface DecisionState {
   readonly evaluatedAt: number;
   readonly expiresAt: number;
   readonly outcome: McpDirectPolicyOutcome;
-  approved: boolean;
 }
 
 interface OperatorIntentState {
@@ -125,6 +124,7 @@ interface OperatorIntentState {
 
 const PROPOSAL_STATE = new WeakMap<object, ProposalState>();
 const DECISION_STATE = new WeakMap<object, DecisionState>();
+const APPROVED_DECISIONS = new WeakSet<object>();
 const OPERATOR_INTENT_STATE = new WeakMap<object, OperatorIntentState>();
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -528,7 +528,6 @@ export function evaluateMcpDirectPolicy(
     evaluatedAt,
     expiresAt,
     outcome,
-    approved: false,
   }));
   return decision;
 }
@@ -613,7 +612,7 @@ export function createMcpDirectOperatorApprovalIntent(
   if (internalDecision.outcome === 'deny') {
     throw new Error('MCP policy denied operator approval for this proposal');
   }
-  if (internalDecision.approved) {
+  if (APPROVED_DECISIONS.has(decision)) {
     throw new Error('MCP policy decision was already used for approval');
   }
 
@@ -673,7 +672,7 @@ export function approveMcpDirectPolicyDecision(
   if (now < decision.evaluatedAt || now >= decision.expiresAt) {
     throw new Error('MCP policy decision is expired or not yet valid for approval');
   }
-  if (internalDecision.approved) {
+  if (APPROVED_DECISIONS.has(decision)) {
     throw new Error('MCP policy decision was already used for approval');
   }
   if (internalDecision.outcome === 'deny') {
@@ -717,7 +716,7 @@ export function approveMcpDirectPolicyDecision(
     approvalExpiresAt = Math.min(authority.expiresAt, decision.expiresAt);
   }
 
-  internalDecision.approved = true;
+  APPROVED_DECISIONS.add(decision);
   return recordMcpDirectApproval(lifecycle, {
     policyDecisionIdSha256: decision.policyDecisionIdSha256,
     inputSha256: proposal.inputSha256,
