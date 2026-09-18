@@ -347,3 +347,11 @@ export {
   createAgentSkillActivationReceipt,
   type AgentSkillActivationReceipt,
 } from '../agent-skill-activation.js';
+export {
+  assessMcpToolRisk,
+  type McpResolvedToolHints,
+  type McpToolBehaviorHints,
+  type McpToolRiskAssessment,
+  type McpToolRiskClass,
+  type McpToolTrust,
+} from '../mcp-tool-risk.js';
