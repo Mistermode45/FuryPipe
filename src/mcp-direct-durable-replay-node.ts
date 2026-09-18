@@ -2,6 +2,7 @@ import type { RecoveryStore } from './core/recovery-store.js';
 import {
   createMcpDirectDurableReplayCoordinatorInternal,
   inspectMcpDirectDurableReplayStatusInternal,
+  reclaimMcpDirectDurableExpiredPreCallInternal,
   McpDirectDurableReplayError,
   type McpDirectDurableReplayCoordinator,
   type McpDirectDurableReplayStatus,
@@ -63,6 +64,16 @@ export async function inspectMcpDirectDurableReplayStatus(
   replayKeySha256: string,
 ): Promise<McpDirectDurableReplayStatus> {
   return inspectMcpDirectDurableReplayStatusInternal(
+    coordinator,
+    replayKeySha256,
+  );
+}
+
+export async function reclaimMcpDirectDurableExpiredPreCall(
+  coordinator: McpDirectDurableReplayCoordinator,
+  replayKeySha256: string,
+): Promise<McpDirectDurableReplayStatus> {
+  return reclaimMcpDirectDurableExpiredPreCallInternal(
     coordinator,
     replayKeySha256,
   );
