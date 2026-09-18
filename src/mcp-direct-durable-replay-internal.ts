@@ -165,6 +165,7 @@ const ARMED = new WeakMap<object, {
   readonly coordinator: McpDirectDurableReplayCoordinator;
   readonly handle: RecoveryHandle;
   readonly record: DurableArmedRecord;
+  readonly reservation: McpDirectDurableReservation;
 }>();
 const SETTLED = new WeakSet<object>();
 
@@ -916,9 +917,43 @@ export async function armMcpDirectDurableExecution(
     armedRecordSha256,
     replayed: reservation.replayed,
   });
-  ARMED.set(armed, Object.freeze({ coordinator, handle, record }));
-  ARMED.set(reservation as object, Object.freeze({ coordinator, handle, record }));
+  const armedState = Object.freeze({ coordinator, handle, record, reservation });
+  ARMED.set(armed, armedState);
+  ARMED.set(reservation as object, armedState);
   return armed;
+}
+
+export async function abortMcpDirectDurableArmedBeforeCall(
+  coordinator: McpDirectDurableReplayCoordinator,
+  armed: McpDirectDurableArmedEvidence,
+): Promise<void> {
+  const armedState = ARMED.get(armed as object);
+  if (!armedState || armedState.coordinator !== coordinator || SETTLED.has(armed as object)) {
+    throw new McpDirectDurableReplayError(
+      'durable-state-corrupt',
+      armed?.replayKeySha256,
+      armed?.attempt,
+    );
+  }
+  const reservationState = RESERVATIONS.get(armedState.reservation as object);
+  if (!reservationState || reservationState.coordinator !== coordinator) {
+    throw new McpDirectDurableReplayError(
+      'durable-state-corrupt',
+      armed.replayKeySha256,
+      armed.attempt,
+    );
+  }
+
+  const { store } = requiredStore(coordinator);
+  // Delete the armed marker first. Until the reservation is also deleted, any
+  // observer remains fail-closed at pre_call. Only after both deletes may a
+  // fresh execution reserve this key again.
+  await store.delete(armedState.handle);
+  await store.delete(reservationState.handle);
+  SETTLED.add(armed as object);
+  ARMED.delete(armed as object);
+  ARMED.delete(armedState.reservation as object);
+  RESERVATIONS.delete(armedState.reservation as object);
 }
 
 export async function settleMcpDirectDurableExecution(
