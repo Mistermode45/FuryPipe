@@ -298,8 +298,32 @@ Until that atomic revocation primitive exists, an expired unarmed reservation
 remains fail-closed. This is stricter than the final M5 target and is not treated
 as completion of the reclaim requirement.
 
-The executor is also intentionally unchanged in this slice, so the existence of
-the coordinator does not yet mean M3/M4 executions are durably protected.
+The executor now supports an explicit opt-in `durableReplay` coordinator.
+
+When enabled, the wire-call ordering is enforced as:
+
+```text
+M4 process-local reservation
+-> durable pre_call reservation
+-> consume M3 permit
+-> durable armed marker
+-> exactly one callTool()
+-> durable terminal for known success/tool_error
+-> M4 terminal settlement
+-> receipt return
+```
+
+A durable arming failure occurs before `callTool()` and therefore prevents the
+wire call. If a known tool result returns but terminal durability cannot be
+committed, FuryPipe throws the non-retriable
+`MCP_DIRECT_EXECUTION_DURABILITY_FAILED` error and leaves the durable state
+armed, which blocks restart replay.
+
+For existing callers that omit `durableReplay`, M3/M4 behavior is unchanged.
+
+Restart-time creation of a new M4 replay intent from durable evidence is still
+out of scope for this slice; durable terminal evidence is evidence, not replay
+authority.
 
 ## Reservation lease
 
