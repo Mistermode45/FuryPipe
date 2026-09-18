@@ -524,12 +524,22 @@ describe('direct MCP client inventory transport', () => {
 
   it('uses bounded stdio parameters and does not invoke a shell', async () => {
     const fake = fakeFactory({});
-    await probeMcpDirectInventoryInternal({
-      ...stdioConfig(),
+    const base = stdioConfig();
+    const provisional: McpDirectRuntimeConfig = {
+      ...base,
+      source: { ...base.source, endpointFingerprint: sha('0') },
       env: { SAFE_VAR: 'value' },
       principalId: 'stdio-service-account',
       maxBufferBytes: 1024 * 1024,
-    }, {
+    };
+    const config: McpDirectRuntimeConfig = {
+      ...provisional,
+      source: {
+        ...provisional.source,
+        endpointFingerprint: deriveMcpDirectEndpointFingerprint(provisional),
+      },
+    };
+    await probeMcpDirectInventoryInternal(config, {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     });
