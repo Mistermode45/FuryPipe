@@ -115,6 +115,10 @@ export {
   type RecoveryEncryptionOptions,
   type RecoveryStorage,
   type RecoveryRekeySummary,
+  type RecoveryCapacityBound,
+  type RecoveryMatchConstraint,
+  type RecoveryPutBound,
+  type RecoveryDeleteBound,
 } from './recovery-store.js';
 export {
   createContextIR,
