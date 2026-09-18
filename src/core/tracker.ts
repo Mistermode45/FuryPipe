@@ -216,6 +216,45 @@ export interface TrackEvent {
   capability_blocked_skills?: string[];
   capability_execution_authorized?: false;
   capability_error?: string;
+
+  // Passive MCP Runtime — no argument/result plaintext and no execution claim.
+  mcp_exposed_tools?: Array<{
+    tool_name: string;
+    server_id?: string;
+    tool_id?: string;
+    exposure_evidence: 'declared_mcp_type' | 'claude_code_name_convention';
+    transport_verified: false;
+    trust: 'trusted' | 'untrusted';
+    risk_class:
+      | 'untrusted_unknown'
+      | 'trusted_read_only_closed_world'
+      | 'trusted_read_only_open_world'
+      | 'trusted_mutating_additive'
+      | 'trusted_mutating_destructive';
+    closed_world_read_candidate: boolean;
+    authorization_granted: false;
+    requires_policy_gate: true;
+  }>;
+  mcp_pending_uses?: Array<{
+    tool_name: string;
+    tool_use_id_sha256: string;
+    input_sha256: string;
+    status: 'selected_no_result_observed';
+  }>;
+  mcp_observed_results?: Array<{
+    tool_name: string;
+    server_id?: string;
+    tool_id?: string;
+    tool_use_id_sha256: string;
+    input_sha256: string;
+    result_sha256: string;
+    is_error: boolean;
+    status: 'observed_result';
+    executed_by_furypipe: false;
+  }>;
+  mcp_executed_by_furypipe?: false;
+  mcp_authorization_granted?: false;
+  mcp_error?: string;
 }
 
 /** Max inline base64 body per JSONL row (32 KiB). Larger goes to sidecar (Node) or is dropped (Workers). */
@@ -264,6 +303,53 @@ export function toTrackEvent(ev: ProxyEvent): TrackEvent {
     out.capability_execution_authorized = false;
   }
   if (ev.capabilityError) out.capability_error = ev.capabilityError;
+  if (ev.mcp) {
+    const riskByName = new Map(ev.mcp.tools.map((item) => [item.toolName, item.assessment] as const));
+    if (ev.mcp.observation.exposedTools.length > 0) {
+      out.mcp_exposed_tools = ev.mcp.observation.exposedTools.map((tool) => {
+        const assessment = riskByName.get(tool.name);
+        if (!assessment) {
+          throw new Error('MCP evidence missing risk assessment for exposed tool');
+        }
+        return {
+          tool_name: tool.name,
+          ...(tool.serverId === undefined ? {} : { server_id: tool.serverId }),
+          ...(tool.toolId === undefined ? {} : { tool_id: tool.toolId }),
+          exposure_evidence: tool.exposureEvidence,
+          transport_verified: false as const,
+          trust: assessment.trust,
+          risk_class: assessment.riskClass,
+          closed_world_read_candidate: assessment.closedWorldReadCandidate,
+          authorization_granted: false as const,
+          requires_policy_gate: true as const,
+        };
+      });
+    }
+    if (ev.mcp.observation.pendingUses.length > 0) {
+      out.mcp_pending_uses = ev.mcp.observation.pendingUses.map((item) => ({
+        tool_name: item.toolName,
+        tool_use_id_sha256: item.toolUseIdSha256,
+        input_sha256: item.inputSha256,
+        status: item.status,
+      }));
+    }
+    if (ev.mcp.observation.observedResults.length > 0) {
+      out.mcp_observed_results = ev.mcp.observation.observedResults.map((item) => ({
+        tool_name: item.toolName,
+        ...(item.serverId === undefined ? {} : { server_id: item.serverId }),
+        ...(item.toolId === undefined ? {} : { tool_id: item.toolId }),
+        tool_use_id_sha256: item.toolUseIdSha256,
+        input_sha256: item.inputSha256,
+        result_sha256: item.resultSha256,
+        is_error: item.isError,
+        status: item.status,
+        executed_by_furypipe: false as const,
+      }));
+    }
+    out.mcp_executed_by_furypipe = false;
+    out.mcp_authorization_granted = false;
+  }
+  if (ev.mcpError) out.mcp_error = ev.mcpError;
   // Body sample: sidecar path (Node) > inline base64 if it fits > drop (Workers, oversized).
   if (ev.reqBodySamplePath) {
     out.req_body_sample_path = ev.reqBodySamplePath;
