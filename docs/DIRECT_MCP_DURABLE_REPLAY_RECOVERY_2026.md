@@ -271,6 +271,36 @@ The durable attempt number must match the M4 receipt attempt number.
 
 A mismatch is a fail-closed integrity error.
 
+## Current foundation slice
+
+The first implementation slice deliberately stops before executor wiring.
+
+It currently provides:
+
+- an opaque host coordinator bound to hashed tenant/principal scope;
+- canonical content-addressed reservation, armed and terminal records;
+- atomic one-reservation-per-attempt admission through `putBounded()`;
+- restart inspection;
+- cross-scope isolation;
+- known-terminal-only durable replay lineage;
+- a three-attempt durable bound;
+- a safe public inspection surface while mutation primitives remain internal.
+
+It deliberately does **not** reclaim an expired unarmed reservation yet.
+
+Reason: the current Recovery Store serializes each operation, but it does not
+expose a single transaction/CAS primitive that can atomically prove "no armed
+marker exists" and revoke the expired reservation. Implementing
+`list -> prove absent -> delete` as automatic recovery would introduce a race
+with a process attempting to arm near lease expiry.
+
+Until that atomic revocation primitive exists, an expired unarmed reservation
+remains fail-closed. This is stricter than the final M5 target and is not treated
+as completion of the reclaim requirement.
+
+The executor is also intentionally unchanged in this slice, so the existence of
+the coordinator does not yet mean M3/M4 executions are durably protected.
+
 ## Reservation lease
 
 The pre-call reservation lease is bounded and must exceed the maximum expected
