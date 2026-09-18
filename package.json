@@ -117,6 +117,22 @@
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"
     },
+    "./agent-skills-standard": {
+      "types": "./dist/agent-skills-standard.d.ts",
+      "import": "./dist/agent-skills-standard.js"
+    },
+    "./human-output-policy": {
+      "types": "./dist/human-output-policy.d.ts",
+      "import": "./dist/human-output-policy.js"
+    },
+    "./proxy-task-envelope": {
+      "types": "./dist/proxy-task-envelope.d.ts",
+      "import": "./dist/proxy-task-envelope.js"
+    },
+    "./agent-skill-activation": {
+      "types": "./dist/agent-skill-activation.d.ts",
+      "import": "./dist/agent-skill-activation.js"
+    },
     "./plugin-bundles": {
       "types": "./dist/plugin-bundles.d.ts",
       "import": "./dist/plugin-bundles.js"
@@ -329,6 +345,7 @@
     "docs/FURY_PROMPT.md",
     "docs/INSTRUCTION_PROFILES.md",
     "docs/SKILL_ECOSYSTEM_2026.md",
+    "docs/PROXY_CAPABILITY_RUNTIME_2026.md",
     "docs/PLUGIN_BUNDLES.md",
     "docs/CONTEXT_FABRIC.md",
     "docs/CONTROL_PLANE.md",

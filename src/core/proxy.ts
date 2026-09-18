@@ -25,6 +25,9 @@ import { pinCommandResponse, pinCommandResponseOpenAI } from './pin.js';
 import { isGoogleInferencePath, parseGoogleModelFromPath, transformGoogleGenerateContent } from './google.js';
 import { isGeminiModel } from './gemini-model-profiles.js';
 import { resolveGptProfile } from './gpt-model-profiles.js';
+import { extractProxyTaskEnvelope } from '../proxy-task-envelope.js';
+import { resolveFuryHumanOutputPolicy } from '../human-output-policy.js';
+import { applyAnthropicHumanOutputInstruction } from '../proxy-human-output.js';
 
 export interface ProxyConfig {
   /** 'cloudflare-ai-gateway': routes both families through gatewayBaseUrl;
@@ -67,6 +70,12 @@ export interface ProxyConfig {
   transform?: TransformOptions | (() => TransformOptions);
   /** Called after every request — useful for logging / metrics in the host. */
   onRequest?: (event: ProxyEvent) => void | Promise<void>;
+  /**
+   * Enable FuryPipe's native compact-human generation guidance on supported
+   * request shapes. Off by default for library callers; the Node product host
+   * enables it unless the operator opts out.
+   */
+  humanOutputPolicy?: boolean;
   /** Persist 4xx diagnostics: the gzipped request body plus the upstream error
    *  body. Off by default because either side may contain prompts or secrets. */
   captureErrorReqBody?: boolean;
@@ -1708,8 +1717,18 @@ let responseContentType: string | undefined;
           headers: { 'content-type': 'application/json' },
         });
       }
-      const bodyIn = bounded.bytes;
+      let bodyIn = bounded.bytes;
       try {
+        if (isMessages && config.humanOutputPolicy === true) {
+          const task = extractProxyTaskEnvelope(bodyIn, 'anthropic-messages');
+          if (task) {
+            const humanOutput = resolveFuryHumanOutputPolicy({
+              objective: task.objective,
+              structuredOutput: task.structuredOutput,
+            });
+            bodyIn = applyAnthropicHumanOutputInstruction(bodyIn, humanOutput);
+          }
+        }
         const transformOpts =
           typeof config.transform === 'function' ? config.transform() : config.transform;
         // Fail-closed: unreadable model → no compression, not a risky guess.

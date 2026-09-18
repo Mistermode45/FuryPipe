@@ -324,3 +324,26 @@ export {
   type HumanLearningTopic,
   type HumanLearningTopicId,
 } from '../learning.js';
+export {
+  parseAgentSkillManifest,
+  inspectAgentSkillMetadata,
+  type AgentSkillStandardMetadata,
+  type ParsedAgentSkillManifest,
+} from '../agent-skills-standard.js';
+export {
+  FURY_COMPACT_HUMAN_INSTRUCTION,
+  resolveFuryHumanOutputPolicy,
+  type FuryHumanOutputMode,
+  type FuryHumanOutputPolicyDecision,
+  type FuryHumanOutputPolicyInput,
+} from '../human-output-policy.js';
+export {
+  extractProxyTaskEnvelope,
+  type ProxyTaskEnvelope,
+  type ProxyTaskWire,
+  type ProxyToolMetadata,
+} from '../proxy-task-envelope.js';
+export {
+  createAgentSkillActivationReceipt,
+  type AgentSkillActivationReceipt,
+} from '../agent-skill-activation.js';
