@@ -1238,6 +1238,10 @@ const DYNAMIC_BLOCK_TAGS = [
   // text: hiding the policy inside a Visual Engine image would make exact/
   // machine-sensitive output boundaries less reliable.
   'furypipe_runtime_instruction',
+  // Activated Agent Skill bodies are trusted instruction content only after
+  // host-side discovery/trust/selection. Keep them native for behavioral
+  // salience; do not bury instructions inside a Visual Engine image.
+  'furypipe_active_skill',
 ] as const;
 
 // Known-static slab tags — suppresses first-sighting `unknownStaticTags` noise

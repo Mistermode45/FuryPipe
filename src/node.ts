@@ -50,6 +50,10 @@ import {
 import type { SecurityEvidence } from './control-room/index.js';
 import { getFuryPipeModelScope } from './core/applicability.js';
 import type { FuryPipeVisualPolicy } from './core/applicability.js';
+import { discoverAgentSkillsNode } from './agent-skills-node.js';
+import { selectAgentSkillsForTask } from './agent-skill-selector.js';
+import { activateSelectedAgentSkillsNode } from './agent-skill-activation-node.js';
+import type { ProxyCapabilityPlanner } from './proxy-capability-runtime.js';
 
 /** Runtime config. The core transform tuning comes from DEFAULTS in
  *  transform.ts; startup knobs cover deployment plus emergency GPT scope
@@ -409,6 +413,14 @@ Environment:
   FURYPIPE_HUMAN_OUTPUT_STYLE
                           compact (default) adds FuryPipe's human-facing compact
                           prose guidance; normal/off disables that guidance
+  FURYPIPE_AGENT_SKILLS  on (default) discovers bounded local Agent Skills;
+                          off disables FuryPipe skill discovery/activation
+  FURYPIPE_PROJECT_SKILLS_TRUST
+                          1/true explicitly trusts project-level SKILL.md
+                          instructions for automatic activation
+  FURYPIPE_SKILL_ROOTS   additional skill roots separated by the OS path
+                          delimiter; explicit operator roots are trusted for
+                          instruction activation only (never script/tool authority)
   FURYPIPE_CONFIG         JSON config path (default ~/.config/furypipe/config.json)
                           supports {"models": [...]} / {"models": "off"} /
                           {"modelScopeMode": "automatic"}
@@ -1404,6 +1416,67 @@ async function main(): Promise<void> {
       imageDumpDir = undefined;
     }
   }
+  // Agent Skills discovery is intentionally host-owned. The core proxy sees
+  // only a validated planner result and never gains filesystem authority.
+  const agentSkillsEnabled = !/^(?:0|false|no|off)$/iu.test(
+    process.env.FURYPIPE_AGENT_SKILLS?.trim() ?? '',
+  );
+  const configuredSkillRoots = (process.env.FURYPIPE_SKILL_ROOTS ?? '')
+    .split(path.delimiter)
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((root) => ({ path: root, trustedForInstructions: true as const }));
+  const skillDiscovery = agentSkillsEnabled
+    ? await discoverAgentSkillsNode({
+        projectRoot: process.cwd(),
+        homeDir: os.homedir(),
+        projectTrustedForInstructions: /^(?:1|true|yes|on)$/iu.test(
+          process.env.FURYPIPE_PROJECT_SKILLS_TRUST?.trim() ?? '',
+        ),
+        configuredRoots: configuredSkillRoots,
+      })
+    : undefined;
+
+  if (skillDiscovery) {
+    const eligible = skillDiscovery.skills.filter((skill) => skill.activationEligible).length;
+    console.log(
+      `[furypipe] Agent Skills discovered ${skillDiscovery.skills.length} skill(s), ` +
+      `${eligible} eligible for instruction activation`,
+    );
+    if (skillDiscovery.diagnostics.length > 0) {
+      console.warn(
+        `[furypipe] Agent Skills discovery reported ${skillDiscovery.diagnostics.length} diagnostic(s)`,
+      );
+    }
+  }
+
+  const capabilityPlanner: ProxyCapabilityPlanner | undefined = skillDiscovery === undefined
+    ? undefined
+    : async (task) => {
+        const selection = selectAgentSkillsForTask(task.objective, skillDiscovery.skills);
+        if (selection.selected.length === 0 && selection.blocked.length === 0) return undefined;
+        const activation = await activateSelectedAgentSkillsNode(selection, skillDiscovery.skills);
+        const blocked = [...new Set([
+          ...selection.blocked.map((item) => item.name),
+          ...activation.blocked.map((item) => item.name),
+        ])].sort();
+        return Object.freeze({
+          format: 'furypipe-proxy-capability-instructions/v1',
+          blocks: Object.freeze(activation.activated.map((item) => Object.freeze({
+            kind: 'agent-skill' as const,
+            id: item.name,
+            text: item.promptBlock,
+          }))),
+          evidence: Object.freeze({
+            format: 'furypipe-proxy-capability-evidence/v1',
+            selectedSkillIds: Object.freeze(selection.selected.map((item) => item.name)),
+            activatedSkills: Object.freeze(activation.activated.map((item) => item.receipt)),
+            blockedSkillIds: Object.freeze(blocked),
+            executionAuthorized: false as const,
+          }),
+        });
+      };
+
   // Transform options pass through empty — the proxy uses the DEFAULTS
   // baked into transform.ts. There are no behavior toggles: system slab,
   // reminders, tool_results, and history compression all run
@@ -1495,6 +1568,7 @@ async function main(): Promise<void> {
     humanOutputPolicy: !/^(?:normal|off|false|0|no)$/iu.test(
       process.env.FURYPIPE_HUMAN_OUTPUT_STYLE?.trim() ?? '',
     ),
+    capabilityPlanner,
     // Per-request transform options:
     //   1. Runtime kill switch — when the dashboard "passthrough" toggle
     //      is off, force compress=false so /v1/messages forwards
@@ -1541,6 +1615,12 @@ async function main(): Promise<void> {
       // Terse human-readable console line.
       const extra: string[] = [];
       if (e.info?.toolResultImgs) extra.push(`tr+${e.info.toolResultImgs}`);
+      if ((e.capability?.activatedSkills.length ?? 0) > 0) {
+        extra.push(`skills+${e.capability!.activatedSkills.length}`);
+      }
+      if ((e.capability?.blockedSkillIds.length ?? 0) > 0) {
+        extra.push(`skills-blocked=${e.capability!.blockedSkillIds.length}`);
+      }
       const extraTag = extra.length > 0 ? ` (${extra.join(' ')})` : '';
       const tag = e.info?.compressed
         ? `compressed ${e.info.origChars}ch → ${e.info.imageCount}img/${e.info.imageBytes}B${extraTag}`
