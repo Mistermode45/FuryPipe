@@ -10,7 +10,6 @@ import {
 import type { McpDirectRuntimeConfig } from './mcp-direct-client-node.js';
 import {
   isGeneratedMcpDirectDurableReplayCoordinator,
-  type McpDirectDurableReplayCoordinator,
 } from './mcp-direct-durable-replay-internal.js';
 import type { McpDirectLifecycleState } from './mcp-direct-governance.js';
 import type { McpDirectToolProposal } from './mcp-direct-policy.js';
