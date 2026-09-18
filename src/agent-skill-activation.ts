@@ -12,7 +12,13 @@ export interface AgentSkillActivationReceipt {
 const MAX_INSTRUCTION_BYTES = 256 * 1024;
 
 async function sha256Hex(value: Uint8Array): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', value);
+  // TypeScript 7 correctly distinguishes ArrayBuffer from the wider
+  // ArrayBufferLike (which includes SharedArrayBuffer). WebCrypto accepts a
+  // BufferSource backed by ArrayBuffer, so copy into an owned buffer instead
+  // of asserting away the distinction.
+  const owned = new ArrayBuffer(value.byteLength);
+  new Uint8Array(owned).set(value);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', owned);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
