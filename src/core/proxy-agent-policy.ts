@@ -67,7 +67,22 @@ function anthropicMessages(root: Record<string, unknown>): boolean {
     return true;
   }
   if (Array.isArray(system)) {
-    root.system = [...system, { type: 'text', text: FURY_PROXY_AGENT_POLICY_TEXT }];
+    const next = [...system];
+    // Keep this stable policy inside Claude's existing prompt-cache prefix when
+    // the client already supplied a cache_control breakpoint. Adding a new
+    // breakpoint would change provider cache semantics, so insert immediately
+    // before the last existing marked block instead.
+    let insertAt = next.length;
+    for (let index = next.length - 1; index >= 0; index -= 1) {
+      const item = next[index];
+      if (item && typeof item === 'object' && !Array.isArray(item)
+        && (item as Record<string, unknown>).cache_control !== undefined) {
+        insertAt = index;
+        break;
+      }
+    }
+    next.splice(insertAt, 0, { type: 'text', text: FURY_PROXY_AGENT_POLICY_TEXT });
+    root.system = next;
     return true;
   }
   return false;
