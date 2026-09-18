@@ -20,6 +20,7 @@ const DEFAULT_LIST_TIMEOUT_MS = 15_000;
 const DEFAULT_PROBE_TIMEOUT_MS = 3_000;
 const DEFAULT_LIST_MAX_PAGES = 16;
 const DEFAULT_STDIO_MAX_BUFFER_BYTES = 8 * 1024 * 1024;
+const DEFAULT_HTTP_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_TOOL_COUNT = 256;
 const MAX_SCHEMA_BYTES = 1024 * 1024;
 const MAX_JSON_DEPTH = 64;
@@ -56,6 +57,7 @@ export interface McpDirectHttpRuntimeConfig {
    * copied into FuryPipe lifecycle evidence or receipts.
    */
   readonly headers?: Readonly<Record<string, string>>;
+  readonly maxResponseBytes?: number;
 }
 
 export type McpDirectRuntimeConfig =
@@ -117,11 +119,64 @@ export interface McpDirectSdkFactory {
   createHttpTransport(config: {
     readonly url: URL;
     readonly headers: Readonly<Record<string, string>>;
+    readonly maxResponseBytes: number;
   }): unknown;
 }
 
+async function fetchWithResponseLimit(
+  input: string | URL | Request,
+  init: RequestInit | undefined,
+  maxResponseBytes: number,
+): Promise<Response> {
+  const response = await globalThis.fetch(input, init);
+  const lengthHeader = response.headers.get('content-length');
+  if (lengthHeader !== null) {
+    const declared = Number(lengthHeader);
+    if (Number.isFinite(declared) && declared > maxResponseBytes) {
+      await response.body?.cancel().catch(() => {});
+      throw new Error('MCP HTTP response exceeds the configured byte bound');
+    }
+  }
+  if (response.body === null) return response;
+
+  const reader = response.body.getReader();
+  let received = 0;
+  const boundedBody = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const next = await reader.read();
+        if (next.done) {
+          controller.close();
+          return;
+        }
+        received += next.value.byteLength;
+        if (received > maxResponseBytes) {
+          await reader.cancel('MCP HTTP response byte bound exceeded').catch(() => {});
+          controller.error(new Error('MCP HTTP response exceeds the configured byte bound'));
+          return;
+        }
+        controller.enqueue(next.value);
+      } catch (caught) {
+        controller.error(caught);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason).catch(() => {});
+    },
+  });
+
+  return new Response(boundedBody, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 const DEFAULT_FACTORY: McpDirectSdkFactory = Object.freeze({
-  createClient(clientInfo, options) {
+  createClient(
+    clientInfo: McpDirectClientInfo,
+    options: { readonly listMaxPages: number; readonly probeTimeoutMs: number },
+  ) {
     const client = new Client(
       { name: clientInfo.name, version: clientInfo.version },
       {
@@ -137,11 +192,18 @@ const DEFAULT_FACTORY: McpDirectSdkFactory = Object.freeze({
       },
     );
     return {
-      connect: (transport, connectOptions) => client.connect(
+      connect: (
+        transport: unknown,
+        connectOptions: { readonly timeout: number; readonly signal: AbortSignal },
+      ) => client.connect(
         transport as Parameters<Client['connect']>[0],
         connectOptions,
       ),
-      listTools: async (listOptions) => client.listTools(undefined, {
+      listTools: async (listOptions: {
+        readonly timeout: number;
+        readonly signal: AbortSignal;
+        readonly cacheMode: 'refresh';
+      }) => client.listTools(undefined, {
         ...listOptions,
         cacheMode: 'refresh',
       }),
@@ -151,7 +213,7 @@ const DEFAULT_FACTORY: McpDirectSdkFactory = Object.freeze({
     };
   },
 
-  createStdioTransport(config) {
+  createStdioTransport(config: Parameters<McpDirectSdkFactory['createStdioTransport']>[0]) {
     const transport = new StdioClientTransport({
       command: config.command,
       args: [...config.args],
@@ -162,12 +224,15 @@ const DEFAULT_FACTORY: McpDirectSdkFactory = Object.freeze({
     });
     // Drain child stderr so a noisy server cannot backpressure its own process.
     // Nothing from stderr is persisted into FuryPipe evidence.
-    transport.stderr?.resume();
+    const stderr = transport.stderr as { resume?: () => unknown } | null;
+    stderr?.resume?.();
     return transport;
   },
 
-  createHttpTransport(config) {
+  createHttpTransport(config: Parameters<McpDirectSdkFactory['createHttpTransport']>[0]) {
     return new StreamableHTTPClientTransport(config.url, {
+      fetch: (input: string | URL | Request, init?: RequestInit) =>
+        fetchWithResponseLimit(input, init, config.maxResponseBytes),
       requestInit: {
         headers: { ...config.headers },
         // Direct MCP endpoints are source-bound. Never silently follow a
@@ -294,6 +359,9 @@ function validatedHttpConfig(config: McpDirectHttpRuntimeConfig): {
   }
   if (url.hash) {
     throw new Error('MCP Streamable HTTP URL must not contain a fragment');
+  }
+  if (url.search) {
+    throw new Error('MCP Streamable HTTP URL must not contain a query string; use runtime headers for credentials');
   }
 
   const host = normalizeHost(url.hostname);
@@ -427,10 +495,6 @@ function transportFor(
   config: McpDirectRuntimeConfig,
   factory: McpDirectSdkFactory,
 ): unknown {
-  if (config.source.transport !== config.source.transport) {
-    throw new Error('MCP source transport mismatch');
-  }
-
   if (config.source.transport === 'stdio') {
     if (!('command' in config)) throw new Error('MCP source transport/config mismatch');
     assertStdioConfig(config);
@@ -452,7 +516,41 @@ function transportFor(
 
   if (!('url' in config)) throw new Error('MCP source transport/config mismatch');
   const http = validatedHttpConfig(config);
-  return factory.createHttpTransport(http);
+  const maxResponseBytes = boundedInteger(
+    config.maxResponseBytes,
+    DEFAULT_HTTP_MAX_RESPONSE_BYTES,
+    64 * 1024,
+    16 * 1024 * 1024,
+    'MCP HTTP maxResponseBytes',
+  );
+  return factory.createHttpTransport({ ...http, maxResponseBytes });
+}
+
+/**
+ * Derives the source identity from the actual non-secret endpoint definition.
+ * HTTP credentials/headers and stdio env values are deliberately excluded.
+ * Stdio args are identity-bearing and therefore must not contain secrets; pass
+ * secrets through env instead.
+ */
+export function deriveMcpDirectEndpointFingerprint(
+  config: McpDirectRuntimeConfig,
+): string {
+  if (config.source.transport === 'stdio') {
+    if (!('command' in config)) throw new Error('MCP source transport/config mismatch');
+    assertStdioConfig(config);
+    return sha256Json({
+      transport: 'stdio',
+      command: config.command,
+      args: [...(config.args ?? [])],
+      cwd: config.cwd ?? null,
+    });
+  }
+  if (!('url' in config)) throw new Error('MCP source transport/config mismatch');
+  const http = validatedHttpConfig(config);
+  return sha256Json({
+    transport: 'streamable_http',
+    url: http.url.toString(),
+  });
 }
 
 /**
@@ -495,6 +593,11 @@ export async function probeMcpDirectInventory(
     32,
     'MCP listMaxPages',
   );
+
+  const derivedEndpointFingerprint = deriveMcpDirectEndpointFingerprint(config);
+  if (derivedEndpointFingerprint !== config.source.endpointFingerprint) {
+    throw new Error('MCP source endpoint fingerprint does not match the runtime endpoint');
+  }
 
   let lifecycle = createMcpDirectLifecycle(config.source);
   const factory = options.factory ?? DEFAULT_FACTORY;

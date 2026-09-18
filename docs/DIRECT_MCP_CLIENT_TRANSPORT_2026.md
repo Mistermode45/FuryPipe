@@ -42,7 +42,8 @@ Connection alone never sets `healthy=true`. A successful bounded
 - no shell invocation;
 - bounded command, argument and environment surfaces;
 - explicit read buffer ceiling: 8 MiB by default, 16 MiB hard maximum;
-- child stderr is drained but not persisted.
+- child stderr is drained but not persisted;
+- command + args + cwd are bound into the endpoint fingerprint; secrets must be passed through env, never args.
 
 ### Streamable HTTP
 
@@ -50,7 +51,9 @@ Connection alone never sets `healthy=true`. A successful bounded
 - loopback may use HTTP/HTTPS;
 - non-loopback endpoints require HTTPS;
 - every non-loopback hostname must be explicitly allowlisted by operator config;
-- URL-embedded credentials are rejected;
+- URL-embedded credentials and query strings are rejected; secrets belong in runtime headers;
+- the configured source fingerprint is recomputed from the actual endpoint identity and must match before trust evidence is accepted;
+- HTTP response bodies are bounded to 8 MiB by default (16 MiB hard maximum);
 - redirects are disabled (`redirect: manual`) so a configured source cannot
   silently redirect to another origin/private endpoint;
 - transport-owned MCP headers cannot be overridden by runtime static headers;

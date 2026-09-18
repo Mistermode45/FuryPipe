@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  deriveMcpDirectEndpointFingerprint,
   probeMcpDirectInventory,
   type McpDirectRuntimeConfig,
   type McpDirectSdkFactory,
@@ -9,15 +10,51 @@ import {
 const sha = (char: string) => char.repeat(64);
 
 function stdioConfig(trust: 'trusted' | 'untrusted' = 'trusted'): McpDirectRuntimeConfig {
-  return {
+  const config: McpDirectRuntimeConfig = {
     source: {
       sourceId: 'fixture',
       transport: 'stdio',
-      endpointFingerprint: sha('a'),
+      endpointFingerprint: sha('0'),
       trust,
     },
     command: 'fixture-server',
     args: ['--stdio'],
+  };
+  return {
+    ...config,
+    source: {
+      ...config.source,
+      endpointFingerprint: deriveMcpDirectEndpointFingerprint(config),
+    },
+  };
+}
+
+function httpConfig(options: {
+  readonly url: string;
+  readonly sourceId?: string;
+  readonly trust?: 'trusted' | 'untrusted';
+  readonly allowedHosts?: readonly string[];
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly maxResponseBytes?: number;
+}): McpDirectRuntimeConfig {
+  const config: McpDirectRuntimeConfig = {
+    source: {
+      sourceId: options.sourceId ?? 'http-fixture',
+      transport: 'streamable_http',
+      endpointFingerprint: sha('0'),
+      trust: options.trust ?? 'untrusted',
+    },
+    url: options.url,
+    ...(options.allowedHosts === undefined ? {} : { allowedHosts: options.allowedHosts }),
+    ...(options.headers === undefined ? {} : { headers: options.headers }),
+    ...(options.maxResponseBytes === undefined ? {} : { maxResponseBytes: options.maxResponseBytes }),
+  };
+  return {
+    ...config,
+    source: {
+      ...config.source,
+      endpointFingerprint: deriveMcpDirectEndpointFingerprint(config),
+    },
   };
 }
 
@@ -204,10 +241,11 @@ describe('direct MCP client inventory transport', () => {
       trust: 'trusted' as const,
     };
 
-    const result = await probeMcpDirectInventory({
-      source,
+    const result = await probeMcpDirectInventory(httpConfig({
       url: 'http://127.0.0.1:3000/mcp',
-    }, {
+      sourceId: source.sourceId,
+      trust: source.trust,
+    }), {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     });
@@ -226,17 +264,13 @@ describe('direct MCP client inventory transport', () => {
   it('does not persist runtime HTTP credentials in returned evidence', async () => {
     const fake = fakeFactory({});
     const secret = 'Bearer MCP_SECRET_CANARY_77';
-    const result = await probeMcpDirectInventory({
-      source: {
-        sourceId: 'remote',
-        transport: 'streamable_http',
-        endpointFingerprint: sha('d'),
-        trust: 'untrusted',
-      },
+    const result = await probeMcpDirectInventory(httpConfig({
+      sourceId: 'remote',
+      trust: 'untrusted',
       url: 'https://mcp.example.test/v1',
       allowedHosts: ['mcp.example.test'],
       headers: { Authorization: secret },
-    }, {
+    }), {
       clientInfo: { name: 'furypipe-test', version: '1.0.0' },
       factory: fake.factory,
     });
@@ -245,6 +279,52 @@ describe('direct MCP client inventory transport', () => {
     expect(JSON.stringify(result)).not.toContain('Authorization');
     expect(fake.transportConfig()).toMatchObject({
       headers: { Authorization: secret },
+    });
+  });
+
+  it('rejects endpoint evidence that is not bound to the actual runtime endpoint', async () => {
+    const fake = fakeFactory({});
+    const config = stdioConfig();
+    const forged: McpDirectRuntimeConfig = {
+      ...config,
+      source: { ...config.source, endpointFingerprint: sha('f') },
+    };
+    await expect(probeMcpDirectInventory(forged, {
+      clientInfo: { name: 'furypipe-test', version: '1.0.0' },
+      factory: fake.factory,
+    })).rejects.toThrow(/fingerprint does not match/i);
+    expect(fake.counters()).toEqual({ closeCalls: 0, connectCalls: 0, listCalls: 0 });
+  });
+
+  it('rejects HTTP query strings so endpoint identity cannot hide query credentials', async () => {
+    const fake = fakeFactory({});
+    const config: McpDirectRuntimeConfig = {
+      source: {
+        sourceId: 'remote-query',
+        transport: 'streamable_http',
+        endpointFingerprint: sha('1'),
+        trust: 'untrusted',
+      },
+      url: 'https://mcp.example.test/v1?token=secret',
+      allowedHosts: ['mcp.example.test'],
+    };
+    await expect(probeMcpDirectInventory(config, {
+      clientInfo: { name: 'furypipe-test', version: '1.0.0' },
+      factory: fake.factory,
+    })).rejects.toThrow(/must not contain a query string/i);
+  });
+
+  it('passes a bounded HTTP response ceiling to the transport', async () => {
+    const fake = fakeFactory({});
+    await probeMcpDirectInventory(httpConfig({
+      url: 'https://mcp.example.test/v1',
+      allowedHosts: ['mcp.example.test'],
+    }), {
+      clientInfo: { name: 'furypipe-test', version: '1.0.0' },
+      factory: fake.factory,
+    });
+    expect(fake.transportConfig()).toMatchObject({
+      maxResponseBytes: 8 * 1024 * 1024,
     });
   });
 
