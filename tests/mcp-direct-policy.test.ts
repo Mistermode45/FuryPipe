@@ -180,6 +180,73 @@ describe('direct MCP proposal, policy and approval governance', () => {
     )).rejects.toThrow(/plain object/i);
   });
 
+  it('isolates identical JSON Schema $id values across different tool catalogs', async () => {
+    const make = (schema: Readonly<Record<string, unknown>>) => {
+      const source = {
+        sourceId: 'mcp-source',
+        transport: 'stdio' as const,
+        endpointFingerprint: sha('a'),
+        trust: 'trusted' as const,
+      };
+      const inputSchemaSha256 = digestMcpDirectJson(schema);
+      const catalog = createMcpDirectCatalogHandle(source, [{
+        name: 'search',
+        inputSchema: schema,
+        inputSchemaSha256,
+      }]);
+      const lifecycle = recordMcpDirectSelection(
+        recordMcpDirectInventory(
+          recordMcpDirectConnection(createMcpDirectLifecycle(source), {
+            protocolEra: 'modern_2026',
+            handshake: 'discover',
+          }),
+          [{
+            name: 'search',
+            inputSchemaSha256,
+            risk: assessMcpToolRisk({ readOnlyHint: true, openWorldHint: false }, 'trusted'),
+          }],
+        ),
+        'search',
+      );
+      return { lifecycle, catalog };
+    };
+
+    const sharedId = 'urn:furypipe:test:shared-schema-id';
+    const stringSchema = {
+      $id: sharedId,
+      type: 'object',
+      properties: { query: { type: 'string' } },
+      required: ['query'],
+      additionalProperties: false,
+    } as const;
+    const integerSchema = {
+      $id: sharedId,
+      type: 'object',
+      properties: { query: { type: 'integer' } },
+      required: ['query'],
+      additionalProperties: false,
+    } as const;
+
+    const first = make(stringSchema);
+    await expect(createMcpDirectToolProposal(
+      first.lifecycle,
+      first.catalog,
+      { query: 'alpha' },
+    )).resolves.toMatchObject({ argumentsValidated: true });
+
+    const second = make(integerSchema);
+    await expect(createMcpDirectToolProposal(
+      second.lifecycle,
+      second.catalog,
+      { query: 'alpha' },
+    )).rejects.toThrow(/failed input schema validation/i);
+    await expect(createMcpDirectToolProposal(
+      second.lifecycle,
+      second.catalog,
+      { query: 42 },
+    )).resolves.toMatchObject({ argumentsValidated: true });
+  });
+
   it('rejects copied catalog handles before argument validation', async () => {
     const { lifecycle, catalog } = setup();
     const copied = { ...catalog } as McpDirectCatalogHandle;

@@ -40,7 +40,11 @@ A proposal can only be created from:
 5. strict JSON arguments that pass the exact listed JSON Schema.
 
 The official `@modelcontextprotocol/client@2.0.0` `fromJsonSchema()`
-adapter is used for schema validation.
+adapter is used for schema validation with a **fresh**
+`AjvJsonSchemaValidator` per proposal. FuryPipe deliberately does not reuse the
+SDK's default module-level validator here: two independent MCP servers may
+advertise different schemas with the same `$id`, and shared AJV `$id` cache
+state must never make one proposal validate against another server's schema.
 
 Public proposal evidence contains only identifiers and SHA-256 digests. The raw
 arguments remain behind process-local WeakMap provenance for the future M3

@@ -1,4 +1,5 @@
 import { fromJsonSchema } from '@modelcontextprotocol/client';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/client/validators/ajv';
 
 import {
   resolveMcpDirectSelectedToolSchema,
@@ -338,7 +339,12 @@ export async function createMcpDirectToolProposal(
 
   let validation: { readonly issues?: readonly unknown[] };
   try {
-    const validator = fromJsonSchema(schema as Parameters<typeof fromJsonSchema>[0]);
+    // A fresh validator prevents cross-server/cross-proposal $id cache reuse
+    // from validating one server's arguments against another server's schema.
+    const validator = fromJsonSchema(
+      schema as Parameters<typeof fromJsonSchema>[0],
+      new AjvJsonSchemaValidator(),
+    );
     validation = await validator['~standard'].validate(validatedArgs);
   } catch {
     throw new Error('MCP selected tool input schema could not validate arguments');
