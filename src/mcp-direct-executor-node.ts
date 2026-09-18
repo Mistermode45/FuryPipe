@@ -1,12 +1,17 @@
 import {
   executeMcpDirectApprovedToolInternal,
   McpDirectExecutionEvidenceError,
+  McpDirectExecutionDurabilityError,
   McpDirectExecutionOutcomeUnknownError,
   McpDirectExecutionVerificationError,
   type McpDirectExecutionReceipt,
   type McpDirectGovernedExecutionInternalOptions,
 } from './mcp-direct-executor-node-internal.js';
 import type { McpDirectRuntimeConfig } from './mcp-direct-client-node.js';
+import {
+  isGeneratedMcpDirectDurableReplayCoordinator,
+  type McpDirectDurableReplayCoordinator,
+} from './mcp-direct-durable-replay-internal.js';
 import type { McpDirectLifecycleState } from './mcp-direct-governance.js';
 import type { McpDirectToolProposal } from './mcp-direct-policy.js';
 import {
@@ -18,6 +23,7 @@ import {
 
 export {
   McpDirectExecutionEvidenceError,
+  McpDirectExecutionDurabilityError,
   McpDirectExecutionOutcomeUnknownError,
   McpDirectExecutionVerificationError,
   McpDirectReplayGovernanceError,
@@ -48,6 +54,7 @@ const OPTION_KEYS = new Set([
   'callTimeoutMs',
   'permitTtlMs',
   'maxResultBytes',
+  'durableReplay',
 ]);
 
 function sanitizedOptions(
@@ -77,6 +84,13 @@ function sanitizedOptions(
     }
   }
 
+  if (
+    value.durableReplay !== undefined
+    && !isGeneratedMcpDirectDurableReplayCoordinator(value.durableReplay)
+  ) {
+    throw new Error('MCP durable replay coordinator must be process-local FuryPipe evidence');
+  }
+
   return Object.freeze({
     clientInfo: value.clientInfo,
     ...(value.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: value.connectTimeoutMs }),
@@ -86,6 +100,7 @@ function sanitizedOptions(
     ...(value.callTimeoutMs === undefined ? {} : { callTimeoutMs: value.callTimeoutMs }),
     ...(value.permitTtlMs === undefined ? {} : { permitTtlMs: value.permitTtlMs }),
     ...(value.maxResultBytes === undefined ? {} : { maxResultBytes: value.maxResultBytes }),
+    ...(value.durableReplay === undefined ? {} : { durableReplay: value.durableReplay }),
   });
 }
 
