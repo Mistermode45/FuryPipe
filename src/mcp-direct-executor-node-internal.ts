@@ -33,6 +33,17 @@ import {
   type McpDirectReplayIntent,
   type McpDirectReplayReason,
 } from './mcp-direct-replay-internal.js';
+import {
+  abortMcpDirectDurablePreCallReservation,
+  armMcpDirectDurableExecution,
+  isGeneratedMcpDirectDurableReplayCoordinator,
+  reserveMcpDirectDurableExecution,
+  settleMcpDirectDurableExecution,
+  type McpDirectDurableArmedEvidence,
+  type McpDirectDurableReplayCoordinator,
+  type McpDirectDurableReplayStatus,
+  type McpDirectDurableReservation,
+} from './mcp-direct-durable-replay-internal.js';
 
 const DEFAULT_CALL_TIMEOUT_MS = 30_000;
 const MAX_CALL_TIMEOUT_MS = 60_000;
@@ -56,6 +67,7 @@ export interface McpDirectGovernedExecutionInternalOptions {
   readonly factory?: McpDirectSdkFactory;
   readonly now?: () => number;
   readonly replayIntent?: McpDirectReplayIntent;
+  readonly durableReplay?: McpDirectDurableReplayCoordinator;
 }
 
 export interface McpDirectExecutionReceipt {
@@ -80,6 +92,8 @@ export interface McpDirectExecutionReceipt {
   readonly succeeded: boolean;
   readonly verified: boolean;
   readonly verificationKind?: 'schema';
+  readonly durableScopeSha256?: string;
+  readonly durableAttempt?: number;
 }
 
 export interface McpDirectGovernedExecutionInternalResult {
@@ -175,6 +189,42 @@ export class McpDirectExecutionEvidenceError extends Error {
     this.toolName = toolName;
     this.inputSha256 = inputSha256;
     this.succeeded = succeeded;
+    this.replayKeySha256 = replayKeySha256;
+    this.attempt = attempt;
+  }
+}
+
+export class McpDirectExecutionDurabilityError extends Error {
+  readonly code = 'MCP_DIRECT_EXECUTION_DURABILITY_FAILED';
+  readonly retrySafe = false;
+  readonly executed = true;
+  readonly verified: boolean;
+  readonly sourceId: string;
+  readonly toolName: string;
+  readonly inputSha256: string;
+  readonly resultSha256: string;
+  readonly succeeded: boolean;
+  readonly replayKeySha256: string;
+  readonly attempt: number;
+
+  constructor(
+    sourceId: string,
+    toolName: string,
+    inputSha256: string,
+    resultSha256: string,
+    succeeded: boolean,
+    verified: boolean,
+    replayKeySha256: string,
+    attempt: number,
+  ) {
+    super('MCP tool returned a known result but durable execution evidence could not be committed; do not retry automatically');
+    this.name = 'McpDirectExecutionDurabilityError';
+    this.sourceId = sourceId;
+    this.toolName = toolName;
+    this.inputSha256 = inputSha256;
+    this.resultSha256 = resultSha256;
+    this.succeeded = succeeded;
+    this.verified = verified;
     this.replayKeySha256 = replayKeySha256;
     this.attempt = attempt;
   }
@@ -428,7 +478,53 @@ export async function executeMcpDirectApprovedToolInternal(
       now,
     );
 
+    let durableReservation: McpDirectDurableReservation | undefined;
+    if (options.durableReplay !== undefined) {
+      if (!isGeneratedMcpDirectDurableReplayCoordinator(options.durableReplay)) {
+        releaseMcpDirectExecutionReservation(replayReservation);
+        throw new Error('MCP durable replay coordinator must be process-local FuryPipe evidence');
+      }
+      try {
+        durableReservation = await reserveMcpDirectDurableExecution(
+          options.durableReplay,
+          replayReservation.replayKeySha256,
+          {
+            now,
+            ...(replayReservation.replayed
+              ? {
+                  replay: {
+                    priorAttempt: replayReservation.attempt - 1,
+                    priorResultSha256: replayReservation.priorResultSha256!,
+                    reason: replayReservation.reason!,
+                  },
+                }
+              : {}),
+          },
+        );
+      } catch (error) {
+        releaseMcpDirectExecutionReservation(replayReservation);
+        throw error;
+      }
+      if (
+        durableReservation.attempt !== replayReservation.attempt
+        || durableReservation.replayed !== replayReservation.replayed
+      ) {
+        await abortMcpDirectDurablePreCallReservation(
+          options.durableReplay,
+          durableReservation,
+        ).catch(() => undefined);
+        releaseMcpDirectExecutionReservation(replayReservation);
+        throw new Error('MCP durable replay attempt does not match process-local replay governance');
+      }
+    }
+
     if (EXECUTION_ATTEMPTED.has(approvedLifecycle)) {
+      if (durableReservation !== undefined && options.durableReplay !== undefined) {
+        await abortMcpDirectDurablePreCallReservation(
+          options.durableReplay,
+          durableReservation,
+        ).catch(() => undefined);
+      }
       releaseMcpDirectExecutionReservation(replayReservation);
       throw new Error('MCP approved lifecycle was already used for an execution attempt');
     }
@@ -441,9 +537,34 @@ export async function executeMcpDirectApprovedToolInternal(
         now,
       );
     } catch (error) {
+      if (durableReservation !== undefined && options.durableReplay !== undefined) {
+        await abortMcpDirectDurablePreCallReservation(
+          options.durableReplay,
+          durableReservation,
+        ).catch(() => undefined);
+      }
       releaseMcpDirectExecutionReservation(replayReservation);
       throw error;
     }
+
+    let durableArmed: McpDirectDurableArmedEvidence | undefined;
+    if (durableReservation !== undefined && options.durableReplay !== undefined) {
+      try {
+        durableArmed = await armMcpDirectDurableExecution(
+          options.durableReplay,
+          durableReservation,
+          options.now?.() ?? Date.now(),
+        );
+      } catch (error) {
+        await abortMcpDirectDurablePreCallReservation(
+          options.durableReplay,
+          durableReservation,
+        ).catch(() => undefined);
+        releaseMcpDirectExecutionReservation(replayReservation);
+        throw error;
+      }
+    }
+
     EXECUTION_ATTEMPTED.add(approvedLifecycle);
 
     const permitIdSha256 = digestMcpDirectJson(permit.permitId, {
@@ -473,11 +594,20 @@ export async function executeMcpDirectApprovedToolInternal(
         },
       );
     } catch {
+      const failedAt = options.now?.() ?? Date.now();
       settleMcpDirectExecutionAttempt(
         replayReservation,
         'unknown',
-        { now: options.now?.() ?? Date.now() },
+        { now: failedAt },
       );
+      if (durableArmed !== undefined && options.durableReplay !== undefined) {
+        await settleMcpDirectDurableExecution(
+          options.durableReplay,
+          durableArmed,
+          'unknown',
+          { now: failedAt },
+        ).catch(() => undefined);
+      }
       throw new McpDirectExecutionOutcomeUnknownError(
         approvedLifecycle.source.sourceId,
         proposal.toolName,
@@ -504,14 +634,26 @@ export async function executeMcpDirectApprovedToolInternal(
         permit,
         isError,
       });
+      const evidenceFailedAt = options.now?.() ?? Date.now();
       settleMcpDirectExecutionAttempt(
         replayReservation,
         'evidence_failed',
         {
           succeeded: !isError,
-          now: options.now?.() ?? Date.now(),
+          now: evidenceFailedAt,
         },
       );
+      if (durableArmed !== undefined && options.durableReplay !== undefined) {
+        await settleMcpDirectDurableExecution(
+          options.durableReplay,
+          durableArmed,
+          'evidence_failed',
+          {
+            succeeded: !isError,
+            now: evidenceFailedAt,
+          },
+        ).catch(() => undefined);
+      }
       throw new McpDirectExecutionEvidenceError(
         approvedLifecycle.source.sourceId,
         proposal.toolName,
@@ -536,15 +678,28 @@ export async function executeMcpDirectApprovedToolInternal(
     ) {
       const outputValid = await validateStructuredOutput(result, prepared.outputValidator);
       if (!outputValid) {
+        const verificationFailedAt = options.now?.() ?? Date.now();
         settleMcpDirectExecutionAttempt(
           replayReservation,
           'verification_failed',
           {
             resultSha256,
             succeeded: true,
-            now: options.now?.() ?? Date.now(),
+            now: verificationFailedAt,
           },
         );
+        if (durableArmed !== undefined && options.durableReplay !== undefined) {
+          await settleMcpDirectDurableExecution(
+            options.durableReplay,
+            durableArmed,
+            'verification_failed',
+            {
+              resultSha256,
+              succeeded: true,
+              now: verificationFailedAt,
+            },
+          ).catch(() => undefined);
+        }
         throw new McpDirectExecutionVerificationError(
           approvedLifecycle.source.sourceId,
           proposal.toolName,
@@ -563,13 +718,58 @@ export async function executeMcpDirectApprovedToolInternal(
       verified = true;
     }
 
+    let durableTerminal: McpDirectDurableReplayStatus | undefined;
+    const terminalAt = options.now?.() ?? Date.now();
+    if (durableArmed !== undefined && options.durableReplay !== undefined) {
+      try {
+        durableTerminal = await settleMcpDirectDurableExecution(
+          options.durableReplay,
+          durableArmed,
+          isError ? 'tool_error' : 'succeeded',
+          {
+            resultSha256,
+            succeeded: !isError,
+            now: terminalAt,
+          },
+        );
+      } catch {
+        throw new McpDirectExecutionDurabilityError(
+          approvedLifecycle.source.sourceId,
+          proposal.toolName,
+          proposal.inputSha256,
+          resultSha256,
+          !isError,
+          verified,
+          replayReservation.replayKeySha256,
+          replayReservation.attempt,
+        );
+      }
+      if (
+        durableTerminal.state !== 'terminal'
+        || durableTerminal.attempt !== replayReservation.attempt
+        || durableTerminal.resultSha256 !== resultSha256
+        || durableTerminal.outcome !== (isError ? 'tool_error' : 'succeeded')
+      ) {
+        throw new McpDirectExecutionDurabilityError(
+          approvedLifecycle.source.sourceId,
+          proposal.toolName,
+          proposal.inputSha256,
+          resultSha256,
+          !isError,
+          verified,
+          replayReservation.replayKeySha256,
+          replayReservation.attempt,
+        );
+      }
+    }
+
     settleMcpDirectExecutionAttempt(
       replayReservation,
       isError ? 'tool_error' : 'succeeded',
       {
         resultSha256,
         succeeded: !isError,
-        now: options.now?.() ?? Date.now(),
+        now: terminalAt,
       },
     );
 
@@ -601,6 +801,12 @@ export async function executeMcpDirectApprovedToolInternal(
       succeeded: !isError,
       verified,
       ...(verified ? { verificationKind: 'schema' as const } : {}),
+      ...(durableTerminal === undefined || options.durableReplay === undefined
+        ? {}
+        : {
+            durableScopeSha256: options.durableReplay.scopeSha256,
+            durableAttempt: durableTerminal.attempt,
+          }),
     });
 
     registerGeneratedMcpDirectExecutionReceipt(receipt, replayReservation);
