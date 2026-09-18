@@ -22,12 +22,25 @@ export interface ActivatedAgentSkillInstruction {
   readonly executionAuthorized: false;
 }
 
+export type AgentSkillActivationFailureDetail =
+  | 'not_discovered'
+  | 'activation_not_eligible'
+  | 'path_changed'
+  | 'not_regular_file'
+  | 'manifest_too_large'
+  | 'manifest_invalid'
+  | 'identity_changed'
+  | 'receipt_failed'
+  | 'unknown';
+
 export interface AgentSkillActivationBatch {
   readonly format: 'furypipe-agent-skill-activation-batch/v1';
   readonly activated: readonly ActivatedAgentSkillInstruction[];
   readonly blocked: readonly {
     readonly name: string;
     readonly reason: 'not_discovered' | 'activation_not_eligible' | 'changed_since_discovery' | 'invalid_manifest';
+    /** Safe machine diagnostic; never includes SKILL.md content or raw exception text. */
+    readonly detail: AgentSkillActivationFailureDetail;
   }[];
   readonly executionAuthorized: false;
 }
@@ -57,32 +70,69 @@ function renderSkillPromptBlock(
   ].join('\n');
 }
 
+class AgentSkillActivationError extends Error {
+  constructor(
+    readonly code: AgentSkillActivationFailureDetail,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'AgentSkillActivationError';
+  }
+}
+
 async function loadOne(skill: DiscoveredAgentSkill): Promise<ActivatedAgentSkillInstruction> {
-  if (!skill.activationEligible) throw new Error('activation_not_eligible');
+  if (!skill.activationEligible) {
+    throw new AgentSkillActivationError('activation_not_eligible', 'activation not eligible');
+  }
 
-  const recordedDir = await realpath(skill.skillDirectory);
-  const recordedManifest = await realpath(skill.location);
+  let recordedDir: string;
+  let recordedManifest: string;
+  try {
+    recordedDir = await realpath(skill.skillDirectory);
+    recordedManifest = await realpath(skill.location);
+  } catch {
+    throw new AgentSkillActivationError('path_changed', 'skill path changed since discovery');
+  }
   if (!inside(recordedDir, recordedManifest) || path.dirname(recordedManifest) !== recordedDir) {
-    throw new Error('changed_since_discovery');
+    throw new AgentSkillActivationError('path_changed', 'skill path changed since discovery');
   }
 
-  const manifestLstat = await lstat(recordedManifest);
+  let manifestLstat;
+  try {
+    manifestLstat = await lstat(recordedManifest);
+  } catch {
+    throw new AgentSkillActivationError('path_changed', 'skill path changed since discovery');
+  }
   if (!manifestLstat.isFile() || manifestLstat.isSymbolicLink()) {
-    throw new Error('changed_since_discovery');
+    throw new AgentSkillActivationError('not_regular_file', 'SKILL.md is no longer a regular file');
   }
-  const manifestStat = await stat(recordedManifest);
-  if (manifestStat.size > MAX_MANIFEST_BYTES) throw new Error('invalid_manifest');
 
-  const content = await readFile(recordedManifest, 'utf8');
-  const parsed = parseAgentSkillManifest(content, path.basename(recordedDir));
+  const manifestStat = await stat(recordedManifest);
+  if (manifestStat.size > MAX_MANIFEST_BYTES) {
+    throw new AgentSkillActivationError('manifest_too_large', 'SKILL.md exceeds activation size limit');
+  }
+
+  let parsed: ParsedAgentSkillManifest;
+  try {
+    const content = await readFile(recordedManifest, 'utf8');
+    parsed = parseAgentSkillManifest(content, path.basename(recordedDir));
+  } catch {
+    throw new AgentSkillActivationError('manifest_invalid', 'SKILL.md failed activation validation');
+  }
 
   // Revalidate the identity/description observed at discovery time. A file
   // swapped between discovery and activation must be re-discovered first.
   if (parsed.metadata.name !== skill.name || parsed.metadata.description !== skill.description) {
-    throw new Error('changed_since_discovery');
+    throw new AgentSkillActivationError('identity_changed', 'skill identity changed since discovery');
   }
 
-  const receipt = await createAgentSkillActivationReceipt(parsed.metadata, parsed.instructions);
+  let receipt: AgentSkillActivationReceipt;
+  try {
+    receipt = await createAgentSkillActivationReceipt(parsed.metadata, parsed.instructions);
+  } catch {
+    throw new AgentSkillActivationError('receipt_failed', 'activation receipt creation failed');
+  }
+
   return Object.freeze({
     format: 'furypipe-activated-agent-skill/v1',
     name: skill.name,
@@ -94,11 +144,18 @@ async function loadOne(skill: DiscoveredAgentSkill): Promise<ActivatedAgentSkill
   });
 }
 
-function activationFailureReason(error: unknown): AgentSkillActivationBatch['blocked'][number]['reason'] {
-  const message = error instanceof Error ? error.message : '';
-  if (message === 'activation_not_eligible') return 'activation_not_eligible';
-  if (message === 'changed_since_discovery') return 'changed_since_discovery';
-  return 'invalid_manifest';
+function activationFailure(error: unknown): {
+  readonly reason: AgentSkillActivationBatch['blocked'][number]['reason'];
+  readonly detail: AgentSkillActivationFailureDetail;
+} {
+  const detail = error instanceof AgentSkillActivationError ? error.code : 'unknown';
+  if (detail === 'activation_not_eligible') {
+    return { reason: 'activation_not_eligible', detail };
+  }
+  if (detail === 'path_changed' || detail === 'not_regular_file' || detail === 'identity_changed') {
+    return { reason: 'changed_since_discovery', detail };
+  }
+  return { reason: 'invalid_manifest', detail };
 }
 
 /**
@@ -123,15 +180,21 @@ export async function activateSelectedAgentSkillsNode(
   for (const selected of plan.selected) {
     const skill = byName.get(selected.name);
     if (!skill) {
-      blocked.push(Object.freeze({ name: selected.name, reason: 'not_discovered' }));
+      blocked.push(Object.freeze({
+        name: selected.name,
+        reason: 'not_discovered',
+        detail: 'not_discovered',
+      }));
       continue;
     }
     try {
       activated.push(await loadOne(skill));
     } catch (error) {
+      const failure = activationFailure(error);
       blocked.push(Object.freeze({
         name: selected.name,
-        reason: activationFailureReason(error),
+        reason: failure.reason,
+        detail: failure.detail,
       }));
     }
   }
