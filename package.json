@@ -356,6 +356,10 @@
     "./provider-stream-transports": {
       "types": "./dist/provider-stream-transports/index.d.ts",
       "import": "./dist/provider-stream-transports/index.js"
+    },
+    "./mcp-direct-governance": {
+      "types": "./dist/mcp-direct-governance.d.ts",
+      "import": "./dist/mcp-direct-governance.js"
     }
   },
   "files": [
@@ -371,6 +375,7 @@
     "docs/MCP.md",
     "docs/MCP_HOSTED_CONFORMANCE.md",
     "docs/MCP_LIVE_OBSERVABILITY_2026.md",
+    "docs/DIRECT_MCP_GOVERNED_RUNTIME_2026.md",
     "docs/FURY_PROMPT.md",
     "docs/INSTRUCTION_PROFILES.md",
     "docs/SKILL_ECOSYSTEM_2026.md",
