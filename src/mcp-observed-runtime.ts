@@ -184,9 +184,19 @@ export async function observeAnthropicMcpRuntime(
   const exposed = exposedTools(root);
   const exposedByName = new Map(exposed.map((tool) => [tool.name, tool] as const));
   const uses = new Map<string, UseRecord>();
-  const results = new Map<string, { readonly contentJson: string; readonly isError: boolean }>();
+  const allResultIds = new Set<string>();
+  const latestResults = new Map<string, { readonly contentJson: string; readonly isError: boolean }>();
+  const messages = messageBlocks(root);
+  let latestUserIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === 'user') {
+      latestUserIndex = index;
+      break;
+    }
+  }
 
-  for (const message of messageBlocks(root)) {
+  for (let messageIndex = 0; messageIndex < messages.length; messageIndex += 1) {
+    const message = messages[messageIndex]!;
     for (const block of message.blocks) {
       if (message.role === 'assistant' && block.type === 'tool_use') {
         const id = typeof block.id === 'string' ? block.id : undefined;
@@ -207,7 +217,13 @@ export async function observeAnthropicMcpRuntime(
 
       if (message.role === 'user' && block.type === 'tool_result') {
         const id = typeof block.tool_use_id === 'string' ? block.tool_use_id : undefined;
-        if (!id || id.length > MAX_TOOL_USE_ID || id.includes('\0') || results.has(id)) continue;
+        if (!id || id.length > MAX_TOOL_USE_ID || id.includes('\0')) continue;
+        allResultIds.add(id);
+
+        // Emit a receipt only for results newly carried by this request's
+        // latest user turn. Older history remains completion evidence for
+        // pending-state calculation but is not counted again.
+        if (messageIndex !== latestUserIndex || latestResults.has(id)) continue;
         let contentJson: string;
         try {
           contentJson = stableJson({
@@ -217,7 +233,7 @@ export async function observeAnthropicMcpRuntime(
         } catch {
           continue;
         }
-        results.set(id, { contentJson, isError: block.is_error === true });
+        latestResults.set(id, { contentJson, isError: block.is_error === true });
       }
     }
   }
@@ -230,14 +246,16 @@ export async function observeAnthropicMcpRuntime(
       sha256(use.id),
       sha256(use.inputJson),
     ]);
-    const result = results.get(use.id);
+    const result = latestResults.get(use.id);
     if (!result) {
-      pending.push(Object.freeze({
-        toolName: use.name,
-        toolUseIdSha256,
-        inputSha256,
-        status: 'selected_no_result_observed' as const,
-      }));
+      if (!allResultIds.has(use.id)) {
+        pending.push(Object.freeze({
+          toolName: use.name,
+          toolUseIdSha256,
+          inputSha256,
+          status: 'selected_no_result_observed' as const,
+        }));
+      }
       continue;
     }
 
