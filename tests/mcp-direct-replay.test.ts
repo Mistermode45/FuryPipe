@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   deriveMcpDirectEndpointFingerprint,
@@ -17,11 +17,13 @@ import {
 } from '../src/mcp-direct-executor-node-internal.js';
 import {
   approveMcpDirectPolicyDecision,
+  createMcpDirectOperatorApprovalIntent,
   createMcpDirectToolProposal,
   evaluateMcpDirectPolicy,
   selectMcpDirectTool,
   type McpDirectPolicy,
 } from '../src/mcp-direct-policy.js';
+import { resetMcpDirectReplayStateForTests } from '../src/mcp-direct-replay-internal.js';
 
 const sha = (char: string) => char.repeat(64);
 
@@ -110,6 +112,7 @@ function fakeFactory(options: {
 async function approved(
   factory: McpDirectSdkFactory,
   message: string,
+  options: { readonly operator?: boolean } = {},
 ) {
   const runtime = config();
   const inventory = await probeMcpDirectInventoryInternal(runtime, {
@@ -122,27 +125,34 @@ async function approved(
     inventory.catalog,
     { message },
   );
+  const pair = {
+    sourceId: selected.source.sourceId,
+    endpointFingerprint: selected.source.endpointFingerprint,
+    toolName: 'replay-proof',
+  };
   const policy: McpDirectPolicy = {
     format: 'furypipe-mcp-direct-policy/v1',
     policyId: 'm4-replay-policy',
-    governedPolicyAllowlist: [{
-      sourceId: selected.source.sourceId,
-      endpointFingerprint: selected.source.endpointFingerprint,
-      toolName: 'replay-proof',
-    }],
-    operatorApprovalAllowlist: [],
+    governedPolicyAllowlist: options.operator ? [] : [pair],
+    operatorApprovalAllowlist: options.operator ? [pair] : [],
   };
   const decision = evaluateMcpDirectPolicy(selected, proposal, policy);
+  const authority = options.operator
+    ? createMcpDirectOperatorApprovalIntent(proposal, decision)
+    : 'governed_policy';
   const lifecycle = approveMcpDirectPolicyDecision(
     selected,
     proposal,
     decision,
-    'governed_policy',
+    authority,
   );
   return { runtime, lifecycle, proposal };
 }
 
 describe('Direct MCP M4 replay governance', () => {
+  beforeEach(() => {
+    resetMcpDirectReplayStateForTests();
+  });
   it('blocks a duplicate fresh approval for the same exact execution key', async () => {
     const fake = fakeFactory({});
     const first = await approved(fake.factory, 'same');
@@ -250,7 +260,7 @@ describe('Direct MCP M4 replay governance', () => {
       },
     };
     const fake = fakeFactory({ tool: mutatingTool });
-    const first = await approved(fake.factory, 'same');
+    const first = await approved(fake.factory, 'mutating', { operator: true });
     const original = await executeMcpDirectApprovedToolInternal(
       first.runtime,
       first.lifecycle,
@@ -261,7 +271,7 @@ describe('Direct MCP M4 replay governance', () => {
       },
     );
 
-    const second = await approved(fake.factory, 'same');
+    const second = await approved(fake.factory, 'mutating', { operator: true });
     expect(() => createMcpDirectReplayIntent(
       original.receipt,
       second.lifecycle,

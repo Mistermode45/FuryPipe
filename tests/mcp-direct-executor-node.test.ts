@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   deriveMcpDirectEndpointFingerprint,
@@ -19,6 +19,7 @@ import {
   McpDirectExecutionEvidenceError,
   McpDirectExecutionOutcomeUnknownError,
 } from '../src/mcp-direct-executor-node-internal.js';
+import { resetMcpDirectReplayStateForTests } from '../src/mcp-direct-replay-internal.js';
 import {
   approveMcpDirectPolicyDecision,
   createMcpDirectToolProposal,
@@ -181,6 +182,9 @@ async function approvedWithFactory(
 }
 
 describe('Direct MCP M3 governed execution', () => {
+  beforeEach(() => {
+    resetMcpDirectReplayStateForTests();
+  });
   it('executes exactly once after fresh same-session revalidation and produces digest-only evidence', async () => {
     const canary = 'M3_ARGUMENT_RESULT_CANARY_71D9';
     const fake = fakeFactory({});

@@ -96,6 +96,7 @@ const CONSUMED_REPLAY_INTENTS = new WeakSet<object>();
 const RESERVATIONS = new WeakMap<object, {
   readonly key: string;
   readonly attempt: number;
+  readonly previous?: LedgerEntry;
 }>();
 
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -452,7 +453,13 @@ export function reserveMcpDirectExecutionAttempt(
     ...(reason === undefined ? {} : { reason }),
     ...(priorResultSha256 === undefined ? {} : { priorResultSha256 }),
   });
-  RESERVATIONS.set(reservation, Object.freeze({ key, attempt }));
+  RESERVATIONS.set(reservation, Object.freeze({
+    key,
+    attempt,
+    ...(replayIntent === undefined || existing === undefined
+      ? {}
+      : { previous: existing }),
+  }));
   return reservation;
 }
 
@@ -467,7 +474,8 @@ export function releaseMcpDirectExecutionReservation(
     && entry.attempt === state.attempt
     && entry.outcome === 'reserved'
   ) {
-    LEDGER.delete(state.key);
+    if (state.previous) LEDGER.set(state.key, state.previous);
+    else LEDGER.delete(state.key);
   }
 }
 
@@ -531,4 +539,9 @@ export function inspectMcpDirectReplayLedgerForTests(
   replayKeySha256: string,
 ): Readonly<LedgerEntry> | undefined {
   return LEDGER.get(replayKeySha256);
+}
+
+
+export function resetMcpDirectReplayStateForTests(): void {
+  LEDGER.clear();
 }
