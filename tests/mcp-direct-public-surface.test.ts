@@ -16,6 +16,9 @@ describe('direct MCP supported public authority surface', () => {
     expect(root.deriveMcpDirectEndpointFingerprint).toBeTypeOf('function');
     expect(root.selectMcpDirectTool).toBeTypeOf('function');
     expect(root.executeMcpDirectApprovedTool).toBeTypeOf('function');
+    expect(root.McpDirectExecutionEvidenceError).toBeTypeOf('function');
+    expect(root.McpDirectExecutionOutcomeUnknownError).toBeTypeOf('function');
+    expect(root.McpDirectExecutionVerificationError).toBeTypeOf('function');
 
     expect(root.createMcpDirectLifecycle).toBeUndefined();
     expect(root.recordMcpDirectConnection).toBeUndefined();

@@ -433,6 +433,7 @@ export {
 
 export {
   executeMcpDirectApprovedTool,
+  McpDirectExecutionEvidenceError,
   McpDirectExecutionOutcomeUnknownError,
   McpDirectExecutionVerificationError,
   type McpDirectGovernedExecutionOptions,

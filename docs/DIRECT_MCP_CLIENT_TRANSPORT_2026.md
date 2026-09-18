@@ -43,7 +43,9 @@ Connection alone never sets `healthy=true`. A successful bounded
 - bounded command, argument and environment surfaces;
 - explicit read buffer ceiling: 8 MiB by default, 16 MiB hard maximum;
 - child stderr is drained but not persisted;
-- command + args + cwd are bound into the endpoint fingerprint; secrets must be passed through env, never args.
+- command + args + cwd are bound into the endpoint fingerprint; secrets must be passed through env, never args;
+- when env is supplied, a stable non-secret `principalId` is mandatory;
+- the endpoint fingerprint binds the principal id and sorted env-variable names, but never env values, so credential rotation for the same principal does not leak or invalidate secret material.
 
 ### Streamable HTTP
 
@@ -58,7 +60,10 @@ Connection alone never sets `healthy=true`. A successful bounded
   silently redirect to another origin/private endpoint;
 - transport-owned MCP headers cannot be overridden by runtime static headers;
 - authorization headers may exist in runtime config but are never copied into
-  FuryPipe lifecycle evidence.
+  FuryPipe lifecycle evidence;
+- when runtime headers are supplied, a stable non-secret `principalId` is mandatory;
+- the endpoint fingerprint binds that principal and the normalized header-name set, not the header values;
+- case-insensitive duplicate header names are rejected before transport creation.
 
 Legacy SSE is not selected or silently attempted by this track.
 
@@ -104,3 +109,22 @@ first track permitted to introduce one governed tool invocation after a
 single-use execution permit has been synchronously consumed.
 
 No release, tag, npm publish, or deploy is part of M1.
+
+
+## Principal binding
+
+Credential values are runtime-only and intentionally excluded from serialized
+evidence. Excluding them does **not** mean approval may float between accounts.
+
+For stdio env credentials and Streamable HTTP runtime headers, FuryPipe requires
+an explicit stable non-secret `principalId`. The endpoint fingerprint combines
+that principal identity with the non-secret endpoint definition and the set of
+runtime env/header names.
+
+Consequences:
+
+- rotating a token for the same principal keeps the same endpoint identity;
+- switching to a different principal changes the endpoint fingerprint and
+  invalidates previously approved source binding;
+- raw tokens/passwords are never hashed into or copied into lifecycle evidence;
+- callers must not place credential values inside `principalId`.

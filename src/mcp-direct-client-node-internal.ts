@@ -459,6 +459,7 @@ function validatedHttpConfig(config: McpDirectHttpRuntimeConfig): {
     throw new Error('MCP HTTP headers exceed the 64 header bound');
   }
   const headers: Record<string, string> = {};
+  const seenHeaderNames = new Set<string>();
   const reserved = new Set([
     'host',
     'content-length',
@@ -475,6 +476,10 @@ function validatedHttpConfig(config: McpDirectHttpRuntimeConfig): {
     if (!/^[A-Za-z0-9-]{1,128}$/u.test(name) || reserved.has(lower)) {
       throw new Error('MCP HTTP header name is invalid or reserved');
     }
+    if (seenHeaderNames.has(lower)) {
+      throw new Error('MCP HTTP headers contain a duplicate case-insensitive name');
+    }
+    seenHeaderNames.add(lower);
     if (
       typeof value !== 'string'
       || value.length > MAX_HEADER_VALUE

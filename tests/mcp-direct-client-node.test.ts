@@ -385,6 +385,27 @@ describe('direct MCP client inventory transport', () => {
     })).rejects.toThrow(/must not contain a query string/i);
   });
 
+  it('rejects case-insensitive duplicate HTTP header names', () => {
+    const config: McpDirectRuntimeConfig = {
+      source: {
+        sourceId: 'duplicate-http-header',
+        transport: 'streamable_http',
+        endpointFingerprint: sha('0'),
+        trust: 'trusted',
+      },
+      url: 'https://mcp.example.test/v1',
+      allowedHosts: ['mcp.example.test'],
+      principalId: 'service-a',
+      headers: {
+        Authorization: 'Bearer one',
+        authorization: 'Bearer two',
+      },
+    };
+
+    expect(() => deriveMcpDirectEndpointFingerprint(config))
+      .toThrow(/duplicate case-insensitive/i);
+  });
+
   it('passes a bounded HTTP response ceiling to the transport', async () => {
     const fake = fakeFactory({});
     await probeMcpDirectInventoryInternal(httpConfig({
