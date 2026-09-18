@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -16,9 +19,15 @@ import {
 } from '../src/mcp-direct-executor-node.js';
 import {
   executeMcpDirectApprovedToolInternal,
+  McpDirectExecutionDurabilityError,
   McpDirectExecutionEvidenceError,
   McpDirectExecutionOutcomeUnknownError,
 } from '../src/mcp-direct-executor-node-internal.js';
+import { createRecoveryStore, type RecoveryStore } from '../src/core/recovery-store.js';
+import {
+  createMcpDirectDurableReplayCoordinatorInternal,
+  inspectMcpDirectDurableReplayStatusInternal,
+} from '../src/mcp-direct-durable-replay-internal.js';
 import { resetMcpDirectReplayStateForTests } from '../src/mcp-direct-replay-internal.js';
 import {
   approveMcpDirectPolicyDecision,
@@ -576,6 +585,193 @@ describe('Direct MCP M3 governed execution', () => {
       } as never,
     )).rejects.toThrow(/unsupported or unsafe fields/i);
     expect(fake.counters().callCalls).toBe(0);
+  });
+
+
+  it('persists a successful durable execution before returning the M3/M4 receipt', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m5-executor-success-'));
+    try {
+      const store = createRecoveryStore(root, { namespace: 'mcp-m5-executor' });
+      const coordinator = createMcpDirectDurableReplayCoordinatorInternal({
+        store,
+        tenantId: 'tenant-m5',
+        principalId: 'principal-m5',
+      });
+      const fake = fakeFactory({});
+      const approved = await approvedWithFactory(fake.factory, 'durable-success');
+
+      const executed = await executeMcpDirectApprovedToolInternal(
+        approved.config,
+        approved.lifecycle,
+        approved.proposal,
+        {
+          clientInfo: { name: 'furypipe-m5-test', version: '1.0.0' },
+          factory: fake.factory,
+          durableReplay: coordinator,
+        },
+      );
+
+      expect(fake.counters().callCalls).toBe(1);
+      expect(executed.receipt).toMatchObject({
+        executed: true,
+        succeeded: true,
+        verified: true,
+        durableScopeSha256: coordinator.scopeSha256,
+        durableAttempt: 1,
+      });
+      const status = await inspectMcpDirectDurableReplayStatusInternal(
+        coordinator,
+        executed.receipt.replayKeySha256,
+      );
+      expect(status).toMatchObject({
+        state: 'terminal',
+        attempt: 1,
+        outcome: 'succeeded',
+        resultSha256: executed.receipt.resultSha256,
+        succeeded: true,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('persists unknown durable state when callTool throws and never marks it replay-safe', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m5-executor-unknown-'));
+    try {
+      const store = createRecoveryStore(root, { namespace: 'mcp-m5-executor' });
+      const coordinator = createMcpDirectDurableReplayCoordinatorInternal({
+        store,
+        tenantId: 'tenant-m5',
+        principalId: 'principal-m5',
+      });
+      const fake = fakeFactory({ callError: new Error('transport lost after send') });
+      const approved = await approvedWithFactory(fake.factory, 'durable-unknown');
+
+      let caught: unknown;
+      try {
+        await executeMcpDirectApprovedToolInternal(
+          approved.config,
+          approved.lifecycle,
+          approved.proposal,
+          {
+            clientInfo: { name: 'furypipe-m5-test', version: '1.0.0' },
+            factory: fake.factory,
+            durableReplay: coordinator,
+          },
+        );
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(McpDirectExecutionOutcomeUnknownError);
+      expect(fake.counters().callCalls).toBe(1);
+      const replayKeySha256 = (caught as McpDirectExecutionOutcomeUnknownError).replayKeySha256;
+      await expect(inspectMcpDirectDurableReplayStatusInternal(
+        coordinator,
+        replayKeySha256,
+      )).resolves.toMatchObject({
+        state: 'terminal',
+        attempt: 1,
+        outcome: 'unknown',
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('fails before callTool when durable arming cannot be committed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m5-executor-arm-fail-'));
+    try {
+      const real = createRecoveryStore(root, { namespace: 'mcp-m5-executor' });
+      let boundedWrites = 0;
+      const store: RecoveryStore = {
+        ...real,
+        async putBounded(bytes, metadata, bound) {
+          boundedWrites += 1;
+          if (boundedWrites === 2) throw new Error('fixture armed persistence failure');
+          return real.putBounded!(bytes, metadata, bound);
+        },
+      };
+      const coordinator = createMcpDirectDurableReplayCoordinatorInternal({
+        store,
+        tenantId: 'tenant-m5',
+        principalId: 'principal-m5',
+      });
+      const fake = fakeFactory({});
+      const approved = await approvedWithFactory(fake.factory, 'durable-arm-fail');
+
+      await expect(executeMcpDirectApprovedToolInternal(
+        approved.config,
+        approved.lifecycle,
+        approved.proposal,
+        {
+          clientInfo: { name: 'furypipe-m5-test', version: '1.0.0' },
+          factory: fake.factory,
+          durableReplay: coordinator,
+        },
+      )).rejects.toThrow(/fixture armed persistence failure/i);
+
+      expect(fake.counters().callCalls).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns a non-retriable durability error when terminal persistence fails after a known result', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m5-executor-terminal-fail-'));
+    try {
+      const real = createRecoveryStore(root, { namespace: 'mcp-m5-executor' });
+      let boundedWrites = 0;
+      const store: RecoveryStore = {
+        ...real,
+        async putBounded(bytes, metadata, bound) {
+          boundedWrites += 1;
+          if (boundedWrites === 3) throw new Error('fixture terminal persistence failure');
+          return real.putBounded!(bytes, metadata, bound);
+        },
+      };
+      const coordinator = createMcpDirectDurableReplayCoordinatorInternal({
+        store,
+        tenantId: 'tenant-m5',
+        principalId: 'principal-m5',
+      });
+      const fake = fakeFactory({});
+      const approved = await approvedWithFactory(fake.factory, 'durable-terminal-fail');
+
+      let caught: unknown;
+      try {
+        await executeMcpDirectApprovedToolInternal(
+          approved.config,
+          approved.lifecycle,
+          approved.proposal,
+          {
+            clientInfo: { name: 'furypipe-m5-test', version: '1.0.0' },
+            factory: fake.factory,
+            durableReplay: coordinator,
+          },
+        );
+      } catch (error) {
+        caught = error;
+      }
+
+      expect(caught).toBeInstanceOf(McpDirectExecutionDurabilityError);
+      expect(caught).toMatchObject({
+        code: 'MCP_DIRECT_EXECUTION_DURABILITY_FAILED',
+        retrySafe: false,
+        executed: true,
+        succeeded: true,
+      });
+      expect(fake.counters().callCalls).toBe(1);
+      const replayKeySha256 = (caught as McpDirectExecutionDurabilityError).replayKeySha256;
+      await expect(inspectMcpDirectDurableReplayStatusInternal(
+        coordinator,
+        replayKeySha256,
+      )).resolves.toMatchObject({
+        state: 'armed',
+        attempt: 1,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('uses the real official v2 stdio client for one governed callTool and validates structured output', async () => {
