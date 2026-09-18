@@ -11,6 +11,7 @@ import {
   reserveMcpDirectDurableExecution,
   armMcpDirectDurableExecution,
   settleMcpDirectDurableExecution,
+  abortMcpDirectDurablePreCallReservation,
   McpDirectDurableReplayError,
 } from '../src/mcp-direct-durable-replay-internal.js';
 
@@ -367,4 +368,78 @@ describe('Direct MCP durable replay foundation', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  it('keeps copied coordinators non-authoritative and rejects corrupted durable payloads', async () => {
+    const { root, store, coordinator } = await fixture();
+    try {
+      await reserveMcpDirectDurableExecution(coordinator, KEY, { now: 9_000 });
+
+      const copied = { ...coordinator };
+      await expect(inspectMcpDirectDurableReplayStatusInternal(
+        copied,
+        KEY,
+        9_001,
+      )).rejects.toMatchObject({
+        code: 'invalid-coordinator',
+        retrySafe: false,
+      });
+
+      const corruptStore = {
+        ...store,
+        get: async (handle: Parameters<typeof store.get>[0]) => {
+          const bytes = await store.get(handle);
+          const text = new TextDecoder().decode(bytes);
+          return new TextEncoder().encode(text.replace('"attempt":1', '"attempt":2'));
+        },
+      };
+      const corruptCoordinator = createMcpDirectDurableReplayCoordinatorInternal({
+        store: corruptStore,
+        tenantId: 'tenant-a',
+        principalId: 'principal-a',
+      });
+      await expect(inspectMcpDirectDurableReplayStatusInternal(
+        corruptCoordinator,
+        KEY,
+        9_001,
+      )).rejects.toMatchObject({
+        code: 'durable-state-corrupt',
+        retrySafe: false,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('can abort only its own still-unarmed process-local pre-call reservation', async () => {
+    const { root, coordinator } = await fixture();
+    try {
+      const reservation = await reserveMcpDirectDurableExecution(
+        coordinator,
+        KEY,
+        { now: 10_000 },
+      );
+      await abortMcpDirectDurablePreCallReservation(coordinator, reservation);
+      await expect(inspectMcpDirectDurableReplayStatusInternal(
+        coordinator,
+        KEY,
+        10_001,
+      )).resolves.toMatchObject({ state: 'clear' });
+
+      const second = await reserveMcpDirectDurableExecution(
+        coordinator,
+        KEY,
+        { now: 10_002 },
+      );
+      await armMcpDirectDurableExecution(coordinator, second, 10_003);
+      await expect(abortMcpDirectDurablePreCallReservation(
+        coordinator,
+        second,
+      )).rejects.toMatchObject({
+        code: 'durable-state-conflict',
+        retrySafe: false,
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
 });
