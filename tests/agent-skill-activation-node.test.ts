@@ -44,9 +44,11 @@ describe('Node Agent Skill instruction activation', () => {
       discovery.skills,
     );
 
+    expect(plan.selected, JSON.stringify({ plan, discovery }, null, 2)).toHaveLength(1);
+
     const result = await activateSelectedAgentSkillsNode(plan, discovery.skills);
 
-    expect(result.activated).toHaveLength(1);
+    expect(result.activated, JSON.stringify({ plan, result, discovery }, null, 2)).toHaveLength(1);
     expect(result.activated[0]).toMatchObject({
       name: 'systematic-debugging',
       executionAuthorized: false,
