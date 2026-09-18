@@ -658,6 +658,7 @@ describe('Direct MCP M3 governed execution', () => {
       const fake = fakeFactory({});
 
       const firstApproved = await approvedWithFactory(fake.factory, 'durable-replay');
+      const firstNow = firstApproved.lifecycle.approval!.approvedAt + 1;
       const first = await executeMcpDirectApprovedToolInternal(
         firstApproved.config,
         firstApproved.lifecycle,
@@ -666,17 +667,18 @@ describe('Direct MCP M3 governed execution', () => {
           clientInfo: { name: 'furypipe-m5-test', version: '1.0.0' },
           factory: fake.factory,
           durableReplay: coordinator,
-          now: () => 20_000,
+          now: () => firstNow,
         },
       );
 
       const secondApproved = await approvedWithFactory(fake.factory, 'durable-replay');
+      const replayNow = secondApproved.lifecycle.approval!.approvedAt + 1;
       const replayIntent = createMcpDirectReplayIntentInternal(
         first.receipt,
         secondApproved.lifecycle,
         secondApproved.proposal,
         'repeat_closed_world_read',
-        { now: 20_100, expiresInMs: 5_000 },
+        { now: replayNow, expiresInMs: 5_000 },
       );
       const second = await executeMcpDirectApprovedToolInternal(
         secondApproved.config,
@@ -687,7 +689,7 @@ describe('Direct MCP M3 governed execution', () => {
           factory: fake.factory,
           durableReplay: coordinator,
           replayIntent,
-          now: () => 20_101,
+          now: () => replayNow + 1,
         },
       );
 
@@ -768,7 +770,8 @@ describe('Direct MCP M3 governed execution', () => {
       });
       const fake = fakeFactory({});
       const approved = await approvedWithFactory(fake.factory, 'durable-permit-expiry');
-      const times = [30_000, 30_200];
+      const base = approved.lifecycle.approval!.approvedAt + 1;
+      const times = [base, base + 200];
 
       await expect(executeMcpDirectApprovedToolInternal(
         approved.config,
@@ -779,7 +782,7 @@ describe('Direct MCP M3 governed execution', () => {
           factory: fake.factory,
           durableReplay: coordinator,
           permitTtlMs: 100,
-          now: () => times.shift() ?? 30_200,
+          now: () => times.shift() ?? base + 200,
         },
       )).rejects.toThrow(/permit is expired or not yet valid/i);
 
@@ -805,7 +808,8 @@ describe('Direct MCP M3 governed execution', () => {
       });
       const fake = fakeFactory({});
       const approved = await approvedWithFactory(fake.factory, 'durable-wire-expiry');
-      const times = [40_000, 40_050, 40_080, 40_200];
+      const base = approved.lifecycle.approval!.approvedAt + 1;
+      const times = [base, base + 50, base + 80, base + 200];
 
       await expect(executeMcpDirectApprovedToolInternal(
         approved.config,
@@ -816,7 +820,7 @@ describe('Direct MCP M3 governed execution', () => {
           factory: fake.factory,
           durableReplay: coordinator,
           permitTtlMs: 100,
-          now: () => times.shift() ?? 40_200,
+          now: () => times.shift() ?? base + 200,
         },
       )).rejects.toThrow(/permit expired before the durable wire-call boundary/i);
 
