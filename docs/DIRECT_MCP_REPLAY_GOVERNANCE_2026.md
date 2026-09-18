@@ -139,7 +139,8 @@ The ledger has:
 
 - explicit maximum entry count;
 - explicit TTL;
-- deterministic eviction;
+- expired-entry pruning;
+- fail-closed saturation rather than eviction of still-live duplicate evidence;
 - no cross-principal fallback;
 - no serialization authority;
 - no claim of cross-process durability.
@@ -305,3 +306,35 @@ M4 remains OPEN + DRAFT until:
   remain unchanged or stronger.
 
 No release, tag, npm publish or deploy is part of M4.
+
+
+## Implemented M4 evidence
+
+The first implementation integrates duplicate suppression directly into the M3
+executor path, so creating a second fresh M1→M2 approval does not bypass the
+process-local replay ledger.
+
+Execution receipts now include a replay-key digest, attempt number and explicit
+`replayed` boolean. Replay receipts additionally bind the bounded replay
+reason and prior result digest.
+
+The supported replay flow is:
+
+```text
+prior generated execution receipt
++ fresh M1 inventory
++ fresh M2 selection/proposal/policy/approval
++ short-lived process-local replay intent
+-> fresh M3 same-session inventory revalidation
+-> one replay reservation
+-> one callTool()
+```
+
+The real official v2 stdio E2E uses a cross-process counter fixture. It proves
+exactly two tool invocations for one original execution plus one explicit
+replay, while a third same-key execution without replay intent is blocked before
+a third `callTool()`.
+
+M4 deliberately limits governed replay to trusted closed-world reads. Trusted
+open-world reads and all mutations remain ineligible even when an annotation
+claims idempotency.
