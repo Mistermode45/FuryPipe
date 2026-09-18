@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -327,6 +329,61 @@ describe('direct MCP client inventory transport', () => {
       maxResponseBytes: 8 * 1024 * 1024,
     });
   });
+
+  it('uses the real official v2 stdio client against a real dual-era server', async () => {
+    const fixturePath = fileURLToPath(
+      new URL('./fixtures/mcp-direct-stdio-server.mjs', import.meta.url),
+    );
+    const provisional: McpDirectRuntimeConfig = {
+      source: {
+        sourceId: 'real-stdio-fixture',
+        transport: 'stdio',
+        endpointFingerprint: sha('0'),
+        trust: 'trusted',
+      },
+      command: process.execPath,
+      args: [fixturePath],
+      maxBufferBytes: 1024 * 1024,
+    };
+    const config: McpDirectRuntimeConfig = {
+      ...provisional,
+      source: {
+        ...provisional.source,
+        endpointFingerprint: deriveMcpDirectEndpointFingerprint(provisional),
+      },
+    };
+
+    const result = await probeMcpDirectInventory(config, {
+      clientInfo: { name: 'furypipe-real-stdio-test', version: '1.0.0' },
+      connectTimeoutMs: 10_000,
+      listTimeoutMs: 10_000,
+      probeTimeoutMs: 2_000,
+    });
+
+    expect(result.protocolVersion).toBe('2026-07-28');
+    expect(result.toolCount).toBe(1);
+    expect(result.lifecycle).toMatchObject({
+      connected: true,
+      healthy: true,
+      listed: true,
+      trusted: true,
+      selected: false,
+      approved: false,
+      executed: false,
+      succeeded: false,
+      verified: false,
+      protocolEra: 'modern_2026',
+      handshake: 'discover',
+      healthEvidence: 'list_tools_success',
+    });
+    expect(result.lifecycle.inventory?.map((tool) => tool.name)).toEqual(['inventory-proof']);
+    expect(result.lifecycle.inventory?.[0]?.risk).toMatchObject({
+      trust: 'trusted',
+      riskClass: 'trusted_read_only_closed_world',
+      authorizationGranted: false,
+      requiresPolicyGate: true,
+    });
+  }, 20_000);
 
   it('uses bounded stdio parameters and does not invoke a shell', async () => {
     const fake = fakeFactory({});

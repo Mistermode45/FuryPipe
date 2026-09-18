@@ -72,6 +72,16 @@ Legacy SSE is not selected or silently attempted by this track.
 - annotations are normalized through the existing trust-aware risk policy;
 - an untrusted source remains `untrusted_unknown` regardless of annotations.
 
+## Real transport proof
+
+The automated suite includes an end-to-end stdio fixture using the real
+`@modelcontextprotocol/server@2.0.0` dual-era server entry and the real
+`@modelcontextprotocol/client@2.0.0` client transport. It proves modern
+`server/discover` negotiation plus `tools/list` on Windows, Linux and macOS
+through the existing CI matrix. The fixture registers a handler but M1 never
+calls it; returned lifecycle evidence must remain
+`selected=false / approved=false / executed=false`.
+
 ## Failure/cleanup model
 
 - connect timeout: 15 s default, 60 s hard maximum;
