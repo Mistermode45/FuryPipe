@@ -501,8 +501,18 @@ describe('direct MCP proposal, policy and approval governance', () => {
       operatorApprovalAllowlist: [...second.operatorApprovalAllowlist].reverse(),
     };
 
-    const decisionTwo = evaluateMcpDirectPolicy(lifecycle, proposal, second);
-    const decisionThree = evaluateMcpDirectPolicy(lifecycle, proposal, third);
+    const decisionTwo = evaluateMcpDirectPolicy(
+      lifecycle,
+      proposal,
+      second,
+      { now: 1_000 },
+    );
+    const decisionThree = evaluateMcpDirectPolicy(
+      lifecycle,
+      proposal,
+      third,
+      { now: 1_000 },
+    );
     expect(decisionTwo.policySha256).toBe(decisionThree.policySha256);
     expect(decisionTwo.policyDecisionIdSha256).toBe(decisionThree.policyDecisionIdSha256);
   });
