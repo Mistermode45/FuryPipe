@@ -306,7 +306,7 @@ function requiredStore(
 function slotMetadata(
   scopeSha256: string,
   replayKeySha256: string,
-  recordType: 'reservation' | 'armed' | 'terminal',
+  recordType: 'reservation' | 'armed' | 'terminal' | 'tombstone',
   attempt: number,
 ): RecoveryMetadata {
   return Object.freeze({
@@ -321,7 +321,7 @@ function slotMetadata(
 function metadata(
   scopeSha256: string,
   replayKeySha256: string,
-  recordType: 'reservation' | 'armed' | 'terminal',
+  recordType: 'reservation' | 'armed' | 'terminal' | 'tombstone',
   attempt: number,
   reservationIdSha256: string,
 ): RecoveryMetadata {
@@ -331,7 +331,7 @@ function metadata(
   });
 }
 
-function recordType(record: DurableRecord): 'reservation' | 'armed' | 'terminal' {
+function recordType(record: DurableRecord): 'reservation' | 'armed' | 'terminal' | 'tombstone' {
   if (record.format === 'furypipe-mcp-direct-durable-reservation/v1') return 'reservation';
   if (record.format === 'furypipe-mcp-direct-durable-armed/v1') return 'armed';
   if (record.format === 'furypipe-mcp-direct-durable-terminal/v1') return 'terminal';
@@ -606,6 +606,9 @@ function classify(
       throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256);
     }
     const tombstone = tombstones[0]!.record;
+    if (tombstone.format !== 'furypipe-mcp-direct-durable-tombstone/v1') {
+      throw new McpDirectDurableReplayError('durable-state-corrupt', replayKeySha256);
+    }
     if (records.some(({ record }) =>
       record.format !== 'furypipe-mcp-direct-durable-tombstone/v1'
       && record.attempt > tombstone.attempt)) {
