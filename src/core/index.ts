@@ -446,3 +446,12 @@ export {
   type McpDirectReplayReason,
   type McpDirectReplayIntentPublicOptions,
 } from '../mcp-direct-executor-node.js';
+
+export {
+  createMcpDirectDurableReplayCoordinator,
+  inspectMcpDirectDurableReplayStatus,
+  McpDirectDurableReplayError,
+  type McpDirectDurableReplayCoordinator,
+  type McpDirectDurableReplayStatus,
+  type McpDirectDurableReplayOptions,
+} from '../mcp-direct-durable-replay-node.js';
