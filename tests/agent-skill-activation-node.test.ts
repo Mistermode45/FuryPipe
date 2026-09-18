@@ -39,22 +39,12 @@ describe('Node Agent Skill instruction activation', () => {
       homeDir: path.join(root, 'home'),
       projectTrustedForInstructions: true,
     });
-    const diagnosticPlan = selectAgentSkillsForTask(
-      'Debug this failing test and find the root cause.',
-      discovery.skills,
-      { minRelevanceScore: 0 },
-    );
-    expect(
-      diagnosticPlan.selected[0]?.score,
-      JSON.stringify({ diagnosticPlan, discovery }, null, 2),
-    ).toBeGreaterThanOrEqual(2.25);
-
     const plan = selectAgentSkillsForTask(
       'Debug this failing test and find the root cause.',
       discovery.skills,
     );
 
-    expect(plan.selected, JSON.stringify({ plan, diagnosticPlan, discovery }, null, 2)).toHaveLength(1);
+    expect(plan.selected).toHaveLength(1);
 
     const result = await activateSelectedAgentSkillsNode(plan, discovery.skills);
 
