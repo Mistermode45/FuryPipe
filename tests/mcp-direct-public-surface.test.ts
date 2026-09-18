@@ -42,6 +42,7 @@ describe('direct MCP supported public authority surface', () => {
     expect(root.armMcpDirectDurableExecution).toBeUndefined();
     expect(root.settleMcpDirectDurableExecution).toBeUndefined();
     expect(root.abortMcpDirectDurablePreCallReservation).toBeUndefined();
+    expect(root.abortMcpDirectDurableArmedBeforeCall).toBeUndefined();
   });
 
   it('publishes only the safe M1/M2 subpaths, not raw governance or internals', () => {
