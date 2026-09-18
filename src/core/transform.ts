@@ -58,7 +58,7 @@ import { visionTokens, type VisionPricing } from './vision-cost.js';
 import { CLAUDE_PROFILE } from './claude-model-profiles.js';
 import { resolveGptProfile } from './gpt-model-profiles.js';
 import type { CompressionReceipt } from './receipt.js';
-import { detectProtectedSpans, exactGuardOptionsForMode, type ExactGuardMode, type ExactGuardOptions } from './exact-guard.js';
+import { detectProtectedSpans, exactGuardOptionsForMode, type ExactGuardMode, type ExactGuardOptions, type ExactnessClass } from './exact-guard.js';
 import { analyzeContextFabric, finalizeContextFabricAnalysis, type ContextFabricAnalysis } from './context-fabric.js';
 import type { RecoveryHandle, RecoveryStore } from './recovery-store.js';
 import { compileFuryPrompt, type FuryPromptCompileInput, type FuryPromptCompilation } from '../fury-prompt.js';
@@ -632,6 +632,9 @@ function bumpPassthrough(
   info.passthroughReasons[reason] = (info.passthroughReasons[reason] ?? 0) + 1;
 }
 
+/** Plaintext-free ExactGuard attribution used only for counts in telemetry. */
+type ExactGuardClassCounts = Partial<Record<ExactnessClass, number>>;
+
 /** Count protected spans without retaining their plaintext in telemetry. */
 function countProtectedRequestSpans(
   value: unknown,
@@ -639,6 +642,7 @@ function countProtectedRequestSpans(
   depth = 0,
   key?: string,
   skipToolResultContent = false,
+  classCounts?: ExactGuardClassCounts,
 ): number {
   if (depth > 8) return 0;
   // This header is consumed as transport metadata before the lossy stages;
@@ -654,7 +658,13 @@ function countProtectedRequestSpans(
       /(?:^|\r?\n)x-anthropic-billing-header:[^\r\n]*/gi,
       '',
     );
-    return detectProtectedSpans(semanticText, options).length;
+    const spans = detectProtectedSpans(semanticText, options);
+    if (classCounts) {
+      for (const span of spans) {
+        classCounts[span.class] = (classCounts[span.class] ?? 0) + 1;
+      }
+    }
+    return spans.length;
   }
   if (!value || typeof value !== 'object') return 0;
   // Live tool-result text has its own per-block gate. Keeping it out of the
@@ -664,17 +674,17 @@ function countProtectedRequestSpans(
     let metadataCount = 0;
     for (const [childKey, item] of Object.entries(value as Record<string, unknown>)) {
       if (childKey !== 'content') {
-        metadataCount += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent);
+        metadataCount += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent, classCounts);
       }
     }
     return metadataCount;
   }
   let count = 0;
   if (Array.isArray(value)) {
-    for (const item of value) count += countProtectedRequestSpans(item, options, depth + 1, undefined, skipToolResultContent);
+    for (const item of value) count += countProtectedRequestSpans(item, options, depth + 1, undefined, skipToolResultContent, classCounts);
   } else {
     for (const [childKey, item] of Object.entries(value as Record<string, unknown>)) {
-      count += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent);
+      count += countProtectedRequestSpans(item, options, depth + 1, childKey, skipToolResultContent, classCounts);
     }
   }
   return count;
@@ -1012,6 +1022,8 @@ export interface TransformInfo {
     protectedSpans: number;
     action: 'preserve_native' | 'externalize';
     recoveryHandles?: readonly string[];
+    /** Plaintext-free count by ExactGuard class; values only, never matched text. */
+    classes?: Partial<Record<ExactnessClass, number>>;
   };
   /** Slab gate diagnostics — imageTokens, textTokens, burn terms, and verdict.
    *  Lets hosts measure flap-prevention efficacy and tune amortization horizon. */
@@ -2510,12 +2522,14 @@ export async function transformRequest(
     ? opts.exactGuard
     : o.safetyMode === false ? false : exactGuardOptionsForMode(o.safetyMode);
   if (activeExactGuard !== false) {
+    const exactGuardClasses: ExactGuardClassCounts = {};
     const protectedSpans = countProtectedRequestSpans(
       req,
       activeExactGuard,
       0,
       undefined,
       opts.exactGuard === undefined,
+      exactGuardClasses,
     );
     if (protectedSpans > 0) {
       if (activeExactGuard.representationPolicy === 'externalize' && opts.recoveryStore) {
@@ -2529,6 +2543,7 @@ export async function transformRequest(
                 protectedSpans: externalized.protectedSpans,
                 action: 'externalize',
                 recoveryHandles: externalized.recoveryHandles,
+                classes: exactGuardClasses,
               };
               bumpPassthrough(info, 'exact_guard');
               return finish(externalizedBody);
@@ -2539,7 +2554,7 @@ export async function transformRequest(
         }
       }
       info.reason = `exact_guard (preserve_native, spans=${protectedSpans})`;
-      info.exactGuard = { protectedSpans, action: 'preserve_native' };
+      info.exactGuard = { protectedSpans, action: 'preserve_native', classes: exactGuardClasses };
       bumpPassthrough(info, 'exact_guard');
       return finish(exactGuardBody);
     }
