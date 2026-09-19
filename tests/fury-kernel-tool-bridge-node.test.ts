@@ -362,19 +362,19 @@ describe('Fury Kernel governed MCP tool bridge', () => {
       args?: string[];
       env?: Record<string, string>;
     };
-    const configuredPolicy = policy(config, 'auto') as {
-      format: 'furypipe-mcp-direct-policy/v1';
-      policyId: string;
-      governedPolicyAllowlist: Array<{
+    const configuredPolicy = {
+      format: 'furypipe-mcp-direct-policy/v1' as const,
+      policyId: 'bridge-policy-mutable',
+      governedPolicyAllowlist: [{
+        sourceId: config.source.sourceId,
+        endpointFingerprint: config.source.endpointFingerprint,
+        toolName: 'governed-echo',
+      }],
+      operatorApprovalAllowlist: [] as Array<{
         sourceId: string;
         endpointFingerprint: string;
         toolName: string;
-      }>;
-      operatorApprovalAllowlist: Array<{
-        sourceId: string;
-        endpointFingerprint: string;
-        toolName: string;
-      }>;
+      }>,
     };
 
     const instance = createFuryKernelToolBridge({
