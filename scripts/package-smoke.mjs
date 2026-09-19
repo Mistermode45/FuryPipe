@@ -355,6 +355,13 @@ try {
     "const m = await import('furypipe/gateway-local-tool-runtime-node'); if (typeof m.createFuryGatewayLocalToolRuntime !== 'function' || m.FURY_GATEWAY_LOCAL_TOOL_CONFIG_FORMAT !== 'furypipe-gateway-local-tool-config/v1') process.exit(1);",
   ], installDir);
   assert(gatewayLocalToolRuntimeExport.stderr === '', `Gateway local tool runtime export wrote stderr: ${gatewayLocalToolRuntimeExport.stderr}`);
+
+  const gatewayLocalMemoryRuntimeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-local-memory-runtime-node'); if (typeof m.createFuryGatewayLocalMemoryRuntime !== 'function' || m.FURY_GATEWAY_LOCAL_MEMORY_CONFIG_FORMAT !== 'furypipe-gateway-local-memory-config/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayLocalMemoryRuntimeExport.stderr === '', `Gateway local memory runtime export wrote stderr: ${gatewayLocalMemoryRuntimeExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
