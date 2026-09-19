@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server as HttpServer } from 'node:http';
-import type { AddressInfo, Socket } from 'node:net';
+import type { AddressInfo } from 'node:net';
+import type { Duplex } from 'node:stream';
 
 import {
   WebSocket,
@@ -206,7 +207,7 @@ function safeEmit(
 }
 
 function rejectUpgrade(
-  socket: Socket,
+  socket: Duplex,
   status: 400 | 401 | 404 | 429,
 ): void {
   const statusText = status === 400
