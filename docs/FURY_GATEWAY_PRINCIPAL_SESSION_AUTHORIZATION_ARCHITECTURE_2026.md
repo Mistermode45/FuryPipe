@@ -569,6 +569,35 @@ A Gateway scope cannot bypass Direct MCP governance.
 
 ---
 
+## 16A. Agent Fabric intersection
+
+Agent Fabric already uses a deliberately small stage-local permission model:
+
+```text
+read
+scoped-write
+```
+
+This must remain separate from Gateway scopes and plugin permissions.
+
+The effective write authority for an agent stage is therefore additionally bounded by:
+
+```text
+Gateway session capability scope
+∩ plugin/tool declared permission
+∩ AgentFabricPermission
+∩ allowedWritePaths
+∩ current tool/MCP policy
+```
+
+Examples:
+
+- a session may have `capability.repository-write`, but a reviewer stage with Agent Fabric `read` still cannot write;
+- an implementer stage may have `scoped-write`, but without Gateway `capability.repository-write` it still cannot write;
+- both may be present, but the path must still be inside `allowedWritePaths`.
+
+This preserves least agency at every layer rather than creating one super-permission system.
+
 ## 17. Memory authority
 
 Memory read/write permissions need separate scopes.
