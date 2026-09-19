@@ -1,6 +1,7 @@
 import { createServer } from 'node:net';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   chromium,
@@ -27,6 +28,23 @@ import {
   createFuryGatewayLocalModelRuntime,
 } from '../src/gateway-local-model-runtime-node.js';
 import {
+  createFuryKernelToolBridge,
+} from '../src/fury-kernel-tool-bridge-node.js';
+import {
+  deriveMcpDirectEndpointFingerprint,
+  type McpDirectRuntimeConfig,
+} from '../src/mcp-direct-client-node.js';
+import {
+  createFuryGatewayToolBridgeAdapter,
+} from '../src/gateway-tool-bridge-adapter-node.js';
+import {
+  FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS,
+  FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES,
+  FURY_GATEWAY_TOOL_STATE_COMMAND_NAMES,
+  type FuryGatewayToolExecutionCommandName,
+  type FuryGatewayToolStateCommandName,
+} from '../src/gateway-tool-command-node.js';
+import {
   FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS,
   FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES,
 } from '../src/gateway-model-command-node.js';
@@ -50,6 +68,9 @@ import { createFuryKernelConversationStore } from '../src/fury-kernel.js';
 const HOST = '127.0.0.1';
 const REPORT_DIR = join(process.cwd(), 'artifacts', 'gateway-webchat-browser-qa');
 const SOURCE_COMMIT = process.env.FURYPIPE_SOURCE_COMMIT ?? 'unknown';
+const MCP_FIXTURE_PATH = fileURLToPath(
+  new URL('../tests/fixtures/mcp-direct-execution-stdio-server.mjs', import.meta.url),
+);
 
 type EngineName = 'chromium' | 'firefox' | 'webkit';
 
@@ -75,7 +96,7 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-async function startHarness(modelEnabled = false) {
+async function startHarness(modelEnabled = false, toolEnabled = false) {
   const port = await freePort();
   const origin = `http://${HOST}:${port}`;
   const now = () => Date.now();
@@ -130,6 +151,51 @@ async function startHarness(modelEnabled = false) {
       : {}),
   });
 
+  const toolBridge = (() => {
+    if (!toolEnabled) return undefined;
+    const provisional: McpDirectRuntimeConfig = {
+      source: {
+        sourceId: 'browser-qa-tools',
+        transport: 'stdio',
+        endpointFingerprint: '0'.repeat(64),
+        trust: 'trusted',
+      },
+      command: process.execPath,
+      args: [MCP_FIXTURE_PATH],
+    };
+    const endpointFingerprint = deriveMcpDirectEndpointFingerprint(provisional);
+    const config: McpDirectRuntimeConfig = {
+      ...provisional,
+      source: {
+        ...provisional.source,
+        endpointFingerprint,
+      },
+    };
+    return createFuryKernelToolBridge({
+      sources: [{
+        config,
+        policy: {
+          format: 'furypipe-mcp-direct-policy/v1',
+          policyId: 'browser-qa-tools-policy',
+          governedPolicyAllowlist: [],
+          operatorApprovalAllowlist: [{
+            sourceId: 'browser-qa-tools',
+            endpointFingerprint,
+            toolName: 'governed-echo',
+          }],
+        },
+      }],
+      clientInfo: {
+        name: 'furypipe-webchat-browser-qa',
+        version: '1.0.0',
+      },
+    });
+  })();
+
+  const toolAdapter = toolBridge
+    ? createFuryGatewayToolBridgeAdapter({ bridge: toolBridge })
+    : undefined;
+
   const principalRegistry = createFuryGatewayPrincipalRegistry({
     now,
     evidenceTtlMs: 15 * 60_000,
@@ -157,6 +223,9 @@ async function startHarness(modelEnabled = false) {
     'conversations.write',
   ];
   if (modelRuntime.bridge) scopes.push('capability.provider-inference');
+  if (toolBridge) {
+    scopes.push('mcp.inspect', 'mcp.manage', 'capability.process');
+  }
   const session = sessionCoordinator.issueSession({
     principal,
     role: 'operator',
@@ -184,6 +253,8 @@ async function startHarness(modelEnabled = false) {
           model: modelRuntime.config.model,
         }
       : {}),
+    toolBridgeEnabled: toolBridge !== undefined,
+    ...(toolBridge ? { toolSourceCount: 1 } : {}),
   });
   const adapter = createFuryGatewayConversationAdapter({
     kernel,
@@ -194,6 +265,17 @@ async function startHarness(modelEnabled = false) {
     ...(modelRuntime.bridge
       ? FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS
       : []),
+    ...(toolBridge
+      ? FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS
+      : []),
+  ]);
+  const admittedStateCommandNames = Object.freeze([
+    ...FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
+    ...(toolBridge ? FURY_GATEWAY_TOOL_STATE_COMMAND_NAMES : []),
+  ]);
+  const admittedExecutionCommandNames = Object.freeze([
+    ...(modelRuntime.bridge ? FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES : []),
+    ...(toolBridge ? FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES : []),
   ]);
 
   const host = await listenFuryGatewayWebSocketHost({
@@ -207,45 +289,67 @@ async function startHarness(modelEnabled = false) {
       return bootstrap.handleHttpRequest(request, response);
     },
     resolveConnection: ({ request }) => bootstrap.resolveConnection(request),
-    admittedStateCommandNames: FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
+    admittedStateCommandNames,
     handleAdmittedStateCommand: (command) => {
       if (
-        !(FURY_GATEWAY_CONVERSATION_COMMAND_NAMES as readonly string[])
+        (FURY_GATEWAY_CONVERSATION_COMMAND_NAMES as readonly string[])
           .includes(command.commandName)
       ) {
-        throw new Error('browser QA received unsupported state command');
+        const result = adapter.dispatch(
+          command.commandName as FuryGatewayConversationCommandName,
+          command.input,
+        );
+        if (
+          command.commandName === 'conversation.cancel'
+          && result.status === 'ok'
+          && modelRuntime.bridge
+        ) {
+          const input = command.input as {
+            readonly conversationId: string;
+            readonly turnId: string;
+          };
+          modelRuntime.bridge.cancelTurn(input.conversationId, input.turnId);
+        }
+        return result;
       }
-      const result = adapter.dispatch(
-        command.commandName as FuryGatewayConversationCommandName,
-        command.input,
-      );
       if (
-        command.commandName === 'conversation.cancel'
-        && result.status === 'ok'
-        && modelRuntime.bridge
+        toolAdapter
+        && (FURY_GATEWAY_TOOL_STATE_COMMAND_NAMES as readonly string[])
+          .includes(command.commandName)
       ) {
-        const input = command.input as {
-          readonly conversationId: string;
-          readonly turnId: string;
-        };
-        modelRuntime.bridge.cancelTurn(input.conversationId, input.turnId);
+        return toolAdapter.dispatchState(
+          command.commandName as FuryGatewayToolStateCommandName,
+          command.input,
+        );
       }
-      return result;
+      throw new Error('browser QA received unsupported state command');
     },
-    ...(modelRuntime.bridge
+    ...(admittedExecutionCommandNames.length > 0
       ? {
-          admittedExecutionCommandNames:
-            FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES,
+          admittedExecutionCommandNames,
           handleAdmittedExecutionCommand: async (command) => {
-            if (command.commandName !== 'conversation.model.execute') {
-              throw new Error('browser QA received unsupported execution command');
+            if (
+              command.commandName === 'conversation.model.execute'
+              && modelRuntime.bridge
+            ) {
+              return modelRuntime.bridge.executeTurn(
+                command.input as {
+                  readonly conversationId: string;
+                  readonly turnId: string;
+                },
+              );
             }
-            return modelRuntime.bridge!.executeTurn(
-              command.input as {
-                readonly conversationId: string;
-                readonly turnId: string;
-              },
-            );
+            if (
+              toolAdapter
+              && (FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES as readonly string[])
+                .includes(command.commandName)
+            ) {
+              return toolAdapter.dispatchExecution(
+                command.commandName as FuryGatewayToolExecutionCommandName,
+                command.input,
+              );
+            }
+            throw new Error('browser QA received unsupported execution command');
           },
         }
       : {}),
