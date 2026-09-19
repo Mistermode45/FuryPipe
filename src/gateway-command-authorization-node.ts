@@ -7,6 +7,7 @@ import {
 import type { FuryGatewayPairingCoordinator } from './gateway-pairing-node.js';
 import {
   isFuryGatewayScope,
+  isGeneratedFuryGatewaySessionLease,
   type FuryGatewayScope,
   type FuryGatewaySessionCoordinator,
   type FuryGatewaySessionLease,
@@ -74,6 +75,7 @@ export type FuryGatewayCommandAdmissionReason =
   | 'command-not-registered'
   | 'role-not-allowed'
   | 'missing-scope'
+  | 'plugin-permission-mismatch'
   | 'device-proof-required'
   | 'device-binding-mismatch'
   | 'pairing-not-active'
@@ -98,6 +100,8 @@ export interface FuryGatewayCommandAdmissionInput {
   readonly session: FuryGatewaySessionLease;
   readonly commandRegistry: FuryGatewayCommandRegistry;
   readonly commandName: string;
+  /** Exact permissions declared by the selected plugin/tool capability. */
+  readonly declaredPluginPermissions?: readonly FuryPluginPermission[];
   readonly currentDevice?: FuryGatewayAuthenticatedDevice;
   readonly pairing?: FuryGatewayPairingCoordinator;
 }
@@ -280,7 +284,7 @@ function sha256(value: string): string {
 }
 
 function decision(
-  session: FuryGatewaySessionLease,
+  session: FuryGatewaySessionLease | undefined,
   commandName: string,
   definition: FuryGatewayCommandDefinition | undefined,
   outcome: 'eligible' | 'deny',
@@ -288,8 +292,9 @@ function decision(
 ): FuryGatewayCommandAdmissionDecision {
   const requiredScopes = definition?.requiredScopes ?? Object.freeze([]);
   const requiredPluginPermissions = definition?.requiredPluginPermissions ?? Object.freeze([]);
-  const sessionIdSha256 = sha256(session.sessionId);
-  const principalIdSha256 = sha256(session.principalId);
+  const validSessionEvidence = isGeneratedFuryGatewaySessionLease(session);
+  const sessionIdSha256 = sha256(validSessionEvidence ? session.sessionId : 'invalid-session');
+  const principalIdSha256 = sha256(validSessionEvidence ? session.principalId : 'invalid-principal');
   const riskClass = definition?.riskClass ?? 'unknown';
   const decisionIdSha256 = sha256(JSON.stringify({
     sessionIdSha256,
@@ -315,6 +320,20 @@ function decision(
     reason,
     executionAuthority: false,
   });
+}
+
+function declaredPermissionsSatisfy(
+  required: readonly FuryPluginPermission[],
+  declared: readonly FuryPluginPermission[] | undefined,
+): boolean {
+  if (required.length === 0) return true;
+  if (!Array.isArray(declared) || declared.length > PLUGIN_PERMISSION_SET.size) return false;
+  const seen = new Set<FuryPluginPermission>();
+  for (const permission of declared) {
+    if (!PLUGIN_PERMISSION_SET.has(permission) || seen.has(permission)) return false;
+    seen.add(permission);
+  }
+  return required.every((permission) => seen.has(permission));
 }
 
 function pairedBindingStillValid(
@@ -351,24 +370,11 @@ function pairedBindingStillValid(
 export function evaluateFuryGatewayCommandAdmission(
   input: FuryGatewayCommandAdmissionInput,
 ): FuryGatewayCommandAdmissionDecision {
-  const commandName = typeof input?.commandName === 'string' ? input.commandName : '';
-  const fallbackSession = input?.session;
-  if (!fallbackSession || typeof fallbackSession !== 'object') {
-    const placeholder = Object.freeze({
-      format: FURY_GATEWAY_SESSION_FORMAT_PLACEHOLDER,
-      sessionId: 'invalid',
-      principalId: 'invalid',
-      principalGeneration: 0,
-      principalAuthenticatedAt: 0,
-      role: 'operator' as const,
-      audience: 'invalid',
-      scopes: Object.freeze([]),
-      binding: Object.freeze({ kind: 'local-operator' as const }),
-      issuedAt: 0,
-      expiresAt: 0,
-      authority: 'session-lease' as const,
-    }) as unknown as FuryGatewaySessionLease;
-    return decision(placeholder, commandName, undefined, 'deny', 'invalid-session');
+  const commandName = typeof input?.commandName === 'string' && COMMAND_NAME_RE.test(input.commandName)
+    ? input.commandName
+    : '<invalid-command>';
+  if (!input || !isGeneratedFuryGatewaySessionLease(input.session)) {
+    return decision(undefined, commandName, undefined, 'deny', 'invalid-session');
   }
 
   let inspection;
@@ -394,6 +400,19 @@ export function evaluateFuryGatewayCommandAdmission(
     return decision(input.session, commandName, definition, 'deny', 'missing-scope');
   }
 
+  if (!declaredPermissionsSatisfy(
+    definition.requiredPluginPermissions,
+    input.declaredPluginPermissions,
+  )) {
+    return decision(
+      input.session,
+      commandName,
+      definition,
+      'deny',
+      'plugin-permission-mismatch',
+    );
+  }
+
   const binding = pairedBindingStillValid(input.session, input.currentDevice, input.pairing);
   if (binding !== 'valid') {
     return decision(input.session, commandName, definition, 'deny', binding);
@@ -405,8 +424,3 @@ export function evaluateFuryGatewayCommandAdmission(
 
   return decision(input.session, commandName, definition, 'eligible', 'eligible');
 }
-
-// Compile-time-only placeholder path above is never exported as authority.
-// The constant avoids constructing a value with a real session format in a
-// branch that exists only to produce a safe deny result.
-const FURY_GATEWAY_SESSION_FORMAT_PLACEHOLDER = 'furypipe-gateway-invalid-session/v1';
