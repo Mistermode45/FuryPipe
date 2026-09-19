@@ -129,6 +129,14 @@
       "types": "./dist/gateway-webchat-node.d.ts",
       "import": "./dist/gateway-webchat-node.js"
     },
+    "./provider-response-text": {
+      "types": "./dist/provider-response-text.d.ts",
+      "import": "./dist/provider-response-text.js"
+    },
+    "./fury-kernel-model-bridge": {
+      "types": "./dist/fury-kernel-model-bridge.d.ts",
+      "import": "./dist/fury-kernel-model-bridge.js"
+    },
     "./skill-registry": {
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"
