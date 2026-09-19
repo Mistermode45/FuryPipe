@@ -199,8 +199,8 @@ describe('MCP direct multi-call DAG orchestration', () => {
       executeNode: async () => ({ outcome: 'unknown', verified: false, wireCallStarted: true }),
       signal: AbortSignal.abort(),
     });
-    expect(result.state).toBe('unknown');
-    expect(result.nodes.a?.wireCallStarted).toBe(true);
+    expect(result.state).toBe('cancelled');
+    expect(result.nodes.a?.wireCallStarted).toBe(false);
   });
 });
 
@@ -390,7 +390,7 @@ describe('M6 real MCP v2 integration', () => {
           };
         },
       });
-      expect(result.state).toBe('succeeded');
+      expect(result.state, JSON.stringify(result)).toBe('succeeded');
       expect(freshAuthorities).toEqual(['a', 'b', 'c']);
       expect(Object.values(result.nodes).every((entry) => entry.verified)).toBe(true);
     } finally {
