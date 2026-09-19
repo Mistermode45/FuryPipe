@@ -512,15 +512,16 @@ export function createFuryKernelMcpToolBridge(
   };
 
   const requireState = (id: string): ProposalState => {
-    gc();
-    const state = proposals.get(proposalId(id));
+    const normalized = proposalId(id);
+    const state = proposals.get(normalized);
     if (!state) fail('proposal-not-found');
     const at = safeNow(now);
     if (at >= state.expiresAt) {
       clearAuthority(state);
-      proposals.delete(id);
+      proposals.delete(normalized);
       fail('proposal-expired');
     }
+    gc();
     return state;
   };
 
