@@ -118,6 +118,9 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
     expect(js).toContain("'tools.execute'");
     expect(js).toContain("'process'");
     expect(js).toContain("'network'");
+    expect(js).toContain("'Outcome unknown'");
+    expect(js).toContain("'Tool failed'");
+    expect(js).toContain("'Blocked'");
     expect(js).toContain('textContent');
     expect(js).not.toContain('innerHTML');
     expect(js).not.toMatch(/https?:\/\//u);
