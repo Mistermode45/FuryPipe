@@ -105,6 +105,10 @@
       "types": "./dist/openclaw.d.ts",
       "import": "./dist/openclaw.js"
     },
+    "./gateway": {
+      "types": "./dist/gateway.d.ts",
+      "import": "./dist/gateway.js"
+    },
     "./agent-fabric": {
       "types": "./dist/agent-fabric.d.ts",
       "import": "./dist/agent-fabric.js"
@@ -406,6 +410,7 @@
     "docs/PROVIDER_FABRIC.md",
     "docs/OMNIROUTE.md",
     "docs/OPENCLAW.md",
+    "docs/FURY_GATEWAY_FOUNDATION_2026.md",
     "docs/AGENT_FABRIC.md",
     "docs/LEARNING_KNOWLEDGE.md",
     "docs/LONG_TERM_MEMORY.md",
