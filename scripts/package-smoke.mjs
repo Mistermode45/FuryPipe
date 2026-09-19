@@ -299,6 +299,12 @@ try {
     "const m = await import('furypipe/gateway-conversation-adapter-node'); if (typeof m.createFuryGatewayConversationAdapter !== 'function' || !Array.isArray(m.FURY_GATEWAY_CONVERSATION_COMMAND_NAMES) || !Array.isArray(m.FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS)) process.exit(1);",
   ], installDir);
   assert(gatewayConversationAdapterExport.stderr === '', `Gateway conversation adapter package export wrote stderr: ${gatewayConversationAdapterExport.stderr}`);
+  const gatewayWebChatExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-webchat-node'); if (typeof m.createFuryGatewayWebChatHandler !== 'function' || m.FURY_GATEWAY_WEBCHAT_PATH !== '/gateway/webchat/') process.exit(1);",
+  ], installDir);
+  assert(gatewayWebChatExport.stderr === '', `Gateway WebChat package export wrote stderr: ${gatewayWebChatExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
