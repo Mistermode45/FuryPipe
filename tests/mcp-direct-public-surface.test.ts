@@ -21,6 +21,7 @@ describe('direct MCP supported public authority surface', () => {
     expect(root.McpDirectReplayGovernanceError).toBeTypeOf('function');
     expect(root.McpDirectExecutionEvidenceError).toBeTypeOf('function');
     expect(root.McpDirectExecutionDurabilityError).toBeTypeOf('function');
+    expect(root.McpDirectExecutionPreCallRejectedError).toBeTypeOf('function');
     expect(root.McpDirectExecutionOutcomeUnknownError).toBeTypeOf('function');
     expect(root.McpDirectExecutionVerificationError).toBeTypeOf('function');
     expect(root.createMcpDirectDurableReplayCoordinator).toBeTypeOf('function');
