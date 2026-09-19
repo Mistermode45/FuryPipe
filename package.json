@@ -137,6 +137,14 @@
       "types": "./dist/fury-kernel-model-bridge.d.ts",
       "import": "./dist/fury-kernel-model-bridge.js"
     },
+    "./gateway-model-command-node": {
+      "types": "./dist/gateway-model-command-node.d.ts",
+      "import": "./dist/gateway-model-command-node.js"
+    },
+    "./gateway-local-model-runtime-node": {
+      "types": "./dist/gateway-local-model-runtime-node.d.ts",
+      "import": "./dist/gateway-local-model-runtime-node.js"
+    },
     "./skill-registry": {
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"
