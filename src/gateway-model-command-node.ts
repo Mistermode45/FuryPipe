@@ -16,7 +16,10 @@ export const FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS =
       format: FURY_GATEWAY_COMMAND_FORMAT,
       name: 'conversation.model.execute',
       allowedRoles: Object.freeze(['operator'] as const),
-      requiredScopes: Object.freeze(['conversations.write'] as const),
+      requiredScopes: Object.freeze([
+        'conversations.write',
+        'capability.provider-inference',
+      ] as const),
       requiredPluginPermissions: Object.freeze(['provider-inference'] as const),
       riskClass: 'process',
       requiresFreshApproval: false,
