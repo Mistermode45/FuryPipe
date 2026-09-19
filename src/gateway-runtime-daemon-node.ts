@@ -14,6 +14,7 @@ import {
   type FuryGatewayWebSocketHostAddress,
   type FuryGatewayWebSocketHostHandle,
   type FuryGatewayWebSocketHostOptions,
+  type FuryGatewayWebSocketHttpRequestHandler,
   type FuryGatewayWebSocketSafeEvent,
 } from './gateway-websocket-host-node.js';
 
@@ -63,6 +64,7 @@ export interface FuryGatewayDaemonOptions {
   readonly sessionCoordinator: FuryGatewaySessionCoordinator;
   readonly commandRegistry: FuryGatewayCommandRegistry;
   readonly resolveConnection: FuryGatewayWebSocketConnectionResolver;
+  readonly handleHttpRequest?: FuryGatewayWebSocketHttpRequestHandler;
   readonly config?: FuryGatewayDaemonConfig;
   readonly now?: () => number;
 }
@@ -274,6 +276,9 @@ export async function startFuryGatewayDaemon(
     sessionCoordinator: options.sessionCoordinator,
     commandRegistry: options.commandRegistry,
     resolveConnection: options.resolveConnection,
+    ...(options.handleHttpRequest === undefined
+      ? {}
+      : { handleHttpRequest: options.handleHttpRequest }),
     ...(config.host === undefined ? {} : { host: config.host }),
     ...(config.port === undefined ? {} : { port: config.port }),
     ...(config.allowedOrigins === undefined ? {} : { allowedOrigins: config.allowedOrigins }),
