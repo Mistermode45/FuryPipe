@@ -492,6 +492,56 @@ export async function listenFuryGatewayWebSocketHost(
     return seen;
   })();
 
+  const maxInFlightExecutionCommands = boundedInteger(
+    options.maxInFlightExecutionCommands,
+    DEFAULT_MAX_IN_FLIGHT_EXECUTION_COMMANDS,
+    1,
+    MAX_IN_FLIGHT_EXECUTION_COMMANDS,
+    'maxInFlightExecutionCommands',
+  );
+  const admittedExecutionCommandNames = (() => {
+    const names = options.admittedExecutionCommandNames ?? [];
+    if (!Array.isArray(names) || names.length > 64) {
+      throw new FuryGatewayWebSocketHostError(
+        'invalid-config',
+        'admittedExecutionCommandNames must be a bounded array',
+      );
+    }
+    const seen = new Set<string>();
+    for (const name of names) {
+      if (
+        typeof name !== 'string'
+        || !/^[a-z][a-z0-9._:-]{0,127}$/u.test(name)
+        || seen.has(name)
+      ) {
+        throw new FuryGatewayWebSocketHostError(
+          'invalid-config',
+          'admittedExecutionCommandNames contains an invalid or duplicate command',
+        );
+      }
+      if (admittedStateCommandNames.has(name)) {
+        throw new FuryGatewayWebSocketHostError(
+          'invalid-config',
+          'state and execution command allowlists must be disjoint',
+        );
+      }
+      seen.add(name);
+    }
+    if (options.handleAdmittedExecutionCommand && seen.size === 0) {
+      throw new FuryGatewayWebSocketHostError(
+        'invalid-config',
+        'execution command handler requires an explicit non-empty command allowlist',
+      );
+    }
+    if (!options.handleAdmittedExecutionCommand && seen.size > 0) {
+      throw new FuryGatewayWebSocketHostError(
+        'invalid-config',
+        'execution command allowlist requires an execution command handler',
+      );
+    }
+    return seen;
+  })();
+
   const transport: FuryGatewayTransportCoordinator =
     createFuryGatewayTransportCoordinator(
       makeTransportOptions(options, maxPayloadBytes),
@@ -554,6 +604,7 @@ export async function listenFuryGatewayWebSocketHost(
   const active = new Map<WebSocket, ActiveSocketState>();
   let pendingUpgrades = 0;
   let inFlightStateCommands = 0;
+  let inFlightExecutionCommands = 0;
   let stopped = false;
 
   const cleanupSocket = (
