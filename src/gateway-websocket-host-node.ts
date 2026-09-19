@@ -127,6 +127,11 @@ export interface FuryGatewayWebSocketHostOptions {
    * Returning false delegates to the host's default 404.
    */
   readonly handleHttpRequest?: FuryGatewayWebSocketHttpRequestHandler;
+  /**
+   * Exact command names that are permitted to cross the state-only dispatch
+   * boundary. Supplying a handler without this allowlist grants nothing.
+   */
+  readonly admittedStateCommandNames?: readonly string[];
   readonly handleAdmittedStateCommand?: FuryGatewayWebSocketStateCommandHandler;
   readonly host?: string;
   readonly port?: number;
@@ -421,6 +426,42 @@ export async function listenFuryGatewayWebSocketHost(
     MAX_IN_FLIGHT_STATE_COMMANDS,
     'maxInFlightStateCommands',
   );
+  const admittedStateCommandNames = (() => {
+    const names = options.admittedStateCommandNames ?? [];
+    if (!Array.isArray(names) || names.length > 128) {
+      throw new FuryGatewayWebSocketHostError(
+        'invalid-config',
+        'admittedStateCommandNames must be a bounded array',
+      );
+    }
+    const seen = new Set<string>();
+    for (const name of names) {
+      if (
+        typeof name !== 'string'
+        || !/^[a-z][a-z0-9._:-]{0,127}$/u.test(name)
+        || seen.has(name)
+      ) {
+        throw new FuryGatewayWebSocketHostError(
+          'invalid-config',
+          'admittedStateCommandNames contains an invalid or duplicate command',
+        );
+      }
+      seen.add(name);
+    }
+    if (options.handleAdmittedStateCommand && seen.size === 0) {
+      throw new FuryGatewayWebSocketHostError(
+        'invalid-config',
+        'state command handler requires an explicit non-empty command allowlist',
+      );
+    }
+    if (!options.handleAdmittedStateCommand && seen.size > 0) {
+      throw new FuryGatewayWebSocketHostError(
+        'invalid-config',
+        'state command allowlist requires a state command handler',
+      );
+    }
+    return seen;
+  })();
 
   const transport: FuryGatewayTransportCoordinator =
     createFuryGatewayTransportCoordinator(
@@ -670,6 +711,7 @@ export async function listenFuryGatewayWebSocketHost(
               if (
                 evaluated.admission.outcome === 'eligible'
                 && options.handleAdmittedStateCommand
+                && admittedStateCommandNames.has(evaluated.admission.commandName)
               ) {
                 const payload =
                   accepted.message.payload as FuryGatewayTransportCommandPayload;
