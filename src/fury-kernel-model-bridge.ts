@@ -509,7 +509,11 @@ export function createFuryKernelModelBridge(
         }
 
         const attemptsReceipt = attemptSummary(orchestration);
-        if (orchestration.outcome === 'CANCELLED') {
+        if (controller.signal.aborted || orchestration.outcome === 'CANCELLED') {
+          // Local cancellation is authoritative for the conversation turn, but
+          // the orchestration receipt keeps the exact transport outcome. If a
+          // transport had already been invoked, AMBIGUOUS_STOP remains visible
+          // instead of being rewritten to CANCELLED.
           terminalCancel(options.kernel, valid.conversationId, valid.turnId);
           return Object.freeze({
             format: FURY_KERNEL_MODEL_BRIDGE_FORMAT,
