@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { WebSocket } from 'ws';
+import { WebSocket, type RawData } from 'ws';
 
 import {
   FURY_GATEWAY_COMMAND_FORMAT,
@@ -84,7 +84,7 @@ function createOperatorHarness(
 
 function nextJson(ws: WebSocket): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
-    const onMessage = (data: WebSocket.RawData, isBinary: boolean): void => {
+    const onMessage = (data: RawData, isBinary: boolean): void => {
       cleanup();
       if (isBinary) {
         reject(new Error('expected text WebSocket response'));
