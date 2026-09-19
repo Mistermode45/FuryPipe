@@ -223,6 +223,7 @@ const JS = `(() => {
     reconnectAttempts: 0,
     reconnectTimer: null,
     openAfterClose: false,
+    pendingUserMessages: new Map(),
   };
 
   const byId = (id) => document.getElementById(id);
@@ -346,6 +347,12 @@ const JS = `(() => {
       const code = adapter.error && typeof adapter.error === 'object'
         ? safeText(adapter.error.code)
         : 'state-command-rejected';
+      if (message.commandName === 'conversation.message.submit') {
+        state.pendingUserMessages.delete(message.messageId);
+      }
+      if (message.commandName === 'conversation.close') {
+        state.openAfterClose = false;
+      }
       addActivity('Blocked', code || 'State command rejected.', 'blocked');
       turnStatus.textContent = code || 'State command rejected.';
       return;
@@ -374,6 +381,9 @@ const JS = `(() => {
       return;
     }
     if (message.commandName === 'conversation.message.submit') {
+      const pending = state.pendingUserMessages.get(message.messageId);
+      state.pendingUserMessages.delete(message.messageId);
+      if (pending) renderMessage('user', pending);
       state.activeTurnId = payload?.turn?.turnId ?? null;
       cancelTurn.disabled = !state.activeTurnId;
       turnStatus.textContent = state.activeTurnId ? 'Turn accepted — model bridge pending' : '';
@@ -500,17 +510,18 @@ const JS = `(() => {
     const content = messageInput.value;
     if (!content.trim()) return;
     const messageId = makeMessageId('user');
-    renderMessage('user', content);
     messageInput.value = '';
     turnStatus.textContent = 'Submitting…';
     try {
-      sendCommand('conversation.message.submit', {
+      const transportMessageId = sendCommand('conversation.message.submit', {
         conversationId: state.conversationId,
         messageId,
         content,
       });
+      state.pendingUserMessages.set(transportMessageId, content);
     } catch {
       turnStatus.textContent = 'Not connected';
+      messageInput.value = content;
     }
   });
 
@@ -554,6 +565,8 @@ const JS = `(() => {
     }).catch(() => undefined);
     state.conversationId = null;
     state.activeTurnId = null;
+    state.pendingUserMessages.clear();
+    state.openAfterClose = false;
     clearMessages();
     chatPanel.hidden = true;
     bootstrapPanel.hidden = false;
