@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  FURY_GATEWAY_WEBCHAT_CONFIG_PATH,
   FURY_GATEWAY_WEBCHAT_PATH,
   FURY_GATEWAY_WEBCHAT_SCRIPT_PATH,
   FURY_GATEWAY_WEBCHAT_STYLE_PATH,
@@ -16,7 +17,13 @@ afterEach(async () => {
   ));
 });
 
-async function startWebChatServer(): Promise<{ readonly origin: string }> {
+async function startWebChatServer(
+  model: {
+    readonly modelBridgeEnabled?: boolean;
+    readonly modelProvider?: 'openai' | 'anthropic' | 'google';
+    readonly model?: string;
+  } = {},
+): Promise<{ readonly origin: string }> {
   let handler: ReturnType<typeof createFuryGatewayWebChatHandler> | undefined;
   const server = createServer((request, response) => {
     if (!handler) {
@@ -46,7 +53,7 @@ async function startWebChatServer(): Promise<{ readonly origin: string }> {
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('test server did not bind');
   const origin = `http://127.0.0.1:${address.port}`;
-  handler = createFuryGatewayWebChatHandler({ origin });
+  handler = createFuryGatewayWebChatHandler({ origin, ...model });
   return { origin };
 }
 
@@ -99,12 +106,56 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
     expect(js).toContain("'/gateway/local-bootstrap/v1'");
     expect(js).toContain("'/gateway/local-logout/v1'");
     expect(js).toContain("'conversation.message.submit'");
+    expect(js).toContain("'conversation.model.execute'");
+    expect(js).toContain("'provider-inference'");
     expect(js).toContain("'conversation.inspect'");
     expect(js).toContain('textContent');
     expect(js).not.toContain('innerHTML');
     expect(js).not.toMatch(/https?:\/\//u);
     expect(css).not.toMatch(/@import\s+url/u);
     expect(css).not.toMatch(/https?:\/\//u);
+  });
+
+  it('serves redacted model configuration without credentials or execution authority', async () => {
+    const disabled = await startWebChatServer();
+    const disabledResponse = await fetch(disabled.origin + FURY_GATEWAY_WEBCHAT_CONFIG_PATH);
+    expect(await disabledResponse.json()).toEqual({
+      format: 'furypipe-gateway-webchat-config/v1',
+      modelBridge: { enabled: false },
+      executionAuthority: false,
+    });
+
+    const enabled = await startWebChatServer({
+      modelBridgeEnabled: true,
+      modelProvider: 'openai',
+      model: 'gpt-5.6-sol',
+    });
+    const enabledResponse = await fetch(enabled.origin + FURY_GATEWAY_WEBCHAT_CONFIG_PATH);
+    const payload = await enabledResponse.json();
+    expect(payload).toEqual({
+      format: 'furypipe-gateway-webchat-config/v1',
+      modelBridge: {
+        enabled: true,
+        providerId: 'openai',
+        model: 'gpt-5.6-sol',
+      },
+      executionAuthority: false,
+    });
+    expect(JSON.stringify(payload)).not.toMatch(/api[_-]?key|credential|token/i);
+  });
+
+  it('rejects contradictory or malformed model metadata', () => {
+    expect(() => createFuryGatewayWebChatHandler({
+      origin: 'http://127.0.0.1:48722',
+      modelProvider: 'openai',
+      model: 'gpt-5.6-sol',
+    })).toThrow(/disabled model bridge/u);
+
+    expect(() => createFuryGatewayWebChatHandler({
+      origin: 'http://127.0.0.1:48722',
+      modelBridgeEnabled: true,
+      modelProvider: 'openai',
+    })).toThrow(/model identifier/u);
   });
 
   it('supports HEAD and canonicalizes /gateway/webchat to the trailing-slash route', async () => {
