@@ -292,8 +292,17 @@ async function runCase(
   const page = await context.newPage();
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];
+  let screenshotInProgress = false;
   page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text());
+    if (message.type() !== 'error') return;
+    const text = message.text();
+    const webkitScreenshotStyleNoise =
+      screenshotInProgress
+      && engine === 'webkit'
+      && text.includes(
+        "Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy.",
+      );
+    if (!webkitScreenshotStyleNoise) consoleErrors.push(text);
   });
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
@@ -387,11 +396,25 @@ async function runCase(
     assert(!postInteraction.overflow, `${name}: interactive layout overflows horizontally`);
     assert(postInteraction.activityEntries > 0, `${name}: governance activity remained empty`);
 
+    assert(
+      consoleErrors.length === 0,
+      `${name}: pre-screenshot console errors: ${consoleErrors.join(' | ')}`,
+    );
+    assert(
+      pageErrors.length === 0,
+      `${name}: pre-screenshot page errors: ${pageErrors.join(' | ')}`,
+    );
+
     if (viewport.id === 'desktop') {
-      await page.screenshot({
-        path: join(REPORT_DIR, `webchat-${name}.png`),
-        fullPage: true,
-      });
+      screenshotInProgress = true;
+      try {
+        await page.screenshot({
+          path: join(REPORT_DIR, `webchat-${name}.png`),
+          fullPage: true,
+        });
+      } finally {
+        screenshotInProgress = false;
+      }
     }
 
     await page.locator('#logout').click();
