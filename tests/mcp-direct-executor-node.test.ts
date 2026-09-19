@@ -21,6 +21,7 @@ import {
   executeMcpDirectApprovedToolInternal,
   McpDirectExecutionDurabilityError,
   McpDirectExecutionEvidenceError,
+  McpDirectExecutionPreCallRejectedError,
   McpDirectExecutionOutcomeUnknownError,
 } from '../src/mcp-direct-executor-node-internal.js';
 import { createRecoveryStore, type RecoveryStore } from '../src/core/recovery-store.js';
@@ -268,15 +269,32 @@ describe('Direct MCP M3 governed execution', () => {
     const fake = fakeFactory({ toolSequence: [[SAFE_TOOL], [drifted]] });
     const approved = await approvedWithFactory(fake.factory, 'alpha');
 
-    await expect(executeMcpDirectApprovedToolInternal(
-      approved.config,
-      approved.lifecycle,
-      approved.proposal,
-      {
-        clientInfo: { name: 'furypipe-m3-test', version: '1.0.0' },
-        factory: fake.factory,
-      },
-    )).rejects.toThrow(/schema drifted/i);
+    let caught: unknown;
+    try {
+      await executeMcpDirectApprovedToolInternal(
+        approved.config,
+        approved.lifecycle,
+        approved.proposal,
+        {
+          clientInfo: { name: 'furypipe-m3-test', version: '1.0.0' },
+          factory: fake.factory,
+        },
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(McpDirectExecutionPreCallRejectedError);
+    expect(caught).toMatchObject({
+      code: 'MCP_DIRECT_EXECUTION_PRE_CALL_REJECTED',
+      retrySafe: false,
+      executed: false,
+      succeeded: false,
+      verified: false,
+      sourceId: approved.lifecycle.source.sourceId,
+      toolName: 'governed-echo',
+      reason: 'input_schema_drift',
+    });
+    expect(String(caught)).toMatch(/schema drifted/i);
     expect(fake.counters().callCalls).toBe(0);
   });
 
