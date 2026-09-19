@@ -22,12 +22,17 @@ import {
   createFuryGatewaySessionCoordinator,
 } from '../src/gateway-session-node.js';
 import {
+  startFuryGatewayDaemon,
+  type FuryGatewayDaemonHandle,
+} from '../src/gateway-runtime-daemon-node.js';
+import {
   FURY_GATEWAY_WEBSOCKET_SUBPROTOCOL,
   listenFuryGatewayWebSocketHost,
   type FuryGatewayWebSocketHostHandle,
 } from '../src/gateway-websocket-host-node.js';
 
 const handles: FuryGatewayWebSocketHostHandle[] = [];
+const daemons: FuryGatewayDaemonHandle[] = [];
 const sockets: WebSocket[] = [];
 
 afterEach(async () => {
@@ -41,6 +46,7 @@ afterEach(async () => {
     }
   }
   await Promise.all(handles.splice(0).map((handle) => handle.stop()));
+  await Promise.all(daemons.splice(0).map((daemon) => daemon.stop()));
 });
 
 function createHarness() {
@@ -258,7 +264,7 @@ describe('Fury Gateway local operator browser bootstrap', () => {
     expect(setCookie).toContain(`${FURY_GATEWAY_LOCAL_COOKIE_NAME}=`);
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('SameSite=Strict');
-    expect(setCookie).toContain('Path=/');
+    expect(setCookie).toContain('Path=/gateway/');
     expect(setCookie).toContain('Max-Age=');
     expect(setCookie).not.toContain(ticket.code);
 
@@ -565,6 +571,43 @@ describe('Fury Gateway local operator browser bootstrap', () => {
     );
     expect(limited.status).toBe(429);
     expect(manager.inspect().browserSessions).toBe(1);
+  });
+
+  it('composes the bootstrap through the long-lived Gateway daemon', async () => {
+    const harness = createHarness();
+    const manager = createFuryGatewayLocalBootstrapManager({
+      sessionCoordinator: harness.sessionCoordinator,
+      session: harness.session,
+      allowedOrigins: ['http://localhost:3000'],
+      now: () => harness.now,
+    });
+
+    const daemon = await startFuryGatewayDaemon({
+      sessionCoordinator: harness.sessionCoordinator,
+      commandRegistry: createFuryGatewayCommandRegistry(),
+      handleHttpRequest: (request, response) => manager.handleHttpRequest(request, response),
+      resolveConnection: ({ request }) => manager.resolveConnection(request),
+      config: {
+        allowedOrigins: ['http://localhost:3000'],
+      },
+      now: () => harness.now,
+    });
+    daemons.push(daemon);
+
+    const ticket = manager.issueTicket();
+    const redeemed = await post(
+      daemon.address.port,
+      FURY_GATEWAY_LOCAL_BOOTSTRAP_PATH,
+      ticketBody(ticket.code),
+      { Origin: 'http://localhost:3000' },
+    );
+    expect(redeemed.status).toBe(204);
+
+    const cookie = cookiePair(redeemed.headers['set-cookie']);
+    const { hello } = await connectWithCookie(daemon.address.url, cookie);
+    expect(hello.type).toBe('connected');
+    expect(daemon.inspect().activeConnections).toBe(1);
+    expect(daemon.inspect().connections.operator).toBe(1);
   });
 
   it('revokeAllBrowserSessions invalidates every issued browser cookie', async () => {
