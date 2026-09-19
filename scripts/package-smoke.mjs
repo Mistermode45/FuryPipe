@@ -359,6 +359,12 @@ try {
     "const m = await import('furypipe/control-plane'); if (typeof m.createControlPlaneSnapshot !== 'function' || !Array.isArray(m.CONTROL_PLANE_LIFECYCLE)) process.exit(1);",
   ], installDir);
   assert(controlPlaneExport.stderr === '', `Control Plane package export wrote stderr: ${controlPlaneExport.stderr}`);
+  const gatewayExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway'); if (typeof m.parseFuryGatewayConnectEnvelope !== 'function' || typeof m.deriveFuryGatewayConnectFingerprint !== 'function' || typeof m.createFuryGatewayHealthSnapshot !== 'function' || typeof m.FuryGatewayProtocolError !== 'function' || typeof m.authenticateGatewayConnection !== 'undefined' || typeof m.pairGatewayDevice !== 'undefined' || typeof m.executeGatewayCommand !== 'undefined') process.exit(1);",
+  ], installDir);
+  assert(gatewayExport.stderr === '', `Fury Gateway package export wrote stderr: ${gatewayExport.stderr}`);
   const providerRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
