@@ -157,6 +157,10 @@
       "types": "./dist/gateway-tool-bridge-adapter-node.d.ts",
       "import": "./dist/gateway-tool-bridge-adapter-node.js"
     },
+    "./gateway-local-tool-runtime-node": {
+      "types": "./dist/gateway-local-tool-runtime-node.d.ts",
+      "import": "./dist/gateway-local-tool-runtime-node.js"
+    },
     "./skill-registry": {
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"
