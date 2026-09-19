@@ -362,6 +362,7 @@ describe('Fury Gateway CLI execution', () => {
       format: 'furypipe-gateway-local-start/v1',
       status: 'ready',
       websocketUrl: 'ws://127.0.0.1:48722/gateway/v1',
+      webChatUrl: 'http://127.0.0.1:48722/gateway/webchat/',
       origin: 'http://127.0.0.1:48722',
       authority: 'bootstrap-only',
       executionAuthority: false,
