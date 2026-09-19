@@ -47,6 +47,11 @@ export interface FuryKernelToolBridgeOptions {
   readonly maxPendingProposals?: number;
   readonly maxConcurrentProbes?: number;
   readonly maxConcurrentExecutions?: number;
+  /**
+   * Host-owned disclosure policy. Raw MCP application results are not
+   * browser-facing by default even when they are valid bounded JSON.
+   */
+  readonly allowDisplayResult?: boolean;
   readonly maxDisplayResultBytes?: number;
   readonly connectTimeoutMs?: number;
   readonly listTimeoutMs?: number;
@@ -130,7 +135,7 @@ export interface FuryKernelToolApprovalResult {
 export interface FuryKernelToolDisplayResult {
   readonly available: boolean;
   readonly value?: unknown;
-  readonly reason?: 'non-json-result' | 'result-too-large';
+  readonly reason?: 'display-disabled' | 'non-json-result' | 'result-too-large';
 }
 
 export interface FuryKernelToolExecutionState {
@@ -740,6 +745,7 @@ export function createFuryKernelToolBridge(
       'maxPendingProposals',
       'maxConcurrentProbes',
       'maxConcurrentExecutions',
+      'allowDisplayResult',
       'maxDisplayResultBytes',
       'connectTimeoutMs',
       'listTimeoutMs',
@@ -798,6 +804,12 @@ export function createFuryKernelToolBridge(
     HARD_MAX_CONCURRENT_EXECUTIONS,
     'maxConcurrentExecutions',
   );
+  const allowDisplayResult = config.allowDisplayResult === undefined
+    ? false
+    : config.allowDisplayResult;
+  if (typeof allowDisplayResult !== 'boolean') {
+    throw new Error('allowDisplayResult must be a boolean');
+  }
   const maxDisplayResultBytes = boundedInteger(
     config.maxDisplayResultBytes as number | undefined,
     DEFAULT_MAX_DISPLAY_RESULT_BYTES,
@@ -1045,7 +1057,12 @@ export function createFuryKernelToolBridge(
           toolName: execution.receipt.toolName,
           state: receiptState(execution.receipt),
           receipt: execution.receipt,
-          displayResult: jsonCloneBounded(execution.result, maxDisplayResultBytes),
+          displayResult: allowDisplayResult
+            ? jsonCloneBounded(execution.result, maxDisplayResultBytes)
+            : Object.freeze({
+                available: false,
+                reason: 'display-disabled' as const,
+              }),
           retrySafe: false as const,
           executionAuthority: false as const,
         });
