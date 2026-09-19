@@ -2,9 +2,11 @@ import {
   executeMcpDirectApprovedToolInternal,
   McpDirectExecutionEvidenceError,
   McpDirectExecutionDurabilityError,
+  McpDirectExecutionPreCallRejectedError,
   McpDirectExecutionOutcomeUnknownError,
   McpDirectExecutionVerificationError,
   type McpDirectExecutionReceipt,
+  type McpDirectExecutionPreCallRejectionReason,
   type McpDirectGovernedExecutionInternalOptions,
 } from './mcp-direct-executor-node-internal.js';
 import type { McpDirectRuntimeConfig } from './mcp-direct-client-node.js';
@@ -23,12 +25,14 @@ import {
 export {
   McpDirectExecutionEvidenceError,
   McpDirectExecutionDurabilityError,
+  McpDirectExecutionPreCallRejectedError,
   McpDirectExecutionOutcomeUnknownError,
   McpDirectExecutionVerificationError,
   McpDirectReplayGovernanceError,
 };
 export type {
   McpDirectExecutionReceipt,
+  McpDirectExecutionPreCallRejectionReason,
   McpDirectReplayIntent,
   McpDirectReplayReason,
 };
