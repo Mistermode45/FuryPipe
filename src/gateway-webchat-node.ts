@@ -1,0 +1,712 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
+import type { FuryGatewayWebSocketHttpRequestHandler } from './gateway-websocket-host-node.js';
+
+export const FURY_GATEWAY_WEBCHAT_PATH = '/gateway/webchat/' as const;
+export const FURY_GATEWAY_WEBCHAT_SCRIPT_PATH = '/gateway/webchat/app.js' as const;
+export const FURY_GATEWAY_WEBCHAT_STYLE_PATH = '/gateway/webchat/styles.css' as const;
+
+export interface FuryGatewayWebChatOptions {
+  readonly origin: string;
+}
+
+const HTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Local FuryPipe WebChat powered by the governed Fury Gateway and Fury Kernel.">
+  <title>FuryPipe WebChat</title>
+  <link rel="stylesheet" href="/gateway/webchat/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">FURYPIPE VNEXT</p>
+        <h1>Local WebChat</h1>
+      </div>
+      <div class="connection">
+        <span id="connection-dot" class="dot" aria-hidden="true"></span>
+        <span id="connection-label">Not connected</span>
+      </div>
+    </header>
+
+    <section id="bootstrap-panel" class="panel auth-panel" aria-labelledby="bootstrap-title">
+      <div>
+        <p class="eyebrow">LOCAL OPERATOR</p>
+        <h2 id="bootstrap-title">Connect this browser</h2>
+        <p class="muted">Enter the one-time code printed by <code>furypipe gateway start</code>. The code is exchanged by POST and is never placed in the URL.</p>
+      </div>
+      <form id="bootstrap-form" class="bootstrap-form">
+        <label for="bootstrap-code">One-time bootstrap code</label>
+        <div class="input-row">
+          <input id="bootstrap-code" name="code" type="password" autocomplete="off" spellcheck="false" required>
+          <button type="submit">Connect</button>
+        </div>
+        <p id="bootstrap-status" class="status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section id="chat-panel" class="workspace" hidden>
+      <aside class="panel sidebar" aria-label="Conversation status">
+        <div>
+          <p class="eyebrow">CONVERSATION</p>
+          <p id="conversation-id" class="mono muted">Not opened</p>
+        </div>
+        <div class="actions">
+          <button id="new-conversation" type="button" class="secondary">New conversation</button>
+          <button id="reconnect" type="button" class="secondary">Reconnect</button>
+          <button id="logout" type="button" class="danger">Logout</button>
+        </div>
+        <div>
+          <p class="eyebrow">AUTHORITY STATES</p>
+          <ul class="state-legend">
+            <li><span class="badge accepted">Accepted</span> message/state accepted</li>
+            <li><span class="badge response">Model response</span> provider output</li>
+            <li><span class="badge requested">Tool requested</span> request only</li>
+            <li><span class="badge eligible">Tool eligible</span> admission only</li>
+            <li><span class="badge executed">Tool executed</span> execution receipt</li>
+            <li><span class="badge succeeded">Tool succeeded</span> successful return</li>
+            <li><span class="badge verified">Evidence verified</span> verification evidence</li>
+            <li><span class="badge blocked">Blocked</span> denied / approval required</li>
+          </ul>
+        </div>
+      </aside>
+
+      <section class="panel chat" aria-label="Chat">
+        <div id="messages" class="messages" aria-live="polite" aria-label="Conversation messages">
+          <div class="empty-state">
+            <strong>Fury Kernel is ready.</strong>
+            <span>Phase 2A.3 provides governed local conversation state. Model inference is enabled only in the later Model Fabric bridge gate.</span>
+          </div>
+        </div>
+        <form id="message-form" class="composer">
+          <label for="message-input" class="sr-only">Message</label>
+          <textarea id="message-input" rows="3" maxlength="32768" placeholder="Message FuryPipe…" required></textarea>
+          <div class="composer-actions">
+            <span id="turn-status" class="status" role="status" aria-live="polite"></span>
+            <button id="cancel-turn" class="secondary" type="button" disabled>Cancel turn</button>
+            <button id="send-message" type="submit">Send</button>
+          </div>
+        </form>
+      </section>
+
+      <aside class="panel activity" aria-label="Governance activity">
+        <div class="activity-title">
+          <div>
+            <p class="eyebrow">GOVERNANCE</p>
+            <h2>Activity</h2>
+          </div>
+          <button id="clear-activity" type="button" class="secondary compact">Clear</button>
+        </div>
+        <ol id="activity-list" class="activity-list"></ol>
+      </aside>
+    </section>
+  </main>
+  <script src="/gateway/webchat/app.js" defer></script>
+</body>
+</html>
+`;
+
+const CSS = `:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #090b10;
+  color: #eef2ff;
+  --panel: #11151d;
+  --panel-2: #171c26;
+  --border: #2a3240;
+  --muted: #9aa7b8;
+  --accent: #ffb02e;
+  --accent-strong: #ffc55f;
+  --danger: #ff6b6b;
+  --ok: #56d69b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 20% 0%, #1b2230 0, #090b10 36rem); }
+button, input, textarea { font: inherit; }
+button {
+  border: 1px solid #6d4b10;
+  background: var(--accent);
+  color: #161006;
+  font-weight: 800;
+  border-radius: .75rem;
+  padding: .7rem 1rem;
+  cursor: pointer;
+}
+button:hover { background: var(--accent-strong); }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid #ffd98b; outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.secondary { background: #202735; color: #e6edf7; border-color: #354155; }
+button.danger { background: #2a171a; color: #ffb3b3; border-color: #653138; }
+button.compact { padding: .4rem .65rem; font-size: .8rem; }
+code, .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+.shell { width: min(1600px, 100%); margin: 0 auto; padding: 1.25rem; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem .25rem 1.25rem; }
+h1, h2, p { margin-top: 0; }
+h1 { margin-bottom: 0; font-size: clamp(1.65rem, 3vw, 2.5rem); }
+h2 { margin-bottom: .45rem; font-size: 1.05rem; }
+.eyebrow { color: var(--accent); font-size: .72rem; font-weight: 900; letter-spacing: .14em; margin-bottom: .35rem; }
+.muted { color: var(--muted); }
+.connection { display: inline-flex; align-items: center; gap: .55rem; color: var(--muted); }
+.dot { width: .65rem; height: .65rem; border-radius: 50%; background: #657184; box-shadow: 0 0 0 .25rem rgba(101,113,132,.13); }
+.dot.online { background: var(--ok); box-shadow: 0 0 0 .25rem rgba(86,214,155,.13); }
+.panel { background: rgba(17,21,29,.96); border: 1px solid var(--border); border-radius: 1rem; box-shadow: 0 1rem 4rem rgba(0,0,0,.22); }
+.auth-panel { display: grid; grid-template-columns: minmax(0,1fr) minmax(20rem,.8fr); gap: 2rem; padding: 2rem; max-width: 70rem; margin: 10vh auto 0; }
+.bootstrap-form label { display: block; font-weight: 750; margin-bottom: .55rem; }
+.input-row { display: flex; gap: .65rem; }
+input, textarea { width: 100%; border: 1px solid #394559; background: #0b0f16; color: #f5f7fb; border-radius: .75rem; padding: .8rem .9rem; }
+textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
+.status { color: var(--muted); min-height: 1.2em; font-size: .85rem; }
+.workspace { display: grid; grid-template-columns: 17rem minmax(0,1fr) 19rem; gap: 1rem; min-height: calc(100vh - 7rem); }
+.sidebar, .activity { padding: 1rem; align-self: stretch; }
+.sidebar { display: flex; flex-direction: column; justify-content: space-between; gap: 2rem; }
+.actions { display: grid; gap: .6rem; }
+.state-legend { list-style: none; padding: 0; margin: 0; display: grid; gap: .65rem; color: var(--muted); font-size: .78rem; }
+.badge { display: inline-block; min-width: 6.8rem; margin-right: .35rem; border: 1px solid #364256; border-radius: 999px; padding: .2rem .45rem; color: #dce5f3; text-align: center; }
+.badge.accepted, .badge.succeeded, .badge.verified { border-color: #286c50; color: #8de2bc; }
+.badge.response, .badge.eligible { border-color: #75531c; color: #ffd180; }
+.badge.requested, .badge.executed { border-color: #415b82; color: #a9c8ff; }
+.badge.blocked { border-color: #733b42; color: #ffb0b7; }
+.chat { display: grid; grid-template-rows: minmax(0,1fr) auto; min-height: 38rem; overflow: hidden; }
+.messages { padding: 1rem; overflow-y: auto; display: flex; flex-direction: column; gap: .85rem; }
+.empty-state { margin: auto; display: grid; gap: .35rem; max-width: 34rem; text-align: center; color: var(--muted); }
+.message { max-width: min(48rem,88%); padding: .8rem .95rem; border-radius: 1rem; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--border); background: var(--panel-2); }
+.message.user { align-self: flex-end; background: #2a2112; border-color: #56431f; }
+.message.assistant { align-self: flex-start; background: #121d2b; border-color: #263e5b; }
+.message .role { display: block; font-size: .7rem; font-weight: 900; color: var(--muted); letter-spacing: .08em; margin-bottom: .3rem; }
+.composer { border-top: 1px solid var(--border); padding: 1rem; background: #0e1219; }
+.composer-actions { display: flex; gap: .6rem; align-items: center; justify-content: flex-end; margin-top: .65rem; }
+.composer-actions .status { margin-right: auto; }
+.activity-title { display: flex; justify-content: space-between; gap: .5rem; align-items: flex-start; }
+.activity-list { margin: .75rem 0 0; padding-left: 1.35rem; display: grid; gap: .7rem; font-size: .78rem; color: var(--muted); }
+.activity-list li strong { display: block; color: #dce5f3; margin-bottom: .15rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+@media (max-width: 1100px) {
+  .workspace { grid-template-columns: 15rem minmax(0,1fr); }
+  .activity { grid-column: 1 / -1; min-height: auto; }
+  .activity-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 760px) {
+  .shell { padding: .75rem; }
+  .topbar { align-items: flex-start; }
+  .auth-panel { grid-template-columns: 1fr; margin-top: 3vh; padding: 1.25rem; }
+  .input-row { flex-direction: column; }
+  .workspace { grid-template-columns: 1fr; min-height: auto; }
+  .sidebar { order: 2; }
+  .chat { order: 1; min-height: 70vh; }
+  .activity { order: 3; grid-column: auto; }
+  .activity-list { grid-template-columns: 1fr; }
+  .message { max-width: 96%; }
+  .composer-actions { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+}
+`;
+
+const JS = `(() => {
+  'use strict';
+
+  const BOOTSTRAP_FORMAT = 'furypipe-gateway-local-bootstrap/v1';
+  const MESSAGE_FORMAT = 'furypipe-gateway-message/v1';
+  const SUBPROTOCOL = 'furypipe.gateway.v1';
+
+  const state = {
+    ws: null,
+    connectionId: null,
+    sequence: 1,
+    conversationId: null,
+    activeTurnId: null,
+    authenticated: false,
+    reconnectAttempts: 0,
+    reconnectTimer: null,
+  };
+
+  const byId = (id) => document.getElementById(id);
+  const bootstrapPanel = byId('bootstrap-panel');
+  const chatPanel = byId('chat-panel');
+  const bootstrapForm = byId('bootstrap-form');
+  const bootstrapCode = byId('bootstrap-code');
+  const bootstrapStatus = byId('bootstrap-status');
+  const connectionDot = byId('connection-dot');
+  const connectionLabel = byId('connection-label');
+  const conversationLabel = byId('conversation-id');
+  const messages = byId('messages');
+  const messageForm = byId('message-form');
+  const messageInput = byId('message-input');
+  const turnStatus = byId('turn-status');
+  const cancelTurn = byId('cancel-turn');
+  const activityList = byId('activity-list');
+
+  const safeText = (value) => typeof value === 'string' ? value : '';
+
+  function setConnection(online, label) {
+    connectionDot.classList.toggle('online', online);
+    connectionLabel.textContent = label;
+  }
+
+  function addActivity(title, detail, kind) {
+    const item = document.createElement('li');
+    const strong = document.createElement('strong');
+    strong.textContent = title;
+    const span = document.createElement('span');
+    span.textContent = detail;
+    if (kind) item.dataset.kind = kind;
+    item.append(strong, span);
+    activityList.prepend(item);
+    while (activityList.children.length > 80) {
+      activityList.lastElementChild?.remove();
+    }
+  }
+
+  function clearMessages() {
+    messages.replaceChildren();
+  }
+
+  function renderMessage(role, content) {
+    const article = document.createElement('article');
+    article.className = 'message ' + (role === 'assistant' ? 'assistant' : 'user');
+    const label = document.createElement('span');
+    label.className = 'role';
+    label.textContent = role === 'assistant' ? 'FURYPIPE' : 'YOU';
+    const body = document.createElement('span');
+    body.textContent = safeText(content);
+    article.append(label, body);
+    messages.append(article);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function socketUrl() {
+    const url = new URL('/gateway/v1', location.href);
+    url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return url.toString();
+  }
+
+  function makeMessageId(prefix) {
+    const suffix = globalThis.crypto?.randomUUID
+      ? globalThis.crypto.randomUUID()
+      : String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000));
+    return prefix + '-' + suffix;
+  }
+
+  function sendCommand(commandName, input) {
+    if (!state.ws || state.ws.readyState !== WebSocket.OPEN || !state.connectionId) {
+      throw new Error('Gateway WebSocket is not connected');
+    }
+    const message = {
+      format: MESSAGE_FORMAT,
+      messageId: makeMessageId('webchat'),
+      connectionId: state.connectionId,
+      sequence: state.sequence,
+      type: 'command',
+      sentAt: Date.now(),
+      payload: {
+        commandName,
+        declaredPluginPermissions: [],
+        input,
+      },
+    };
+    state.sequence += 1;
+    state.ws.send(JSON.stringify(message));
+    return message.messageId;
+  }
+
+  function inspectConversation() {
+    if (!state.conversationId) return;
+    sendCommand('conversation.inspect', {
+      conversationId: state.conversationId,
+      messageOffset: 0,
+      messageLimit: 32,
+      turnOffset: 0,
+      turnLimit: 32,
+    });
+  }
+
+  function scheduleReconnect() {
+    if (!state.authenticated || state.reconnectTimer || state.reconnectAttempts >= 5) return;
+    const delay = Math.min(5000, 500 * Math.pow(2, state.reconnectAttempts));
+    state.reconnectAttempts += 1;
+    setConnection(false, 'Reconnecting…');
+    state.reconnectTimer = setTimeout(() => {
+      state.reconnectTimer = null;
+      connectWebSocket();
+    }, delay);
+  }
+
+  function handleStateResult(message) {
+    const adapter = message.result;
+    if (!adapter || typeof adapter !== 'object') {
+      addActivity('Blocked', 'Malformed state result.', 'blocked');
+      return;
+    }
+    if (adapter.status !== 'ok') {
+      const code = adapter.error && typeof adapter.error === 'object'
+        ? safeText(adapter.error.code)
+        : 'state-command-rejected';
+      addActivity('Blocked', code || 'State command rejected.', 'blocked');
+      turnStatus.textContent = code || 'State command rejected.';
+      return;
+    }
+
+    const payload = adapter.result;
+    if (message.commandName === 'conversation.open') {
+      state.conversationId = payload?.conversationId ?? null;
+      conversationLabel.textContent = state.conversationId || 'Not opened';
+      clearMessages();
+      addActivity('Accepted', 'Conversation opened by Fury Kernel.', 'accepted');
+      return;
+    }
+    if (message.commandName === 'conversation.inspect') {
+      if (!payload || !Array.isArray(payload.messages)) return;
+      clearMessages();
+      for (const item of payload.messages) {
+        if (item && (item.role === 'user' || item.role === 'assistant')) {
+          renderMessage(item.role, item.content);
+        }
+      }
+      state.activeTurnId = typeof payload.activeTurnId === 'string' ? payload.activeTurnId : null;
+      cancelTurn.disabled = !state.activeTurnId;
+      turnStatus.textContent = state.activeTurnId ? 'Turn pending' : '';
+      addActivity('Accepted', 'Conversation state resynchronized.', 'accepted');
+      return;
+    }
+    if (message.commandName === 'conversation.message.submit') {
+      state.activeTurnId = payload?.turn?.turnId ?? null;
+      cancelTurn.disabled = !state.activeTurnId;
+      turnStatus.textContent = state.activeTurnId ? 'Turn accepted — model bridge pending' : '';
+      addActivity('Accepted', 'User turn accepted. No provider inference authority was granted.', 'accepted');
+      return;
+    }
+    if (message.commandName === 'conversation.cancel') {
+      state.activeTurnId = null;
+      cancelTurn.disabled = true;
+      turnStatus.textContent = 'Turn cancelled';
+      addActivity('Blocked', 'Turn cancelled before model/tool execution.', 'blocked');
+      return;
+    }
+    if (message.commandName === 'conversation.close') {
+      state.conversationId = null;
+      state.activeTurnId = null;
+      conversationLabel.textContent = 'Not opened';
+      cancelTurn.disabled = true;
+      clearMessages();
+      addActivity('Accepted', 'Conversation closed and Kernel capacity reclaimed.', 'accepted');
+    }
+  }
+
+  function handleSocketMessage(event) {
+    let message;
+    try {
+      message = JSON.parse(String(event.data));
+    } catch {
+      addActivity('Blocked', 'Invalid Gateway server message.', 'blocked');
+      return;
+    }
+
+    if (message.type === 'connected') {
+      state.connectionId = safeText(message.connectionId);
+      state.sequence = 1;
+      state.reconnectAttempts = 0;
+      setConnection(true, 'Connected');
+      addActivity('Accepted', 'Authenticated local Gateway transport connected.', 'accepted');
+      if (state.conversationId) inspectConversation();
+      else sendCommand('conversation.open', {});
+      return;
+    }
+
+    if (message.type === 'command-admission') {
+      const admission = message.admission;
+      if (admission?.outcome === 'eligible') {
+        addActivity('State eligible', safeText(admission.commandName) || 'Command admitted.', 'eligible');
+      } else {
+        const reason = safeText(admission?.reason) || 'command denied';
+        addActivity('Blocked', reason, 'blocked');
+        turnStatus.textContent = reason;
+      }
+      return;
+    }
+
+    if (message.type === 'state-command-result') {
+      handleStateResult(message);
+      return;
+    }
+
+    if (message.type === 'error') {
+      addActivity('Blocked', safeText(message.code) || 'Gateway protocol error.', 'blocked');
+    }
+  }
+
+  function connectWebSocket() {
+    if (state.ws && (state.ws.readyState === WebSocket.OPEN || state.ws.readyState === WebSocket.CONNECTING)) return;
+    const ws = new WebSocket(socketUrl(), SUBPROTOCOL);
+    state.ws = ws;
+    setConnection(false, 'Connecting…');
+
+    ws.addEventListener('open', () => {
+      state.authenticated = true;
+      bootstrapPanel.hidden = true;
+      chatPanel.hidden = false;
+    });
+    ws.addEventListener('message', handleSocketMessage);
+    ws.addEventListener('close', () => {
+      if (state.ws === ws) state.ws = null;
+      state.connectionId = null;
+      setConnection(false, 'Disconnected');
+      if (state.authenticated) scheduleReconnect();
+    });
+    ws.addEventListener('error', () => {
+      setConnection(false, 'Connection failed');
+    });
+  }
+
+  bootstrapForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const code = bootstrapCode.value.trim();
+    if (!code) return;
+    bootstrapStatus.textContent = 'Exchanging one-time code…';
+    try {
+      const response = await fetch('/gateway/local-bootstrap/v1', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ format: BOOTSTRAP_FORMAT, code }),
+      });
+      bootstrapCode.value = '';
+      if (response.status !== 204) {
+        bootstrapStatus.textContent = response.status === 401
+          ? 'Code invalid or expired.'
+          : 'Bootstrap rejected (HTTP ' + response.status + ').';
+        return;
+      }
+      bootstrapStatus.textContent = 'Browser session established.';
+      state.authenticated = true;
+      connectWebSocket();
+    } catch {
+      bootstrapStatus.textContent = 'Bootstrap request failed.';
+    }
+  });
+
+  messageForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!state.conversationId || state.activeTurnId) return;
+    const content = messageInput.value;
+    if (!content.trim()) return;
+    const messageId = makeMessageId('user');
+    renderMessage('user', content);
+    messageInput.value = '';
+    turnStatus.textContent = 'Submitting…';
+    try {
+      sendCommand('conversation.message.submit', {
+        conversationId: state.conversationId,
+        messageId,
+        content,
+      });
+    } catch {
+      turnStatus.textContent = 'Not connected';
+    }
+  });
+
+  cancelTurn.addEventListener('click', () => {
+    if (!state.conversationId || !state.activeTurnId) return;
+    sendCommand('conversation.cancel', {
+      conversationId: state.conversationId,
+      turnId: state.activeTurnId,
+    });
+  });
+
+  byId('new-conversation').addEventListener('click', () => {
+    if (state.activeTurnId) {
+      turnStatus.textContent = 'Cancel the active turn first.';
+      return;
+    }
+    if (state.conversationId) {
+      sendCommand('conversation.close', { conversationId: state.conversationId });
+    }
+    sendCommand('conversation.open', {});
+  });
+
+  byId('reconnect').addEventListener('click', () => {
+    state.reconnectAttempts = 0;
+    if (state.ws) state.ws.close(1000, 'manual-reconnect');
+    connectWebSocket();
+  });
+
+  byId('logout').addEventListener('click', async () => {
+    state.authenticated = false;
+    if (state.reconnectTimer) {
+      clearTimeout(state.reconnectTimer);
+      state.reconnectTimer = null;
+    }
+    if (state.ws) state.ws.close(1000, 'logout');
+    await fetch('/gateway/local-logout/v1', {
+      method: 'POST',
+      credentials: 'same-origin',
+    }).catch(() => undefined);
+    state.conversationId = null;
+    state.activeTurnId = null;
+    clearMessages();
+    chatPanel.hidden = true;
+    bootstrapPanel.hidden = false;
+    bootstrapStatus.textContent = 'Logged out.';
+    setConnection(false, 'Not connected');
+  });
+
+  byId('clear-activity').addEventListener('click', () => {
+    activityList.replaceChildren();
+  });
+})();
+`;
+
+function isLoopback(address: string | undefined): boolean {
+  const value = address?.trim().toLowerCase() ?? '';
+  return value === '127.0.0.1'
+    || value === '::1'
+    || value === '::ffff:127.0.0.1';
+}
+
+function normalizeOrigin(value: string): { readonly origin: string; readonly wsOrigin: string } {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('Gateway WebChat origin is invalid');
+  }
+  if (
+    url.protocol !== 'http:'
+    || url.username !== ''
+    || url.password !== ''
+    || url.pathname !== '/'
+    || url.search !== ''
+    || url.hash !== ''
+    || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname === '::1' ? '[::1]' : url.hostname)
+  ) {
+    throw new Error('Gateway WebChat requires an exact loopback HTTP origin');
+  }
+  const ws = new URL(url.origin);
+  ws.protocol = 'ws:';
+  return Object.freeze({ origin: url.origin, wsOrigin: ws.origin });
+}
+
+function pathOf(request: IncomingMessage): { readonly pathname: string; readonly clean: boolean } | undefined {
+  if (typeof request.url !== 'string') return undefined;
+  try {
+    const url = new URL(request.url, 'http://127.0.0.1');
+    return Object.freeze({
+      pathname: url.pathname,
+      clean: url.search === '' && url.hash === '',
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function commonHeaders(
+  response: ServerResponse,
+  csp: string,
+): void {
+  response.setHeader('Cache-Control', 'no-store');
+  response.setHeader('Pragma', 'no-cache');
+  response.setHeader('Referrer-Policy', 'no-referrer');
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+  response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  response.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+  response.setHeader('Content-Security-Policy', csp);
+}
+
+function send(
+  request: IncomingMessage,
+  response: ServerResponse,
+  status: number,
+  contentType: string,
+  body: string,
+  csp: string,
+): void {
+  if (response.writableEnded) return;
+  const bytes = Buffer.from(body, 'utf8');
+  commonHeaders(response, csp);
+  response.statusCode = status;
+  response.setHeader('Content-Type', contentType);
+  response.setHeader('Content-Length', String(bytes.byteLength));
+  if (request.method === 'HEAD') response.end();
+  else response.end(bytes);
+}
+
+export function createFuryGatewayWebChatHandler(
+  options: FuryGatewayWebChatOptions,
+): FuryGatewayWebSocketHttpRequestHandler {
+  if (!options || typeof options !== 'object' || typeof options.origin !== 'string') {
+    throw new Error('Gateway WebChat requires an exact local origin');
+  }
+  const local = normalizeOrigin(options.origin);
+  const csp = [
+    "default-src 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "connect-src 'self' " + local.wsOrigin,
+    "img-src 'self'",
+    "font-src 'none'",
+    "object-src 'none'",
+  ].join('; ');
+
+  return async (request, response): Promise<boolean> => {
+    const parsed = pathOf(request);
+    if (!parsed) return false;
+    if (parsed.pathname === '/gateway/webchat') {
+      if (!parsed.clean) {
+        send(request, response, 400, 'text/plain; charset=utf-8', '', csp);
+        return true;
+      }
+      if (!isLoopback(request.socket.remoteAddress)) {
+        send(request, response, 403, 'text/plain; charset=utf-8', '', csp);
+        return true;
+      }
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        response.setHeader('Allow', 'GET, HEAD');
+        send(request, response, 405, 'text/plain; charset=utf-8', '', csp);
+        return true;
+      }
+      commonHeaders(response, csp);
+      response.statusCode = 308;
+      response.setHeader('Location', FURY_GATEWAY_WEBCHAT_PATH);
+      response.setHeader('Content-Length', '0');
+      response.end();
+      return true;
+    }
+
+    if (
+      parsed.pathname !== FURY_GATEWAY_WEBCHAT_PATH
+      && parsed.pathname !== FURY_GATEWAY_WEBCHAT_SCRIPT_PATH
+      && parsed.pathname !== FURY_GATEWAY_WEBCHAT_STYLE_PATH
+    ) {
+      return false;
+    }
+    if (!parsed.clean) {
+      send(request, response, 400, 'text/plain; charset=utf-8', '', csp);
+      return true;
+    }
+    if (!isLoopback(request.socket.remoteAddress)) {
+      send(request, response, 403, 'text/plain; charset=utf-8', '', csp);
+      return true;
+    }
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      response.setHeader('Allow', 'GET, HEAD');
+      send(request, response, 405, 'text/plain; charset=utf-8', '', csp);
+      return true;
+    }
+
+    if (parsed.pathname === FURY_GATEWAY_WEBCHAT_PATH) {
+      send(request, response, 200, 'text/html; charset=utf-8', HTML, csp);
+    } else if (parsed.pathname === FURY_GATEWAY_WEBCHAT_SCRIPT_PATH) {
+      send(request, response, 200, 'text/javascript; charset=utf-8', JS, csp);
+    } else {
+      send(request, response, 200, 'text/css; charset=utf-8', CSS, csp);
+    }
+    return true;
+  };
+}
