@@ -159,6 +159,9 @@ export interface FuryKernelToolBridge {
   propose(input: FuryKernelToolProposalInput): Promise<FuryKernelToolProposalResult>;
   approve(proposalId: string): FuryKernelToolApprovalResult;
   execute(proposalId: string): Promise<FuryKernelToolExecutionResult>;
+  proposalTransport(
+    proposalId: string,
+  ): 'stdio' | 'streamable_http' | undefined;
   discard(proposalId: string): boolean;
   pendingProposalCount(): number;
   activeExecutionCount(): number;
@@ -725,6 +728,14 @@ export function createFuryKernelToolBridge(
         activeExecutions = Math.max(0, activeExecutions - 1);
         pending.delete(proposalId);
       }
+    },
+
+    proposalTransport(
+      proposalId: string,
+    ): 'stdio' | 'streamable_http' | undefined {
+      if (typeof proposalId !== 'string' || !SAFE_ID.test(proposalId)) return undefined;
+      pruneExpired(safeNow(now));
+      return pending.get(proposalId)?.source.config.source.transport;
     },
 
     discard(proposalId: string): boolean {
