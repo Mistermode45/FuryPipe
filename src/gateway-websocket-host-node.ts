@@ -11,6 +11,7 @@ import {
 import type { FuryGatewayAuthenticatedDevice } from './gateway-auth-node.js';
 import type { FuryGatewayCommandRegistry } from './gateway-command-authorization-node.js';
 import type { FuryGatewayPairingCoordinator } from './gateway-pairing-node.js';
+import type { FuryGatewayRole } from './gateway.js';
 import type {
   FuryGatewaySessionCoordinator,
   FuryGatewaySessionLease,
@@ -57,6 +58,7 @@ export type FuryGatewayWebSocketSafeEvent =
       readonly type: 'connection-open';
       readonly connectionId: string;
       readonly clientKind: FuryGatewayWebSocketClientKind;
+      readonly role: FuryGatewayRole;
     }
   | {
       readonly type: 'connection-close';
@@ -640,6 +642,7 @@ export async function listenFuryGatewayWebSocketHost(
           type: 'connection-open',
           connectionId: state.connection.connectionId,
           clientKind: state.connection.clientKind,
+          role: state.connection.role,
         });
       });
       connection = undefined;
