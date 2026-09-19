@@ -343,15 +343,29 @@ Implementation present on this track:
 - HTTP security tests;
 - real Chromium/Firefox/WebKit desktop+mobile browser QA added to the existing Cross-Browser workflow.
 
-Model inference remains deliberately absent until Gate 2A.4.
+Model inference is disabled by default and is available only through the separately governed Gate 2A.4 execution path when the operator explicitly configures it.
 
 ### Gate 2A.4 — Model Fabric bridge
-- explicit provider-inference authority;
-- bounded prompt/context;
-- cancellation;
-- fallback reconstruction from BASE;
-- receipts/evidence distinction;
-- provider-mocked integration tests.
+Implementation present on this track:
+- provider inference disabled by default;
+- explicit host-owned provider/model route only;
+- browser receives `capability.provider-inference` only when the route is configured;
+- `conversation.model.execute` is a separate process-risk command with declared `provider-inference` permission;
+- state-command and async execution-command allowlists are disjoint and independently backpressured;
+- command admission remains non-authoritative; the bridge creates fresh one-shot provider policies/permits;
+- existing Provider Runtime, attempt planner, Context Runtime, governed executor and retry/fallback orchestrator are reused rather than duplicated;
+- every fallback attempt is rebuilt from the captured model-neutral BASE prompt;
+- prior transcript is bounded and injected as untrusted `transcript` context;
+- secret context remains default-deny;
+- OpenAI Responses, Anthropic Messages and Google Interactions text decoding is strict and bounded;
+- tool/function-call response shapes fail closed and are not converted into chat text;
+- provider output is marked `verification: unverified`, distinct from verified evidence;
+- cancellation terminalizes the local Kernel turn while preserving any ambiguous transport outcome;
+- Kernel turns have an explicit safe `failed` terminal state carrying only a bounded failure code;
+- package exports and smoke coverage are included;
+- provider-mocked and local HTTP transport integration tests cover success, fallback, cancellation, malformed/tool-call output, credential isolation and context limits.
+
+Final PASS remains evidence-bound to the exact final HEAD after the complete CI/browser/package matrix succeeds.
 
 ### Gate 2A.5 — governed tool bridge
 - separate from plain chat;
