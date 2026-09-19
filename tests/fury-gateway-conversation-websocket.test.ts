@@ -144,11 +144,14 @@ async function connect(url: string): Promise<{
     headers: { Origin: 'http://localhost:3000' },
   });
   sockets.push(ws);
+  // Arm the first-message listener before awaiting "open": the Gateway may emit
+  // its connected frame immediately after the handshake.
+  const helloPromise = nextJson(ws);
   await new Promise<void>((resolve, reject) => {
     ws.once('open', () => resolve());
     ws.once('error', reject);
   });
-  const hello = await nextJson(ws);
+  const hello = await helloPromise;
   return { ws, hello };
 }
 
