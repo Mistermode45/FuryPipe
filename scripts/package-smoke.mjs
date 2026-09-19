@@ -348,6 +348,13 @@ try {
     "const m = await import('furypipe/gateway-tool-bridge-adapter-node'); if (typeof m.createFuryGatewayToolBridgeAdapter !== 'function' || m.FURY_GATEWAY_TOOL_RESULT_FORMAT !== 'furypipe-gateway-tool-result/v1') process.exit(1);",
   ], installDir);
   assert(gatewayToolBridgeAdapterExport.stderr === '', `Gateway tool bridge adapter export wrote stderr: ${gatewayToolBridgeAdapterExport.stderr}`);
+
+  const gatewayLocalToolRuntimeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-local-tool-runtime-node'); if (typeof m.createFuryGatewayLocalToolRuntime !== 'function' || m.FURY_GATEWAY_LOCAL_TOOL_CONFIG_FORMAT !== 'furypipe-gateway-local-tool-config/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayLocalToolRuntimeExport.stderr === '', `Gateway local tool runtime export wrote stderr: ${gatewayLocalToolRuntimeExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
