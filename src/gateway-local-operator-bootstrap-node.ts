@@ -254,7 +254,7 @@ function emptyResponse(response: ServerResponse, status: number): void {
 function clearCookie(response: ServerResponse): void {
   response.setHeader(
     'Set-Cookie',
-    `${FURY_GATEWAY_LOCAL_COOKIE_NAME}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`,
+    `${FURY_GATEWAY_LOCAL_COOKIE_NAME}=; HttpOnly; SameSite=Strict; Path=/gateway/; Max-Age=0`,
   );
 }
 
@@ -602,7 +602,7 @@ export function createFuryGatewayLocalBootstrapManager(
       setSafeHeaders(response);
       response.setHeader(
         'Set-Cookie',
-        `${FURY_GATEWAY_LOCAL_COOKIE_NAME}=${browserSession.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAgeSeconds}`,
+        `${FURY_GATEWAY_LOCAL_COOKIE_NAME}=${browserSession.token}; HttpOnly; SameSite=Strict; Path=/gateway/; Max-Age=${maxAgeSeconds}`,
       );
       response.statusCode = 204;
       response.setHeader('Content-Length', '0');
