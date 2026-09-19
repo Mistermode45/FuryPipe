@@ -24,11 +24,19 @@ import {
   createFuryGatewayLocalBootstrapManager,
 } from '../src/gateway-local-operator-bootstrap-node.js';
 import {
+  createFuryGatewayLocalModelRuntime,
+} from '../src/gateway-local-model-runtime-node.js';
+import {
+  FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS,
+  FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES,
+} from '../src/gateway-model-command-node.js';
+import {
   FURY_GATEWAY_PRINCIPAL_ASSERTION_FORMAT,
   createFuryGatewayPrincipalRegistry,
 } from '../src/gateway-principal-node.js';
 import {
   createFuryGatewaySessionCoordinator,
+  type FuryGatewayScope,
 } from '../src/gateway-session-node.js';
 import {
   listenFuryGatewayWebSocketHost,
@@ -67,10 +75,60 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-async function startHarness() {
+async function startHarness(modelEnabled = false) {
   const port = await freePort();
   const origin = `http://${HOST}:${port}`;
   const now = () => Date.now();
+  const kernel = createFuryKernelConversationStore({
+    now,
+    maxConversations: 32,
+    maxMessagesPerConversation: 256,
+    maxTurnsPerConversation: 128,
+    maxMessageBytes: 32 * 1024,
+    maxConversationBytes: 512 * 1024,
+    maxInFlightTurns: 16,
+  });
+  const modelRuntime = createFuryGatewayLocalModelRuntime({
+    kernel,
+    env: modelEnabled
+      ? {
+          FURYPIPE_WEBCHAT_PROVIDER: 'openai',
+          FURYPIPE_WEBCHAT_MODEL: 'gpt-5.6-sol',
+          FURYPIPE_WEBCHAT_MAX_OUTPUT_TOKENS: '1024',
+          OPENAI_API_KEY: 'browser-qa-local-secret',
+        }
+      : {},
+    now,
+    ...(modelEnabled
+      ? {
+          fetchImpl: async () => new Response(JSON.stringify({
+            id: 'resp_browser_qa',
+            output: [{
+              type: 'message',
+              role: 'assistant',
+              content: [{
+                type: 'output_text',
+                text: 'Governed browser QA model response.',
+              }],
+            }],
+            usage: {
+              input_tokens: 12,
+              input_tokens_details: {
+                cached_tokens: 0,
+                cache_write_tokens: 0,
+              },
+              output_tokens: 6,
+            },
+          }), {
+            status: 200,
+            headers: {
+              'content-type': 'application/json',
+              'x-request-id': 'browser-qa-request',
+            },
+          }),
+        }
+      : {}),
+  });
 
   const principalRegistry = createFuryGatewayPrincipalRegistry({
     now,
@@ -93,14 +151,16 @@ async function startHarness() {
     maxTtlMs: 60 * 60_000,
     maxSessions: 8,
   });
+  const scopes: FuryGatewayScope[] = [
+    'gateway.inspect',
+    'conversations.inspect',
+    'conversations.write',
+  ];
+  if (modelRuntime.bridge) scopes.push('capability.provider-inference');
   const session = sessionCoordinator.issueSession({
     principal,
     role: 'operator',
-    scopes: [
-      'gateway.inspect',
-      'conversations.inspect',
-      'conversations.write',
-    ],
+    scopes,
     binding: { kind: 'local-operator' },
     expiresInMs: 60 * 60_000,
   });
@@ -115,23 +175,26 @@ async function startHarness() {
     maxPendingTickets: 16,
     maxBrowserSessions: 16,
   });
-  const webchat = createFuryGatewayWebChatHandler({ origin });
-  const kernel = createFuryKernelConversationStore({
-    now,
-    maxConversations: 32,
-    maxMessagesPerConversation: 256,
-    maxTurnsPerConversation: 128,
-    maxMessageBytes: 32 * 1024,
-    maxConversationBytes: 512 * 1024,
-    maxInFlightTurns: 16,
+  const webchat = createFuryGatewayWebChatHandler({
+    origin,
+    modelBridgeEnabled: modelRuntime.bridge !== undefined,
+    ...(modelRuntime.config.enabled
+      ? {
+          modelProvider: modelRuntime.config.providerId,
+          model: modelRuntime.config.model,
+        }
+      : {}),
   });
   const adapter = createFuryGatewayConversationAdapter({
     kernel,
     maxResultBytes: 48 * 1024,
   });
-  const commandRegistry = createFuryGatewayCommandRegistry(
-    FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
-  );
+  const commandRegistry = createFuryGatewayCommandRegistry([
+    ...FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
+    ...(modelRuntime.bridge
+      ? FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS
+      : []),
+  ]);
 
   const host = await listenFuryGatewayWebSocketHost({
     host: HOST,
@@ -152,11 +215,40 @@ async function startHarness() {
       ) {
         throw new Error('browser QA received unsupported state command');
       }
-      return adapter.dispatch(
+      const result = adapter.dispatch(
         command.commandName as FuryGatewayConversationCommandName,
         command.input,
       );
+      if (
+        command.commandName === 'conversation.cancel'
+        && result.status === 'ok'
+        && modelRuntime.bridge
+      ) {
+        const input = command.input as {
+          readonly conversationId: string;
+          readonly turnId: string;
+        };
+        modelRuntime.bridge.cancelTurn(input.conversationId, input.turnId);
+      }
+      return result;
     },
+    ...(modelRuntime.bridge
+      ? {
+          admittedExecutionCommandNames:
+            FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES,
+          handleAdmittedExecutionCommand: async (command) => {
+            if (command.commandName !== 'conversation.model.execute') {
+              throw new Error('browser QA received unsupported execution command');
+            }
+            return modelRuntime.bridge!.executeTurn(
+              command.input as {
+                readonly conversationId: string;
+                readonly turnId: string;
+              },
+            );
+          },
+        }
+      : {}),
   });
 
   return {
