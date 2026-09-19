@@ -439,16 +439,16 @@ export function createFuryKernelConversationStore(
       }
 
       const at = finiteNow(now);
-      const turn = {
+      const turn: MutableTurn = {
         turnId: nextOpaqueId(
           'fkt_',
           (candidate) => [...conversations.values()]
             .some((conversation) => conversation.turns.some((existing) => existing.turnId === candidate)),
         ),
         requestMessageId: id,
-        status: 'accepted' as const,
+        status: 'accepted',
         createdAt: at,
-      } satisfies MutableTurn;
+      };
       const message: FuryKernelMessage = Object.freeze({
         format: FURY_KERNEL_MESSAGE_FORMAT,
         messageId: id,
