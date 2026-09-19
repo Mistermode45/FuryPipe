@@ -313,6 +313,115 @@ describe('Fury Kernel governed MCP tool bridge', () => {
     });
   }, 30_000);
 
+  it('snapshots proposal arguments before the asynchronous inventory probe', async () => {
+    const instance = bridge('auto');
+    const args = { message: 'snapshot-before-await' };
+
+    const proposing = instance.propose({
+      sourceId: 'tool-bridge-fixture',
+      toolName: 'governed-echo',
+      arguments: args,
+    });
+    // Mutation occurs immediately after propose() returns its Promise. The bridge
+    // must already have canonicalized the arguments before the first await.
+    args.message = 'mutated-after-call';
+
+    const proposed = await proposing;
+    const executed = await instance.execute(proposed.proposalId!);
+
+    expect(executed).toMatchObject({
+      status: 'completed',
+      state: {
+        executed: true,
+        succeeded: true,
+        verified: true,
+      },
+    });
+    expect(JSON.stringify(executed.displayResult?.value))
+      .toContain('snapshot-before-await');
+    expect(JSON.stringify(executed.displayResult?.value))
+      .not.toContain('mutated-after-call');
+  }, 30_000);
+
+  it('snapshots host source and policy configuration at bridge construction', async () => {
+    const config = sourceConfig() as {
+      source: {
+        sourceId: string;
+        transport: 'stdio';
+        endpointFingerprint: string;
+        trust: 'trusted';
+      };
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    };
+    const configuredPolicy = policy(config, 'auto') as {
+      format: 'furypipe-mcp-direct-policy/v1';
+      policyId: string;
+      governedPolicyAllowlist: Array<{
+        sourceId: string;
+        endpointFingerprint: string;
+        toolName: string;
+      }>;
+      operatorApprovalAllowlist: Array<{
+        sourceId: string;
+        endpointFingerprint: string;
+        toolName: string;
+      }>;
+    };
+
+    const instance = createFuryKernelToolBridge({
+      sources: [{ config, policy: configuredPolicy }],
+      clientInfo: { name: 'furypipe-tool-bridge-test', version: '1.0.0' },
+      connectTimeoutMs: 10_000,
+      listTimeoutMs: 10_000,
+      probeTimeoutMs: 2_000,
+      callTimeoutMs: 10_000,
+    });
+
+    config.command = 'must-not-be-used';
+    config.source.sourceId = 'mutated-source';
+    configuredPolicy.governedPolicyAllowlist.splice(0);
+
+    expect(instance.inspectSources()[0]).toMatchObject({
+      sourceId: 'tool-bridge-fixture',
+      transport: 'stdio',
+      trust: 'trusted',
+    });
+    const proposed = await instance.propose({
+      sourceId: 'tool-bridge-fixture',
+      toolName: 'governed-echo',
+      arguments: { message: 'snapshot-config' },
+    });
+    expect(proposed).toMatchObject({
+      status: 'approved',
+      approvalKind: 'governed_policy',
+      policy: { outcome: 'allow_governed_policy' },
+    });
+  }, 20_000);
+
+  it('rejects accessor-based host configuration without invoking the getter', () => {
+    const validConfig = sourceConfig();
+    let getterCalls = 0;
+    const hostileConfig = {
+      source: validConfig.source,
+      get command() {
+        getterCalls += 1;
+        return process.execPath;
+      },
+      args: [fixturePath],
+    };
+
+    expect(() => createFuryKernelToolBridge({
+      sources: [{
+        config: hostileConfig as unknown as McpDirectRuntimeConfig,
+        policy: policy(validConfig, 'auto'),
+      }],
+      clientInfo: { name: 'furypipe-tool-bridge-test', version: '1.0.0' },
+    })).toThrow(/data properties|plain data object/u);
+    expect(getterCalls).toBe(0);
+  });
+
   it('prunes expired proposal authority before approval', async () => {
     let now = 1_000;
     const config = sourceConfig();
