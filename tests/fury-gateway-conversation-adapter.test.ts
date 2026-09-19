@@ -200,8 +200,11 @@ describe('Fury Gateway conversation adapter', () => {
       content: 'x'.repeat(1800),
     });
     expect(submitted).toMatchObject({
-      status: 'rejected',
-      error: { code: 'result-too-large' },
+      status: 'ok',
+      result: {
+        status: 'accepted',
+        executionAuthority: false,
+      },
     });
 
     const inspected = adapter.dispatch('conversation.inspect', {
