@@ -348,6 +348,8 @@ function pairedBindingStillValid(
   if (
     currentDevice.deviceId !== session.binding.deviceId
     || currentDevice.publicKeySha256 !== session.binding.publicKeySha256
+    || currentDevice.connectFingerprint !== session.binding.connectFingerprint
+    || currentDevice.authenticatedAt !== session.binding.deviceAuthenticatedAt
     || currentDevice.role !== session.role
   ) {
     return 'device-binding-mismatch';
