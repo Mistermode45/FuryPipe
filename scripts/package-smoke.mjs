@@ -293,6 +293,12 @@ try {
     "const m = await import('furypipe/fury-kernel'); if (typeof m.createFuryKernelConversationStore !== 'function' || typeof m.FuryKernelConversationError !== 'function') process.exit(1);",
   ], installDir);
   assert(furyKernelExport.stderr === '', `Fury Kernel package export wrote stderr: ${furyKernelExport.stderr}`);
+  const gatewayConversationAdapterExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-conversation-adapter-node'); if (typeof m.createFuryGatewayConversationAdapter !== 'function' || !Array.isArray(m.FURY_GATEWAY_CONVERSATION_COMMAND_NAMES) || !Array.isArray(m.FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS)) process.exit(1);",
+  ], installDir);
+  assert(gatewayConversationAdapterExport.stderr === '', `Gateway conversation adapter package export wrote stderr: ${gatewayConversationAdapterExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
