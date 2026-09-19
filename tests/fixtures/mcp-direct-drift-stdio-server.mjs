@@ -10,11 +10,11 @@ function readState() {
   try {
     const parsed = JSON.parse(readFileSync(statePath, 'utf8'));
     return {
-      launches: Number.isSafeInteger(parsed.launches) ? parsed.launches : 0,
+      mode: parsed.mode === 'drift' ? 'drift' : 'stable',
       calls: Number.isSafeInteger(parsed.calls) ? parsed.calls : 0,
     };
   } catch {
-    return { launches: 0, calls: 0 };
+    return { mode: 'stable', calls: 0 };
   }
 }
 
@@ -22,10 +22,8 @@ function writeState(state) {
   writeFileSync(statePath, JSON.stringify(state), 'utf8');
 }
 
-const state = readState();
-state.launches += 1;
-writeState(state);
-const drifted = state.launches >= 2;
+const startup = readState();
+const drifted = startup.mode === 'drift';
 
 const inputSchema = fromJsonSchema(drifted
   ? {
