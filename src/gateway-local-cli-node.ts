@@ -123,6 +123,15 @@ export async function startFuryGatewayLocalRuntime(
     ...(options.file === undefined ? {} : { file: options.file }),
     ...(options.env === undefined ? {} : { env: options.env }),
   });
+  const kernel = createFuryKernelConversationStore({
+    maxConversations: 32,
+    maxMessagesPerConversation: 256,
+    maxTurnsPerConversation: 128,
+    maxMessageBytes: 32 * 1024,
+    maxConversationBytes: 512 * 1024,
+    maxInFlightTurns: 16,
+    now,
+  });
   const modelRuntime = createFuryGatewayLocalModelRuntime({
     kernel,
     ...(options.env === undefined ? {} : { env: options.env }),
@@ -183,15 +192,6 @@ export async function startFuryGatewayLocalRuntime(
           model: modelRuntime.config.model,
         }
       : {}),
-  });
-  const kernel = createFuryKernelConversationStore({
-    maxConversations: 32,
-    maxMessagesPerConversation: 256,
-    maxTurnsPerConversation: 128,
-    maxMessageBytes: 32 * 1024,
-    maxConversationBytes: 512 * 1024,
-    maxInFlightTurns: 16,
-    now,
   });
   const conversationAdapter = createFuryGatewayConversationAdapter({
     kernel,
