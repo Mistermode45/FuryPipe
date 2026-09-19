@@ -333,7 +333,6 @@ export function createFuryGatewayDeviceAuthCoordinator(
     ): FuryGatewayAuthenticatedDevice {
       assertProofShape(proof);
       const verifiedAt = finiteNow(now);
-      prune(verifiedAt);
 
       if (consumed.has(proof.challengeId)) {
         throw new FuryGatewayDeviceAuthError('challenge-replayed', 'gateway auth challenge was already consumed');
