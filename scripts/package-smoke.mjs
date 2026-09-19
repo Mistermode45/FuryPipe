@@ -329,6 +329,12 @@ try {
     "const m = await import('furypipe/gateway-local-model-runtime-node'); if (typeof m.createFuryGatewayLocalModelRuntime !== 'function') process.exit(1);",
   ], installDir);
   assert(gatewayLocalModelRuntimeExport.stderr === '', `Gateway local model runtime export wrote stderr: ${gatewayLocalModelRuntimeExport.stderr}`);
+  const furyKernelMcpToolBridgeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/fury-kernel-mcp-tool-bridge-node'); if (typeof m.createFuryKernelMcpToolBridge !== 'function' || typeof m.FuryKernelMcpToolBridgeError !== 'function' || m.FURY_KERNEL_MCP_TOOL_BRIDGE_FORMAT !== 'furypipe-kernel-mcp-tool-bridge/v1') process.exit(1);",
+  ], installDir);
+  assert(furyKernelMcpToolBridgeExport.stderr === '', `Fury Kernel MCP tool bridge export wrote stderr: ${furyKernelMcpToolBridgeExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
