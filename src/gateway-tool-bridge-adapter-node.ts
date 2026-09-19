@@ -176,7 +176,8 @@ function safeRejectedCode(error: unknown): string {
   if (/missing or expired/i.test(message)) return 'tool-proposal-missing-or-expired';
   if (/not approved/i.test(message)) return 'tool-proposal-not-approved';
   if (/capacity/i.test(message)) return 'tool-proposal-capacity';
-  if (/concurrency/i.test(message)) return 'tool-execution-backpressure';
+  if (/probe concurrency/i.test(message)) return 'tool-probe-backpressure';
+  if (/execution concurrency/i.test(message)) return 'tool-execution-backpressure';
   if (/schema validation/i.test(message)) return 'tool-arguments-invalid';
   if (/not awaiting operator approval/i.test(message)) return 'tool-approval-not-pending';
   return 'tool-bridge-operation-rejected';
