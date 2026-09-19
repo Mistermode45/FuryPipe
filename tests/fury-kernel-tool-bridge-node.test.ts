@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -14,6 +17,12 @@ import type { McpDirectPolicy } from '../src/mcp-direct-policy.js';
 
 const fixturePath = fileURLToPath(
   new URL('./fixtures/mcp-direct-execution-stdio-server.mjs', import.meta.url),
+);
+const driftFixturePath = fileURLToPath(
+  new URL('./fixtures/mcp-direct-drift-stdio-server.mjs', import.meta.url),
+);
+const outcomeUnknownFixturePath = fileURLToPath(
+  new URL('./fixtures/mcp-direct-outcome-unknown-stdio-server.mjs', import.meta.url),
 );
 
 function sourceConfig(options: {
@@ -35,6 +44,30 @@ function sourceConfig(options: {
           env: { BRIDGE_SECRET: options.secret },
           principalId: 'tool-bridge-fixture-principal',
         }),
+  };
+  return {
+    ...provisional,
+    source: {
+      ...provisional.source,
+      endpointFingerprint: deriveMcpDirectEndpointFingerprint(provisional),
+    },
+  };
+}
+
+function fixtureConfig(
+  sourceId: string,
+  serverPath: string,
+  args: readonly string[],
+): McpDirectRuntimeConfig {
+  const provisional: McpDirectRuntimeConfig = {
+    source: {
+      sourceId,
+      transport: 'stdio',
+      endpointFingerprint: '0'.repeat(64),
+      trust: 'trusted',
+    },
+    command: process.execPath,
+    args: [serverPath, ...args],
   };
   return {
     ...provisional,
@@ -451,6 +484,123 @@ describe('Fury Kernel governed MCP tool bridge', () => {
     expect(instance.activeProbeCount()).toBe(0);
     expect(instance.activeExecutionCount()).toBe(0);
   }, 20_000);
+
+  it('preserves real fresh-schema drift as a known pre-call rejection', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-tool-bridge-drift-'));
+    try {
+      const statePath = join(root, 'state.json');
+      const config = fixtureConfig(
+        'tool-bridge-drift-fixture',
+        driftFixturePath,
+        [statePath],
+      );
+      const instance = createFuryKernelToolBridge({
+        sources: [{
+          config,
+          policy: policy(config, 'auto'),
+        }],
+        clientInfo: {
+          name: 'furypipe-tool-bridge-test',
+          version: '1.0.0',
+        },
+        connectTimeoutMs: 10_000,
+        listTimeoutMs: 10_000,
+        probeTimeoutMs: 2_000,
+        callTimeoutMs: 10_000,
+      });
+
+      const proposed = await instance.propose({
+        sourceId: 'tool-bridge-drift-fixture',
+        toolName: 'governed-echo',
+        arguments: { message: 'drift proof' },
+      });
+      expect(proposed).toMatchObject({
+        status: 'approved',
+        approvalKind: 'governed_policy',
+      });
+
+      const executed = await instance.execute(proposed.proposalId!);
+      expect(executed).toMatchObject({
+        status: 'failed',
+        sourceId: 'tool-bridge-drift-fixture',
+        toolName: 'governed-echo',
+        state: {
+          executed: false,
+          succeeded: false,
+          verified: false,
+        },
+        failureCode: 'MCP_DIRECT_EXECUTION_PRE_CALL_REJECTED',
+        retrySafe: false,
+        executionAuthority: false,
+      });
+
+      const state = JSON.parse(readFileSync(statePath, 'utf8')) as {
+        launches: number;
+        calls: number;
+      };
+      expect(state.launches).toBeGreaterThanOrEqual(2);
+      expect(state.calls).toBe(0);
+      expect(instance.pendingProposalCount()).toBe(0);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('preserves a real post-invocation transport loss as non-retriable unknown outcome', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-tool-bridge-unknown-'));
+    try {
+      const counterPath = join(root, 'calls.txt');
+      const config = fixtureConfig(
+        'tool-bridge-outcome-fixture',
+        outcomeUnknownFixturePath,
+        [counterPath],
+      );
+      const instance = createFuryKernelToolBridge({
+        sources: [{
+          config,
+          policy: policy(config, 'auto'),
+        }],
+        clientInfo: {
+          name: 'furypipe-tool-bridge-test',
+          version: '1.0.0',
+        },
+        connectTimeoutMs: 10_000,
+        listTimeoutMs: 10_000,
+        probeTimeoutMs: 2_000,
+        callTimeoutMs: 10_000,
+      });
+
+      const proposed = await instance.propose({
+        sourceId: 'tool-bridge-outcome-fixture',
+        toolName: 'governed-echo',
+        arguments: { message: 'unknown outcome proof' },
+      });
+      expect(proposed.status).toBe('approved');
+
+      const executed = await instance.execute(proposed.proposalId!);
+      expect(executed).toMatchObject({
+        status: 'outcome-unknown',
+        sourceId: 'tool-bridge-outcome-fixture',
+        toolName: 'governed-echo',
+        state: {
+          executed: 'unknown',
+          succeeded: 'unknown',
+          verified: false,
+        },
+        failureCode: 'MCP_DIRECT_EXECUTION_OUTCOME_UNKNOWN',
+        retrySafe: false,
+        executionAuthority: false,
+      });
+      expect(readFileSync(counterPath, 'utf8').trim()).toBe('1');
+      expect(instance.pendingProposalCount()).toBe(0);
+
+      await expect(instance.execute(proposed.proposalId!))
+        .rejects.toThrow(/missing or expired/i);
+      expect(readFileSync(counterPath, 'utf8').trim()).toBe('1');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   it('prunes expired proposal authority before approval', async () => {
     let now = 1_000;
