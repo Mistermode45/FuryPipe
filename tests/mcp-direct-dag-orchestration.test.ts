@@ -70,6 +70,10 @@ describe('MCP direct multi-call DAG orchestration', () => {
     expect(() => plan([node('a'), node('b', ['a']), node('c', ['b'])], { maxDepth: 2 })).toThrow(/depth quota/i);
     expect(() => plan([node('a'), node('b', ['a']), node('c', ['a'])], { maxFanOut: 1 })).toThrow(/fan-out quota/i);
     expect(() => plan([node('a', [], { inputBytes: 10_000 })], { maxNodeInputBytes: 1_000 })).toThrow(/input quota/i);
+    expect(() => plan([
+      node('a', [], { outputBytes: 800 }),
+      node('b', [], { outputBytes: 400 }),
+    ], { maxAggregateOutputBytes: 1_000 })).toThrow(/aggregate output quota/i);
   });
 
   it('accepts only exact dependency output references', () => {
