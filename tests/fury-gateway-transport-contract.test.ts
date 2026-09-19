@@ -5,6 +5,7 @@ import {
   FURY_GATEWAY_MAX_MESSAGE_BYTES,
   FURY_GATEWAY_MESSAGE_FORMAT,
   FURY_GATEWAY_PROTOCOL_VERSION,
+  parseFuryGatewayConnectEnvelope,
   parseFuryGatewayMessageText,
   serializeFuryGatewayMessage,
 } from '../src/gateway.js';
@@ -78,6 +79,21 @@ describe('Fury Gateway transport message contract', () => {
     expect(() => parseFuryGatewayMessageText(oversized)).toThrowError(
       expect.objectContaining({ code: 'limit-exceeded' }),
     );
+  });
+
+  it('rejects unserializable payload objects with a stable protocol error', () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(() => serializeFuryGatewayMessage({
+      format: FURY_GATEWAY_MESSAGE_FORMAT,
+      protocolVersion: FURY_GATEWAY_PROTOCOL_VERSION,
+      messageId: 'circular',
+      sequence: 1,
+      kind: 'event',
+      type: 'transport.test',
+      sentAt: 1_000,
+      payload: circular,
+    })).toThrowError(expect.objectContaining({ code: 'invalid-payload' }));
   });
 
   it('rejects malformed JSON, schema drift and invalid sequencing metadata', () => {
@@ -171,6 +187,15 @@ describe('Fury Gateway transport coordinator', () => {
     expect(() => transport.inspectConnection({ ...connection })).toThrowError(
       expect.objectContaining({ code: 'invalid-connection' }),
     );
+  });
+
+  it('accepts an already parsed descriptive connect envelope without granting authority', () => {
+    const transport = createFuryGatewayTransportCoordinator();
+    transport.setStatus('ready');
+    const parsed = parseFuryGatewayConnectEnvelope(connect());
+    const connection = transport.openConnection(parsed, { clientKind: 'device' });
+    expect(connection.role).toBe('node');
+    expect(connection.authority).toBe('transport-connection-only');
   });
 
   it('enforces exact browser Origin and browser role separation', () => {
