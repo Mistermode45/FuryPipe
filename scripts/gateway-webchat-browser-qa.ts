@@ -144,6 +144,7 @@ async function startHarness() {
       return bootstrap.handleHttpRequest(request, response);
     },
     resolveConnection: ({ request }) => bootstrap.resolveConnection(request),
+    admittedStateCommandNames: FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
     handleAdmittedStateCommand: (command) => {
       if (
         !(FURY_GATEWAY_CONVERSATION_COMMAND_NAMES as readonly string[])
