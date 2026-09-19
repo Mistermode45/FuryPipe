@@ -18,6 +18,10 @@ import {
   type FuryGatewayLocalModelConfig,
 } from './gateway-local-model-runtime-node.js';
 import {
+  createFuryGatewayLocalMemoryRuntime,
+  type FuryGatewayLocalMemoryConfig,
+} from './gateway-local-memory-runtime-node.js';
+import {
   createFuryGatewayLocalToolRuntime,
   type FuryGatewayLocalToolConfig,
 } from './gateway-local-tool-runtime-node.js';
@@ -63,6 +67,7 @@ export interface FuryGatewayLocalRuntime {
   readonly config: FuryGatewayLocalConfigResolution;
   readonly model: FuryGatewayLocalModelConfig;
   readonly tools: FuryGatewayLocalToolConfig;
+  readonly memory: FuryGatewayLocalMemoryConfig;
   stop(): Promise<void>;
 }
 
@@ -155,6 +160,9 @@ export async function startFuryGatewayLocalRuntime(
   const toolRuntime = createFuryGatewayLocalToolRuntime({
     ...(options.env === undefined ? {} : { env: options.env }),
     now,
+  });
+  const memoryRuntime = createFuryGatewayLocalMemoryRuntime({
+    ...(options.env === undefined ? {} : { env: options.env }),
   });
   const operatorScopes: FuryGatewayScope[] = [...LOCAL_OPERATOR_SCOPES];
   if (modelRuntime.bridge) operatorScopes.push('capability.provider-inference');
@@ -350,6 +358,7 @@ export async function startFuryGatewayLocalRuntime(
     config,
     model: modelRuntime.config,
     tools: toolRuntime.config,
+    memory: memoryRuntime.config,
     async stop(): Promise<void> {
       if (stopped) return;
       stopped = true;
@@ -423,12 +432,16 @@ export function furyGatewayCliHelp(): string {
     '                        provider credential selected by the explicit provider',
     '  FURYPIPE_WEBCHAT_MCP_CONFIG',
     '                        optional strict host-owned MCP tool config JSON path',
+    '  FURYPIPE_WEBCHAT_MEMORY_CONFIG',
+    '                        optional strict encrypted WebChat memory config JSON path',
     '',
     'Security:',
     '  The local Gateway never treats localhost as authentication.',
     '  Start emits one short-lived one-time bootstrap code.',
     '  Provider inference is disabled unless provider, model, and credential are explicit.',
     '  MCP tools are disabled unless FURYPIPE_WEBCHAT_MCP_CONFIG is explicit.',
+    '  Continuous Memory is disabled unless FURYPIPE_WEBCHAT_MEMORY_CONFIG is explicit.',
+    '  Memory recall/write authority remains separate from provider/tool execution authority.',
     '  Browser admission is not a provider/tool execution permit; governed bridges create exact permits.',
   ].join('\n');
 }
@@ -469,6 +482,7 @@ function renderStart(
       origin: runtime.config.config.origin,
       model: runtime.model,
       tools: runtime.tools,
+      memory: runtime.memory,
       bootstrap: {
         format: runtime.ticket.format,
         code: runtime.ticket.code,
@@ -489,6 +503,9 @@ function renderStart(
       : 'disabled'}`,
     `  Tools:     ${runtime.tools.enabled
       ? `${runtime.tools.sourceCount} configured source(s)`
+      : 'disabled'}`,
+    `  Memory:    ${runtime.memory.enabled
+      ? `encrypted · scopes=${runtime.memory.scopeKinds.join(',')} · learning=${runtime.memory.learningEnabled ? 'enabled' : 'disabled'}`
       : 'disabled'}`,
     '',
     'Local browser bootstrap code (one-time, short-lived):',
