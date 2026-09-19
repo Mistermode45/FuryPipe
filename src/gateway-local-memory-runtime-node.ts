@@ -64,7 +64,7 @@ interface MemoryFileConfig {
     readonly maxGlobalBytes: number;
     readonly encryption: {
       readonly activeKeyId: string;
-      readonly keys: Readonly<Record<string, string>>;
+      readonly keys: Readonly<Record<string, Uint8Array>>;
     };
   };
   readonly scopes: ContinuousMemoryScopes;
