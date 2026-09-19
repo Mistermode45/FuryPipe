@@ -1232,6 +1232,20 @@ export function createFuryGatewayWebChatHandler(
   } else if (options.modelProvider !== undefined || options.model !== undefined) {
     throw new Error('Gateway WebChat disabled model bridge must not expose model metadata');
   }
+
+  const toolBridgeEnabled = options.toolBridgeEnabled === true;
+  if (toolBridgeEnabled) {
+    if (
+      !Number.isSafeInteger(options.toolSourceCount)
+      || (options.toolSourceCount as number) < 1
+      || (options.toolSourceCount as number) > 32
+    ) {
+      throw new Error('Gateway WebChat tool source count must be an integer from 1 to 32');
+    }
+  } else if (options.toolSourceCount !== undefined) {
+    throw new Error('Gateway WebChat disabled tool bridge must not expose tool metadata');
+  }
+
   const webChatConfig = JSON.stringify(Object.freeze({
     format: FURY_GATEWAY_WEBCHAT_CONFIG_FORMAT,
     modelBridge: modelBridgeEnabled
@@ -1239,6 +1253,12 @@ export function createFuryGatewayWebChatHandler(
           enabled: true as const,
           providerId: options.modelProvider!,
           model: options.model!,
+        })
+      : Object.freeze({ enabled: false as const }),
+    tools: toolBridgeEnabled
+      ? Object.freeze({
+          enabled: true as const,
+          sourceCount: options.toolSourceCount!,
         })
       : Object.freeze({ enabled: false as const }),
     executionAuthority: false as const,
