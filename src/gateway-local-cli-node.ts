@@ -10,6 +10,10 @@ import {
 } from './gateway-conversation-adapter-node.js';
 import { createFuryKernelConversationStore } from './fury-kernel.js';
 import {
+  FURY_GATEWAY_WEBCHAT_PATH,
+  createFuryGatewayWebChatHandler,
+} from './gateway-webchat-node.js';
+import {
   createFuryGatewayLocalBootstrapManager,
   type FuryGatewayLocalBootstrapTicket,
 } from './gateway-local-operator-bootstrap-node.js';
@@ -153,6 +157,9 @@ export async function startFuryGatewayLocalRuntime(
   });
 
   const ticket = bootstrap.issueTicket();
+  const webchat = createFuryGatewayWebChatHandler({
+    origin: config.config.origin,
+  });
   const kernel = createFuryKernelConversationStore({
     maxConversations: 32,
     maxMessagesPerConversation: 256,
@@ -175,7 +182,10 @@ export async function startFuryGatewayLocalRuntime(
     daemon = await startFuryGatewayDaemon({
       sessionCoordinator,
       commandRegistry,
-      handleHttpRequest: (request, response) => bootstrap.handleHttpRequest(request, response),
+      handleHttpRequest: async (request, response) => {
+        if (await webchat(request, response)) return true;
+        return bootstrap.handleHttpRequest(request, response);
+      },
       handleAdmittedStateCommand: (command) => {
         if (
           !(FURY_GATEWAY_CONVERSATION_COMMAND_NAMES as readonly string[])
@@ -314,6 +324,7 @@ function renderStart(
       format: 'furypipe-gateway-local-start/v1',
       status: 'ready',
       websocketUrl: runtime.daemon.address.url,
+      webChatUrl: `${runtime.config.config.origin}${FURY_GATEWAY_WEBCHAT_PATH}`,
       origin: runtime.config.config.origin,
       bootstrap: {
         format: runtime.ticket.format,
@@ -328,6 +339,7 @@ function renderStart(
   return [
     'FuryPipe Gateway ready',
     `  WebSocket: ${runtime.daemon.address.url}`,
+    `  WebChat:   ${runtime.config.config.origin}${FURY_GATEWAY_WEBCHAT_PATH}`,
     `  Origin:    ${runtime.config.config.origin}`,
     '',
     'Local browser bootstrap code (one-time, short-lived):',
