@@ -199,14 +199,25 @@ export function createFuryGatewayLocalModelRuntime(
   }
 
   const providerRuntime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
-  providerRuntime.observeHealth({
-    providerId: config.providerId,
-    availability: 'available',
-    observedAt,
-    expiresAt: observedAt + HEALTH_TTL_MS,
-    source: 'local-webchat-operator-config',
-    evidenceKind: 'operator-config',
-  });
+  const observeConfiguredHealth = (): void => {
+    const at = now();
+    if (!Number.isSafeInteger(at) || at < 0) {
+      throw new Error('local Gateway model runtime clock is invalid');
+    }
+    const expiresAt = at + HEALTH_TTL_MS;
+    if (!Number.isSafeInteger(expiresAt)) {
+      throw new Error('local Gateway model runtime health expiry is invalid');
+    }
+    providerRuntime.observeHealth({
+      providerId: config.providerId,
+      availability: 'available',
+      observedAt: at,
+      expiresAt,
+      source: 'local-webchat-operator-config',
+      evidenceKind: 'operator-config',
+    });
+  };
+  observeConfiguredHealth();
 
   const route: FuryKernelModelRoute = Object.freeze({
     providerId: config.providerId,
@@ -215,7 +226,7 @@ export function createFuryGatewayLocalModelRuntime(
     permitTtlMs: PROVIDER_PERMIT_TTL_MS,
   });
 
-  const bridge = createFuryKernelModelBridge({
+  const governedBridge = createFuryKernelModelBridge({
     kernel: options.kernel,
     providerRuntime,
     transports: createProviderTransportRegistry([
@@ -231,6 +242,22 @@ export function createFuryGatewayLocalModelRuntime(
       allowCrossProviderFallback: false,
     }),
     now,
+  });
+
+  const bridge: FuryKernelModelBridge = Object.freeze({
+    async executeTurn(input) {
+      // Refresh host-owned operator-config evidence immediately before the
+      // governed planner evaluates provider availability. This does not claim
+      // live provider health and does not bypass transport credential checks.
+      observeConfiguredHealth();
+      return governedBridge.executeTurn(input);
+    },
+    cancelTurn(conversationId, turnId) {
+      return governedBridge.cancelTurn(conversationId, turnId);
+    },
+    activeExecutionCount() {
+      return governedBridge.activeExecutionCount();
+    },
   });
 
   return Object.freeze({ config, bridge });
