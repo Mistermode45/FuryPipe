@@ -363,6 +363,20 @@ function validateJsonValue(value: unknown): void {
   visit(value, 0);
 }
 
+function freezeJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    for (const item of value) freezeJsonValue(item);
+    return Object.freeze(value);
+  }
+  if (value !== null && typeof value === 'object') {
+    for (const child of Object.values(value as Record<string, unknown>)) {
+      freezeJsonValue(child);
+    }
+    return Object.freeze(value);
+  }
+  return value;
+}
+
 function isLoopback(address: string): boolean {
   const normalized = address.trim().toLowerCase();
   return normalized === '127.0.0.1'
@@ -468,10 +482,11 @@ function parsePayload(type: FuryGatewayTransportMessageType, value: unknown): Fu
     );
     const declaredPluginPermissions = parsePluginPermissions(record.declaredPluginPermissions);
     validateJsonValue(record.input);
+    const input = freezeJsonValue(record.input);
     return Object.freeze({
       commandName,
       declaredPluginPermissions,
-      input: record.input,
+      input,
     });
   }
 
@@ -764,6 +779,12 @@ export function createFuryGatewayTransportCoordinator(
     ): FuryGatewayTransportAcceptedMessage {
       const at = finiteNow(now);
       const state = resolveState(connection);
+      if (typeof raw !== 'string') {
+        throw new FuryGatewayTransportError(
+          'invalid-message',
+          'Gateway transport accepts text frames only',
+        );
+      }
       if (!sessionCoordinator.isActiveSession(state.session)) {
         throw new FuryGatewayTransportError(
           'invalid-session',
