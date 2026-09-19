@@ -121,6 +121,10 @@
       "types": "./dist/fury-kernel.d.ts",
       "import": "./dist/fury-kernel.js"
     },
+    "./gateway-conversation-adapter-node": {
+      "types": "./dist/gateway-conversation-adapter-node.d.ts",
+      "import": "./dist/gateway-conversation-adapter-node.js"
+    },
     "./skill-registry": {
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"
