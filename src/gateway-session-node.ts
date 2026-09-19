@@ -231,7 +231,7 @@ function normalizeScopes(scopes: readonly FuryGatewayScope[]): readonly FuryGate
   const seen = new Set<string>();
   const normalized: FuryGatewayScope[] = [];
   for (const scope of scopes) {
-    if (typeof scope !== 'string' || !SCOPE_SET.has(scope)) {
+    if (!isFuryGatewayScope(scope)) {
       throw new FuryGatewaySessionError('invalid-scope', 'gateway session contains an unknown scope');
     }
     if (scope.includes('*')) {
