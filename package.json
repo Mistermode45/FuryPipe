@@ -373,6 +373,10 @@
       "types": "./dist/mcp-direct-durable-replay-node.d.ts",
       "import": "./dist/mcp-direct-durable-replay-node.js"
     }
+    , "./mcp-direct-dag-orchestration": {
+      "types": "./dist/mcp-direct-dag-orchestration.d.ts",
+      "import": "./dist/mcp-direct-dag-orchestration.js"
+    }
   },
   "files": [
     "bin/",
