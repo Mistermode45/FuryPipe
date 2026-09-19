@@ -249,6 +249,47 @@ describe('Gateway governed model execution WebSocket boundary', () => {
     expect(calls).toBe(0);
   });
 
+  it('requires the declared provider-inference permission even when session scope exists', async () => {
+    const h = harness([
+      'conversations.write',
+      'capability.provider-inference',
+    ]);
+    let calls = 0;
+    const handle = await listenFuryGatewayWebSocketHost({
+      sessionCoordinator: h.sessionCoordinator,
+      commandRegistry: createFuryGatewayCommandRegistry(
+        FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS,
+      ),
+      allowedOrigins: ['http://localhost:3000'],
+      resolveConnection: () => ({
+        session: h.session,
+        clientKind: 'browser',
+      }),
+      admittedExecutionCommandNames: FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES,
+      handleAdmittedExecutionCommand: async () => {
+        calls += 1;
+        return {};
+      },
+    });
+    handles.push(handle);
+
+    const { ws, hello } = await connect(handle.address.url);
+    const response = collect(ws, 1);
+    ws.send(frame(String(hello.connectionId), 1, []));
+    const [admission] = await response;
+
+    expect(admission).toMatchObject({
+      type: 'command-admission',
+      admission: {
+        outcome: 'deny',
+        executionAuthority: false,
+      },
+      executionAuthority: false,
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    expect(calls).toBe(0);
+  });
+
   it('fails configuration when state and execution allowlists overlap', async () => {
     const h = harness([
       'conversations.write',
@@ -269,6 +310,58 @@ describe('Gateway governed model execution WebSocket boundary', () => {
       admittedExecutionCommandNames: ['conversation.model.execute'],
       handleAdmittedExecutionCommand: async () => ({}),
     })).rejects.toThrow(/disjoint/u);
+  });
+
+  it('applies independent async execution backpressure', async () => {
+    const h = harness([
+      'conversations.write',
+      'capability.provider-inference',
+    ]);
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const handle = await listenFuryGatewayWebSocketHost({
+      sessionCoordinator: h.sessionCoordinator,
+      commandRegistry: createFuryGatewayCommandRegistry(
+        FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS,
+      ),
+      allowedOrigins: ['http://localhost:3000'],
+      resolveConnection: () => ({
+        session: h.session,
+        clientKind: 'browser',
+      }),
+      admittedExecutionCommandNames: FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES,
+      handleAdmittedExecutionCommand: async () => {
+        await blocked;
+        return {
+          status: 'completed',
+          executionAuthority: false,
+        };
+      },
+      maxInFlightExecutionCommands: 1,
+    });
+    handles.push(handle);
+
+    const { ws, hello } = await connect(handle.address.url);
+    const responses = collect(ws, 3);
+    ws.send(frame(String(hello.connectionId), 1));
+    ws.send(frame(String(hello.connectionId), 2));
+    const received = await responses;
+    const rejected = received.find((entry) =>
+      entry.type === 'execution-command-result'
+      && (entry.result as { status?: string } | undefined)?.status === 'rejected'
+    );
+
+    expect(rejected).toMatchObject({
+      type: 'execution-command-result',
+      commandName: 'conversation.model.execute',
+      result: {
+        status: 'rejected',
+        error: { code: 'execution-command-backpressure' },
+        executionAuthority: false,
+      },
+      executionAuthority: false,
+    });
+    release();
   });
 
   it('redacts async handler failures into a bounded safe result', async () => {
