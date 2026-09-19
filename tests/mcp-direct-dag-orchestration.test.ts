@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -390,4 +391,35 @@ describe('M6 real MCP v2 integration', () => {
       await rm(root, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+describe('M6 OS process recovery boundary', () => {
+  it('admits one node across two real OS schedulers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m6-dag-os-'));
+    const worker = fileURLToPath(new URL('./fixtures/mcp-direct-dag-race-worker.ts', import.meta.url));
+    const tsx = join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    const run = (marker: string) => new Promise<string>((resolve, reject) => {
+      const child = spawn(process.execPath, [tsx, worker, JSON.stringify({ root, marker })], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.setEncoding('utf8');
+      child.stderr.setEncoding('utf8');
+      child.stdout.on('data', (chunk: string) => { stdout += chunk; });
+      child.stderr.on('data', (chunk: string) => { stderr += chunk; });
+      child.on('error', reject);
+      child.on('close', code => code === 0 ? resolve(stdout.trim()) : reject(new Error(stderr)));
+    });
+    try {
+      await Promise.all([
+        run(join(root, 'wire-a')),
+        run(join(root, 'wire-b')),
+      ]);
+      const files = await readdir(root);
+      expect(files.filter((file) => file.startsWith('wire-'))).toHaveLength(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
