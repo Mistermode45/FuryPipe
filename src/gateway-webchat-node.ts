@@ -14,6 +14,8 @@ export interface FuryGatewayWebChatOptions {
   readonly modelBridgeEnabled?: boolean;
   readonly modelProvider?: 'openai' | 'anthropic' | 'google';
   readonly model?: string;
+  readonly toolBridgeEnabled?: boolean;
+  readonly toolSourceCount?: number;
 }
 
 const HTML = `<!doctype html>
@@ -84,7 +86,7 @@ const HTML = `<!doctype html>
         <div id="messages" class="messages" aria-live="polite" aria-label="Conversation messages">
           <div class="empty-state">
             <strong>Fury Kernel is ready.</strong>
-            <span>Phase 2A.3 provides governed local conversation state. Model inference is enabled only in the later Model Fabric bridge gate.</span>
+            <span>Conversation state, provider inference, and tool execution remain separate governed lifecycles.</span>
           </div>
         </div>
         <form id="message-form" class="composer">
@@ -108,6 +110,49 @@ const HTML = `<!doctype html>
         </div>
         <ol id="activity-list" class="activity-list"></ol>
       </aside>
+
+      <section id="tools-panel" class="panel tools" aria-labelledby="tools-title" hidden>
+        <div class="tools-head">
+          <div>
+            <p class="eyebrow">GOVERNED MCP</p>
+            <h2 id="tools-title">Tools</h2>
+            <p class="muted">Inventory, proposal, approval and execution are separate steps. Tool output is never inserted into chat automatically.</p>
+          </div>
+          <span id="tool-source-count" class="badge">0 sources</span>
+        </div>
+        <div class="tools-grid">
+          <div class="tool-control">
+            <label for="tool-source">Source</label>
+            <select id="tool-source" disabled>
+              <option value="">No source loaded</option>
+            </select>
+          </div>
+          <div class="tool-control">
+            <label for="tool-name">Tool</label>
+            <select id="tool-name" disabled>
+              <option value="">Refresh inventory first</option>
+            </select>
+          </div>
+          <div class="tool-actions">
+            <button id="tool-refresh" type="button" class="secondary" disabled>Refresh inventory</button>
+          </div>
+        </div>
+        <div class="tool-control tool-arguments">
+          <label for="tool-arguments">Arguments (JSON)</label>
+          <textarea id="tool-arguments" rows="5" spellcheck="false">{}</textarea>
+        </div>
+        <div class="tool-actions tool-lifecycle-actions">
+          <button id="tool-propose" type="button" disabled>Propose</button>
+          <button id="tool-approve" type="button" class="secondary" disabled>Approve</button>
+          <button id="tool-execute" type="button" class="secondary" disabled>Execute</button>
+          <button id="tool-discard" type="button" class="danger" disabled>Discard</button>
+          <span id="tool-status" class="status" role="status" aria-live="polite"></span>
+        </div>
+        <div class="tool-result-wrap">
+          <p class="eyebrow">TOOL RESULT</p>
+          <pre id="tool-result" class="tool-result" tabindex="0">No tool result.</pre>
+        </div>
+      </section>
     </section>
   </main>
   <script src="/gateway/webchat/app.js" defer></script>
@@ -132,7 +177,7 @@ const CSS = `:root {
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 20% 0%, #1b2230 0, #090b10 36rem); }
-button, input, textarea { font: inherit; }
+button, input, textarea, select { font: inherit; }
 button {
   border: 1px solid #6d4b10;
   background: var(--accent);
@@ -163,7 +208,7 @@ h2 { margin-bottom: .45rem; font-size: 1.05rem; }
 .auth-panel { display: grid; grid-template-columns: minmax(0,1fr) minmax(20rem,.8fr); gap: 2rem; padding: 2rem; max-width: 70rem; margin: 10vh auto 0; }
 .bootstrap-form label { display: block; font-weight: 750; margin-bottom: .55rem; }
 .input-row { display: flex; gap: .65rem; }
-input, textarea { width: 100%; border: 1px solid #394559; background: #0b0f16; color: #f5f7fb; border-radius: .75rem; padding: .8rem .9rem; }
+input, textarea, select { width: 100%; border: 1px solid #394559; background: #0b0f16; color: #f5f7fb; border-radius: .75rem; padding: .8rem .9rem; }
 textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
 .status { color: var(--muted); min-height: 1.2em; font-size: .85rem; }
 .workspace { display: grid; grid-template-columns: 17rem minmax(0,1fr) 19rem; gap: 1rem; min-height: calc(100vh - 7rem); }
@@ -189,11 +234,23 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
 .activity-title { display: flex; justify-content: space-between; gap: .5rem; align-items: flex-start; }
 .activity-list { margin: .75rem 0 0; padding-left: 1.35rem; display: grid; gap: .7rem; font-size: .78rem; color: var(--muted); }
 .activity-list li strong { display: block; color: #dce5f3; margin-bottom: .15rem; }
+.tools { grid-column: 1 / -1; padding: 1rem; display: grid; gap: 1rem; }
+.tools-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.tools-head .muted { max-width: 60rem; margin-bottom: 0; }
+.tools-grid { display: grid; grid-template-columns: minmax(12rem,.8fr) minmax(12rem,1fr) auto; gap: .75rem; align-items: end; }
+.tool-control { display: grid; gap: .4rem; }
+.tool-control label { font-weight: 750; font-size: .82rem; color: #dce5f3; }
+.tool-actions { display: flex; gap: .55rem; flex-wrap: wrap; align-items: center; }
+.tool-lifecycle-actions .status { margin-left: .35rem; }
+.tool-result-wrap { border-top: 1px solid var(--border); padding-top: .85rem; }
+.tool-result { margin: 0; min-height: 4rem; max-height: 18rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid #293447; background: #090d13; color: #cbd7e7; border-radius: .75rem; padding: .8rem; font-size: .78rem; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @media (max-width: 1100px) {
   .workspace { grid-template-columns: 15rem minmax(0,1fr); }
   .activity { grid-column: 1 / -1; min-height: auto; }
   .activity-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .tools-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .tools-grid .tool-actions { grid-column: 1 / -1; }
 }
 @media (max-width: 760px) {
   .shell { padding: .75rem; }
@@ -204,6 +261,9 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
   .sidebar { order: 2; }
   .chat { order: 1; min-height: 70vh; }
   .activity { order: 3; grid-column: auto; }
+  .tools { order: 4; grid-column: auto; }
+  .tools-grid { grid-template-columns: 1fr; }
+  .tools-grid .tool-actions { grid-column: auto; }
   .activity-list { grid-template-columns: 1fr; }
   .message { max-width: 96%; }
   .composer-actions { flex-wrap: wrap; }
