@@ -287,6 +287,12 @@ try {
     "const m = await import('furypipe/agent-runtime'); if (typeof m.runAgent !== 'function') process.exit(1);",
   ], installDir);
   assert(agentRuntimeExport.stderr === '', `Agent runtime package export wrote stderr: ${agentRuntimeExport.stderr}`);
+  const furyKernelExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/fury-kernel'); if (typeof m.createFuryKernelConversationStore !== 'function' || typeof m.FuryKernelConversationError !== 'function') process.exit(1);",
+  ], installDir);
+  assert(furyKernelExport.stderr === '', `Fury Kernel package export wrote stderr: ${furyKernelExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
