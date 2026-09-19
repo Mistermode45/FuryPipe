@@ -325,6 +325,10 @@ describe('Fury Gateway CLI execution', () => {
         format: 'furypipe-gateway-local-model-config/v1',
         enabled: false,
       },
+      tools: {
+        format: 'furypipe-gateway-local-tool-config/v1',
+        enabled: false,
+      },
       config: {
         config: {
           host: '127.0.0.1',
@@ -370,6 +374,10 @@ describe('Fury Gateway CLI execution', () => {
       origin: 'http://127.0.0.1:48722',
       model: {
         format: 'furypipe-gateway-local-model-config/v1',
+        enabled: false,
+      },
+      tools: {
+        format: 'furypipe-gateway-local-tool-config/v1',
         enabled: false,
       },
       authority: 'bootstrap-only',
