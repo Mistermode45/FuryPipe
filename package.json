@@ -109,6 +109,14 @@
       "types": "./dist/gateway.d.ts",
       "import": "./dist/gateway.js"
     },
+    "./gateway-auth-node": {
+      "types": "./dist/gateway-auth-node.d.ts",
+      "import": "./dist/gateway-auth-node.js"
+    },
+    "./gateway-pairing-node": {
+      "types": "./dist/gateway-pairing-node.d.ts",
+      "import": "./dist/gateway-pairing-node.js"
+    },
     "./agent-fabric": {
       "types": "./dist/agent-fabric.d.ts",
       "import": "./dist/agent-fabric.js"
@@ -411,6 +419,7 @@
     "docs/OMNIROUTE.md",
     "docs/OPENCLAW.md",
     "docs/FURY_GATEWAY_FOUNDATION_2026.md",
+    "docs/FURY_GATEWAY_DEVICE_AUTH_PAIRING_2026.md",
     "docs/AGENT_FABRIC.md",
     "docs/LEARNING_KNOWLEDGE.md",
     "docs/LONG_TERM_MEMORY.md",
