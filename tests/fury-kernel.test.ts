@@ -5,18 +5,13 @@ import {
   FuryKernelConversationError,
 } from '../src/fury-kernel.js';
 
-const FIXED_CONVERSATION_ID = 'fkc_ABCDEFGHIJKLMNOPQRSTUVWX';
-
 describe('Fury Kernel conversation foundation', () => {
-  it('opens bounded ephemeral conversation state without execution authority', () => {
+  it('opens server-generated bounded ephemeral conversation state without execution authority', () => {
     const kernel = createFuryKernelConversationStore({ now: () => 1000 });
-    const conversation = kernel.openConversation({
-      conversationId: FIXED_CONVERSATION_ID,
-    });
+    const conversation = kernel.openConversation();
 
-    expect(conversation).toEqual({
+    expect(conversation).toMatchObject({
       format: 'furypipe-kernel-conversation/v1',
-      conversationId: FIXED_CONVERSATION_ID,
       createdAt: 1000,
       updatedAt: 1000,
       messages: [],
@@ -24,6 +19,7 @@ describe('Fury Kernel conversation foundation', () => {
       authority: 'conversation-state',
       executionAuthority: false,
     });
+    expect(conversation.conversationId).toMatch(/^fkc_[A-Za-z0-9_-]{24}$/u);
     expect(Object.isFrozen(conversation)).toBe(true);
     expect(Object.isFrozen(conversation.messages)).toBe(true);
     expect(Object.isFrozen(conversation.turns)).toBe(true);
@@ -34,11 +30,11 @@ describe('Fury Kernel conversation foundation', () => {
   it('accepts one user turn and completes it only through the trusted Kernel API', () => {
     let now = 1000;
     const kernel = createFuryKernelConversationStore({ now: () => now });
-    kernel.openConversation({ conversationId: FIXED_CONVERSATION_ID });
+    const id = kernel.openConversation().conversationId;
 
     now = 1100;
     const accepted = kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'user-1',
       content: 'Hello FuryPipe',
     });
@@ -52,7 +48,7 @@ describe('Fury Kernel conversation foundation', () => {
 
     now = 1200;
     const completed = kernel.completeTurn({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       turnId: accepted.turn.turnId,
       messageId: 'assistant-1',
       content: 'Hello from the Kernel facade.',
@@ -70,7 +66,7 @@ describe('Fury Kernel conversation foundation', () => {
     });
     expect(kernel.inFlightTurnCount()).toBe(0);
 
-    const snapshot = kernel.inspectConversation(FIXED_CONVERSATION_ID);
+    const snapshot = kernel.inspectConversation(id);
     expect(snapshot.messages).toEqual([
       {
         format: 'furypipe-kernel-message/v1',
@@ -92,16 +88,16 @@ describe('Fury Kernel conversation foundation', () => {
 
   it('rejects duplicate user and assistant message IDs as replay', () => {
     const kernel = createFuryKernelConversationStore();
-    kernel.openConversation({ conversationId: FIXED_CONVERSATION_ID });
+    const id = kernel.openConversation().conversationId;
 
     const accepted = kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'stable-message-id',
       content: 'first',
     });
 
     expect(() => kernel.completeTurn({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       turnId: accepted.turn.turnId,
       messageId: 'stable-message-id',
       content: 'must fail',
@@ -110,12 +106,12 @@ describe('Fury Kernel conversation foundation', () => {
     }));
 
     kernel.cancelTurn({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       turnId: accepted.turn.turnId,
     });
 
     expect(() => kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'stable-message-id',
       content: 'replay',
     })).toThrowError(expect.objectContaining({
@@ -126,17 +122,17 @@ describe('Fury Kernel conversation foundation', () => {
   it('allows cancellation exactly once and rejects completion after cancellation', () => {
     let now = 50;
     const kernel = createFuryKernelConversationStore({ now: () => now });
-    kernel.openConversation({ conversationId: FIXED_CONVERSATION_ID });
+    const id = kernel.openConversation().conversationId;
 
     const accepted = kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'cancel-me',
       content: 'cancel this turn',
     });
 
     now = 75;
     const cancelled = kernel.cancelTurn({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       turnId: accepted.turn.turnId,
     });
 
@@ -148,12 +144,12 @@ describe('Fury Kernel conversation foundation', () => {
     expect(kernel.inFlightTurnCount()).toBe(0);
 
     expect(() => kernel.cancelTurn({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       turnId: accepted.turn.turnId,
     })).toThrowError(expect.objectContaining({ code: 'turn-terminal' }));
 
     expect(() => kernel.completeTurn({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       turnId: accepted.turn.turnId,
       messageId: 'late-answer',
       content: 'too late',
@@ -162,16 +158,16 @@ describe('Fury Kernel conversation foundation', () => {
 
   it('permits only one in-flight turn per conversation', () => {
     const kernel = createFuryKernelConversationStore();
-    kernel.openConversation({ conversationId: FIXED_CONVERSATION_ID });
+    const id = kernel.openConversation().conversationId;
 
     kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'first-turn',
       content: 'first',
     });
 
     expect(() => kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'second-turn',
       content: 'second',
     })).toThrowError(expect.objectContaining({
@@ -184,12 +180,11 @@ describe('Fury Kernel conversation foundation', () => {
       maxConversations: 2,
       maxInFlightTurns: 1,
     });
-    const secondId = 'fkc_ZYXWVUTSRQPONMLKJIHGFEDC';
-    kernel.openConversation({ conversationId: FIXED_CONVERSATION_ID });
-    kernel.openConversation({ conversationId: secondId });
+    const firstId = kernel.openConversation().conversationId;
+    const secondId = kernel.openConversation().conversationId;
 
     kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: firstId,
       messageId: 'first',
       content: 'first',
     });
@@ -208,22 +203,22 @@ describe('Fury Kernel conversation foundation', () => {
       maxMessagesPerConversation: 2,
       maxTurnsPerConversation: 2,
     });
-    kernel.openConversation({ conversationId: FIXED_CONVERSATION_ID });
+    const id = kernel.openConversation().conversationId;
 
     const accepted = kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'request-1',
       content: 'one',
     });
     kernel.completeTurn({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       turnId: accepted.turn.turnId,
       messageId: 'response-1',
       content: 'two',
     });
 
     expect(() => kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'request-2',
       content: 'three',
     })).toThrowError(expect.objectContaining({
@@ -236,30 +231,29 @@ describe('Fury Kernel conversation foundation', () => {
       maxMessageBytes: 5,
       maxConversationBytes: 8,
     });
-    kernel.openConversation({ conversationId: FIXED_CONVERSATION_ID });
+    const id = kernel.openConversation().conversationId;
 
     expect(() => kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'too-big',
       content: '123456',
     })).toThrowError(expect.objectContaining({ code: 'byte-limit' }));
 
     const accepted = kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'fits',
       content: '12345',
     });
 
     expect(() => kernel.completeTurn({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       turnId: accepted.turn.turnId,
       messageId: 'would-overflow',
       content: '1234',
     })).toThrowError(expect.objectContaining({ code: 'byte-limit' }));
 
     expect(kernel.inFlightTurnCount()).toBe(1);
-    expect(kernel.inspectConversation(FIXED_CONVERSATION_ID).messages)
-      .toHaveLength(1);
+    expect(kernel.inspectConversation(id).messages).toHaveLength(1);
   });
 
   it('fails closed on unsafe clocks and invalid configuration', () => {
@@ -272,37 +266,41 @@ describe('Fury Kernel conversation foundation', () => {
     const kernel = createFuryKernelConversationStore({
       now: () => Number.NaN,
     });
-    expect(() => kernel.openConversation({
-      conversationId: FIXED_CONVERSATION_ID,
-    })).toThrowError(expect.objectContaining({
+    expect(() => kernel.openConversation()).toThrowError(expect.objectContaining({
       code: 'invalid-config',
     }));
   });
 
   it('rejects malformed identifiers, empty/NUL messages and browser-style system injection shapes', () => {
     const kernel = createFuryKernelConversationStore();
-    kernel.openConversation({ conversationId: FIXED_CONVERSATION_ID });
+    const id = kernel.openConversation().conversationId;
 
     expect(() => kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: 'not-a-kernel-conversation',
+      messageId: 'bad-conversation',
+      content: 'hello',
+    })).toThrowError(FuryKernelConversationError);
+
+    expect(() => kernel.submitUserMessage({
+      conversationId: id,
       messageId: 'bad id',
       content: 'hello',
     })).toThrowError(FuryKernelConversationError);
 
     expect(() => kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'blank',
       content: '   ',
     })).toThrowError(expect.objectContaining({ code: 'invalid-message' }));
 
     expect(() => kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'nul',
       content: 'hello\0world',
     })).toThrowError(expect.objectContaining({ code: 'invalid-message' }));
 
     expect(() => kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'system-attempt',
       content: 'normal content',
       role: 'system',
@@ -311,14 +309,14 @@ describe('Fury Kernel conversation foundation', () => {
 
   it('returns immutable snapshots rather than mutable internal state', () => {
     const kernel = createFuryKernelConversationStore();
-    kernel.openConversation({ conversationId: FIXED_CONVERSATION_ID });
+    const id = kernel.openConversation().conversationId;
     const accepted = kernel.submitUserMessage({
-      conversationId: FIXED_CONVERSATION_ID,
+      conversationId: id,
       messageId: 'immutable',
       content: 'hello',
     });
 
-    const snapshot = kernel.inspectConversation(FIXED_CONVERSATION_ID);
+    const snapshot = kernel.inspectConversation(id);
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.messages)).toBe(true);
     expect(Object.isFrozen(snapshot.messages[0])).toBe(true);
@@ -332,19 +330,61 @@ describe('Fury Kernel conversation foundation', () => {
       (snapshot.turns[0] as { status: string }).status = 'completed';
     }).toThrow();
 
-    expect(kernel.inspectConversation(FIXED_CONVERSATION_ID).messages[0]?.content).toBe('hello');
-    expect(kernel.inspectConversation(FIXED_CONVERSATION_ID).turns[0]?.turnId)
-      .toBe(accepted.turn.turnId);
+    expect(kernel.inspectConversation(id).messages[0]?.content).toBe('hello');
+    expect(kernel.inspectConversation(id).turns[0]?.turnId).toBe(accepted.turn.turnId);
   });
 
-  it('enforces conversation capacity', () => {
-    const kernel = createFuryKernelConversationStore({ maxConversations: 1 });
-    kernel.openConversation({ conversationId: FIXED_CONVERSATION_ID });
+  it('closes terminal conversations and reclaims bounded capacity', () => {
+    let now = 100;
+    const kernel = createFuryKernelConversationStore({
+      now: () => now,
+      maxConversations: 1,
+    });
+    const firstId = kernel.openConversation().conversationId;
 
-    expect(() => kernel.openConversation({
-      conversationId: 'fkc_ZYXWVUTSRQPONMLKJIHGFEDC',
-    })).toThrowError(expect.objectContaining({
+    expect(() => kernel.openConversation()).toThrowError(expect.objectContaining({
       code: 'conversation-limit',
     }));
+
+    now = 125;
+    const closed = kernel.closeConversation(firstId);
+    expect(closed).toEqual({
+      format: 'furypipe-kernel-conversation/v1',
+      conversationId: firstId,
+      status: 'closed',
+      closedAt: 125,
+      executionAuthority: false,
+    });
+    expect(kernel.activeConversationCount()).toBe(0);
+    expect(() => kernel.inspectConversation(firstId)).toThrowError(expect.objectContaining({
+      code: 'invalid-conversation',
+    }));
+
+    const second = kernel.openConversation();
+    expect(second.conversationId).not.toBe(firstId);
+    expect(kernel.activeConversationCount()).toBe(1);
+  });
+
+  it('refuses to close a conversation while a turn is active', () => {
+    const kernel = createFuryKernelConversationStore();
+    const id = kernel.openConversation().conversationId;
+    const accepted = kernel.submitUserMessage({
+      conversationId: id,
+      messageId: 'active-turn',
+      content: 'still running',
+    });
+
+    expect(() => kernel.closeConversation(id)).toThrowError(expect.objectContaining({
+      code: 'conversation-in-flight',
+    }));
+    expect(kernel.activeConversationCount()).toBe(1);
+    expect(kernel.inFlightTurnCount()).toBe(1);
+
+    kernel.cancelTurn({
+      conversationId: id,
+      turnId: accepted.turn.turnId,
+    });
+    expect(kernel.closeConversation(id).status).toBe('closed');
+    expect(kernel.activeConversationCount()).toBe(0);
   });
 });
