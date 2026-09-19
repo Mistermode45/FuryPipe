@@ -1,6 +1,6 @@
 # FuryPipe VNext — Phase 2A.5 Governed Tool Bridge
 
-**Status:** implementation track — evidence pending  
+**Status:** implementation present — exact-HEAD evidence pending  
 **Stack base:** exact Phase 2A.4 HEAD `85637af0e329cd2363c59e1825869151d90ba16c`  
 **Branch:** `vnext-phase2a5-governed-tool-bridge`
 
@@ -72,8 +72,10 @@ Tool commands use the asynchronous execution boundary, not the state-only dispat
 
 - a live operator session;
 - dedicated MCP scopes;
-- `capability.network` when network/process transport is involved;
-- declared plugin permission `network` where required.
+- `capability.process` + declared `process` permission for stdio probing/execution;
+- `capability.network` + declared `network` permission for Streamable HTTP probing/execution.
+
+The two transport capability paths are deliberately separate; configuring one transport does not grant the other capability.
 
 Gateway admission remains `executionAuthority:false`.
 
@@ -106,7 +108,11 @@ The browser cannot create or mutate:
 - endpoint fingerprint;
 - policy allowlists.
 
-A later operator-config adapter may load these values from FuryPipe's durable configuration surface. This gate does not invent browser-controlled MCP configuration.
+The implemented local operator adapter loads these values from the strict file referenced by `FURYPIPE_WEBCHAT_MCP_CONFIG`. Credential-bearing stdio environment variables and HTTP headers are represented in that file only by **host environment variable names**; values are resolved process-locally.
+
+The file is a bounded, regular, non-symlink JSON file using `furypipe-gateway-local-tool-config/v1`. Source fingerprints are derived from the resolved runtime configuration rather than accepted from the browser or config file.
+
+Raw MCP application-result display is host-owned and defaults to disabled. It is enabled only when the file explicitly sets `allowDisplayResult:true`.
 
 ## 5. Bridge state
 
@@ -165,7 +171,7 @@ executed=true, succeeded=true, verified=true
 
 A result is never labelled verified unless the MCP Direct executor's receipt says `verified:true`.
 
-Raw tool result is process-local application data. The UI receives only a bounded sanitized representation suitable for display; durable evidence remains receipt/digest based.
+Raw tool result is process-local application data. Browser display is disabled by default. When the host explicitly enables it, the UI receives only a bounded plain-JSON representation; durable evidence remains receipt/digest based.
 
 Unknown execution outcome is terminal for automatic retry.
 
@@ -177,9 +183,9 @@ Phase 2A.5 does not silently reinterpret rejected model tool calls as authority.
 
 A future model-tool planner may produce a **request to propose** a tool call, but it must still traverse the full MCP Direct proposal/policy/approval/execution lifecycle defined here.
 
-## 9. Initial bridge API
+## 9. Implemented bridge API
 
-Planned process-local API:
+The process-local bridge exposes:
 
 ```ts
 inspectSources()
@@ -194,14 +200,22 @@ No public API accepts a lifecycle, catalog, proposal, policy decision, operator 
 
 ## 10. Gateway commands
 
-Planned commands:
+Implemented state-only commands:
 
 - `tools.sources.inspect`
-- `tools.source.inspect`
-- `tools.propose`
-- `tools.approve`
-- `tools.execute`
 - `tools.discard`
+
+Implemented async execution-boundary commands:
+
+- `tools.source.inspect.stdio`
+- `tools.source.inspect.http`
+- `tools.propose.stdio`
+- `tools.propose.http`
+- `tools.approve`
+- `tools.execute.stdio`
+- `tools.execute.http`
+
+The transport-specific names are security-relevant: the adapter checks the real configured source transport before inspect/propose, and checks the process-local proposal transport before execution. A stdio proposal cannot be rerouted through the HTTP command or vice versa.
 
 All commands remain admission-only until the bridge creates/uses exact process-local MCP evidence.
 
@@ -224,9 +238,19 @@ The UI must clearly display:
 
 No generic green "success" state may collapse these distinctions.
 
+The implemented Tools panel keeps tool activity outside the assistant transcript. The operator must explicitly:
+
+1. refresh a selected source inventory;
+2. choose a listed tool and submit bounded JSON arguments;
+3. create a proposal;
+4. approve it when policy returns `require_operator`;
+5. request execution separately.
+
+A Gateway/backpressure rejection does not synthesize a new proposal or permit; the UI only re-enables actions that remain valid according to the server-held proposal state.
+
 ## 12. Tests required
 
-Before Gate 2A.5 can pass:
+Implemented tests already cover the following; final PASS still requires all checks to be green on one exact final SHA:
 
 - forged/copied proposal IDs cannot create authority;
 - invalid tool args fail schema validation before execution;
@@ -243,7 +267,31 @@ Before Gate 2A.5 can pass:
 - async execution allowlist is explicit and independently backpressured;
 - full CI/package smoke/Secret Scan/Benchmark/Cross-Browser gates remain green.
 
-## 13. Gate completion
+## 13. Browser QA
+
+The existing Cross-Browser workflow now includes planned evidence for **12 real browser cases**:
+
+- 6 conversation lifecycle cases: Chromium / Firefox / WebKit × desktop/mobile;
+- 3 governed model cases: one per engine;
+- 3 governed MCP tool cases: one per engine using the real stdio MCP fixture.
+
+The tool cases exercise the real UI sequence:
+
+```text
+source metadata
+→ refresh inventory
+→ propose
+→ require_operator
+→ approve
+→ execute
+→ executed=true
+→ succeeded=true
+→ verified=true
+```
+
+They also assert that the MCP result is rendered only in the Tools panel and never inserted into assistant chat.
+
+## 14. Gate completion
 
 2A.5 is complete only when the local authenticated operator can inspect, propose, explicitly approve where required, execute and inspect MCP tool receipts while FuryPipe still proves:
 
