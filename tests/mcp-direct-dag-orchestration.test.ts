@@ -7,6 +7,16 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
 import { createRecoveryStore } from '../src/core/recovery-store.js';
 import {
+  approveMcpDirectPolicyDecision,
+  createMcpDirectToolProposal,
+  deriveMcpDirectEndpointFingerprint,
+  evaluateMcpDirectPolicy,
+  executeMcpDirectApprovedTool,
+  probeMcpDirectInventory,
+  selectMcpDirectTool,
+  type McpDirectRuntimeConfig,
+} from '../src/core/index.js';
+import {
   createMcpDirectDagPlan,
   executeMcpDirectDag,
   type McpDirectDagNode,
