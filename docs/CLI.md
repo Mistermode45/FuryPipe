@@ -125,6 +125,28 @@ A provider tool/function call is not converted into assistant text. It is reject
 
 Remote Gateway/WebChat exposure is out of scope for this phase and must not be created by binding this listener to a non-loopback address.
 
+### Optional local model inference
+
+Model inference in WebChat is **off by default**. To enable it, configure one explicit provider/model pair in the host environment before `furypipe gateway start`:
+
+```text
+FURYPIPE_WEBCHAT_PROVIDER=openai|anthropic|google
+FURYPIPE_WEBCHAT_MODEL=<exact provider model id>
+FURYPIPE_WEBCHAT_MAX_OUTPUT_TOKENS=<optional positive integer; default 4096>
+```
+
+The matching credential must also exist:
+
+```text
+openai     -> OPENAI_API_KEY
+anthropic  -> ANTHROPIC_API_KEY
+google     -> GOOGLE_API_KEY
+```
+
+Partial configuration fails closed. FuryPipe does not infer a provider, model, credential, endpoint or cross-provider fallback from browser input. The WebChat configuration endpoint exposes only whether the bridge is enabled plus the configured provider/model; credentials, permits and raw provider responses are never returned there.
+
+When enabled, user-message acceptance and provider inference remain distinct operations. `conversation.model.execute` requires the dedicated `capability.provider-inference` session scope and declared `provider-inference` permission. Provider output is treated as unverified application data until separate evidence verification says otherwise.
+
 ## Doctor
 
 `furypipe doctor` inspects runtime configuration without intentionally reading or printing provider credentials. It reports the effective model-scope mode/source and visual policy. In automatic mode the diagnostic leaves `effectiveModels` empty because Model Fabric discovery is dynamic rather than a static catalog.
