@@ -216,7 +216,6 @@ export function createFuryGatewayPairingCoordinator(
 
     approvePairing(requestId: string, pairedByPrincipalId: string): FuryGatewayPairedDevice {
       const pairedAt = finiteNow(now);
-      prunePending(pairedAt);
       const request = pendingById.get(requestId);
       if (!request) {
         throw new FuryGatewayPairingError('pairing-not-found', 'pairing request does not exist or expired');
