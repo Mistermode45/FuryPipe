@@ -445,9 +445,118 @@ async function runEngine(
   }
 }
 
+interface ModelQaObservation {
+  readonly name: string;
+  readonly engine: EngineName;
+  readonly assistantRendered: boolean;
+  readonly modelEligible: boolean;
+  readonly modelResponseObserved: boolean;
+  readonly secretAbsent: boolean;
+  readonly configRedacted: boolean;
+}
+
+async function runModelEnabledCase(
+  engine: EngineName,
+  browserType: BrowserType,
+  harness: Awaited<ReturnType<typeof startHarness>>,
+): Promise<ModelQaObservation> {
+  const browser = await browserType.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 820 },
+    deviceScaleFactor: 1,
+  });
+  const page = await context.newPage();
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  const name = `${engine}-model-enabled`;
+  try {
+    const response = await page.goto(
+      harness.origin + FURY_GATEWAY_WEBCHAT_PATH,
+      { waitUntil: 'load' },
+    );
+    assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+
+    const config = await page.evaluate(async () => {
+      const response = await fetch('/gateway/webchat/config.json', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      return response.json() as Promise<Record<string, unknown>>;
+    });
+    const configJson = JSON.stringify(config);
+    const configRedacted =
+      configJson.includes('"enabled":true')
+      && configJson.includes('"providerId":"openai"')
+      && configJson.includes('"model":"gpt-5.6-sol"')
+      && !/credential|api[_-]?key|browser-qa-local-secret/i.test(configJson);
+    assert(configRedacted, `${name}: WebChat model config was not correctly redacted`);
+
+    const ticket = harness.bootstrap.issueTicket();
+    await page.locator('#bootstrap-code').fill(ticket.code);
+    await page.locator('#bootstrap-form button[type="submit"]').click();
+    await page.waitForFunction(() =>
+      document.getElementById('connection-label')?.textContent === 'Connected'
+      && /^fkc_[A-Za-z0-9_-]{24}$/u.test(
+        document.getElementById('conversation-id')?.textContent ?? '',
+      ),
+    undefined, { timeout: 10_000 });
+
+    const message = `Governed model browser QA ${engine}`;
+    await page.locator('#message-input').fill(message);
+    await page.locator('#send-message').click();
+
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('.message.assistant')].some((element) =>
+        element.textContent?.includes('Governed browser QA model response.'),
+      ),
+    undefined, { timeout: 12_000 });
+
+    const assistantRendered = await page.locator('.message.assistant').last()
+      .textContent()
+      .then((text) => text?.includes('Governed browser QA model response.') ?? false);
+    const activity = await page.locator('#activity-list').textContent() ?? '';
+    const modelEligible = activity.includes('Model eligible');
+    const modelResponseObserved = activity.includes('Model response');
+    const body = await page.locator('body').textContent() ?? '';
+    const secretAbsent = !body.includes('browser-qa-local-secret');
+
+    assert(assistantRendered, `${name}: assistant response did not render`);
+    assert(modelEligible, `${name}: model eligibility state was not surfaced`);
+    assert(modelResponseObserved, `${name}: model response state was not surfaced`);
+    assert(secretAbsent, `${name}: provider secret leaked into rendered UI`);
+    assert(consoleErrors.length === 0, `${name}: console errors: ${consoleErrors.join(' | ')}`);
+    assert(pageErrors.length === 0, `${name}: page errors: ${pageErrors.join(' | ')}`);
+
+    await page.locator('#logout').click();
+    await page.waitForFunction(() =>
+      (document.getElementById('bootstrap-panel') as HTMLElement | null)?.hidden === false
+      && (document.getElementById('chat-panel') as HTMLElement | null)?.hidden === true,
+    undefined, { timeout: 8_000 });
+
+    return {
+      name,
+      engine,
+      assistantRendered,
+      modelEligible,
+      modelResponseObserved,
+      secretAbsent,
+      configRedacted,
+    };
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+}
+
 async function main(): Promise<void> {
   await mkdir(REPORT_DIR, { recursive: true });
   const harness = await startHarness();
+  const modelHarness = await startHarness(true);
   try {
     const observations: QaObservation[] = [];
     observations.push(...await runEngine('chromium', chromium, harness));
@@ -456,6 +565,21 @@ async function main(): Promise<void> {
     assert(observations.length === 6, `expected 6 WebChat browser cases, got ${observations.length}`);
     assert(observations.every((item) => item.resynchronized && item.loggedOut), 'WebChat lifecycle evidence is incomplete');
 
+    const modelCases: ModelQaObservation[] = [];
+    modelCases.push(await runModelEnabledCase('chromium', chromium, modelHarness));
+    modelCases.push(await runModelEnabledCase('firefox', firefox, modelHarness));
+    modelCases.push(await runModelEnabledCase('webkit', webkit, modelHarness));
+    assert(
+      modelCases.every((item) =>
+        item.assistantRendered
+        && item.modelEligible
+        && item.modelResponseObserved
+        && item.secretAbsent
+        && item.configRedacted
+      ),
+      'WebChat governed model browser evidence is incomplete',
+    );
+
     const evidence = {
       format: 'furypipe-gateway-webchat-browser-evidence/v1',
       sourceCommit: SOURCE_COMMIT,
@@ -463,11 +587,13 @@ async function main(): Promise<void> {
       authority: 'browser-qa-only',
       executionAuthority: false,
       cases: observations,
+      modelCases,
       summary: {
-        total: observations.length,
-        passed: observations.length,
+        total: observations.length + modelCases.length,
+        passed: observations.length + modelCases.length,
         engines: ['chromium', 'firefox', 'webkit'],
         viewports: ['desktop', 'mobile'],
+        modelEnabledCases: modelCases.length,
       },
     };
     await writeFile(
@@ -475,8 +601,9 @@ async function main(): Promise<void> {
       JSON.stringify(evidence, null, 2) + '\n',
       'utf8',
     );
-    console.log('Gateway WebChat browser QA passed: 6/6 real browser cases');
+    console.log('Gateway WebChat browser QA passed: 9/9 real browser cases');
   } finally {
+    await modelHarness.close();
     await harness.close();
   }
 }
