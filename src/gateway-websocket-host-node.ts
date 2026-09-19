@@ -755,8 +755,8 @@ export async function listenFuryGatewayWebSocketHost(
                 safeServerMessage({
                   type: 'pong',
                   connectionId: state.connection.connectionId,
-                  messageId: dispatch.messageId,
-                  sequence: dispatch.sequence,
+                  messageId: accepted.message.messageId,
+                  sequence: accepted.message.sequence,
                   nonce: payload.nonce,
                 }),
               );
@@ -767,8 +767,8 @@ export async function listenFuryGatewayWebSocketHost(
                 safeServerMessage({
                   type: 'resync-unavailable',
                   connectionId: state.connection.connectionId,
-                  messageId: dispatch.messageId,
-                  sequence: dispatch.sequence,
+                  messageId: accepted.message.messageId,
+                  sequence: accepted.message.sequence,
                 }),
               );
             }
