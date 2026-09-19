@@ -168,6 +168,69 @@ describe('Fury Kernel conversation foundation', () => {
     })).toThrowError(expect.objectContaining({ code: 'turn-terminal' }));
   });
 
+  it('fails an active turn with a bounded safe code and releases capacity', () => {
+    let now = 200;
+    const kernel = createFuryKernelConversationStore({ now: () => now });
+    const id = kernel.openConversation().conversationId;
+    const accepted = kernel.submitUserMessage({
+      conversationId: id,
+      messageId: 'provider-failure',
+      content: 'run provider',
+    });
+
+    now = 250;
+    const failed = kernel.failTurn({
+      conversationId: id,
+      turnId: accepted.turn.turnId,
+      failureCode: 'provider-blocked',
+    });
+
+    expect(failed).toMatchObject({
+      status: 'failed',
+      executionAuthority: false,
+      turn: {
+        status: 'failed',
+        failureCode: 'provider-blocked',
+        completedAt: 250,
+        executionAuthority: false,
+      },
+    });
+    expect(kernel.inFlightTurnCount()).toBe(0);
+    expect(kernel.inspectConversation(id).activeTurnId).toBeUndefined();
+
+    expect(() => kernel.completeTurn({
+      conversationId: id,
+      turnId: accepted.turn.turnId,
+      messageId: 'late-response',
+      content: 'must not land',
+    })).toThrowError(expect.objectContaining({ code: 'turn-terminal' }));
+
+    expect(() => kernel.failTurn({
+      conversationId: id,
+      turnId: accepted.turn.turnId,
+      failureCode: 'again',
+    })).toThrowError(expect.objectContaining({ code: 'turn-terminal' }));
+  });
+
+  it('rejects unsafe failure codes without terminalizing the active turn', () => {
+    const kernel = createFuryKernelConversationStore();
+    const id = kernel.openConversation().conversationId;
+    const accepted = kernel.submitUserMessage({
+      conversationId: id,
+      messageId: 'unsafe-failure',
+      content: 'still active',
+    });
+
+    expect(() => kernel.failTurn({
+      conversationId: id,
+      turnId: accepted.turn.turnId,
+      failureCode: 'SECRET=raw\nstack',
+    })).toThrowError(expect.objectContaining({ code: 'invalid-message' }));
+
+    expect(kernel.inspectConversation(id).activeTurnId).toBe(accepted.turn.turnId);
+    expect(kernel.inFlightTurnCount()).toBe(1);
+  });
+
   it('permits only one in-flight turn per conversation', () => {
     const kernel = createFuryKernelConversationStore();
     const id = kernel.openConversation().conversationId;
