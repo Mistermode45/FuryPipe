@@ -680,10 +680,158 @@ async function runModelEnabledCase(
   }
 }
 
+interface ToolQaObservation {
+  readonly name: string;
+  readonly engine: EngineName;
+  readonly proposalRequiredApproval: boolean;
+  readonly approved: boolean;
+  readonly executed: boolean;
+  readonly succeeded: boolean;
+  readonly verified: boolean;
+  readonly resultRendered: boolean;
+  readonly chatUntouched: boolean;
+  readonly configRedacted: boolean;
+}
+
+async function runToolEnabledCase(
+  engine: EngineName,
+  browserType: BrowserType,
+  harness: Awaited<ReturnType<typeof startHarness>>,
+): Promise<ToolQaObservation> {
+  const browser = await browserType.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 1360, height: 900 },
+    deviceScaleFactor: 1,
+  });
+  const page = await context.newPage();
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  const name = `${engine}-tools-enabled`;
+  try {
+    const response = await page.goto(
+      harness.origin + FURY_GATEWAY_WEBCHAT_PATH,
+      { waitUntil: 'load' },
+    );
+    assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+
+    const config = await page.evaluate(async () => {
+      const response = await fetch('/gateway/webchat/config.json', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      return response.json() as Promise<Record<string, unknown>>;
+    });
+    const configJson = JSON.stringify(config);
+    const configRedacted =
+      configJson.includes('"tools":{"enabled":true,"sourceCount":1}')
+      && !configJson.includes('browser-qa-tools')
+      && !/credential|endpointFingerprint|command|policy|header/i.test(configJson);
+    assert(configRedacted, `${name}: WebChat tools config was not redacted`);
+
+    const ticket = harness.bootstrap.issueTicket();
+    await page.locator('#bootstrap-code').fill(ticket.code);
+    await page.locator('#bootstrap-form button[type="submit"]').click();
+    await page.waitForFunction(() =>
+      document.getElementById('connection-label')?.textContent === 'Connected'
+      && (document.getElementById('tools-panel') as HTMLElement | null)?.hidden === false
+      && (document.getElementById('tool-source') as HTMLSelectElement | null)?.value === 'browser-qa-tools',
+    undefined, { timeout: 12_000 });
+
+    await page.locator('#tool-refresh').click();
+    await page.waitForFunction(() =>
+      (document.getElementById('tool-name') as HTMLSelectElement | null)?.value === 'governed-echo'
+      && document.getElementById('tool-status')?.textContent === 'Inventory refreshed.',
+    undefined, { timeout: 15_000 });
+
+    const argumentMessage = `Governed tool browser QA ${engine}`;
+    await page.locator('#tool-arguments').fill(JSON.stringify({
+      message: argumentMessage,
+    }));
+    await page.locator('#tool-propose').click();
+    await page.waitForFunction(() =>
+      document.getElementById('tool-status')?.textContent === 'Operator approval required.'
+      && !(document.getElementById('tool-approve') as HTMLButtonElement | null)?.disabled
+      && (document.getElementById('tool-execute') as HTMLButtonElement | null)?.disabled === true,
+    undefined, { timeout: 15_000 });
+
+    const proposalRequiredApproval = await page.locator('#tool-status').textContent()
+      .then((text) => text === 'Operator approval required.');
+
+    await page.locator('#tool-approve').click();
+    await page.waitForFunction(() =>
+      document.getElementById('tool-status')?.textContent?.includes('Operator approval recorded')
+      && (document.getElementById('tool-execute') as HTMLButtonElement | null)?.disabled === false,
+    undefined, { timeout: 10_000 });
+    const approved = await page.locator('#tool-status').textContent()
+      .then((text) => text?.includes('Operator approval recorded') ?? false);
+
+    await page.locator('#tool-execute').click();
+    await page.waitForFunction(() =>
+      document.getElementById('tool-status')?.textContent?.includes('executed=true')
+      && document.getElementById('tool-status')?.textContent?.includes('succeeded=true')
+      && document.getElementById('tool-status')?.textContent?.includes('verified=true'),
+    undefined, { timeout: 20_000 });
+
+    const lifecycle = await page.locator('#tool-status').textContent() ?? '';
+    const executed = lifecycle.includes('executed=true');
+    const succeeded = lifecycle.includes('succeeded=true');
+    const verified = lifecycle.includes('verified=true');
+    const resultText = await page.locator('#tool-result').textContent() ?? '';
+    const resultRendered = resultText.includes(argumentMessage);
+    const chatUntouched = await page.locator('.message.assistant').count() === 0;
+    const activity = await page.locator('#activity-list').textContent() ?? '';
+
+    assert(proposalRequiredApproval, `${name}: operator approval boundary was not surfaced`);
+    assert(approved, `${name}: operator approval was not recorded`);
+    assert(executed, `${name}: executed state was not surfaced`);
+    assert(succeeded, `${name}: succeeded state was not surfaced`);
+    assert(verified, `${name}: verified state was not surfaced`);
+    assert(resultRendered, `${name}: bounded tool result was not rendered`);
+    assert(chatUntouched, `${name}: tool output was inserted into assistant chat`);
+    assert(activity.includes('Tool eligible'), `${name}: Gateway tool eligibility was not surfaced`);
+    assert(activity.includes('Tool approved'), `${name}: tool approval was not surfaced`);
+    assert(activity.includes('Tool executed'), `${name}: tool execution was not surfaced`);
+    assert(activity.includes('Tool succeeded'), `${name}: tool success was not surfaced`);
+    assert(activity.includes('Evidence verified'), `${name}: tool verification was not surfaced`);
+    const body = await page.locator('body').textContent() ?? '';
+    assert(!body.includes(MCP_FIXTURE_PATH), `${name}: MCP command path leaked into UI`);
+    assert(consoleErrors.length === 0, `${name}: console errors: ${consoleErrors.join(' | ')}`);
+    assert(pageErrors.length === 0, `${name}: page errors: ${pageErrors.join(' | ')}`);
+
+    await page.locator('#logout').click();
+    await page.waitForFunction(() =>
+      (document.getElementById('bootstrap-panel') as HTMLElement | null)?.hidden === false
+      && (document.getElementById('chat-panel') as HTMLElement | null)?.hidden === true,
+    undefined, { timeout: 8_000 });
+
+    return {
+      name,
+      engine,
+      proposalRequiredApproval,
+      approved,
+      executed,
+      succeeded,
+      verified,
+      resultRendered,
+      chatUntouched,
+      configRedacted,
+    };
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+}
+
 async function main(): Promise<void> {
   await mkdir(REPORT_DIR, { recursive: true });
   const harness = await startHarness();
   const modelHarness = await startHarness(true);
+  const toolHarness = await startHarness(false, true);
   try {
     const observations: QaObservation[] = [];
     observations.push(...await runEngine('chromium', chromium, harness));
@@ -707,6 +855,24 @@ async function main(): Promise<void> {
       'WebChat governed model browser evidence is incomplete',
     );
 
+    const toolCases: ToolQaObservation[] = [];
+    toolCases.push(await runToolEnabledCase('chromium', chromium, toolHarness));
+    toolCases.push(await runToolEnabledCase('firefox', firefox, toolHarness));
+    toolCases.push(await runToolEnabledCase('webkit', webkit, toolHarness));
+    assert(
+      toolCases.every((item) =>
+        item.proposalRequiredApproval
+        && item.approved
+        && item.executed
+        && item.succeeded
+        && item.verified
+        && item.resultRendered
+        && item.chatUntouched
+        && item.configRedacted
+      ),
+      'WebChat governed tool browser evidence is incomplete',
+    );
+
     const evidence = {
       format: 'furypipe-gateway-webchat-browser-evidence/v1',
       sourceCommit: SOURCE_COMMIT,
@@ -715,12 +881,14 @@ async function main(): Promise<void> {
       executionAuthority: false,
       cases: observations,
       modelCases,
+      toolCases,
       summary: {
-        total: observations.length + modelCases.length,
-        passed: observations.length + modelCases.length,
+        total: observations.length + modelCases.length + toolCases.length,
+        passed: observations.length + modelCases.length + toolCases.length,
         engines: ['chromium', 'firefox', 'webkit'],
         viewports: ['desktop', 'mobile'],
         modelEnabledCases: modelCases.length,
+        toolEnabledCases: toolCases.length,
       },
     };
     await writeFile(
@@ -728,8 +896,9 @@ async function main(): Promise<void> {
       JSON.stringify(evidence, null, 2) + '\n',
       'utf8',
     );
-    console.log('Gateway WebChat browser QA passed: 9/9 real browser cases');
+    console.log('Gateway WebChat browser QA passed: 12/12 real browser cases');
   } finally {
+    await toolHarness.close();
     await modelHarness.close();
     await harness.close();
   }
