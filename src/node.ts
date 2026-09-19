@@ -362,6 +362,10 @@ Usage:
                         launch the interactive FuryPipe first-run setup
   furypipe doctor [--json]
                         inspect the local runtime and available tools
+  furypipe gateway start [--json]
+                        start the loopback-only VNext Gateway
+  furypipe gateway config [--json]
+                        inspect resolved local Gateway configuration
   furypipe export [...] render files/diff to PNG pages + cost report (see furypipe export --help)
   furypipe link [--route PATTERN=TARGET]... [--] CMD [args...]
                         connect an agent through FuryLink. The '--' separator
@@ -1315,6 +1319,15 @@ async function main(): Promise<void> {
       extra.includes('--json'),
       resolveDoctorLocale(localeArg?.slice('--locale='.length)),
     ));
+    return;
+  }
+  if (argv[0] === 'gateway') {
+    // Keep the heavier Gateway/WebSocket stack out of the legacy CLI startup
+    // path. Commands such as --version, setup and doctor must not initialize
+    // transport dependencies they do not use.
+    const { runFuryGatewayCli } = await import('./gateway-local-cli-node.js');
+    const code = await runFuryGatewayCli(argv.slice(1));
+    process.exitCode = code;
     return;
   }
   if (argv[0] === 'export') {
