@@ -130,6 +130,7 @@ const CSS = `:root {
   --ok: #56d69b;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 20% 0%, #1b2230 0, #090b10 36rem); }
 button, input, textarea { font: inherit; }
 button {
