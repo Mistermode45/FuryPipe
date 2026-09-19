@@ -254,7 +254,7 @@ async function runCase(
     await page.locator('#message-input').fill(testMessage);
     await page.locator('#send-message').click();
     await page.waitForFunction(() =>
-      document.getElementById('turn-status')?.textContent?.includes('model bridge pending'),
+      document.getElementById('turn-status')?.textContent?.includes('model bridge not configured'),
     undefined, { timeout: 8_000 });
     assert(
       await page.locator('.message.user').last().textContent()
