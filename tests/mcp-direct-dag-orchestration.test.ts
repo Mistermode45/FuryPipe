@@ -306,7 +306,6 @@ describe('M6 real MCP v2 integration', () => {
       readonly config: McpDirectRuntimeConfig;
       readonly proposal: Awaited<ReturnType<typeof createMcpDirectToolProposal>>;
       readonly approved: Awaited<ReturnType<typeof approveMcpDirectPolicyDecision>>;
-      readonly coordinator: ReturnType<typeof createMcpDirectDurableReplayCoordinator>;
     }>();
     try {
       const result = await executeMcpDirectDag(dag, {
@@ -358,11 +357,6 @@ describe('M6 real MCP v2 integration', () => {
             config,
             proposal,
             approved,
-            coordinator: createMcpDirectDurableReplayCoordinator({
-              store,
-              tenantId: 'm6-tenant',
-              principalId: 'm6-principal',
-            }),
           });
           return {
             approvalId: entry.nodeId,
@@ -379,7 +373,6 @@ describe('M6 real MCP v2 integration', () => {
             governed.proposal,
             {
               clientInfo: { name: 'furypipe-m6-dag', version: '1.0.0' },
-              durableReplay: governed.coordinator,
               callTimeoutMs: 10_000,
             },
           );
