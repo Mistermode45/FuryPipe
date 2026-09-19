@@ -74,7 +74,7 @@ async function startHarness() {
 
   const principalRegistry = createFuryGatewayPrincipalRegistry({
     now,
-    evidenceTtlMs: 60 * 60_000,
+    evidenceTtlMs: 15 * 60_000,
     maxPrincipals: 2,
   });
   const principal = principalRegistry.recordAuthenticatedPrincipal({
