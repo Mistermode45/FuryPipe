@@ -341,6 +341,13 @@ try {
     "const m = await import('furypipe/gateway-tool-command-node'); if (!Array.isArray(m.FURY_GATEWAY_TOOL_COMMAND_NAMES) || !Array.isArray(m.FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS)) process.exit(1);",
   ], installDir);
   assert(gatewayToolCommandExport.stderr === '', `Gateway tool command export wrote stderr: ${gatewayToolCommandExport.stderr}`);
+
+  const gatewayToolBridgeAdapterExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-tool-bridge-adapter-node'); if (typeof m.createFuryGatewayToolBridgeAdapter !== 'function' || m.FURY_GATEWAY_TOOL_RESULT_FORMAT !== 'furypipe-gateway-tool-result/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayToolBridgeAdapterExport.stderr === '', `Gateway tool bridge adapter export wrote stderr: ${gatewayToolBridgeAdapterExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
