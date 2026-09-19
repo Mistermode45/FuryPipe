@@ -321,6 +321,10 @@ describe('Fury Gateway CLI execution', () => {
         authority: 'bootstrap-ticket',
         executionAuthority: false,
       },
+      model: {
+        format: 'furypipe-gateway-local-model-config/v1',
+        enabled: false,
+      },
       config: {
         config: {
           host: '127.0.0.1',
@@ -364,6 +368,10 @@ describe('Fury Gateway CLI execution', () => {
       websocketUrl: 'ws://127.0.0.1:48722/gateway/v1',
       webChatUrl: 'http://127.0.0.1:48722/gateway/webchat/',
       origin: 'http://127.0.0.1:48722',
+      model: {
+        format: 'furypipe-gateway-local-model-config/v1',
+        enabled: false,
+      },
       authority: 'bootstrap-only',
       executionAuthority: false,
     });
