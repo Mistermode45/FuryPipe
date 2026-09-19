@@ -153,6 +153,21 @@ Because the connect fingerprint already covers:
 
 changing any of those fields after signing invalidates the proof.
 
+## Proof input hardening
+
+Proof objects are exact-schema plain data objects.
+
+The verifier rejects:
+
+- unknown fields;
+- symbol keys;
+- accessor/getter properties;
+- custom prototypes;
+- over-size proof strings;
+- malformed digest/device-id fields.
+
+This prevents schema drift or hidden authority/secret fields from being smuggled into the signed-proof boundary.
+
 ## Replay model
 
 The current coordinator maintains:
@@ -170,6 +185,28 @@ This is process-local Phase 1.1 state.
 Durable replay protection will be required before a production remote Gateway is enabled.
 
 ## Pairing
+
+Pairing is a separate explicit operation.
+
+### Pairing freshness
+
+A pairing request requires fresh authenticated-device evidence.
+
+Default maximum authenticated-evidence age:
+
+```text
+60 seconds
+```
+
+Configurable range:
+
+```text
+5 seconds <= authenticated evidence age <= 5 minutes
+```
+
+This prevents an old process-local authentication object from being retained indefinitely and later reused to initiate pairing.
+
+Pairing approval still remains a distinct trusted-host action.
 
 Pairing is a separate explicit operation.
 
