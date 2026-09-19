@@ -107,10 +107,11 @@ const MAX_PRINCIPALS = 100_000;
 
 function finiteNow(now: () => number): number {
   const value = now();
-  if (!Number.isFinite(value) || value < 0) {
-    throw new RangeError('gateway principal clock must return a finite non-negative timestamp');
+  const normalized = Math.floor(value);
+  if (!Number.isFinite(value) || value < 0 || !Number.isSafeInteger(normalized)) {
+    throw new RangeError('gateway principal clock must return a safe non-negative timestamp');
   }
-  return Math.floor(value);
+  return normalized;
 }
 
 function boundedInteger(
@@ -303,6 +304,11 @@ export function createFuryGatewayPrincipalRegistry(
       state.lastAuthenticatedAt = authenticatedAt;
       states.set(assertion.principalId, state);
 
+      const expiresAt = authenticatedAt + evidenceTtlMs;
+      if (!Number.isSafeInteger(expiresAt)) {
+        throw new RangeError('gateway principal evidence expiry must be a safe integer');
+      }
+
       const principal = Object.freeze({
         format: FURY_GATEWAY_AUTHENTICATED_PRINCIPAL_FORMAT,
         principalId: assertion.principalId,
@@ -312,7 +318,7 @@ export function createFuryGatewayPrincipalRegistry(
         authenticationMethod: assertion.authenticationMethod,
         generation: state.generation,
         authenticatedAt,
-        expiresAt: authenticatedAt + evidenceTtlMs,
+        expiresAt,
         authority: 'authenticated-principal' as const,
       });
       PRINCIPAL_EVIDENCE.add(principal);
