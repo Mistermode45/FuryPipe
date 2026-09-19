@@ -11,6 +11,7 @@ import {
   createFuryGatewayDeviceProof,
   deriveFuryGatewayDeviceId,
   exportFuryGatewayDevicePublicKey,
+  isGeneratedFuryGatewayAuthenticatedDevice,
 } from '../src/gateway-auth-node.js';
 import {
   FuryGatewayPairingError,
@@ -52,6 +53,8 @@ describe('Fury Gateway device authentication', () => {
     expect(result.clientId).toBe('fury-node');
     expect(result.platform).toBe('linux');
     expect(result.deviceId).toBe(deriveFuryGatewayDeviceId(proof.publicKey));
+    expect(isGeneratedFuryGatewayAuthenticatedDevice(result)).toBe(true);
+    expect(isGeneratedFuryGatewayAuthenticatedDevice({ ...result })).toBe(false);
   });
 
   it('consumes a challenge exactly once and rejects replay', () => {
@@ -125,6 +128,24 @@ describe('Fury Gateway device authentication', () => {
     );
   });
 
+  it('enforces proof field bounds before cryptographic work', () => {
+    const auth = createFuryGatewayDeviceAuthCoordinator({ now: () => 35_000 });
+    const { privateKey } = generateKeyPairSync('ed25519');
+    const connect = envelope();
+    const challenge = auth.issueChallenge();
+    const proof = createFuryGatewayDeviceProof(connect, challenge, privateKey);
+
+    expect(() => auth.verifyProof(connect, {
+      ...proof,
+      signature: 'A'.repeat(10_000),
+    })).toThrowError(expect.objectContaining({ code: 'invalid-proof' }));
+
+    expect(() => auth.verifyProof(connect, {
+      ...proof,
+      connectFingerprint: 'a'.repeat(65),
+    })).toThrowError(expect.objectContaining({ code: 'invalid-proof' }));
+  });
+
   it('enforces a hard active-challenge quota', () => {
     const auth = createFuryGatewayDeviceAuthCoordinator({
       now: () => 40_000,
@@ -176,16 +197,57 @@ describe('Fury Gateway pairing', () => {
     );
   });
 
-  it('pins device role and stable client metadata', () => {
-    const pairing = createFuryGatewayPairingCoordinator({ now: () => 70_000 });
-    const device = authenticated(70_000);
-    const request = pairing.requestPairing(device);
+  it('rejects copied or fabricated authenticated-device lookalikes', () => {
+    const pairing = createFuryGatewayPairingCoordinator({ now: () => 65_000 });
+    const device = authenticated(65_000);
+
+    expect(() => pairing.requestPairing({ ...device })).toThrowError(
+      expect.objectContaining({ code: 'invalid-authenticated-device' }),
+    );
+
+    expect(() => pairing.requestPairing({
+      ...device,
+      deviceId: 'fgwdev_fabricated',
+      authority: 'authenticated-device',
+      pairing: 'unpaired',
+      authorization: 'none',
+    })).toThrowError(expect.objectContaining({ code: 'invalid-authenticated-device' }));
+  });
+
+  it('pins device role and stable client metadata across fresh authenticated evidence', () => {
+    let now = 70_000;
+    const keys = generateKeyPairSync('ed25519');
+    const firstAuth = createFuryGatewayDeviceAuthCoordinator({ now: () => now });
+    const firstConnect = envelope();
+    const firstChallenge = firstAuth.issueChallenge();
+    const firstDevice = firstAuth.verifyProof(
+      firstConnect,
+      createFuryGatewayDeviceProof(firstConnect, firstChallenge, keys.privateKey),
+    );
+
+    const pairing = createFuryGatewayPairingCoordinator({ now: () => now });
+    const request = pairing.requestPairing(firstDevice);
     pairing.approvePairing(request.requestId, 'principal:user-1');
 
-    expect(() => pairing.inspectPairing({
-      ...device,
-      platform: 'windows',
-    })).toThrowError(expect.objectContaining({ code: 'pairing-mismatch' }));
+    const secondAuth = createFuryGatewayDeviceAuthCoordinator({ now: () => now });
+    const secondConnect = envelope({
+      client: {
+        clientId: 'fury-node',
+        instanceId: 'node-instance-2',
+        platform: 'windows',
+        deviceFamily: 'server',
+      },
+    });
+    const secondChallenge = secondAuth.issueChallenge();
+    const secondDevice = secondAuth.verifyProof(
+      secondConnect,
+      createFuryGatewayDeviceProof(secondConnect, secondChallenge, keys.privateKey),
+    );
+
+    expect(secondDevice.deviceId).toBe(firstDevice.deviceId);
+    expect(() => pairing.inspectPairing(secondDevice)).toThrowError(
+      expect.objectContaining({ code: 'pairing-mismatch' }),
+    );
   });
 
   it('supports explicit revocation', () => {
