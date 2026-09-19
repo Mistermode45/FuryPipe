@@ -96,6 +96,7 @@ const DEFAULT_MAX_CONSUMED_CHALLENGES = 4_096;
 const MAX_PUBLIC_KEY_BYTES = 512;
 const ED25519_SIGNATURE_BYTES = 64;
 const DEVICE_ID_PREFIX = 'fgwdev_';
+const AUTHENTICATED_DEVICE_EVIDENCE = new WeakSet<object>();
 
 function finiteNow(now: () => number): number {
   const value = now();
@@ -120,8 +121,15 @@ function boundedInteger(
 }
 
 function canonicalBase64Url(value: string, label: string, maxBytes: number): Buffer {
-  if (typeof value !== 'string' || value.length === 0 || value.includes('=')) {
-    throw new FuryGatewayDeviceAuthError('invalid-proof', `${label} must be canonical base64url`);
+  const maxEncodedChars = Math.ceil(maxBytes * 4 / 3) + 4;
+  if (
+    typeof value !== 'string'
+    || value.length === 0
+    || value.length > maxEncodedChars
+    || value.includes('=')
+    || !/^[A-Za-z0-9_-]+$/u.test(value)
+  ) {
+    throw new FuryGatewayDeviceAuthError('invalid-proof', `${label} must be bounded canonical base64url`);
   }
   let decoded: Buffer;
   try {
@@ -238,17 +246,29 @@ function assertProofShape(proof: FuryGatewayDeviceProof): void {
   if (!proof || typeof proof !== 'object' || proof.format !== FURY_GATEWAY_DEVICE_PROOF_FORMAT) {
     throw new FuryGatewayDeviceAuthError('invalid-proof', 'unsupported gateway device proof');
   }
-  for (const [label, value] of [
-    ['challengeId', proof.challengeId],
-    ['nonce', proof.nonce],
-    ['deviceId', proof.deviceId],
-    ['publicKey', proof.publicKey],
-    ['connectFingerprint', proof.connectFingerprint],
-    ['signature', proof.signature],
-  ] as const) {
-    if (typeof value !== 'string' || value.length === 0) {
-      throw new FuryGatewayDeviceAuthError('invalid-proof', `${label} must be a non-empty string`);
+  const strings = [
+    ['challengeId', proof.challengeId, 64],
+    ['nonce', proof.nonce, 96],
+    ['deviceId', proof.deviceId, 96],
+    ['publicKey', proof.publicKey, 768],
+    ['connectFingerprint', proof.connectFingerprint, 64],
+    ['signature', proof.signature, 128],
+  ] as const;
+  for (const [label, value, maxLength] of strings) {
+    if (
+      typeof value !== 'string'
+      || value.length === 0
+      || value.length > maxLength
+      || /[\u0000-\u001f\u007f]/u.test(value)
+    ) {
+      throw new FuryGatewayDeviceAuthError('invalid-proof', `${label} must be a bounded non-empty string`);
     }
+  }
+  if (!/^[a-f0-9]{64}$/u.test(proof.connectFingerprint)) {
+    throw new FuryGatewayDeviceAuthError('invalid-proof', 'connectFingerprint must be a lowercase SHA-256 digest');
+  }
+  if (!proof.deviceId.startsWith(DEVICE_ID_PREFIX)) {
+    throw new FuryGatewayDeviceAuthError('invalid-proof', 'deviceId has an invalid prefix');
   }
   if (!Number.isSafeInteger(proof.signedAt) || proof.signedAt < 0) {
     throw new FuryGatewayDeviceAuthError('invalid-proof', 'signedAt must be a non-negative integer');
@@ -384,7 +404,7 @@ export function createFuryGatewayDeviceAuthCoordinator(
       active.delete(proof.challengeId);
       rememberConsumed(proof.challengeId, verifiedAt);
 
-      return Object.freeze({
+      const authenticated = Object.freeze({
         format: FURY_GATEWAY_AUTHENTICATED_DEVICE_FORMAT,
         deviceId: proof.deviceId,
         publicKeySha256: sha256Base64Url(canonicalKey),
@@ -395,10 +415,12 @@ export function createFuryGatewayDeviceAuthCoordinator(
         ...(envelope.client.platform === undefined ? {} : { platform: envelope.client.platform }),
         ...(envelope.client.deviceFamily === undefined ? {} : { deviceFamily: envelope.client.deviceFamily }),
         authenticatedAt: verifiedAt,
-        authority: 'authenticated-device',
-        pairing: 'unpaired',
-        authorization: 'none',
+        authority: 'authenticated-device' as const,
+        pairing: 'unpaired' as const,
+        authorization: 'none' as const,
       });
+      AUTHENTICATED_DEVICE_EVIDENCE.add(authenticated);
+      return authenticated;
     },
 
     activeChallengeCount(): number {
@@ -406,4 +428,16 @@ export function createFuryGatewayDeviceAuthCoordinator(
       return active.size;
     },
   });
+}
+
+/**
+ * Returns true only for process-local evidence created by a successful
+ * Fury Gateway device proof verification. Serialized/copied lookalikes fail.
+ */
+export function isGeneratedFuryGatewayAuthenticatedDevice(
+  value: unknown,
+): value is FuryGatewayAuthenticatedDevice {
+  return typeof value === 'object'
+    && value !== null
+    && AUTHENTICATED_DEVICE_EVIDENCE.has(value);
 }
