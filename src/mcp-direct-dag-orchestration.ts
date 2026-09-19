@@ -310,6 +310,7 @@ function assertOpaqueHash(value: string | undefined, name: string): void {
 async function persist(
   options: McpDirectDagExecutionOptions,
   evidence: McpDirectDagEvidence,
+  maxRecoveryEvidence = 64,
 ): Promise<void> {
   if (options.persistEvidence) await options.persistEvidence(Object.freeze({ ...evidence }));
   if (!options.recoveryStore) return;
@@ -351,7 +352,7 @@ async function persist(
         planDigest: evidence.planDigest,
         recordType: metadata.recordType,
       },
-      maxMatches: 2 * 64,
+      maxMatches: maxRecoveryEvidence,
     }],
   });
 }
@@ -458,7 +459,7 @@ export async function executeMcpDirectDag(
           verified: false,
           wireCallStarted: false,
           timestamp: now(),
-        });
+        }, plan.quotas.maxRecoveryEvidence);
       } catch (error) {
         set(node.id, 'unknown', { errorCode: 'durability-failed-before-execution' });
         return;
@@ -508,12 +509,10 @@ export async function executeMcpDirectDag(
           verified: results.get(node.id)!.verified,
           wireCallStarted,
           timestamp: now(),
-        });
+        }, plan.quotas.maxRecoveryEvidence);
       } catch {
-        if (results.get(node.id)?.state === 'succeeded') {
-          set(node.id, 'unknown', { errorCode: 'durability-failed-after-result', wireCallStarted });
-          overall = 'unknown';
-        }
+        set(node.id, 'unknown', { errorCode: 'durability-failed-after-result', wireCallStarted });
+        overall = 'unknown';
       }
     };
     await Promise.all(batch.map((node) => runOne(node)));
