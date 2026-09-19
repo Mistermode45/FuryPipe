@@ -85,6 +85,26 @@ export type FuryGatewayWebSocketStateCommandHandler = (
   command: FuryGatewayWebSocketAdmittedStateCommand,
 ) => unknown;
 
+export interface FuryGatewayWebSocketAdmittedExecutionCommand {
+  readonly connectionId: string;
+  readonly messageId: string;
+  readonly sequence: number;
+  readonly commandName: string;
+  readonly input: unknown;
+  readonly transportReceipt: FuryGatewayTransportReceipt;
+  readonly admission: FuryGatewayCommandAdmissionDecision;
+  readonly executionAuthority: false;
+}
+
+/**
+ * Async execution boundary for commands that may invoke governed capabilities.
+ * Admission alone still grants no execution authority; the handler must create
+ * and consume the subsystem's own exact permit/evidence before side effects.
+ */
+export type FuryGatewayWebSocketExecutionCommandHandler = (
+  command: FuryGatewayWebSocketAdmittedExecutionCommand,
+) => Promise<unknown>;
+
 export type FuryGatewayWebSocketSafeEvent =
   | {
       readonly type: 'listening';
@@ -133,6 +153,12 @@ export interface FuryGatewayWebSocketHostOptions {
    */
   readonly admittedStateCommandNames?: readonly string[];
   readonly handleAdmittedStateCommand?: FuryGatewayWebSocketStateCommandHandler;
+  /**
+   * Exact capability-executing commands allowed to cross the async boundary.
+   * This set must be disjoint from admittedStateCommandNames.
+   */
+  readonly admittedExecutionCommandNames?: readonly string[];
+  readonly handleAdmittedExecutionCommand?: FuryGatewayWebSocketExecutionCommandHandler;
   readonly host?: string;
   readonly port?: number;
   readonly allowedOrigins?: readonly string[];
@@ -147,6 +173,7 @@ export interface FuryGatewayWebSocketHostOptions {
   readonly heartbeatIntervalMs?: number;
   readonly maxPendingUpgrades?: number;
   readonly maxInFlightStateCommands?: number;
+  readonly maxInFlightExecutionCommands?: number;
   readonly onEvent?: (event: FuryGatewayWebSocketSafeEvent) => void;
 }
 
@@ -196,6 +223,8 @@ const DEFAULT_MAX_PENDING_UPGRADES = 64;
 const MAX_PENDING_UPGRADES = 1024;
 const DEFAULT_MAX_IN_FLIGHT_STATE_COMMANDS = 32;
 const MAX_IN_FLIGHT_STATE_COMMANDS = 256;
+const DEFAULT_MAX_IN_FLIGHT_EXECUTION_COMMANDS = 4;
+const MAX_IN_FLIGHT_EXECUTION_COMMANDS = 32;
 const DEFAULT_MAX_PAYLOAD_BYTES = 64 * 1024;
 const MIN_MAX_PAYLOAD_BYTES = 1024;
 const HARD_MAX_PAYLOAD_BYTES = 1024 * 1024;
