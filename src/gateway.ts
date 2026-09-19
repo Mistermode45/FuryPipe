@@ -472,16 +472,24 @@ export function parseFuryGatewayMessageText(text: string): FuryGatewayMessageEnv
 export function serializeFuryGatewayMessage(
   input: Omit<FuryGatewayMessageEnvelope, 'authority'>,
 ): string {
-  const candidate = JSON.stringify({
-    format: input.format,
-    protocolVersion: input.protocolVersion,
-    messageId: input.messageId,
-    sequence: input.sequence,
-    kind: input.kind,
-    type: input.type,
-    sentAt: input.sentAt,
-    payload: input.payload,
-  });
+  let candidate: string;
+  try {
+    candidate = JSON.stringify({
+      format: input.format,
+      protocolVersion: input.protocolVersion,
+      messageId: input.messageId,
+      sequence: input.sequence,
+      kind: input.kind,
+      type: input.type,
+      sentAt: input.sentAt,
+      payload: input.payload,
+    });
+  } catch {
+    throw new FuryGatewayProtocolError(
+      'invalid-payload',
+      'gateway message payload is not serializable JSON data',
+    );
+  }
   // Parsing the serialized form gives us one canonical validation path.
   parseFuryGatewayMessageText(candidate);
   return candidate;
