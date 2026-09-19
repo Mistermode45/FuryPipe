@@ -78,6 +78,31 @@ function message(
 }
 
 describe('Fury Gateway transport connection policy', () => {
+  it('generates parser-safe connection IDs', () => {
+    const harness = createOperatorHarness();
+    const transport = createFuryGatewayTransportCoordinator({
+      sessionCoordinator: harness.sessionCoordinator,
+      now: () => harness.now,
+      allowedOrigins: ['http://127.0.0.1:3000'],
+    });
+
+    const connection = transport.openConnection({
+      session: harness.session,
+      clientKind: 'browser',
+      remoteAddress: '127.0.0.1',
+      origin: 'http://127.0.0.1:3000',
+    });
+
+    expect(connection.connectionId).toMatch(/^gwc_[A-Za-z0-9_-]+$/u);
+
+    const accepted = transport.acceptTextMessage(
+      connection,
+      message(connection.connectionId, 1),
+    );
+    expect(accepted.message.connectionId).toBe(connection.connectionId);
+    accepted.release();
+  });
+
   it('defaults to loopback-only and process-local session evidence', () => {
     const harness = createOperatorHarness();
     const transport = createFuryGatewayTransportCoordinator({
