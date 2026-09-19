@@ -18,6 +18,20 @@ import {
   type FuryGatewayLocalModelConfig,
 } from './gateway-local-model-runtime-node.js';
 import {
+  createFuryGatewayLocalToolRuntime,
+  type FuryGatewayLocalToolConfig,
+} from './gateway-local-tool-runtime-node.js';
+import {
+  createFuryGatewayToolBridgeAdapter,
+} from './gateway-tool-bridge-adapter-node.js';
+import {
+  FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS,
+  FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES,
+  FURY_GATEWAY_TOOL_STATE_COMMAND_NAMES,
+  type FuryGatewayToolExecutionCommandName,
+  type FuryGatewayToolStateCommandName,
+} from './gateway-tool-command-node.js';
+import {
   FURY_GATEWAY_WEBCHAT_PATH,
   createFuryGatewayWebChatHandler,
 } from './gateway-webchat-node.js';
@@ -48,6 +62,7 @@ export interface FuryGatewayLocalRuntime {
   readonly ticket: FuryGatewayLocalBootstrapTicket;
   readonly config: FuryGatewayLocalConfigResolution;
   readonly model: FuryGatewayLocalModelConfig;
+  readonly tools: FuryGatewayLocalToolConfig;
   stop(): Promise<void>;
 }
 
@@ -137,8 +152,17 @@ export async function startFuryGatewayLocalRuntime(
     ...(options.env === undefined ? {} : { env: options.env }),
     now,
   });
+  const toolRuntime = createFuryGatewayLocalToolRuntime({
+    ...(options.env === undefined ? {} : { env: options.env }),
+    now,
+  });
   const operatorScopes: FuryGatewayScope[] = [...LOCAL_OPERATOR_SCOPES];
   if (modelRuntime.bridge) operatorScopes.push('capability.provider-inference');
+  if (toolRuntime.bridge) {
+    operatorScopes.push('mcp.inspect', 'mcp.manage');
+    if (toolRuntime.requiresProcess) operatorScopes.push('capability.process');
+    if (toolRuntime.requiresNetwork) operatorScopes.push('capability.network');
+  }
 
   const principalRegistry = createFuryGatewayPrincipalRegistry({
     now,
@@ -197,10 +221,33 @@ export async function startFuryGatewayLocalRuntime(
     kernel,
     maxResultBytes: 48 * 1024,
   });
+  const toolAdapter = toolRuntime.bridge
+    ? createFuryGatewayToolBridgeAdapter({
+        bridge: toolRuntime.bridge,
+        maxResultBytes: 128 * 1024,
+      })
+    : undefined;
   const commandRegistry = createFuryGatewayCommandRegistry([
     ...FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
     ...(modelRuntime.bridge
       ? FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS
+      : []),
+    ...(toolRuntime.bridge
+      ? FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS
+      : []),
+  ]);
+  const admittedStateCommandNames = Object.freeze([
+    ...FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
+    ...(toolRuntime.bridge
+      ? FURY_GATEWAY_TOOL_STATE_COMMAND_NAMES
+      : []),
+  ]);
+  const admittedExecutionCommandNames = Object.freeze([
+    ...(modelRuntime.bridge
+      ? FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES
+      : []),
+    ...(toolRuntime.bridge
+      ? FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES
       : []),
   ]);
 
@@ -213,45 +260,67 @@ export async function startFuryGatewayLocalRuntime(
         if (await webchat(request, response)) return true;
         return bootstrap.handleHttpRequest(request, response);
       },
-      admittedStateCommandNames: FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
+      admittedStateCommandNames,
       handleAdmittedStateCommand: (command) => {
         if (
-          !(FURY_GATEWAY_CONVERSATION_COMMAND_NAMES as readonly string[])
+          (FURY_GATEWAY_CONVERSATION_COMMAND_NAMES as readonly string[])
             .includes(command.commandName)
         ) {
-          throw new Error('local Gateway state command is unsupported');
+          const result = conversationAdapter.dispatch(
+            command.commandName as FuryGatewayConversationCommandName,
+            command.input,
+          );
+          if (
+            command.commandName === 'conversation.cancel'
+            && result.status === 'ok'
+            && modelRuntime.bridge
+          ) {
+            const input = command.input as {
+              readonly conversationId: string;
+              readonly turnId: string;
+            };
+            modelRuntime.bridge.cancelTurn(input.conversationId, input.turnId);
+          }
+          return result;
         }
-        const result = conversationAdapter.dispatch(
-          command.commandName as FuryGatewayConversationCommandName,
-          command.input,
-        );
         if (
-          command.commandName === 'conversation.cancel'
-          && result.status === 'ok'
-          && modelRuntime.bridge
+          toolAdapter
+          && (FURY_GATEWAY_TOOL_STATE_COMMAND_NAMES as readonly string[])
+            .includes(command.commandName)
         ) {
-          const input = command.input as {
-            readonly conversationId: string;
-            readonly turnId: string;
-          };
-          modelRuntime.bridge.cancelTurn(input.conversationId, input.turnId);
+          return toolAdapter.dispatchState(
+            command.commandName as FuryGatewayToolStateCommandName,
+            command.input,
+          );
         }
-        return result;
+        throw new Error('local Gateway state command is unsupported');
       },
-      ...(modelRuntime.bridge
+      ...(admittedExecutionCommandNames.length > 0
         ? {
-            admittedExecutionCommandNames:
-              FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES,
+            admittedExecutionCommandNames,
             handleAdmittedExecutionCommand: async (command) => {
-              if (command.commandName !== 'conversation.model.execute') {
-                throw new Error('local Gateway execution command is unsupported');
+              if (
+                command.commandName === 'conversation.model.execute'
+                && modelRuntime.bridge
+              ) {
+                return modelRuntime.bridge.executeTurn(
+                  command.input as {
+                    readonly conversationId: string;
+                    readonly turnId: string;
+                  },
+                );
               }
-              return modelRuntime.bridge!.executeTurn(
-                command.input as {
-                  readonly conversationId: string;
-                  readonly turnId: string;
-                },
-              );
+              if (
+                toolAdapter
+                && (FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES as readonly string[])
+                  .includes(command.commandName)
+              ) {
+                return toolAdapter.dispatchExecution(
+                  command.commandName as FuryGatewayToolExecutionCommandName,
+                  command.input,
+                );
+              }
+              throw new Error('local Gateway execution command is unsupported');
             },
           }
         : {}),
@@ -276,6 +345,7 @@ export async function startFuryGatewayLocalRuntime(
     ticket,
     config,
     model: modelRuntime.config,
+    tools: toolRuntime.config,
     async stop(): Promise<void> {
       if (stopped) return;
       stopped = true;
@@ -347,12 +417,15 @@ export function furyGatewayCliHelp(): string {
     '  FURYPIPE_WEBCHAT_MAX_OUTPUT_TOKENS  optional bounded output limit',
     '  OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY',
     '                        provider credential selected by the explicit provider',
+    '  FURYPIPE_WEBCHAT_MCP_CONFIG',
+    '                        optional strict host-owned MCP tool config JSON path',
     '',
     'Security:',
     '  The local Gateway never treats localhost as authentication.',
     '  Start emits one short-lived one-time bootstrap code.',
     '  Provider inference is disabled unless provider, model, and credential are explicit.',
-    '  Browser admission is not a provider execution permit; the model bridge creates one-shot permits.',
+    '  MCP tools are disabled unless FURYPIPE_WEBCHAT_MCP_CONFIG is explicit.',
+    '  Browser admission is not a provider/tool execution permit; governed bridges create exact permits.',
   ].join('\n');
 }
 
@@ -391,6 +464,7 @@ function renderStart(
       webChatUrl: `${runtime.config.config.origin}${FURY_GATEWAY_WEBCHAT_PATH}`,
       origin: runtime.config.config.origin,
       model: runtime.model,
+      tools: runtime.tools,
       bootstrap: {
         format: runtime.ticket.format,
         code: runtime.ticket.code,
@@ -408,6 +482,9 @@ function renderStart(
     `  Origin:    ${runtime.config.config.origin}`,
     `  Model:     ${runtime.model.enabled
       ? `${runtime.model.providerId}/${runtime.model.model}`
+      : 'disabled'}`,
+    `  Tools:     ${runtime.tools.enabled
+      ? `${runtime.tools.sourceCount} configured source(s)`
       : 'disabled'}`,
     '',
     'Local browser bootstrap code (one-time, short-lived):',
