@@ -546,8 +546,31 @@ const JS = `(() => {
     const succeeded = stateReceipt?.succeeded;
     const verified = stateReceipt?.verified === true;
 
-    if (executed === true) addActivity('Tool executed', safeText(payload.toolName) || 'tool', 'executed');
-    if (succeeded === true) addActivity('Tool succeeded', safeText(payload.toolName) || 'tool', 'succeeded');
+    const failureCode = safeText(payload?.failureCode);
+    if (executed === false) {
+      addActivity(
+        'Blocked',
+        failureCode || 'Tool execution was rejected before callTool.',
+        'blocked',
+      );
+    } else if (executed === 'unknown') {
+      addActivity(
+        'Outcome unknown',
+        failureCode || 'Tool call outcome is unknown; automatic retry is disabled.',
+        'blocked',
+      );
+    } else if (executed === true) {
+      addActivity('Tool executed', safeText(payload.toolName) || 'tool', 'executed');
+      if (succeeded === true) {
+        addActivity('Tool succeeded', safeText(payload.toolName) || 'tool', 'succeeded');
+      } else if (succeeded === false) {
+        addActivity(
+          'Tool failed',
+          failureCode || 'Tool returned an error result.',
+          'blocked',
+        );
+      }
+    }
     if (verified) addActivity('Evidence verified', safeText(payload.toolName) || 'tool', 'verified');
     else if (executed === true) addActivity('Unverified', 'Execution receipt is not verified evidence.', 'requested');
 
