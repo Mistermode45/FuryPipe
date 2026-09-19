@@ -137,6 +137,15 @@ describe('Fury Gateway principal evidence', () => {
     );
   });
 
+  it('rejects unsafe authority clocks', () => {
+    const registry = createFuryGatewayPrincipalRegistry({
+      now: () => Number.MAX_SAFE_INTEGER + 1,
+    });
+    expect(() => registry.recordAuthenticatedPrincipal(principalAssertion())).toThrowError(
+      /safe non-negative timestamp/u,
+    );
+  });
+
   it('enforces the principal registry quota', () => {
     const registry = createFuryGatewayPrincipalRegistry({
       now: () => 60_000,
@@ -271,6 +280,22 @@ describe('Fury Gateway sessions', () => {
     harness.principalRegistry.revokePrincipal(harness.principal.principalId);
     expect(harness.sessionCoordinator.inspectSession(session).status).toBe('principal-revoked');
     expect(harness.sessionCoordinator.isActiveSession(session)).toBe(false);
+  });
+
+  it('rejects unsafe session clocks', () => {
+    const principalRegistry = createFuryGatewayPrincipalRegistry({ now: () => 190_000 });
+    const principal = principalRegistry.recordAuthenticatedPrincipal(principalAssertion());
+    const sessions = createFuryGatewaySessionCoordinator({
+      principalRegistry,
+      gatewayInstanceId: 'gateway-test',
+      now: () => Number.MAX_SAFE_INTEGER + 1,
+    });
+    expect(() => sessions.issueSession({
+      principal,
+      role: 'operator',
+      scopes: ['gateway.inspect'],
+      binding: { kind: 'local-operator' },
+    })).toThrowError(/safe non-negative timestamp/u);
   });
 
   it('binds a paired-device session to the exact authenticated connection evidence', () => {
