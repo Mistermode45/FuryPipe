@@ -14,7 +14,11 @@ import {
   McpDirectExecutionVerificationError,
   type McpDirectExecutionReceipt,
 } from './mcp-direct-executor-node.js';
-import type { McpDirectLifecycleState } from './mcp-direct-governance.js';
+import type {
+  McpDirectLifecycleState,
+  McpDirectSourceConfig,
+} from './mcp-direct-governance.js';
+import { canonicalizeMcpDirectJson } from './mcp-direct-json.js';
 import {
   approveMcpDirectPolicyDecision,
   createMcpDirectOperatorApprovalIntent,
@@ -227,23 +231,297 @@ function assertSafeId(value: string, label: string): string {
   return value;
 }
 
+function plainDataRecord(
+  value: unknown,
+  label: string,
+): Readonly<Record<string, unknown>> {
+  if (
+    value === null
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || (
+      Object.getPrototypeOf(value) !== Object.prototype
+      && Object.getPrototypeOf(value) !== null
+    )
+    || Object.getOwnPropertySymbols(value).length > 0
+  ) {
+    throw new Error(`${label} must be a plain data object`);
+  }
+  const record = value as Record<string, unknown>;
+  for (const key of Object.getOwnPropertyNames(record)) {
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    if (
+      !descriptor
+      || !descriptor.enumerable
+      || !('value' in descriptor)
+    ) {
+      throw new Error(`${label} must contain enumerable own data properties only`);
+    }
+  }
+  return record;
+}
+
+function exactDataRecord(
+  value: unknown,
+  allowedKeys: readonly string[],
+  label: string,
+): Readonly<Record<string, unknown>> {
+  const record = plainDataRecord(value, label);
+  const allowed = new Set(allowedKeys);
+  for (const key of Object.getOwnPropertyNames(record)) {
+    if (!allowed.has(key)) {
+      throw new Error(`${label} contains unsupported fields`);
+    }
+  }
+  return record;
+}
+
+function stringArraySnapshot(
+  value: unknown,
+  label: string,
+  maximum: number,
+): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > maximum) {
+    throw new Error(`${label} must be a bounded string array`);
+  }
+  const own = Object.getOwnPropertyNames(value);
+  if (
+    own.some((name) =>
+      name !== 'length'
+      && !/^(?:0|[1-9][0-9]*)$/u.test(name)
+    )
+  ) {
+    throw new Error(`${label} contains unsupported array properties`);
+  }
+  const output: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (
+      !descriptor
+      || !descriptor.enumerable
+      || !('value' in descriptor)
+      || typeof descriptor.value !== 'string'
+    ) {
+      throw new Error(`${label} contains invalid entries`);
+    }
+    output.push(descriptor.value);
+  }
+  return Object.freeze(output);
+}
+
+function stringRecordSnapshot(
+  value: unknown,
+  label: string,
+  maximum: number,
+): Readonly<Record<string, string>> | undefined {
+  if (value === undefined) return undefined;
+  const record = plainDataRecord(value, label);
+  const names = Object.getOwnPropertyNames(record);
+  if (names.length > maximum) {
+    throw new Error(`${label} exceeds its entry bound`);
+  }
+  const output: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const name of names) {
+    const entry = record[name];
+    if (typeof entry !== 'string') {
+      throw new Error(`${label} values must be strings`);
+    }
+    output[name] = entry;
+  }
+  return Object.freeze(output);
+}
+
+function positiveIntegerOrUndefined(
+  value: unknown,
+  label: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new Error(`${label} must be a positive safe integer`);
+  }
+  return value as number;
+}
+
+function optionalString(
+  value: unknown,
+  label: string,
+): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') {
+    throw new Error(`${label} must be a string`);
+  }
+  return value;
+}
+
+function snapshotSourceConfig(value: unknown): McpDirectSourceConfig {
+  const record = exactDataRecord(
+    value,
+    ['sourceId', 'transport', 'endpointFingerprint', 'trust'],
+    'MCP source',
+  );
+  if (
+    typeof record.sourceId !== 'string'
+    || typeof record.endpointFingerprint !== 'string'
+    || (record.transport !== 'stdio' && record.transport !== 'streamable_http')
+    || (record.trust !== 'trusted' && record.trust !== 'untrusted')
+  ) {
+    throw new Error('MCP source configuration is invalid');
+  }
+  return Object.freeze({
+    sourceId: record.sourceId,
+    transport: record.transport,
+    endpointFingerprint: record.endpointFingerprint,
+    trust: record.trust,
+  });
+}
+
+function snapshotRuntimeConfig(value: unknown): McpDirectRuntimeConfig {
+  const root = plainDataRecord(value, 'MCP runtime configuration');
+  const source = snapshotSourceConfig(root.source);
+
+  if (source.transport === 'stdio') {
+    const record = exactDataRecord(
+      value,
+      ['source', 'command', 'args', 'env', 'principalId', 'cwd', 'maxBufferBytes'],
+      'MCP stdio runtime configuration',
+    );
+    if (typeof record.command !== 'string' || record.command.length === 0) {
+      throw new Error('MCP stdio command is invalid');
+    }
+    const args = stringArraySnapshot(record.args, 'MCP stdio args', 128);
+    const env = stringRecordSnapshot(record.env, 'MCP stdio env', 128);
+    const principalId = optionalString(record.principalId, 'MCP stdio principalId');
+    const cwd = optionalString(record.cwd, 'MCP stdio cwd');
+    const maxBufferBytes = positiveIntegerOrUndefined(
+      record.maxBufferBytes,
+      'MCP stdio maxBufferBytes',
+    );
+    return Object.freeze({
+      source: Object.freeze({ ...source, transport: 'stdio' as const }),
+      command: record.command,
+      ...(args === undefined ? {} : { args }),
+      ...(env === undefined ? {} : { env }),
+      ...(principalId === undefined ? {} : { principalId }),
+      ...(cwd === undefined ? {} : { cwd }),
+      ...(maxBufferBytes === undefined ? {} : { maxBufferBytes }),
+    });
+  }
+
+  const record = exactDataRecord(
+    value,
+    ['source', 'url', 'allowedHosts', 'headers', 'principalId', 'maxResponseBytes'],
+    'MCP HTTP runtime configuration',
+  );
+  if (typeof record.url !== 'string' || record.url.length === 0) {
+    throw new Error('MCP HTTP URL is invalid');
+  }
+  const allowedHosts = stringArraySnapshot(
+    record.allowedHosts,
+    'MCP HTTP allowedHosts',
+    128,
+  );
+  const headers = stringRecordSnapshot(record.headers, 'MCP HTTP headers', 64);
+  const principalId = optionalString(record.principalId, 'MCP HTTP principalId');
+  const maxResponseBytes = positiveIntegerOrUndefined(
+    record.maxResponseBytes,
+    'MCP HTTP maxResponseBytes',
+  );
+  return Object.freeze({
+    source: Object.freeze({ ...source, transport: 'streamable_http' as const }),
+    url: record.url,
+    ...(allowedHosts === undefined ? {} : { allowedHosts }),
+    ...(headers === undefined ? {} : { headers }),
+    ...(principalId === undefined ? {} : { principalId }),
+    ...(maxResponseBytes === undefined ? {} : { maxResponseBytes }),
+  });
+}
+
+function snapshotPolicyPair(value: unknown): {
+  readonly sourceId: string;
+  readonly endpointFingerprint: string;
+  readonly toolName: string;
+} {
+  const record = exactDataRecord(
+    value,
+    ['sourceId', 'endpointFingerprint', 'toolName'],
+    'MCP policy pair',
+  );
+  if (
+    typeof record.sourceId !== 'string'
+    || typeof record.endpointFingerprint !== 'string'
+    || typeof record.toolName !== 'string'
+  ) {
+    throw new Error('MCP policy pair is invalid');
+  }
+  return Object.freeze({
+    sourceId: record.sourceId,
+    endpointFingerprint: record.endpointFingerprint,
+    toolName: record.toolName,
+  });
+}
+
+function snapshotPolicy(value: unknown): McpDirectPolicy {
+  const record = exactDataRecord(
+    value,
+    ['format', 'policyId', 'governedPolicyAllowlist', 'operatorApprovalAllowlist'],
+    'MCP policy',
+  );
+  if (
+    record.format !== 'furypipe-mcp-direct-policy/v1'
+    || typeof record.policyId !== 'string'
+    || !SAFE_ID.test(record.policyId)
+    || !Array.isArray(record.governedPolicyAllowlist)
+    || !Array.isArray(record.operatorApprovalAllowlist)
+    || record.governedPolicyAllowlist.length > 256
+    || record.operatorApprovalAllowlist.length > 256
+  ) {
+    throw new Error('MCP policy configuration is invalid');
+  }
+  return Object.freeze({
+    format: 'furypipe-mcp-direct-policy/v1' as const,
+    policyId: record.policyId,
+    governedPolicyAllowlist: Object.freeze(
+      record.governedPolicyAllowlist.map(snapshotPolicyPair),
+    ),
+    operatorApprovalAllowlist: Object.freeze(
+      record.operatorApprovalAllowlist.map(snapshotPolicyPair),
+    ),
+  });
+}
+
+function snapshotJsonArgument(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  const canonical = canonicalizeMcpDirectJson(value, {
+    maxBytes: 1024 * 1024,
+    maxDepth: 64,
+    label: 'tool proposal arguments',
+  });
+  return JSON.parse(canonical) as unknown;
+}
+
 function exactInput(
   value: FuryKernelToolProposalInput,
 ): FuryKernelToolProposalInput {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('tool proposal input must be a plain object');
-  }
-  const record = value as unknown as Record<string, unknown>;
-  const keys = Object.keys(record);
+  const record = exactDataRecord(
+    value,
+    ['sourceId', 'toolName', 'arguments'],
+    'tool proposal input',
+  );
   if (
-    keys.some((key) => !['sourceId', 'toolName', 'arguments'].includes(key))
-    || keys.length < 2
+    typeof record.sourceId !== 'string'
+    || typeof record.toolName !== 'string'
   ) {
-    throw new Error('tool proposal input contains unsupported fields');
+    throw new Error('tool proposal input is invalid');
   }
-  assertSafeId(value.sourceId, 'sourceId');
-  assertSafeId(value.toolName, 'toolName');
-  return value;
+  const sourceId = assertSafeId(record.sourceId, 'sourceId');
+  const toolName = assertSafeId(record.toolName, 'toolName');
+  const args = snapshotJsonArgument(record.arguments);
+  return Object.freeze({
+    sourceId,
+    toolName,
+    ...(record.arguments === undefined ? {} : { arguments: args }),
+  });
 }
 
 function normalizeSources(
@@ -253,16 +531,20 @@ function normalizeSources(
     throw new Error(`tool bridge requires 1-${MAX_SOURCES} host-owned MCP sources`);
   }
   const output = new Map<string, SourceState>();
-  for (const entry of sources) {
-    if (!entry || typeof entry !== 'object' || !entry.config || !entry.policy) {
-      throw new Error('tool bridge source configuration is incomplete');
-    }
-    const source = entry.config.source;
+  for (const candidate of sources) {
+    const entry = exactDataRecord(
+      candidate,
+      ['config', 'policy'],
+      'tool bridge source',
+    );
+    const config = snapshotRuntimeConfig(entry.config);
+    const policy = snapshotPolicy(entry.policy);
+    const source = config.source;
     assertSafeId(source.sourceId, 'sourceId');
     if (output.has(source.sourceId)) {
       throw new Error('tool bridge source IDs must be unique');
     }
-    const expected = deriveMcpDirectEndpointFingerprint(entry.config);
+    const expected = deriveMcpDirectEndpointFingerprint(config);
     if (expected !== source.endpointFingerprint) {
       throw new Error(`MCP source ${source.sourceId} endpoint fingerprint does not match runtime configuration`);
     }
@@ -274,8 +556,8 @@ function normalizeSources(
       executionAuthority: false as const,
     });
     output.set(source.sourceId, Object.freeze({
-      config: entry.config,
-      policy: entry.policy,
+      config,
+      policy,
       summary,
     }));
   }
