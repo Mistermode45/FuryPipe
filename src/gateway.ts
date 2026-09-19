@@ -3,6 +3,32 @@ import { createHash } from 'node:crypto';
 export const FURY_GATEWAY_PROTOCOL_VERSION = 'furypipe-gateway/v1' as const;
 export const FURY_GATEWAY_CONNECT_FORMAT = 'furypipe-gateway-connect/v1' as const;
 export const FURY_GATEWAY_HEALTH_FORMAT = 'furypipe-gateway-health/v1' as const;
+export const FURY_GATEWAY_MESSAGE_FORMAT = 'furypipe-gateway-message/v1' as const;
+
+export const FURY_GATEWAY_MESSAGE_KINDS = [
+  'request',
+  'response',
+  'event',
+  'ack',
+  'ping',
+  'pong',
+  'error',
+] as const;
+export type FuryGatewayMessageKind = (typeof FURY_GATEWAY_MESSAGE_KINDS)[number];
+
+export interface FuryGatewayMessageEnvelope {
+  readonly format: typeof FURY_GATEWAY_MESSAGE_FORMAT;
+  readonly protocolVersion: typeof FURY_GATEWAY_PROTOCOL_VERSION;
+  readonly messageId: string;
+  readonly sequence: number;
+  readonly kind: FuryGatewayMessageKind;
+  readonly type: string;
+  /** Informational client/server timestamp only; never used for authorization freshness. */
+  readonly sentAt: number;
+  readonly payload: unknown;
+  /** Parsed transport data is descriptive only and never grants authority. */
+  readonly authority: 'transport-data-only';
+}
 
 export const FURY_GATEWAY_ROLES = ['operator', 'node', 'channel', 'worker'] as const;
 export type FuryGatewayRole = (typeof FURY_GATEWAY_ROLES)[number];
@@ -49,6 +75,12 @@ export type FuryGatewayProtocolErrorCode =
   | 'invalid-client'
   | 'invalid-capability'
   | 'invalid-command'
+  | 'invalid-message'
+  | 'invalid-message-id'
+  | 'invalid-sequence'
+  | 'invalid-message-kind'
+  | 'invalid-message-type'
+  | 'invalid-payload'
   | 'limit-exceeded';
 
 export class FuryGatewayProtocolError extends Error {
@@ -70,9 +102,20 @@ const MAX_COMMAND_BYTES = 96;
 const MAX_CAPABILITIES = 64;
 const MAX_COMMANDS = 128;
 const MAX_COUNTER = 1_000_000_000;
+export const FURY_GATEWAY_MAX_MESSAGE_BYTES = 64 * 1024;
+const MAX_MESSAGE_ID_BYTES = 128;
+const MAX_MESSAGE_TYPE_BYTES = 96;
+const MAX_MESSAGE_PAYLOAD_DEPTH = 16;
+const MAX_MESSAGE_PAYLOAD_NODES = 4_096;
+const MAX_MESSAGE_OBJECT_KEYS = 128;
+const MAX_MESSAGE_ARRAY_ITEMS = 256;
+const MAX_MESSAGE_STRING_BYTES = 16 * 1024;
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
 const CAPABILITY_RE = /^[a-z][a-z0-9._:-]*$/u;
+const MESSAGE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
+const MESSAGE_TYPE_RE = /^[a-z][a-z0-9._:-]*$/u;
+const DANGEROUS_PAYLOAD_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -249,6 +292,199 @@ export function parseFuryGatewayConnectEnvelope(value: unknown): FuryGatewayConn
     commands,
     authority: 'unverified',
   });
+}
+
+
+function assertBoundedGatewayPayload(value: unknown): void {
+  let nodes = 0;
+  const visit = (current: unknown, depth: number): void => {
+    nodes += 1;
+    if (nodes > MAX_MESSAGE_PAYLOAD_NODES) {
+      throw new FuryGatewayProtocolError(
+        'limit-exceeded',
+        \`gateway message payload exceeds \${MAX_MESSAGE_PAYLOAD_NODES} nodes\`,
+      );
+    }
+    if (depth > MAX_MESSAGE_PAYLOAD_DEPTH) {
+      throw new FuryGatewayProtocolError(
+        'limit-exceeded',
+        \`gateway message payload exceeds depth \${MAX_MESSAGE_PAYLOAD_DEPTH}\`,
+      );
+    }
+    if (current === null || typeof current === 'boolean') return;
+    if (typeof current === 'number') {
+      if (!Number.isFinite(current)) {
+        throw new FuryGatewayProtocolError('invalid-payload', 'gateway message payload contains a non-finite number');
+      }
+      return;
+    }
+    if (typeof current === 'string') {
+      if (utf8Bytes(current) > MAX_MESSAGE_STRING_BYTES || current.includes('\u0000')) {
+        throw new FuryGatewayProtocolError(
+          'limit-exceeded',
+          \`gateway message payload string exceeds \${MAX_MESSAGE_STRING_BYTES} UTF-8 bytes or contains NUL\`,
+        );
+      }
+      return;
+    }
+    if (Array.isArray(current)) {
+      if (current.length > MAX_MESSAGE_ARRAY_ITEMS) {
+        throw new FuryGatewayProtocolError(
+          'limit-exceeded',
+          \`gateway message payload array exceeds \${MAX_MESSAGE_ARRAY_ITEMS} items\`,
+        );
+      }
+      for (const item of current) visit(item, depth + 1);
+      return;
+    }
+    if (!isRecord(current)) {
+      throw new FuryGatewayProtocolError('invalid-payload', 'gateway message payload must be JSON-compatible data');
+    }
+    const keys = Object.keys(current);
+    if (keys.length > MAX_MESSAGE_OBJECT_KEYS) {
+      throw new FuryGatewayProtocolError(
+        'limit-exceeded',
+        \`gateway message payload object exceeds \${MAX_MESSAGE_OBJECT_KEYS} keys\`,
+      );
+    }
+    for (const key of keys) {
+      if (DANGEROUS_PAYLOAD_KEYS.has(key) || key.includes('\u0000')) {
+        throw new FuryGatewayProtocolError('invalid-payload', 'gateway message payload contains an unsafe object key');
+      }
+      if (utf8Bytes(key) > MAX_MESSAGE_TYPE_BYTES) {
+        throw new FuryGatewayProtocolError('limit-exceeded', 'gateway message payload key exceeds its byte bound');
+      }
+      visit(current[key], depth + 1);
+    }
+  };
+  visit(value, 0);
+}
+
+function parseMessageKind(value: unknown): FuryGatewayMessageKind {
+  if (
+    typeof value !== 'string'
+    || !(FURY_GATEWAY_MESSAGE_KINDS as readonly string[]).includes(value)
+  ) {
+    throw new FuryGatewayProtocolError('invalid-message-kind', 'gateway message kind is unsupported');
+  }
+  return value as FuryGatewayMessageKind;
+}
+
+function parseMessageSequence(value: unknown): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 1) {
+    throw new FuryGatewayProtocolError(
+      'invalid-sequence',
+      'gateway message sequence must be a positive safe integer',
+    );
+  }
+  return value as number;
+}
+
+function parseMessageTimestamp(value: unknown): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new FuryGatewayProtocolError(
+      'invalid-message',
+      'gateway message sentAt must be a non-negative safe integer',
+    );
+  }
+  return value as number;
+}
+
+/**
+ * Parse one bounded Fury Gateway transport message from UTF-8 JSON.
+ *
+ * This parser deliberately does not authenticate a principal, authorize a
+ * command, or imply successful execution. The resulting object is data only.
+ */
+export function parseFuryGatewayMessageText(text: string): FuryGatewayMessageEnvelope {
+  if (typeof text !== 'string') {
+    throw new FuryGatewayProtocolError('invalid-message', 'gateway message must be UTF-8 text');
+  }
+  const bytes = utf8Bytes(text);
+  if (bytes === 0) {
+    throw new FuryGatewayProtocolError('invalid-message', 'gateway message must not be empty');
+  }
+  if (bytes > FURY_GATEWAY_MAX_MESSAGE_BYTES) {
+    throw new FuryGatewayProtocolError(
+      'limit-exceeded',
+      \`gateway message exceeds \${FURY_GATEWAY_MAX_MESSAGE_BYTES} UTF-8 bytes\`,
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new FuryGatewayProtocolError('invalid-message', 'gateway message is not valid JSON');
+  }
+  if (!isRecord(parsed)) {
+    throw new FuryGatewayProtocolError('invalid-message', 'gateway message must be a JSON object');
+  }
+  assertExactKeys(
+    parsed,
+    ['format', 'protocolVersion', 'messageId', 'sequence', 'kind', 'type', 'sentAt', 'payload'],
+    'invalid-message',
+    'gateway message',
+  );
+  if (parsed.format !== FURY_GATEWAY_MESSAGE_FORMAT) {
+    throw new FuryGatewayProtocolError('unsupported-format', 'unsupported gateway message format');
+  }
+  if (parsed.protocolVersion !== FURY_GATEWAY_PROTOCOL_VERSION) {
+    throw new FuryGatewayProtocolError('unsupported-protocol', 'unsupported Fury Gateway protocol version');
+  }
+
+  const messageId = boundedString(
+    parsed.messageId,
+    'messageId',
+    MAX_MESSAGE_ID_BYTES,
+    MESSAGE_ID_RE,
+    'invalid-message-id',
+  );
+  const sequence = parseMessageSequence(parsed.sequence);
+  const kind = parseMessageKind(parsed.kind);
+  const type = boundedString(
+    parsed.type,
+    'type',
+    MAX_MESSAGE_TYPE_BYTES,
+    MESSAGE_TYPE_RE,
+    'invalid-message-type',
+  );
+  const sentAt = parseMessageTimestamp(parsed.sentAt);
+  assertBoundedGatewayPayload(parsed.payload);
+
+  return Object.freeze({
+    format: FURY_GATEWAY_MESSAGE_FORMAT,
+    protocolVersion: FURY_GATEWAY_PROTOCOL_VERSION,
+    messageId,
+    sequence,
+    kind,
+    type,
+    sentAt,
+    payload: parsed.payload,
+    authority: 'transport-data-only',
+  });
+}
+
+/**
+ * Serialize a validated Fury Gateway transport message and re-apply the same
+ * byte/structure bounds used by the parser.
+ */
+export function serializeFuryGatewayMessage(
+  input: Omit<FuryGatewayMessageEnvelope, 'authority'>,
+): string {
+  const candidate = JSON.stringify({
+    format: input.format,
+    protocolVersion: input.protocolVersion,
+    messageId: input.messageId,
+    sequence: input.sequence,
+    kind: input.kind,
+    type: input.type,
+    sentAt: input.sentAt,
+    payload: input.payload,
+  });
+  // Parsing the serialized form gives us one canonical validation path.
+  parseFuryGatewayMessageText(candidate);
+  return candidate;
 }
 
 export function deriveFuryGatewayConnectFingerprint(envelope: FuryGatewayConnectEnvelope): string {
