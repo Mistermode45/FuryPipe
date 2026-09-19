@@ -5,7 +5,7 @@ export const FURY_KERNEL_MESSAGE_FORMAT = 'furypipe-kernel-message/v1' as const;
 export const FURY_KERNEL_TURN_FORMAT = 'furypipe-kernel-turn/v1' as const;
 
 export type FuryKernelMessageRole = 'user' | 'assistant';
-export type FuryKernelTurnStatus = 'accepted' | 'completed' | 'cancelled';
+export type FuryKernelTurnStatus = 'accepted' | 'completed' | 'cancelled' | 'failed';
 
 export interface FuryKernelMessage {
   readonly format: typeof FURY_KERNEL_MESSAGE_FORMAT;
@@ -20,6 +20,7 @@ export interface FuryKernelTurn {
   readonly turnId: string;
   readonly requestMessageId: string;
   readonly responseMessageId?: string;
+  readonly failureCode?: string;
   readonly status: FuryKernelTurnStatus;
   readonly createdAt: number;
   readonly completedAt?: number;
@@ -62,6 +63,14 @@ export interface FuryKernelCancelledTurn {
   readonly executionAuthority: false;
 }
 
+export interface FuryKernelFailedTurn {
+  readonly format: typeof FURY_KERNEL_TURN_FORMAT;
+  readonly conversationId: string;
+  readonly turn: FuryKernelTurn;
+  readonly status: 'failed';
+  readonly executionAuthority: false;
+}
+
 export interface FuryKernelConversationOptions {
   readonly now?: () => number;
   readonly maxConversations?: number;
@@ -98,6 +107,12 @@ export interface FuryKernelCancelTurnInput {
   readonly turnId: string;
 }
 
+export interface FuryKernelFailTurnInput {
+  readonly conversationId: string;
+  readonly turnId: string;
+  readonly failureCode: string;
+}
+
 export interface FuryKernelConversationStore {
   openConversation(): FuryKernelConversationSnapshot;
   inspectConversation(conversationId: string): FuryKernelConversationSnapshot;
@@ -105,6 +120,7 @@ export interface FuryKernelConversationStore {
   submitUserMessage(input: FuryKernelSubmitMessageInput): FuryKernelAcceptedTurn;
   completeTurn(input: FuryKernelCompleteTurnInput): FuryKernelCompletedTurn;
   cancelTurn(input: FuryKernelCancelTurnInput): FuryKernelCancelledTurn;
+  failTurn(input: FuryKernelFailTurnInput): FuryKernelFailedTurn;
   activeConversationCount(): number;
   inFlightTurnCount(): number;
 }
@@ -138,6 +154,7 @@ interface MutableTurn {
   readonly turnId: string;
   readonly requestMessageId: string;
   responseMessageId?: string;
+  failureCode?: string;
   status: FuryKernelTurnStatus;
   readonly createdAt: number;
   completedAt?: number;
@@ -170,6 +187,7 @@ const HARD_MAX_IN_FLIGHT_TURNS = 1024;
 const CONVERSATION_ID_RE = /^fkc_[A-Za-z0-9_-]{24}$/u;
 const TURN_ID_RE = /^fkt_[A-Za-z0-9_-]{24}$/u;
 const MESSAGE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/u;
+const FAILURE_CODE_RE = /^[a-z][a-z0-9._:-]{0,95}$/u;
 
 function finiteNow(now: () => number): number {
   const value = now();
@@ -284,6 +302,7 @@ function cloneTurn(turn: MutableTurn): FuryKernelTurn {
     turnId: turn.turnId,
     requestMessageId: turn.requestMessageId,
     ...(turn.responseMessageId === undefined ? {} : { responseMessageId: turn.responseMessageId }),
+    ...(turn.failureCode === undefined ? {} : { failureCode: turn.failureCode }),
     status: turn.status,
     createdAt: turn.createdAt,
     ...(turn.completedAt === undefined ? {} : { completedAt: turn.completedAt }),
@@ -572,6 +591,45 @@ export function createFuryKernelConversationStore(
         conversationId: state.conversationId,
         turn: cloneTurn(turn),
         status: 'cancelled' as const,
+        executionAuthority: false as const,
+      });
+    },
+
+    failTurn(input: FuryKernelFailTurnInput): FuryKernelFailedTurn {
+      assertExactKeys(
+        input,
+        ['conversationId', 'turnId', 'failureCode'],
+        'invalid-message',
+        'turn failure input',
+      );
+      const state = requireConversation(input.conversationId);
+      const requestedTurnId = turnId(input.turnId);
+      const turn = findTurn(state, requestedTurnId);
+      if (turn.status !== 'accepted' || state.activeTurnId !== turn.turnId) {
+        throw new FuryKernelConversationError('turn-terminal', 'conversation turn is no longer active');
+      }
+      if (
+        typeof input.failureCode !== 'string'
+        || !FAILURE_CODE_RE.test(input.failureCode)
+      ) {
+        throw new FuryKernelConversationError(
+          'invalid-message',
+          'turn failure code must be a bounded canonical identifier',
+        );
+      }
+      const at = finiteNow(now);
+      turn.status = 'failed';
+      turn.failureCode = input.failureCode;
+      turn.completedAt = at;
+      state.updatedAt = at;
+      delete state.activeTurnId;
+      inFlightTurns -= 1;
+
+      return Object.freeze({
+        format: FURY_KERNEL_TURN_FORMAT,
+        conversationId: state.conversationId,
+        turn: cloneTurn(turn),
+        status: 'failed' as const,
         executionAuthority: false as const,
       });
     },
