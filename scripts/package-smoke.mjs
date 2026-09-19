@@ -362,13 +362,13 @@ try {
   const gatewayExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
-    "const m = await import('furypipe/gateway'); if (typeof m.parseFuryGatewayConnectEnvelope !== 'function' || typeof m.deriveFuryGatewayConnectFingerprint !== 'function' || typeof m.createFuryGatewayHealthSnapshot !== 'function' || typeof m.FuryGatewayProtocolError !== 'function' || typeof m.authenticateGatewayConnection !== 'undefined' || typeof m.pairGatewayDevice !== 'undefined' || typeof m.executeGatewayCommand !== 'undefined') process.exit(1);",
+    "const m = await import('furypipe/gateway'); if (typeof m.parseFuryGatewayConnectEnvelope !== 'function' || typeof m.deriveFuryGatewayConnectFingerprint !== 'function' || typeof m.createFuryGatewayHealthSnapshot !== 'function' || typeof m.parseFuryGatewayMessageText !== 'function' || typeof m.serializeFuryGatewayMessage !== 'function' || typeof m.FURY_GATEWAY_MAX_MESSAGE_BYTES !== 'number' || typeof m.FuryGatewayProtocolError !== 'function' || typeof m.authenticateGatewayConnection !== 'undefined' || typeof m.pairGatewayDevice !== 'undefined' || typeof m.executeGatewayCommand !== 'undefined') process.exit(1);",
   ], installDir);
   assert(gatewayExport.stderr === '', `Fury Gateway package export wrote stderr: ${gatewayExport.stderr}`);
   const gatewayHiddenExports = await run(process.execPath, [
     '--input-type=module',
     '-e',
-    "for (const subpath of ['gateway-auth-node','gateway-pairing-node','gateway-principal-node','gateway-session-node','gateway-command-authorization-node']) { try { await import('furypipe/' + subpath); process.exit(2); } catch (error) { if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }",
+    "for (const subpath of ['gateway-auth-node','gateway-pairing-node','gateway-principal-node','gateway-session-node','gateway-command-authorization-node','gateway-transport-node']) { try { await import('furypipe/' + subpath); process.exit(2); } catch (error) { if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }",
   ], installDir);
   assert(gatewayHiddenExports.stderr === '', `Hidden Gateway authority package paths wrote stderr: ${gatewayHiddenExports.stderr}`);
   const providerRuntimeExport = await run(process.execPath, [
