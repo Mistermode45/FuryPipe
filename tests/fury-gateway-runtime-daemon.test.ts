@@ -180,9 +180,19 @@ describe('Fury Gateway runtime daemon', () => {
     expect(daemon.health().connections.operator).toBe(1);
     expect(daemon.health().connections.node).toBe(0);
 
+    const daemonClose = new Promise<void>((resolve) => {
+      let unsubscribe = (): void => {};
+      unsubscribe = daemon.subscribe((event) => {
+        if (event.type === 'websocket' && event.event.type === 'connection-close') {
+          unsubscribe();
+          resolve();
+        }
+      });
+    });
     const closePromise = nextClose(ws);
     ws.close(1000, 'done');
     expect(await closePromise).toBe(1000);
+    await daemonClose;
 
     expect(daemon.inspect().activeConnections).toBe(0);
     expect(daemon.health().connections.operator).toBe(0);
