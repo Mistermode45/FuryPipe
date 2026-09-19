@@ -175,6 +175,26 @@ Raw tool result is process-local application data. Browser display is disabled b
 
 Unknown execution outcome is terminal for automatic retry.
 
+Fresh-inventory identity/protocol drift, tool disappearance, input-schema drift, risk-class drift, invalid fresh tool definition and missing governed `callTool` capability are typed as **pre-call rejections**. They preserve:
+
+```text
+executed=false
+succeeded=false
+verified=false
+retrySafe=false
+```
+
+A transport failure after `callTool` has been invoked preserves the different state:
+
+```text
+executed=unknown
+succeeded=unknown
+verified=false
+retrySafe=false
+```
+
+The bridge must never rewrite one state into the other.
+
 ## 8. Provider/model interaction
 
 Phase 2A.4 plain model inference continues to reject provider tool/function-call content.
@@ -259,7 +279,8 @@ Two execution-boundary cases are proven with real stdio MCP fixtures at the brid
 
 - forged/copied proposal IDs cannot create authority;
 - invalid tool args fail schema validation before execution;
-- source/tool/schema/risk drift fails closed;
+- source/tool/schema/risk drift fails closed **before callTool** and is exposed as `executed=false`;
+- transport loss after invocation is exposed as non-retriable `outcome-unknown` and does not replay the proposal;
 - denied policy never executes;
 - operator-required proposal never executes before explicit approval;
 - operator intent is one-shot and proposal-bound;
