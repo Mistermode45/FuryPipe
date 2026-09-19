@@ -87,8 +87,9 @@ Initial operations:
 - `conversation.inspect`
 - `conversation.message.submit`
 - `conversation.cancel`
+- `conversation.close`
 
-A conversation identifier is random, opaque, bounded, and process-local in the first implementation.
+A conversation identifier is server-generated, random, opaque, bounded, and process-local in the first implementation. Browser/client supplied conversation identifiers are not accepted for creation. Terminal conversations have an explicit close operation so bounded daemon capacity is reclaimable; a conversation with an active turn cannot be closed.
 
 A message identifier is caller-provided or Kernel-generated according to one canonical rule and is unique within a conversation.
 
