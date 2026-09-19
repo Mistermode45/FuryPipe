@@ -25,6 +25,8 @@ furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
 furypipe stats [--json] [--file <path>]
 furypipe export [...]
+furypipe gateway config [--json]
+furypipe gateway start [--json]
 furypipe link [--route PATTERN=TARGET]... [--] <agent> [args...]
 ```
 
@@ -73,6 +75,37 @@ The setup command is explicit by design: installing an npm package must not unex
 `furypipe start` starts the Node runtime.
 
 The default deployment is loopback-oriented. Non-loopback exposure requires an explicit operator security boundary; see [../SECURITY.md](../SECURITY.md).
+
+## Gateway and local WebChat
+
+`furypipe gateway start` starts the dedicated VNext local Gateway. It is separate from the historical FuryPipe proxy listener and remains loopback-only in this phase.
+
+Default local endpoints:
+
+```text
+Gateway origin:  http://127.0.0.1:48722
+WebChat:         http://127.0.0.1:48722/gateway/webchat/
+WebSocket:       ws://127.0.0.1:48722/gateway/v1
+```
+
+The start command prints one short-lived, one-time browser bootstrap code. Open the printed WebChat URL and enter that code in the local page. The browser submits it with a JSON `POST` to `/gateway/local-bootstrap/v1`; the code is never placed in a query string, fragment, WebSocket protocol, or cookie.
+
+On successful redemption, the Gateway returns an `HttpOnly`, `SameSite=Strict` cookie scoped to `/gateway/`. The cookie authenticates the local browser session only. It is not a command scope, provider permit, tool permit, MCP permit, or execution authority.
+
+The WebChat assets are served by the same loopback Gateway and use a restrictive Content Security Policy with self-hosted scripts/styles only. The browser talks to the Fury Kernel through registered conversation commands and narrow `conversations.inspect` / `conversations.write` session scopes.
+
+In the current Phase 2A local WebChat:
+
+- conversation state is process-local and bounded;
+- reconnect performs bounded conversation resynchronization;
+- transcripts are not persisted in browser storage;
+- message submission is displayed as accepted only after a Kernel state receipt;
+- provider inference is not implied by conversation acceptance;
+- tool eligibility/execution/evidence remain distinct lifecycle states.
+
+`furypipe gateway config --json` reports the resolved loopback Gateway configuration without starting the daemon. `furypipe gateway start --json` includes `websocketUrl`, `webChatUrl`, the exact local origin and the one-time bootstrap object for machine-oriented launchers.
+
+Remote Gateway/WebChat exposure is out of scope for this phase and must not be created by binding this listener to a non-loopback address.
 
 ## Doctor
 
