@@ -125,6 +125,10 @@
       "types": "./dist/gateway-conversation-adapter-node.d.ts",
       "import": "./dist/gateway-conversation-adapter-node.js"
     },
+    "./gateway-webchat-node": {
+      "types": "./dist/gateway-webchat-node.d.ts",
+      "import": "./dist/gateway-webchat-node.js"
+    },
     "./skill-registry": {
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"
