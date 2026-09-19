@@ -85,6 +85,8 @@ export interface FuryGatewaySessionBinding {
   readonly deviceId?: string;
   readonly publicKeySha256?: string;
   readonly pairingId?: string;
+  readonly connectFingerprint?: string;
+  readonly deviceAuthenticatedAt?: number;
 }
 
 export interface FuryGatewaySessionLease {
@@ -280,6 +282,8 @@ function cloneBinding(binding: FuryGatewaySessionBinding): FuryGatewaySessionBin
     ...(binding.deviceId === undefined ? {} : { deviceId: binding.deviceId }),
     ...(binding.publicKeySha256 === undefined ? {} : { publicKeySha256: binding.publicKeySha256 }),
     ...(binding.pairingId === undefined ? {} : { pairingId: binding.pairingId }),
+    ...(binding.connectFingerprint === undefined ? {} : { connectFingerprint: binding.connectFingerprint }),
+    ...(binding.deviceAuthenticatedAt === undefined ? {} : { deviceAuthenticatedAt: binding.deviceAuthenticatedAt }),
   });
 }
 
@@ -457,6 +461,8 @@ export function createFuryGatewaySessionCoordinator(
           deviceId: device.deviceId,
           publicKeySha256: device.publicKeySha256,
           pairingId: paired.pairingId,
+          connectFingerprint: device.connectFingerprint,
+          deviceAuthenticatedAt: device.authenticatedAt,
         });
       } else {
         throw new FuryGatewaySessionError('invalid-binding', 'gateway session binding is unsupported');
