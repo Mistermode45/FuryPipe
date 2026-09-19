@@ -186,6 +186,7 @@ export async function startFuryGatewayLocalRuntime(
         if (await webchat(request, response)) return true;
         return bootstrap.handleHttpRequest(request, response);
       },
+      admittedStateCommandNames: FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
       handleAdmittedStateCommand: (command) => {
         if (
           !(FURY_GATEWAY_CONVERSATION_COMMAND_NAMES as readonly string[])
