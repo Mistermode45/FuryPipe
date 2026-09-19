@@ -35,9 +35,13 @@ export interface FuryGatewayLocalRuntimeOptions extends FuryGatewayLocalConfigOp
   readonly localSubject?: string;
 }
 
+export interface FuryGatewayCliWriter {
+  write(value: string): unknown;
+}
+
 export interface FuryGatewayCliIo {
-  readonly stdout: Pick<NodeJS.WriteStream, 'write'>;
-  readonly stderr: Pick<NodeJS.WriteStream, 'write'>;
+  readonly stdout: FuryGatewayCliWriter;
+  readonly stderr: FuryGatewayCliWriter;
 }
 
 export interface FuryGatewayCliDependencies {
@@ -139,25 +143,34 @@ export async function startFuryGatewayLocalRuntime(
     maxBrowserSessions: 16,
   });
 
+  const ticket = bootstrap.issueTicket();
   const commandRegistry = createFuryGatewayCommandRegistry();
-  const daemon = await startFuryGatewayDaemon({
-    sessionCoordinator,
-    commandRegistry,
-    handleHttpRequest: (request, response) => bootstrap.handleHttpRequest(request, response),
-    resolveConnection: ({ request }) => bootstrap.resolveConnection(request),
-    config: {
-      host: config.config.host,
-      port: config.config.port,
-      allowedOrigins: [config.config.origin],
-      maxEventHistory: config.config.maxEventHistory,
-    },
-    now,
-  });
+
+  let daemon: FuryGatewayDaemonHandle;
+  try {
+    daemon = await startFuryGatewayDaemon({
+      sessionCoordinator,
+      commandRegistry,
+      handleHttpRequest: (request, response) => bootstrap.handleHttpRequest(request, response),
+      resolveConnection: ({ request }) => bootstrap.resolveConnection(request),
+      config: {
+        host: config.config.host,
+        port: config.config.port,
+        allowedOrigins: [config.config.origin],
+        maxEventHistory: config.config.maxEventHistory,
+      },
+      now,
+    });
+  } catch (error) {
+    sessionCoordinator.revokeSession(session.sessionId);
+    principalRegistry.revokePrincipal(principal.principalId);
+    throw error;
+  }
 
   let stopped = false;
   return Object.freeze({
     daemon,
-    ticket: bootstrap.issueTicket(),
+    ticket,
     config,
     async stop(): Promise<void> {
       if (stopped) return;
