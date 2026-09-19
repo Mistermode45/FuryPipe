@@ -305,6 +305,18 @@ try {
     "const m = await import('furypipe/gateway-webchat-node'); if (typeof m.createFuryGatewayWebChatHandler !== 'function' || m.FURY_GATEWAY_WEBCHAT_PATH !== '/gateway/webchat/') process.exit(1);",
   ], installDir);
   assert(gatewayWebChatExport.stderr === '', `Gateway WebChat package export wrote stderr: ${gatewayWebChatExport.stderr}`);
+  const providerResponseTextExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/provider-response-text'); if (typeof m.decodeFuryProviderResponseText !== 'function' || typeof m.FuryProviderResponseTextError !== 'function') process.exit(1);",
+  ], installDir);
+  assert(providerResponseTextExport.stderr === '', `Provider response text export wrote stderr: ${providerResponseTextExport.stderr}`);
+  const furyKernelModelBridgeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/fury-kernel-model-bridge'); if (typeof m.createFuryKernelModelBridge !== 'function' || m.FURY_KERNEL_MODEL_BRIDGE_FORMAT !== 'furypipe-kernel-model-bridge-result/v1') process.exit(1);",
+  ], installDir);
+  assert(furyKernelModelBridgeExport.stderr === '', `Fury Kernel model bridge export wrote stderr: ${furyKernelModelBridgeExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
