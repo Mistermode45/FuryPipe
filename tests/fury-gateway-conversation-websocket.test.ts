@@ -194,6 +194,7 @@ describe('Fury Gateway conversation WebSocket integration', () => {
         session: harness.session,
         clientKind: 'browser',
       }),
+      admittedStateCommandNames: FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
       handleAdmittedStateCommand: (command) => {
         dispatchCalls += 1;
         return adapter.dispatch(command.commandName as never, command.input);
@@ -267,6 +268,7 @@ describe('Fury Gateway conversation WebSocket integration', () => {
         session: harness.session,
         clientKind: 'browser',
       }),
+      admittedStateCommandNames: FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
       handleAdmittedStateCommand: (command) => {
         dispatchCalls += 1;
         return adapter.dispatch(command.commandName as never, command.input);
@@ -308,6 +310,7 @@ describe('Fury Gateway conversation WebSocket integration', () => {
         session: harness.session,
         clientKind: 'browser',
       }),
+      admittedStateCommandNames: FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
       handleAdmittedStateCommand: () => {
         throw new Error('sensitive internal failure');
       },
