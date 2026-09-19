@@ -371,7 +371,9 @@ describe('Fury Kernel governed model bridge', () => {
     const result = await running;
     expect(result).toMatchObject({
       status: 'cancelled',
-      attempts: { outcome: 'CANCELLED' },
+      // The user turn is cancelled locally, while transport evidence remains
+      // ambiguous because the provider callback had already been invoked.
+      attempts: { outcome: 'AMBIGUOUS_STOP' },
       executionAuthority: false,
     });
     expect(bridge.activeExecutionCount()).toBe(0);
