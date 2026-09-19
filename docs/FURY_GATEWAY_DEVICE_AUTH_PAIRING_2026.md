@@ -310,3 +310,22 @@ Before a real network transport is allowed, the next layer must specify:
 12. loopback versus remote policy.
 
 Only after those gates should FuryPipe expose a production persistent WebSocket Gateway.
+
+## Public surface
+
+The raw device-authentication and pairing coordinators are intentionally **not** exported as public npm package subpaths.
+
+In this phase:
+
+```text
+furypipe/gateway
+→ public descriptive protocol/health contract
+
+gateway-auth-node
+gateway-pairing-node
+→ internal authority primitives
+```
+
+Future clients should use a higher-level Gateway host/client API once the session and transport boundaries exist.
+
+This prevents consumers from treating low-level authority mutators such as pairing approval as the stable public product contract.
