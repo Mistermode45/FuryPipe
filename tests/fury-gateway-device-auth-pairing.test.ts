@@ -128,6 +128,28 @@ describe('Fury Gateway device authentication', () => {
     );
   });
 
+  it('rejects proof schema drift and hidden authority fields', () => {
+    const auth = createFuryGatewayDeviceAuthCoordinator({ now: () => 34_000 });
+    const { privateKey } = generateKeyPairSync('ed25519');
+    const connect = envelope();
+    const challenge = auth.issueChallenge();
+    const proof = createFuryGatewayDeviceProof(connect, challenge, privateKey);
+
+    expect(() => auth.verifyProof(connect, {
+      ...proof,
+      token: 'must-not-be-accepted',
+    } as typeof proof)).toThrowError(expect.objectContaining({ code: 'invalid-proof' }));
+
+    const accessorProof = { ...proof } as Record<string, unknown>;
+    Object.defineProperty(accessorProof, 'signature', {
+      enumerable: true,
+      get: () => proof.signature,
+    });
+    expect(() => auth.verifyProof(connect, accessorProof as unknown as typeof proof)).toThrowError(
+      expect.objectContaining({ code: 'invalid-proof' }),
+    );
+  });
+
   it('enforces proof field bounds before cryptographic work', () => {
     const auth = createFuryGatewayDeviceAuthCoordinator({ now: () => 35_000 });
     const { privateKey } = generateKeyPairSync('ed25519');
@@ -247,6 +269,28 @@ describe('Fury Gateway pairing', () => {
     expect(secondDevice.deviceId).toBe(firstDevice.deviceId);
     expect(() => pairing.inspectPairing(secondDevice)).toThrowError(
       expect.objectContaining({ code: 'pairing-mismatch' }),
+    );
+  });
+
+  it('requires fresh authentication evidence to request pairing', () => {
+    let now = 75_000;
+    const auth = createFuryGatewayDeviceAuthCoordinator({ now: () => now });
+    const { privateKey } = generateKeyPairSync('ed25519');
+    const connect = envelope();
+    const challenge = auth.issueChallenge();
+    const device = auth.verifyProof(
+      connect,
+      createFuryGatewayDeviceProof(connect, challenge, privateKey),
+    );
+
+    const pairing = createFuryGatewayPairingCoordinator({
+      now: () => now,
+      maxAuthenticatedAgeMs: 60_000,
+    });
+    now += 60_001;
+
+    expect(() => pairing.requestPairing(device)).toThrowError(
+      expect.objectContaining({ code: 'auth-evidence-stale' }),
     );
   });
 
