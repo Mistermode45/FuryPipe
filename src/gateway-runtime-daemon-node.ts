@@ -274,19 +274,33 @@ export async function startFuryGatewayDaemon(
     sessionCoordinator: options.sessionCoordinator,
     commandRegistry: options.commandRegistry,
     resolveConnection: options.resolveConnection,
-    host: config.host,
-    port: config.port,
-    allowedOrigins: config.allowedOrigins,
-    maxPayloadBytes: config.maxPayloadBytes,
-    maxConnections: config.maxConnections,
-    maxConnectionsPerPrincipal: config.maxConnectionsPerPrincipal,
-    rateWindowMs: config.rateWindowMs,
-    maxMessagesPerWindow: config.maxMessagesPerWindow,
-    maxInFlightMessages: config.maxInFlightMessages,
-    maxInFlightBytes: config.maxInFlightBytes,
-    maxBufferedAmountBytes: config.maxBufferedAmountBytes,
-    heartbeatIntervalMs: config.heartbeatIntervalMs,
-    maxPendingUpgrades: config.maxPendingUpgrades,
+    ...(config.host === undefined ? {} : { host: config.host }),
+    ...(config.port === undefined ? {} : { port: config.port }),
+    ...(config.allowedOrigins === undefined ? {} : { allowedOrigins: config.allowedOrigins }),
+    ...(config.maxPayloadBytes === undefined ? {} : { maxPayloadBytes: config.maxPayloadBytes }),
+    ...(config.maxConnections === undefined ? {} : { maxConnections: config.maxConnections }),
+    ...(config.maxConnectionsPerPrincipal === undefined
+      ? {}
+      : { maxConnectionsPerPrincipal: config.maxConnectionsPerPrincipal }),
+    ...(config.rateWindowMs === undefined ? {} : { rateWindowMs: config.rateWindowMs }),
+    ...(config.maxMessagesPerWindow === undefined
+      ? {}
+      : { maxMessagesPerWindow: config.maxMessagesPerWindow }),
+    ...(config.maxInFlightMessages === undefined
+      ? {}
+      : { maxInFlightMessages: config.maxInFlightMessages }),
+    ...(config.maxInFlightBytes === undefined
+      ? {}
+      : { maxInFlightBytes: config.maxInFlightBytes }),
+    ...(config.maxBufferedAmountBytes === undefined
+      ? {}
+      : { maxBufferedAmountBytes: config.maxBufferedAmountBytes }),
+    ...(config.heartbeatIntervalMs === undefined
+      ? {}
+      : { heartbeatIntervalMs: config.heartbeatIntervalMs }),
+    ...(config.maxPendingUpgrades === undefined
+      ? {}
+      : { maxPendingUpgrades: config.maxPendingUpgrades }),
     onEvent: onWebSocketEvent,
   };
 
