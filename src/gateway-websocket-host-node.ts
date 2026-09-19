@@ -1,4 +1,9 @@
-import { createServer, type IncomingMessage, type Server as HttpServer } from 'node:http';
+import {
+  createServer,
+  type IncomingMessage,
+  type Server as HttpServer,
+  type ServerResponse,
+} from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 
@@ -48,6 +53,11 @@ export type FuryGatewayWebSocketConnectionResolver = (
   context: FuryGatewayWebSocketResolveContext,
 ) => FuryGatewayWebSocketResolvedConnection | undefined;
 
+export type FuryGatewayWebSocketHttpRequestHandler = (
+  request: IncomingMessage,
+  response: ServerResponse,
+) => boolean | Promise<boolean>;
+
 export type FuryGatewayWebSocketSafeEvent =
   | {
       readonly type: 'listening';
@@ -85,6 +95,11 @@ export interface FuryGatewayWebSocketHostOptions {
   readonly sessionCoordinator: FuryGatewaySessionCoordinator;
   readonly commandRegistry: FuryGatewayCommandRegistry;
   readonly resolveConnection: FuryGatewayWebSocketConnectionResolver;
+  /**
+   * Internal local HTTP surface used by bounded bootstrap/control routes.
+   * Returning false delegates to the host's default 404.
+   */
+  readonly handleHttpRequest?: FuryGatewayWebSocketHttpRequestHandler;
   readonly host?: string;
   readonly port?: number;
   readonly allowedOrigins?: readonly string[];
@@ -374,12 +389,43 @@ export async function listenFuryGatewayWebSocketHost(
       makeTransportOptions(options, maxPayloadBytes),
     );
 
-  const server: HttpServer = createServer((request, response) => {
+  const respondNotFound = (response: ServerResponse): void => {
+    if (response.writableEnded || response.headersSent) return;
     response.writeHead(404, {
       'cache-control': 'no-store',
       'content-length': '0',
+      'referrer-policy': 'no-referrer',
+      'x-content-type-options': 'nosniff',
     });
     response.end();
+  };
+
+  const server: HttpServer = createServer((request, response) => {
+    const handler = options.handleHttpRequest;
+    if (!handler) {
+      respondNotFound(response);
+      return;
+    }
+
+    Promise.resolve()
+      .then(() => handler(request, response))
+      .then((handled) => {
+        if (!handled) respondNotFound(response);
+      })
+      .catch(() => {
+        if (response.writableEnded) return;
+        if (response.headersSent) {
+          response.destroy();
+          return;
+        }
+        response.writeHead(500, {
+          'cache-control': 'no-store',
+          'content-length': '0',
+          'referrer-policy': 'no-referrer',
+          'x-content-type-options': 'nosniff',
+        });
+        response.end();
+      });
   });
   server.maxHeadersCount = MAX_HTTP_HEADERS;
   server.headersTimeout = HTTP_HEADER_TIMEOUT_MS;
