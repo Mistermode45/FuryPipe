@@ -152,17 +152,25 @@ export async function startFuryGatewayLocalRuntime(
     maxInFlightTurns: 16,
     now,
   });
+  const memoryRuntime = createFuryGatewayLocalMemoryRuntime({
+    ...(options.env === undefined ? {} : { env: options.env }),
+  });
   const modelRuntime = createFuryGatewayLocalModelRuntime({
     kernel,
     ...(options.env === undefined ? {} : { env: options.env }),
+    ...(memoryRuntime.engine && memoryRuntime.scopes
+      ? {
+          memory: {
+            engine: memoryRuntime.engine,
+            scopes: memoryRuntime.scopes,
+          },
+        }
+      : {}),
     now,
   });
   const toolRuntime = createFuryGatewayLocalToolRuntime({
     ...(options.env === undefined ? {} : { env: options.env }),
     now,
-  });
-  const memoryRuntime = createFuryGatewayLocalMemoryRuntime({
-    ...(options.env === undefined ? {} : { env: options.env }),
   });
   const operatorScopes: FuryGatewayScope[] = [...LOCAL_OPERATOR_SCOPES];
   if (modelRuntime.bridge) operatorScopes.push('capability.provider-inference');
