@@ -196,10 +196,11 @@ const MAX_SESSIONS = 100_000;
 
 function finiteNow(now: () => number): number {
   const value = now();
-  if (!Number.isFinite(value) || value < 0) {
-    throw new RangeError('gateway session clock must return a finite non-negative timestamp');
+  const normalized = Math.floor(value);
+  if (!Number.isFinite(value) || value < 0 || !Number.isSafeInteger(normalized)) {
+    throw new RangeError('gateway session clock must return a safe non-negative timestamp');
   }
-  return Math.floor(value);
+  return normalized;
 }
 
 function boundedInteger(
