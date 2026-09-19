@@ -295,7 +295,7 @@ Two execution-boundary cases are proven with real stdio MCP fixtures at the brid
 
 ## 13. Browser QA
 
-The existing Cross-Browser workflow now includes planned evidence for **12 real browser cases**:
+The existing Cross-Browser workflow now includes **12 real browser cases**:
 
 - 6 conversation lifecycle cases: Chromium / Firefox / WebKit × desktop/mobile;
 - 3 governed model cases: one per engine;
