@@ -222,6 +222,7 @@ const JS = `(() => {
     authenticated: false,
     reconnectAttempts: 0,
     reconnectTimer: null,
+    openAfterClose: false,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -393,6 +394,10 @@ const JS = `(() => {
       cancelTurn.disabled = true;
       clearMessages();
       addActivity('Accepted', 'Conversation closed and Kernel capacity reclaimed.', 'accepted');
+      if (state.openAfterClose) {
+        state.openAfterClose = false;
+        sendCommand('conversation.open', {});
+      }
     }
   }
 
@@ -451,7 +456,8 @@ const JS = `(() => {
     });
     ws.addEventListener('message', handleSocketMessage);
     ws.addEventListener('close', () => {
-      if (state.ws === ws) state.ws = null;
+      if (state.ws !== ws) return;
+      state.ws = null;
       state.connectionId = null;
       setConnection(false, 'Disconnected');
       if (state.authenticated) scheduleReconnect();
@@ -522,7 +528,9 @@ const JS = `(() => {
       return;
     }
     if (state.conversationId) {
+      state.openAfterClose = true;
       sendCommand('conversation.close', { conversationId: state.conversationId });
+      return;
     }
     sendCommand('conversation.open', {});
   });
