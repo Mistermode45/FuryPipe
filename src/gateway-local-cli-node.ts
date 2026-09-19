@@ -3,6 +3,13 @@ import * as os from 'node:os';
 
 import { createFuryGatewayCommandRegistry } from './gateway-command-authorization-node.js';
 import {
+  FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
+  FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
+  createFuryGatewayConversationAdapter,
+  type FuryGatewayConversationCommandName,
+} from './gateway-conversation-adapter-node.js';
+import { createFuryKernelConversationStore } from './fury-kernel.js';
+import {
   createFuryGatewayLocalBootstrapManager,
   type FuryGatewayLocalBootstrapTicket,
 } from './gateway-local-operator-bootstrap-node.js';
@@ -70,6 +77,8 @@ export class FuryGatewayCliUsageError extends Error {
 
 const LOCAL_OPERATOR_SCOPES = Object.freeze([
   'gateway.inspect',
+  'conversations.inspect',
+  'conversations.write',
 ] as const);
 
 function localSubject(): string {
@@ -144,7 +153,22 @@ export async function startFuryGatewayLocalRuntime(
   });
 
   const ticket = bootstrap.issueTicket();
-  const commandRegistry = createFuryGatewayCommandRegistry();
+  const kernel = createFuryKernelConversationStore({
+    maxConversations: 32,
+    maxMessagesPerConversation: 256,
+    maxTurnsPerConversation: 128,
+    maxMessageBytes: 32 * 1024,
+    maxConversationBytes: 512 * 1024,
+    maxInFlightTurns: 16,
+    now,
+  });
+  const conversationAdapter = createFuryGatewayConversationAdapter({
+    kernel,
+    maxResultBytes: 48 * 1024,
+  });
+  const commandRegistry = createFuryGatewayCommandRegistry(
+    FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
+  );
 
   let daemon: FuryGatewayDaemonHandle;
   try {
@@ -152,6 +176,18 @@ export async function startFuryGatewayLocalRuntime(
       sessionCoordinator,
       commandRegistry,
       handleHttpRequest: (request, response) => bootstrap.handleHttpRequest(request, response),
+      handleAdmittedStateCommand: (command) => {
+        if (
+          !(FURY_GATEWAY_CONVERSATION_COMMAND_NAMES as readonly string[])
+            .includes(command.commandName)
+        ) {
+          throw new Error('local Gateway state command is unsupported');
+        }
+        return conversationAdapter.dispatch(
+          command.commandName as FuryGatewayConversationCommandName,
+          command.input,
+        );
+      },
       resolveConnection: ({ request }) => bootstrap.resolveConnection(request),
       config: {
         host: config.config.host,
