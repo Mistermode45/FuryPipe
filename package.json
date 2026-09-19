@@ -117,6 +117,34 @@
       "types": "./dist/agent-runtime.d.ts",
       "import": "./dist/agent-runtime.js"
     },
+    "./fury-kernel": {
+      "types": "./dist/fury-kernel.d.ts",
+      "import": "./dist/fury-kernel.js"
+    },
+    "./gateway-conversation-adapter-node": {
+      "types": "./dist/gateway-conversation-adapter-node.d.ts",
+      "import": "./dist/gateway-conversation-adapter-node.js"
+    },
+    "./gateway-webchat-node": {
+      "types": "./dist/gateway-webchat-node.d.ts",
+      "import": "./dist/gateway-webchat-node.js"
+    },
+    "./provider-response-text": {
+      "types": "./dist/provider-response-text.d.ts",
+      "import": "./dist/provider-response-text.js"
+    },
+    "./fury-kernel-model-bridge": {
+      "types": "./dist/fury-kernel-model-bridge.d.ts",
+      "import": "./dist/fury-kernel-model-bridge.js"
+    },
+    "./gateway-model-command-node": {
+      "types": "./dist/gateway-model-command-node.d.ts",
+      "import": "./dist/gateway-model-command-node.js"
+    },
+    "./gateway-local-model-runtime-node": {
+      "types": "./dist/gateway-local-model-runtime-node.d.ts",
+      "import": "./dist/gateway-local-model-runtime-node.js"
+    },
     "./skill-registry": {
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"
@@ -471,7 +499,8 @@
     "test:watch": "vitest",
     "package:smoke": "node scripts/package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
-    "vendor:ui": "node scripts/vendor-ui.mjs"
+    "vendor:ui": "node scripts/vendor-ui.mjs",
+    "browser:webchat:qa": "tsx scripts/gateway-webchat-browser-qa.ts"
   },
   "keywords": [
     "furypipe",

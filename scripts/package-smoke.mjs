@@ -287,6 +287,48 @@ try {
     "const m = await import('furypipe/agent-runtime'); if (typeof m.runAgent !== 'function') process.exit(1);",
   ], installDir);
   assert(agentRuntimeExport.stderr === '', `Agent runtime package export wrote stderr: ${agentRuntimeExport.stderr}`);
+  const furyKernelExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/fury-kernel'); if (typeof m.createFuryKernelConversationStore !== 'function' || typeof m.FuryKernelConversationError !== 'function') process.exit(1);",
+  ], installDir);
+  assert(furyKernelExport.stderr === '', `Fury Kernel package export wrote stderr: ${furyKernelExport.stderr}`);
+  const gatewayConversationAdapterExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-conversation-adapter-node'); if (typeof m.createFuryGatewayConversationAdapter !== 'function' || !Array.isArray(m.FURY_GATEWAY_CONVERSATION_COMMAND_NAMES) || !Array.isArray(m.FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS)) process.exit(1);",
+  ], installDir);
+  assert(gatewayConversationAdapterExport.stderr === '', `Gateway conversation adapter package export wrote stderr: ${gatewayConversationAdapterExport.stderr}`);
+  const gatewayWebChatExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-webchat-node'); if (typeof m.createFuryGatewayWebChatHandler !== 'function' || m.FURY_GATEWAY_WEBCHAT_PATH !== '/gateway/webchat/') process.exit(1);",
+  ], installDir);
+  assert(gatewayWebChatExport.stderr === '', `Gateway WebChat package export wrote stderr: ${gatewayWebChatExport.stderr}`);
+  const providerResponseTextExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/provider-response-text'); if (typeof m.decodeFuryProviderResponseText !== 'function' || typeof m.FuryProviderResponseTextError !== 'function') process.exit(1);",
+  ], installDir);
+  assert(providerResponseTextExport.stderr === '', `Provider response text export wrote stderr: ${providerResponseTextExport.stderr}`);
+  const furyKernelModelBridgeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/fury-kernel-model-bridge'); if (typeof m.createFuryKernelModelBridge !== 'function' || m.FURY_KERNEL_MODEL_BRIDGE_FORMAT !== 'furypipe-kernel-model-bridge-result/v1') process.exit(1);",
+  ], installDir);
+  assert(furyKernelModelBridgeExport.stderr === '', `Fury Kernel model bridge export wrote stderr: ${furyKernelModelBridgeExport.stderr}`);
+  const gatewayModelCommandExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-model-command-node'); if (!Array.isArray(m.FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES) || !Array.isArray(m.FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS)) process.exit(1);",
+  ], installDir);
+  assert(gatewayModelCommandExport.stderr === '', `Gateway model command export wrote stderr: ${gatewayModelCommandExport.stderr}`);
+  const gatewayLocalModelRuntimeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-local-model-runtime-node'); if (typeof m.createFuryGatewayLocalModelRuntime !== 'function') process.exit(1);",
+  ], installDir);
+  assert(gatewayLocalModelRuntimeExport.stderr === '', `Gateway local model runtime export wrote stderr: ${gatewayLocalModelRuntimeExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',

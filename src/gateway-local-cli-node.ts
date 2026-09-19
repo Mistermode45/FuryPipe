@@ -3,6 +3,25 @@ import * as os from 'node:os';
 
 import { createFuryGatewayCommandRegistry } from './gateway-command-authorization-node.js';
 import {
+  FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
+  FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
+  createFuryGatewayConversationAdapter,
+  type FuryGatewayConversationCommandName,
+} from './gateway-conversation-adapter-node.js';
+import { createFuryKernelConversationStore } from './fury-kernel.js';
+import {
+  FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS,
+  FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES,
+} from './gateway-model-command-node.js';
+import {
+  createFuryGatewayLocalModelRuntime,
+  type FuryGatewayLocalModelConfig,
+} from './gateway-local-model-runtime-node.js';
+import {
+  FURY_GATEWAY_WEBCHAT_PATH,
+  createFuryGatewayWebChatHandler,
+} from './gateway-webchat-node.js';
+import {
   createFuryGatewayLocalBootstrapManager,
   type FuryGatewayLocalBootstrapTicket,
 } from './gateway-local-operator-bootstrap-node.js';
@@ -17,6 +36,7 @@ import {
 } from './gateway-principal-node.js';
 import {
   createFuryGatewaySessionCoordinator,
+  type FuryGatewayScope,
 } from './gateway-session-node.js';
 import {
   startFuryGatewayDaemon,
@@ -27,6 +47,7 @@ export interface FuryGatewayLocalRuntime {
   readonly daemon: FuryGatewayDaemonHandle;
   readonly ticket: FuryGatewayLocalBootstrapTicket;
   readonly config: FuryGatewayLocalConfigResolution;
+  readonly model: FuryGatewayLocalModelConfig;
   stop(): Promise<void>;
 }
 
@@ -70,6 +91,8 @@ export class FuryGatewayCliUsageError extends Error {
 
 const LOCAL_OPERATOR_SCOPES = Object.freeze([
   'gateway.inspect',
+  'conversations.inspect',
+  'conversations.write',
 ] as const);
 
 function localSubject(): string {
@@ -100,6 +123,22 @@ export async function startFuryGatewayLocalRuntime(
     ...(options.file === undefined ? {} : { file: options.file }),
     ...(options.env === undefined ? {} : { env: options.env }),
   });
+  const kernel = createFuryKernelConversationStore({
+    maxConversations: 32,
+    maxMessagesPerConversation: 256,
+    maxTurnsPerConversation: 128,
+    maxMessageBytes: 32 * 1024,
+    maxConversationBytes: 512 * 1024,
+    maxInFlightTurns: 16,
+    now,
+  });
+  const modelRuntime = createFuryGatewayLocalModelRuntime({
+    kernel,
+    ...(options.env === undefined ? {} : { env: options.env }),
+    now,
+  });
+  const operatorScopes: FuryGatewayScope[] = [...LOCAL_OPERATOR_SCOPES];
+  if (modelRuntime.bridge) operatorScopes.push('capability.provider-inference');
 
   const principalRegistry = createFuryGatewayPrincipalRegistry({
     now,
@@ -127,7 +166,7 @@ export async function startFuryGatewayLocalRuntime(
   const session = sessionCoordinator.issueSession({
     principal,
     role: 'operator',
-    scopes: LOCAL_OPERATOR_SCOPES,
+    scopes: operatorScopes,
     binding: { kind: 'local-operator' },
     expiresInMs: 60 * 60_000,
   });
@@ -144,14 +183,78 @@ export async function startFuryGatewayLocalRuntime(
   });
 
   const ticket = bootstrap.issueTicket();
-  const commandRegistry = createFuryGatewayCommandRegistry();
+  const webchat = createFuryGatewayWebChatHandler({
+    origin: config.config.origin,
+    modelBridgeEnabled: modelRuntime.bridge !== undefined,
+    ...(modelRuntime.config.enabled
+      ? {
+          modelProvider: modelRuntime.config.providerId,
+          model: modelRuntime.config.model,
+        }
+      : {}),
+  });
+  const conversationAdapter = createFuryGatewayConversationAdapter({
+    kernel,
+    maxResultBytes: 48 * 1024,
+  });
+  const commandRegistry = createFuryGatewayCommandRegistry([
+    ...FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
+    ...(modelRuntime.bridge
+      ? FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS
+      : []),
+  ]);
 
   let daemon: FuryGatewayDaemonHandle;
   try {
     daemon = await startFuryGatewayDaemon({
       sessionCoordinator,
       commandRegistry,
-      handleHttpRequest: (request, response) => bootstrap.handleHttpRequest(request, response),
+      handleHttpRequest: async (request, response) => {
+        if (await webchat(request, response)) return true;
+        return bootstrap.handleHttpRequest(request, response);
+      },
+      admittedStateCommandNames: FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
+      handleAdmittedStateCommand: (command) => {
+        if (
+          !(FURY_GATEWAY_CONVERSATION_COMMAND_NAMES as readonly string[])
+            .includes(command.commandName)
+        ) {
+          throw new Error('local Gateway state command is unsupported');
+        }
+        const result = conversationAdapter.dispatch(
+          command.commandName as FuryGatewayConversationCommandName,
+          command.input,
+        );
+        if (
+          command.commandName === 'conversation.cancel'
+          && result.status === 'ok'
+          && modelRuntime.bridge
+        ) {
+          const input = command.input as {
+            readonly conversationId: string;
+            readonly turnId: string;
+          };
+          modelRuntime.bridge.cancelTurn(input.conversationId, input.turnId);
+        }
+        return result;
+      },
+      ...(modelRuntime.bridge
+        ? {
+            admittedExecutionCommandNames:
+              FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES,
+            handleAdmittedExecutionCommand: async (command) => {
+              if (command.commandName !== 'conversation.model.execute') {
+                throw new Error('local Gateway execution command is unsupported');
+              }
+              return modelRuntime.bridge!.executeTurn(
+                command.input as {
+                  readonly conversationId: string;
+                  readonly turnId: string;
+                },
+              );
+            },
+          }
+        : {}),
       resolveConnection: ({ request }) => bootstrap.resolveConnection(request),
       config: {
         host: config.config.host,
@@ -172,6 +275,7 @@ export async function startFuryGatewayLocalRuntime(
     daemon,
     ticket,
     config,
+    model: modelRuntime.config,
     async stop(): Promise<void> {
       if (stopped) return;
       stopped = true;
@@ -238,11 +342,17 @@ export function furyGatewayCliHelp(): string {
     '  FURYPIPE_CONFIG        FuryPipe config JSON path',
     '  FURYPIPE_GATEWAY_HOST  127.0.0.1, ::1, or localhost only',
     '  FURYPIPE_GATEWAY_PORT  local Gateway port (default 48722)',
+    '  FURYPIPE_WEBCHAT_PROVIDER  optional: openai, anthropic, or google',
+    '  FURYPIPE_WEBCHAT_MODEL     exact model id when provider is configured',
+    '  FURYPIPE_WEBCHAT_MAX_OUTPUT_TOKENS  optional bounded output limit',
+    '  OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY',
+    '                        provider credential selected by the explicit provider',
     '',
     'Security:',
     '  The local Gateway never treats localhost as authentication.',
     '  Start emits one short-lived one-time bootstrap code.',
-    '  No command execution authority is granted by this CLI phase.',
+    '  Provider inference is disabled unless provider, model, and credential are explicit.',
+    '  Browser admission is not a provider execution permit; the model bridge creates one-shot permits.',
   ].join('\n');
 }
 
@@ -278,7 +388,9 @@ function renderStart(
       format: 'furypipe-gateway-local-start/v1',
       status: 'ready',
       websocketUrl: runtime.daemon.address.url,
+      webChatUrl: `${runtime.config.config.origin}${FURY_GATEWAY_WEBCHAT_PATH}`,
       origin: runtime.config.config.origin,
+      model: runtime.model,
       bootstrap: {
         format: runtime.ticket.format,
         code: runtime.ticket.code,
@@ -292,7 +404,11 @@ function renderStart(
   return [
     'FuryPipe Gateway ready',
     `  WebSocket: ${runtime.daemon.address.url}`,
+    `  WebChat:   ${runtime.config.config.origin}${FURY_GATEWAY_WEBCHAT_PATH}`,
     `  Origin:    ${runtime.config.config.origin}`,
+    `  Model:     ${runtime.model.enabled
+      ? `${runtime.model.providerId}/${runtime.model.model}`
+      : 'disabled'}`,
     '',
     'Local browser bootstrap code (one-time, short-lived):',
     `  ${runtime.ticket.code}`,

@@ -25,6 +25,8 @@ furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
 furypipe stats [--json] [--file <path>]
 furypipe export [...]
+furypipe gateway config [--json]
+furypipe gateway start [--json]
 furypipe link [--route PATTERN=TARGET]... [--] <agent> [args...]
 ```
 
@@ -73,6 +75,77 @@ The setup command is explicit by design: installing an npm package must not unex
 `furypipe start` starts the Node runtime.
 
 The default deployment is loopback-oriented. Non-loopback exposure requires an explicit operator security boundary; see [../SECURITY.md](../SECURITY.md).
+
+## Gateway and local WebChat
+
+`furypipe gateway start` starts the dedicated VNext local Gateway. It is separate from the historical FuryPipe proxy listener and remains loopback-only in this phase.
+
+Default local endpoints:
+
+```text
+Gateway origin:  http://127.0.0.1:48722
+WebChat:         http://127.0.0.1:48722/gateway/webchat/
+WebSocket:       ws://127.0.0.1:48722/gateway/v1
+```
+
+The start command prints one short-lived, one-time browser bootstrap code. Open the printed WebChat URL and enter that code in the local page. The browser submits it with a JSON `POST` to `/gateway/local-bootstrap/v1`; the code is never placed in a query string, fragment, WebSocket protocol, or cookie.
+
+On successful redemption, the Gateway returns an `HttpOnly`, `SameSite=Strict` cookie scoped to `/gateway/`. The cookie authenticates the local browser session only. It is not a command scope, provider permit, tool permit, MCP permit, or execution authority.
+
+The WebChat assets are served by the same loopback Gateway and use a restrictive Content Security Policy with self-hosted scripts/styles only. The browser talks to the Fury Kernel through registered conversation commands and narrow `conversations.inspect` / `conversations.write` session scopes.
+
+In the current Phase 2A local WebChat:
+
+- conversation state is process-local and bounded;
+- reconnect performs bounded conversation resynchronization;
+- transcripts are not persisted in browser storage;
+- message submission is displayed as accepted only after a Kernel state receipt;
+- provider inference is not implied by conversation acceptance;
+- tool eligibility/execution/evidence remain distinct lifecycle states.
+
+Provider inference is **disabled by default**. To enable the local model bridge, configure one exact route:
+
+```text
+FURYPIPE_WEBCHAT_PROVIDER=openai|anthropic|google
+FURYPIPE_WEBCHAT_MODEL=<exact model id>
+FURYPIPE_WEBCHAT_MAX_OUTPUT_TOKENS=<optional 1..65536>
+
+OPENAI_API_KEY=<credential>       # when provider=openai
+ANTHROPIC_API_KEY=<credential>    # when provider=anthropic
+GOOGLE_API_KEY=<credential>       # when provider=google
+```
+
+Partial configuration fails startup instead of silently falling back. Credentials are resolved inside the provider transport and are not returned by the WebChat configuration endpoint or CLI model status.
+
+When enabled, the browser receives the `capability.provider-inference` session scope and may submit only the registered `conversation.model.execute` command with declared `provider-inference` permission. Command admission still has `executionAuthority:false`; the Fury Kernel model bridge rebuilds the provider attempt from a model-neutral BASE prompt, creates a fresh provider execution policy/permit, runs the existing governed provider executor, decodes only bounded text responses, and only then completes the Kernel turn.
+
+A provider tool/function call is not converted into assistant text. It is rejected by the Phase 2A.4 text decoder and remains reserved for the separately governed tool bridge in Phase 2A.5.
+
+`furypipe gateway config --json` reports the resolved loopback Gateway configuration without starting the daemon. `furypipe gateway start --json` includes `websocketUrl`, `webChatUrl`, the exact local origin, redacted model status and the one-time bootstrap object for machine-oriented launchers.
+
+Remote Gateway/WebChat exposure is out of scope for this phase and must not be created by binding this listener to a non-loopback address.
+
+### Optional local model inference
+
+Model inference in WebChat is **off by default**. To enable it, configure one explicit provider/model pair in the host environment before `furypipe gateway start`:
+
+```text
+FURYPIPE_WEBCHAT_PROVIDER=openai|anthropic|google
+FURYPIPE_WEBCHAT_MODEL=<exact provider model id>
+FURYPIPE_WEBCHAT_MAX_OUTPUT_TOKENS=<optional positive integer; default 4096>
+```
+
+The matching credential must also exist:
+
+```text
+openai     -> OPENAI_API_KEY
+anthropic  -> ANTHROPIC_API_KEY
+google     -> GOOGLE_API_KEY
+```
+
+Partial configuration fails closed. FuryPipe does not infer a provider, model, credential, endpoint or cross-provider fallback from browser input. The WebChat configuration endpoint exposes only whether the bridge is enabled plus the configured provider/model; credentials, permits and raw provider responses are never returned there.
+
+When enabled, user-message acceptance and provider inference remain distinct operations. `conversation.model.execute` requires the dedicated `capability.provider-inference` session scope and declared `provider-inference` permission. Provider output is treated as unverified application data until separate evidence verification says otherwise.
 
 ## Doctor
 

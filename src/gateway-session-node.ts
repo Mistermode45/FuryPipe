@@ -22,6 +22,8 @@ export const FURY_GATEWAY_SESSION_FORMAT = 'furypipe-gateway-session/v1' as cons
 
 export const FURY_GATEWAY_SCOPES = [
   'gateway.inspect',
+  'conversations.inspect',
+  'conversations.write',
   'sessions.inspect',
   'sessions.manage',
   'pairings.inspect',
