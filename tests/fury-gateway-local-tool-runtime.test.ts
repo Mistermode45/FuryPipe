@@ -285,6 +285,12 @@ describe('local Gateway MCP tool runtime', () => {
     })).toThrow(/allowDisplayResult must be a boolean/u);
   });
 
+  it('requires an absolute FURYPIPE_WEBCHAT_MCP_CONFIG path', () => {
+    expect(() => createFuryGatewayLocalToolRuntime({
+      env: { FURYPIPE_WEBCHAT_MCP_CONFIG: './relative-tools.json' },
+    })).toThrow(/absolute path/u);
+  });
+
   it('rejects unsupported fields, duplicate source IDs and invalid config format', () => {
     const extra = configFile({
       format: FURY_GATEWAY_LOCAL_TOOL_CONFIG_FORMAT,
