@@ -314,11 +314,13 @@ async function persist(
   if (options.persistEvidence) await options.persistEvidence(Object.freeze({ ...evidence }));
   if (!options.recoveryStore) return;
   assertOpaqueHash(options.scopeSha256, 'scopeSha256');
+  if (!options.scopeSha256) throw new McpDirectDagValidationError('scopeSha256 is required for durable evidence');
+  const scopeSha256 = options.scopeSha256;
   const runIdSha256 = options.runIdSha256 ?? evidence.planDigest;
   assertOpaqueHash(runIdSha256, 'runIdSha256');
   const metadata = {
     system: 'mcp-direct-dag',
-    scopeSha256: options.scopeSha256,
+    scopeSha256,
     runIdSha256,
     planDigest: evidence.planDigest,
     nodeId: evidence.nodeId,
@@ -344,7 +346,7 @@ async function persist(
     additionalBounds: [{
       metadata: {
         system: 'mcp-direct-dag',
-        scopeSha256: options.scopeSha256,
+        scopeSha256,
         runIdSha256,
         planDigest: evidence.planDigest,
         recordType: metadata.recordType,
@@ -515,8 +517,8 @@ export async function executeMcpDirectDag(
       }
     };
     await Promise.all(batch.map((node) => runOne(node)));
-    if (results.values().some((entry) => entry.state === 'unknown')) overall = 'unknown';
-    if (results.values().some((entry) => ['failed', 'verification_failed', 'blocked', 'cancelled', 'expired'].includes(entry.state))) {
+    if ([...results.values()].some((entry) => entry.state === 'unknown')) overall = 'unknown';
+    if ([...results.values()].some((entry) => ['failed', 'verification_failed', 'blocked', 'cancelled', 'expired'].includes(entry.state))) {
       if (overall === 'succeeded') overall = 'failed';
     }
     if (now() - startedAt > plan.quotas.maxWallClockMs) {
