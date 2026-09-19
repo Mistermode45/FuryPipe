@@ -250,8 +250,17 @@ function safeSend(
     ws.close(1013, 'backpressure');
     return false;
   }
-  ws.send(payload);
-  return true;
+  try {
+    ws.send(payload);
+    return true;
+  } catch {
+    try {
+      ws.terminate();
+    } catch {
+      // Socket is already unusable.
+    }
+    return false;
+  }
 }
 
 function closeForTransportError(
@@ -462,17 +471,27 @@ export async function listenFuryGatewayWebSocketHost(
 
       const remoteAddress = request.socket.remoteAddress ?? '';
       const origin = singleHeader(request, 'origin');
-      const resolved = options.resolveConnection(Object.freeze({
+      const resolvedInput = options.resolveConnection(Object.freeze({
         request,
         path: FURY_GATEWAY_WEBSOCKET_PATH,
         remoteAddress,
         ...(origin === undefined ? {} : { origin }),
       }));
-      if (!resolved) {
+      if (!resolvedInput) {
         safeEmit(options.onEvent, { type: 'upgrade-denied', reason: 'resolution' });
         rejectUpgrade(socket, 401);
         return;
       }
+      const resolved: FuryGatewayWebSocketResolvedConnection = Object.freeze({
+        session: resolvedInput.session,
+        clientKind: resolvedInput.clientKind,
+        ...(resolvedInput.currentDevice === undefined
+          ? {}
+          : { currentDevice: resolvedInput.currentDevice }),
+        ...(resolvedInput.pairing === undefined
+          ? {}
+          : { pairing: resolvedInput.pairing }),
+      });
 
       try {
         connection = transport.openConnection({
