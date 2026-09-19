@@ -91,6 +91,7 @@ interface PrincipalState {
   readonly kind: FuryGatewayPrincipalKind;
   readonly issuer: string;
   readonly authenticationMethod: FuryGatewayPrincipalAuthenticationMethod;
+  readonly subjectSha256: string;
   generation: number;
   status: 'active' | 'revoked';
   lastAuthenticatedAt: number;
@@ -265,6 +266,7 @@ export function createFuryGatewayPrincipalRegistry(
       const assertion = validateAssertion(assertionInput);
       const authenticatedAt = finiteNow(now);
       const existing = states.get(assertion.principalId);
+      const assertionSubjectSha256 = subjectDigest(assertion.issuer, assertion.subject);
 
       if (existing?.status === 'revoked') {
         throw new FuryGatewayPrincipalError(
@@ -276,6 +278,7 @@ export function createFuryGatewayPrincipalRegistry(
         existing.kind !== assertion.kind
         || existing.issuer !== assertion.issuer
         || existing.authenticationMethod !== assertion.authenticationMethod
+        || existing.subjectSha256 !== assertionSubjectSha256
       )) {
         throw new FuryGatewayPrincipalError(
           'invalid-principal',
@@ -291,6 +294,7 @@ export function createFuryGatewayPrincipalRegistry(
         kind: assertion.kind,
         issuer: assertion.issuer,
         authenticationMethod: assertion.authenticationMethod,
+        subjectSha256: assertionSubjectSha256,
         generation: 1,
         status: 'active',
         lastAuthenticatedAt: authenticatedAt,
@@ -303,7 +307,7 @@ export function createFuryGatewayPrincipalRegistry(
         principalId: assertion.principalId,
         kind: assertion.kind,
         issuer: assertion.issuer,
-        subjectSha256: subjectDigest(assertion.issuer, assertion.subject),
+        subjectSha256: assertionSubjectSha256,
         authenticationMethod: assertion.authenticationMethod,
         generation: state.generation,
         authenticatedAt,
