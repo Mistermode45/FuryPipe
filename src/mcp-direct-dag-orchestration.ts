@@ -351,6 +351,7 @@ async function persist(
     format: evidence.format,
     planDigest: evidence.planDigest,
     nodeId: evidence.nodeId,
+    reservationIdSha256: metadata.reservationIdSha256,
     state: evidence.state,
     attempt: 1,
     ...(evidence.outputDigest ? { outputDigest: evidence.outputDigest } : {}),
