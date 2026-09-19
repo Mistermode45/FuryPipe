@@ -479,7 +479,8 @@
     "test:watch": "vitest",
     "package:smoke": "node scripts/package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
-    "vendor:ui": "node scripts/vendor-ui.mjs"
+    "vendor:ui": "node scripts/vendor-ui.mjs",
+    "browser:webchat:qa": "tsx scripts/gateway-webchat-browser-qa.ts"
   },
   "keywords": [
     "furypipe",
