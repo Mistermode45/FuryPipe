@@ -88,7 +88,9 @@ export type FuryKernelMcpToolBridgeErrorCode =
   | 'proposal-expired'
   | 'approval-not-required'
   | 'proposal-not-approved'
-  | 'proposal-terminal';
+  | 'proposal-terminal'
+  | 'proposal-blocked'
+  | 'approval-blocked';
 
 export class FuryKernelMcpToolBridgeError extends Error {
   constructor(readonly code: FuryKernelMcpToolBridgeErrorCode) {
@@ -153,6 +155,7 @@ interface ProposalState {
 }
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const SHA256 = /^[a-f0-9]{64}$/u;
 const PROPOSAL_ID = /^fkmcp_[A-Za-z0-9_-]{24}$/u;
 const DEFAULT_MAX_PROPOSALS = 32;
 const HARD_MAX_PROPOSALS = 256;
@@ -283,7 +286,15 @@ function snapshotSources(
   for (const candidate of sources) {
     const config = snapshotRuntimeConfig(candidate);
     const sourceId = config.source.sourceId;
-    if (typeof sourceId !== 'string' || !SAFE_ID.test(sourceId) || output.has(sourceId)) {
+    if (
+      typeof sourceId !== 'string'
+      || !SAFE_ID.test(sourceId)
+      || output.has(sourceId)
+      || !SHA256.test(config.source.endpointFingerprint)
+      || (config.source.trust !== 'trusted' && config.source.trust !== 'untrusted')
+      || (config.source.transport !== 'stdio'
+        && config.source.transport !== 'streamable_http')
+    ) {
       fail('invalid-config');
     }
     let derived: string;
@@ -337,11 +348,32 @@ function snapshotPolicy(policy: McpDirectPolicy): McpDirectPolicy {
       });
     }));
   };
+  if (
+    policy.format !== 'furypipe-mcp-direct-policy/v1'
+    || typeof policy.policyId !== 'string'
+    || !SAFE_ID.test(policy.policyId)
+  ) fail('invalid-config');
+  const validatePairs = (
+    entries: readonly {
+      readonly sourceId: string;
+      readonly endpointFingerprint: string;
+      readonly toolName: string;
+    }[],
+  ) => {
+    for (const entry of entries) {
+      if (
+        !SAFE_ID.test(entry.sourceId)
+        || !SHA256.test(entry.endpointFingerprint)
+        || !SAFE_ID.test(entry.toolName)
+      ) fail('invalid-config');
+    }
+    return entries;
+  };
   return Object.freeze({
     format: policy.format,
     policyId: policy.policyId,
-    governedPolicyAllowlist: pairs(policy.governedPolicyAllowlist),
-    operatorApprovalAllowlist: pairs(policy.operatorApprovalAllowlist),
+    governedPolicyAllowlist: validatePairs(pairs(policy.governedPolicyAllowlist)),
+    operatorApprovalAllowlist: validatePairs(pairs(policy.operatorApprovalAllowlist)),
   });
 }
 
@@ -576,6 +608,9 @@ export function createFuryKernelMcpToolBridge(
         if (status === 'denied') clearAuthority(state);
         proposals.set(id, state);
         return snapshot(state);
+      } catch (error) {
+        if (error instanceof FuryKernelMcpToolBridgeError) throw error;
+        fail('proposal-blocked');
       } finally {
         activeProbes = Math.max(0, activeProbes - 1);
       }
@@ -591,21 +626,25 @@ export function createFuryKernelMcpToolBridge(
       const at = safeNow(now);
       const remaining = state.expiresAt - at;
       if (remaining <= 0) fail('proposal-expired');
-      const intent = createMcpDirectOperatorApprovalIntent(
-        state.proposal,
-        state.decision,
-        {
-          now: at,
-          expiresInMs: Math.min(remaining, 30_000),
-        },
-      );
-      state.lifecycle = approveMcpDirectPolicyDecision(
-        state.lifecycle,
-        state.proposal,
-        state.decision,
-        intent,
-        at,
-      );
+      try {
+        const intent = createMcpDirectOperatorApprovalIntent(
+          state.proposal,
+          state.decision,
+          {
+            now: at,
+            expiresInMs: Math.min(remaining, 30_000),
+          },
+        );
+        state.lifecycle = approveMcpDirectPolicyDecision(
+          state.lifecycle,
+          state.proposal,
+          state.decision,
+          intent,
+          at,
+        );
+      } catch {
+        fail('approval-blocked');
+      }
       state.status = 'approved';
       state.approvalKind = 'operator';
       state.expiresAt = Math.min(
