@@ -33,6 +33,7 @@ export type FuryGatewayLocalToolConfig =
       readonly enabled: true;
       readonly sourceCount: number;
       readonly sources: readonly FuryGatewayLocalToolSourceSummary[];
+      readonly displayResults: boolean;
     };
 
 export interface FuryGatewayLocalToolRuntime {
@@ -376,10 +377,13 @@ function sourceFromFile(
 function parseFile(
   file: string,
   env: Readonly<Record<string, string | undefined>>,
-): readonly {
-  readonly source: FileSource;
-  readonly credentialRefs: number;
-}[] {
+): {
+  readonly sources: readonly {
+    readonly source: FileSource;
+    readonly credentialRefs: number;
+  }[];
+  readonly allowDisplayResult: boolean;
+} {
   let stat: fs.Stats;
   try {
     stat = fs.lstatSync(file);
@@ -400,7 +404,18 @@ function parseFile(
     throw new Error('WebChat MCP config is not valid JSON');
   }
   const root = plainRecord(decoded, 'WebChat MCP config');
-  exactKeys(root, ['format', 'sources'], ['format', 'sources'], 'WebChat MCP config');
+  exactKeys(
+    root,
+    ['format', 'sources', 'allowDisplayResult'],
+    ['format', 'sources'],
+    'WebChat MCP config',
+  );
+  const allowDisplayResult = root.allowDisplayResult === undefined
+    ? false
+    : root.allowDisplayResult;
+  if (typeof allowDisplayResult !== 'boolean') {
+    throw new Error('WebChat MCP config allowDisplayResult must be a boolean');
+  }
   if (root.format !== FURY_GATEWAY_LOCAL_TOOL_CONFIG_FORMAT) {
     throw new Error('WebChat MCP config format is unsupported');
   }
@@ -412,7 +427,10 @@ function parseFile(
   if (new Set(ids).size !== ids.length) {
     throw new Error('WebChat MCP source IDs must be unique');
   }
-  return Object.freeze(sources);
+  return Object.freeze({
+    sources: Object.freeze(sources),
+    allowDisplayResult,
+  });
 }
 
 function runtimeSource(
@@ -510,7 +528,7 @@ export function createFuryGatewayLocalToolRuntime(
   }
 
   const parsed = parseFile(file, env);
-  const resolved = parsed.map(runtimeSource);
+  const resolved = parsed.sources.map(runtimeSource);
   const summaries = Object.freeze(resolved.map((entry) => entry.summary));
   const bridge = createFuryKernelToolBridge({
     sources: resolved.map((entry) => entry.bridgeSource),
@@ -518,6 +536,7 @@ export function createFuryGatewayLocalToolRuntime(
       name: 'furypipe-webchat',
       version: 'vnext',
     }),
+    allowDisplayResult: parsed.allowDisplayResult,
     ...(options.now === undefined ? {} : { now: options.now }),
   });
 
@@ -527,6 +546,7 @@ export function createFuryGatewayLocalToolRuntime(
       enabled: true as const,
       sourceCount: summaries.length,
       sources: summaries,
+      displayResults: parsed.allowDisplayResult,
     }),
     bridge,
     requiresProcess: summaries.some((source) => source.transport === 'stdio'),
