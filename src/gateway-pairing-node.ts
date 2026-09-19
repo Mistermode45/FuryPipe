@@ -40,6 +40,7 @@ export interface FuryGatewayPairedDevice {
 
 export type FuryGatewayPairingErrorCode =
   | 'invalid-authenticated-device'
+  | 'auth-evidence-stale'
   | 'pairing-already-pending'
   | 'pairing-already-exists'
   | 'pairing-not-found'
@@ -61,6 +62,7 @@ export class FuryGatewayPairingError extends Error {
 export interface FuryGatewayPairingCoordinatorOptions {
   readonly now?: () => number;
   readonly requestTtlMs?: number;
+  readonly maxAuthenticatedAgeMs?: number;
   readonly maxPending?: number;
   readonly maxPaired?: number;
 }
@@ -76,6 +78,9 @@ export interface FuryGatewayPairingCoordinator {
 }
 
 const DEFAULT_REQUEST_TTL_MS = 5 * 60_000;
+const DEFAULT_MAX_AUTHENTICATED_AGE_MS = 60_000;
+const MIN_AUTHENTICATED_AGE_MS = 5_000;
+const MAX_AUTHENTICATED_AGE_MS = 5 * 60_000;
 const MIN_REQUEST_TTL_MS = 30_000;
 const MAX_REQUEST_TTL_MS = 30 * 60_000;
 const DEFAULT_MAX_PENDING = 1_024;
@@ -158,6 +163,13 @@ export function createFuryGatewayPairingCoordinator(
     MAX_REQUEST_TTL_MS,
     'requestTtlMs',
   );
+  const maxAuthenticatedAgeMs = boundedInteger(
+    options.maxAuthenticatedAgeMs,
+    DEFAULT_MAX_AUTHENTICATED_AGE_MS,
+    MIN_AUTHENTICATED_AGE_MS,
+    MAX_AUTHENTICATED_AGE_MS,
+    'maxAuthenticatedAgeMs',
+  );
   const maxPending = boundedInteger(options.maxPending, DEFAULT_MAX_PENDING, 1, 65_536, 'maxPending');
   const maxPaired = boundedInteger(options.maxPaired, DEFAULT_MAX_PAIRED, 1, 1_000_000, 'maxPaired');
 
@@ -178,6 +190,15 @@ export function createFuryGatewayPairingCoordinator(
     requestPairing(device: FuryGatewayAuthenticatedDevice): FuryGatewayPairingRequest {
       assertAuthenticatedDevice(device);
       const requestedAt = finiteNow(now);
+      if (
+        device.authenticatedAt > requestedAt
+        || requestedAt - device.authenticatedAt > maxAuthenticatedAgeMs
+      ) {
+        throw new FuryGatewayPairingError(
+          'auth-evidence-stale',
+          'pairing requires fresh authenticated-device evidence',
+        );
+      }
       prunePending(requestedAt);
       const key = pairingKey(device.deviceId, device.role);
 
