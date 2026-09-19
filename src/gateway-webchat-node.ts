@@ -14,6 +14,8 @@ export interface FuryGatewayWebChatOptions {
   readonly modelBridgeEnabled?: boolean;
   readonly modelProvider?: 'openai' | 'anthropic' | 'google';
   readonly model?: string;
+  readonly toolBridgeEnabled?: boolean;
+  readonly toolSourceCount?: number;
 }
 
 const HTML = `<!doctype html>
@@ -84,7 +86,7 @@ const HTML = `<!doctype html>
         <div id="messages" class="messages" aria-live="polite" aria-label="Conversation messages">
           <div class="empty-state">
             <strong>Fury Kernel is ready.</strong>
-            <span>Phase 2A.3 provides governed local conversation state. Model inference is enabled only in the later Model Fabric bridge gate.</span>
+            <span>Conversation state, provider inference, and tool execution remain separate governed lifecycles.</span>
           </div>
         </div>
         <form id="message-form" class="composer">
@@ -108,6 +110,49 @@ const HTML = `<!doctype html>
         </div>
         <ol id="activity-list" class="activity-list"></ol>
       </aside>
+
+      <section id="tools-panel" class="panel tools" aria-labelledby="tools-title" hidden>
+        <div class="tools-head">
+          <div>
+            <p class="eyebrow">GOVERNED MCP</p>
+            <h2 id="tools-title">Tools</h2>
+            <p class="muted">Inventory, proposal, approval and execution are separate steps. Tool output is never inserted into chat automatically.</p>
+          </div>
+          <span id="tool-source-count" class="badge">0 sources</span>
+        </div>
+        <div class="tools-grid">
+          <div class="tool-control">
+            <label for="tool-source">Source</label>
+            <select id="tool-source" disabled>
+              <option value="">No source loaded</option>
+            </select>
+          </div>
+          <div class="tool-control">
+            <label for="tool-name">Tool</label>
+            <select id="tool-name" disabled>
+              <option value="">Refresh inventory first</option>
+            </select>
+          </div>
+          <div class="tool-actions">
+            <button id="tool-refresh" type="button" class="secondary" disabled>Refresh inventory</button>
+          </div>
+        </div>
+        <div class="tool-control tool-arguments">
+          <label for="tool-arguments">Arguments (JSON)</label>
+          <textarea id="tool-arguments" rows="5" maxlength="49152" spellcheck="false">{}</textarea>
+        </div>
+        <div class="tool-actions tool-lifecycle-actions">
+          <button id="tool-propose" type="button" disabled>Propose</button>
+          <button id="tool-approve" type="button" class="secondary" disabled>Approve</button>
+          <button id="tool-execute" type="button" class="secondary" disabled>Execute</button>
+          <button id="tool-discard" type="button" class="danger" disabled>Discard</button>
+          <span id="tool-status" class="status" role="status" aria-live="polite"></span>
+        </div>
+        <div class="tool-result-wrap">
+          <p class="eyebrow">TOOL RESULT</p>
+          <pre id="tool-result" class="tool-result" tabindex="0">No tool result.</pre>
+        </div>
+      </section>
     </section>
   </main>
   <script src="/gateway/webchat/app.js" defer></script>
@@ -132,7 +177,7 @@ const CSS = `:root {
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 20% 0%, #1b2230 0, #090b10 36rem); }
-button, input, textarea { font: inherit; }
+button, input, textarea, select { font: inherit; }
 button {
   border: 1px solid #6d4b10;
   background: var(--accent);
@@ -163,7 +208,7 @@ h2 { margin-bottom: .45rem; font-size: 1.05rem; }
 .auth-panel { display: grid; grid-template-columns: minmax(0,1fr) minmax(20rem,.8fr); gap: 2rem; padding: 2rem; max-width: 70rem; margin: 10vh auto 0; }
 .bootstrap-form label { display: block; font-weight: 750; margin-bottom: .55rem; }
 .input-row { display: flex; gap: .65rem; }
-input, textarea { width: 100%; border: 1px solid #394559; background: #0b0f16; color: #f5f7fb; border-radius: .75rem; padding: .8rem .9rem; }
+input, textarea, select { width: 100%; border: 1px solid #394559; background: #0b0f16; color: #f5f7fb; border-radius: .75rem; padding: .8rem .9rem; }
 textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
 .status { color: var(--muted); min-height: 1.2em; font-size: .85rem; }
 .workspace { display: grid; grid-template-columns: 17rem minmax(0,1fr) 19rem; gap: 1rem; min-height: calc(100vh - 7rem); }
@@ -189,11 +234,23 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
 .activity-title { display: flex; justify-content: space-between; gap: .5rem; align-items: flex-start; }
 .activity-list { margin: .75rem 0 0; padding-left: 1.35rem; display: grid; gap: .7rem; font-size: .78rem; color: var(--muted); }
 .activity-list li strong { display: block; color: #dce5f3; margin-bottom: .15rem; }
+.tools { grid-column: 1 / -1; padding: 1rem; display: grid; gap: 1rem; }
+.tools-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.tools-head .muted { max-width: 60rem; margin-bottom: 0; }
+.tools-grid { display: grid; grid-template-columns: minmax(12rem,.8fr) minmax(12rem,1fr) auto; gap: .75rem; align-items: end; }
+.tool-control { display: grid; gap: .4rem; }
+.tool-control label { font-weight: 750; font-size: .82rem; color: #dce5f3; }
+.tool-actions { display: flex; gap: .55rem; flex-wrap: wrap; align-items: center; }
+.tool-lifecycle-actions .status { margin-left: .35rem; }
+.tool-result-wrap { border-top: 1px solid var(--border); padding-top: .85rem; }
+.tool-result { margin: 0; min-height: 4rem; max-height: 18rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid #293447; background: #090d13; color: #cbd7e7; border-radius: .75rem; padding: .8rem; font-size: .78rem; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @media (max-width: 1100px) {
   .workspace { grid-template-columns: 15rem minmax(0,1fr); }
   .activity { grid-column: 1 / -1; min-height: auto; }
   .activity-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .tools-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .tools-grid .tool-actions { grid-column: 1 / -1; }
 }
 @media (max-width: 760px) {
   .shell { padding: .75rem; }
@@ -204,6 +261,9 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
   .sidebar { order: 2; }
   .chat { order: 1; min-height: 70vh; }
   .activity { order: 3; grid-column: auto; }
+  .tools { order: 4; grid-column: auto; }
+  .tools-grid { grid-template-columns: 1fr; }
+  .tools-grid .tool-actions { grid-column: auto; }
   .activity-list { grid-template-columns: 1fr; }
   .message { max-width: 96%; }
   .composer-actions { flex-wrap: wrap; }
@@ -234,6 +294,13 @@ const JS = `(() => {
     modelBridgeEnabled: false,
     modelProvider: null,
     model: null,
+    toolBridgeEnabled: false,
+    toolSourceCount: 0,
+    toolSources: [],
+    toolInventory: [],
+    toolProposalId: null,
+    toolProposalTransport: null,
+    toolProposalStatus: null,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -251,6 +318,18 @@ const JS = `(() => {
   const turnStatus = byId('turn-status');
   const cancelTurn = byId('cancel-turn');
   const activityList = byId('activity-list');
+  const toolsPanel = byId('tools-panel');
+  const toolSourceCount = byId('tool-source-count');
+  const toolSource = byId('tool-source');
+  const toolName = byId('tool-name');
+  const toolArguments = byId('tool-arguments');
+  const toolRefresh = byId('tool-refresh');
+  const toolPropose = byId('tool-propose');
+  const toolApprove = byId('tool-approve');
+  const toolExecute = byId('tool-execute');
+  const toolDiscard = byId('tool-discard');
+  const toolStatus = byId('tool-status');
+  const toolResult = byId('tool-result');
 
   const safeText = (value) => typeof value === 'string' ? value : '';
 
@@ -336,6 +415,281 @@ const JS = `(() => {
     });
   }
 
+  function toolPermission(transport) {
+    return transport === 'stdio'
+      ? ['process']
+      : transport === 'streamable_http'
+        ? ['network']
+        : [];
+  }
+
+  function toolCommand(base, transport) {
+    if (transport === 'stdio') return base + '.stdio';
+    if (transport === 'streamable_http') return base + '.http';
+    throw new Error('Tool source transport is unavailable');
+  }
+
+  function selectedToolSource() {
+    const sourceId = safeText(toolSource.value);
+    return state.toolSources.find((source) => source.sourceId === sourceId) || null;
+  }
+
+  function resetToolProposal() {
+    state.toolProposalId = null;
+    state.toolProposalTransport = null;
+    state.toolProposalStatus = null;
+    toolApprove.disabled = true;
+    toolExecute.disabled = true;
+    toolDiscard.disabled = true;
+    toolSource.disabled = state.toolSources.length === 0;
+    toolRefresh.disabled = state.toolSources.length === 0;
+    toolName.disabled = state.toolInventory.length === 0;
+    toolArguments.disabled = false;
+    toolPropose.disabled = state.toolInventory.length === 0;
+  }
+
+  function lockToolProposalInputs() {
+    toolSource.disabled = true;
+    toolRefresh.disabled = true;
+    toolName.disabled = true;
+    toolArguments.disabled = true;
+    toolPropose.disabled = true;
+  }
+
+  function restoreToolActionAfterRejection(commandName) {
+    if (commandName === 'tools.approve' && state.toolProposalStatus === 'approval-required') {
+      toolApprove.disabled = false;
+      toolDiscard.disabled = false;
+    }
+    if (
+      (commandName === 'tools.execute.stdio' || commandName === 'tools.execute.http')
+      && state.toolProposalStatus === 'approved'
+    ) {
+      toolExecute.disabled = false;
+      toolDiscard.disabled = false;
+    }
+    if (commandName === 'tools.discard' && state.toolProposalId) {
+      toolDiscard.disabled = false;
+    }
+  }
+
+  function resetToolInventory() {
+    state.toolInventory = [];
+    toolName.replaceChildren();
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'Refresh inventory first';
+    toolName.append(option);
+    toolName.disabled = true;
+    toolPropose.disabled = true;
+    resetToolProposal();
+  }
+
+  function renderToolSources(sources) {
+    state.toolSources = Array.isArray(sources)
+      ? sources.filter((source) =>
+          source
+          && typeof source.sourceId === 'string'
+          && (source.transport === 'stdio' || source.transport === 'streamable_http'))
+      : [];
+    toolSource.replaceChildren();
+    if (state.toolSources.length === 0) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No configured source';
+      toolSource.append(option);
+      toolSource.disabled = true;
+      toolRefresh.disabled = true;
+    } else {
+      for (const source of state.toolSources) {
+        const option = document.createElement('option');
+        option.value = source.sourceId;
+        option.textContent = source.sourceId + ' · ' + source.transport + ' · ' + safeText(source.trust);
+        toolSource.append(option);
+      }
+      toolSource.disabled = false;
+      toolRefresh.disabled = false;
+    }
+    toolSourceCount.textContent = String(state.toolSources.length) + ' source' + (state.toolSources.length === 1 ? '' : 's');
+    resetToolInventory();
+  }
+
+  function renderToolInventory(payload) {
+    const tools = Array.isArray(payload?.tools) ? payload.tools : [];
+    state.toolInventory = tools.filter((tool) =>
+      tool && typeof tool.name === 'string' && typeof tool.riskClass === 'string'
+    );
+    toolName.replaceChildren();
+    if (state.toolInventory.length === 0) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No listed tool';
+      toolName.append(option);
+      toolName.disabled = true;
+      toolPropose.disabled = true;
+    } else {
+      for (const tool of state.toolInventory) {
+        const option = document.createElement('option');
+        option.value = tool.name;
+        option.textContent = tool.name + ' · ' + tool.riskClass;
+        toolName.append(option);
+      }
+      toolName.disabled = false;
+      toolPropose.disabled = false;
+    }
+    resetToolProposal();
+  }
+
+  function renderToolExecution(payload) {
+    const stateReceipt = payload?.state;
+    const executed = stateReceipt?.executed;
+    const succeeded = stateReceipt?.succeeded;
+    const verified = stateReceipt?.verified === true;
+
+    const failureCode = safeText(payload?.failureCode);
+    if (executed === false) {
+      addActivity(
+        'Blocked',
+        failureCode || 'Tool execution was rejected before callTool.',
+        'blocked',
+      );
+    } else if (executed === 'unknown') {
+      addActivity(
+        'Outcome unknown',
+        failureCode || 'Tool call outcome is unknown; automatic retry is disabled.',
+        'blocked',
+      );
+    } else if (executed === true) {
+      addActivity('Tool executed', safeText(payload.toolName) || 'tool', 'executed');
+      if (succeeded === true) {
+        addActivity('Tool succeeded', safeText(payload.toolName) || 'tool', 'succeeded');
+      } else if (succeeded === false) {
+        addActivity(
+          'Tool failed',
+          failureCode || 'Tool returned an error result.',
+          'blocked',
+        );
+      }
+    }
+    if (verified) addActivity('Evidence verified', safeText(payload.toolName) || 'tool', 'verified');
+    else if (executed === true) addActivity('Unverified', 'Execution receipt is not verified evidence.', 'requested');
+
+    if (payload?.displayResult?.available === true) {
+      try {
+        toolResult.textContent = JSON.stringify(payload.displayResult.value, null, 2);
+      } catch {
+        toolResult.textContent = 'Tool result could not be rendered.';
+      }
+    } else if (payload?.displayResult?.reason) {
+      toolResult.textContent = 'Tool result withheld: ' + safeText(payload.displayResult.reason);
+    } else if (payload?.status === 'outcome-unknown') {
+      toolResult.textContent = 'Execution outcome is unknown. FuryPipe will not retry automatically.';
+    } else {
+      toolResult.textContent = 'No displayable tool result.';
+    }
+
+    const status = safeText(payload?.status) || 'unknown';
+    toolStatus.textContent =
+      'executed=' + String(executed)
+      + ' · succeeded=' + String(succeeded)
+      + ' · verified=' + String(verified)
+      + ' · status=' + status;
+    resetToolProposal();
+  }
+
+  function handleToolGatewayResult(message) {
+    const adapter = message.result;
+    if (!adapter || typeof adapter !== 'object') {
+      toolStatus.textContent = 'Malformed tool result.';
+      addActivity('Blocked', 'Malformed tool result.', 'blocked');
+      return;
+    }
+    if (adapter.status !== 'ok') {
+      const code = safeText(adapter.error?.code) || 'tool-command-rejected';
+      restoreToolActionAfterRejection(safeText(message.commandName));
+      toolStatus.textContent = code;
+      addActivity('Blocked', code, 'blocked');
+      return;
+    }
+
+    const payload = adapter.result;
+    if (message.commandName === 'tools.sources.inspect') {
+      renderToolSources(payload);
+      addActivity('Accepted', 'Configured MCP source metadata loaded.', 'accepted');
+      return;
+    }
+    if (
+      message.commandName === 'tools.source.inspect.stdio'
+      || message.commandName === 'tools.source.inspect.http'
+    ) {
+      renderToolInventory(payload);
+      toolStatus.textContent = 'Inventory refreshed.';
+      addActivity('Accepted', 'Fresh MCP inventory listed.', 'accepted');
+      return;
+    }
+    if (
+      message.commandName === 'tools.propose.stdio'
+      || message.commandName === 'tools.propose.http'
+    ) {
+      const proposalStatus = safeText(payload?.status);
+      if (proposalStatus === 'denied') {
+        resetToolProposal();
+        toolStatus.textContent = 'Policy denied this tool proposal.';
+        addActivity('Blocked', safeText(payload?.policy?.reason) || 'policy-denied', 'blocked');
+        return;
+      }
+      const proposalId = safeText(payload?.proposalId);
+      const source = selectedToolSource();
+      if (!proposalId || !source) {
+        resetToolProposal();
+        toolStatus.textContent = 'Proposal result is incomplete.';
+        addActivity('Blocked', 'Proposal result is incomplete.', 'blocked');
+        return;
+      }
+      state.toolProposalId = proposalId;
+      state.toolProposalTransport = source.transport;
+      state.toolProposalStatus = proposalStatus;
+      lockToolProposalInputs();
+      toolDiscard.disabled = false;
+      if (proposalStatus === 'approval-required') {
+        toolApprove.disabled = false;
+        toolExecute.disabled = true;
+        toolStatus.textContent = 'Operator approval required.';
+        addActivity('Tool requested', safeText(payload.toolName) || 'tool', 'requested');
+        addActivity('Blocked', 'Explicit operator approval required.', 'blocked');
+      } else if (proposalStatus === 'approved') {
+        toolApprove.disabled = true;
+        toolExecute.disabled = false;
+        toolStatus.textContent = 'Approved by governed policy; execution remains separate.';
+        addActivity('Tool requested', safeText(payload.toolName) || 'tool', 'requested');
+        addActivity('Tool approved', 'governed_policy', 'eligible');
+      }
+      return;
+    }
+    if (message.commandName === 'tools.approve') {
+      state.toolProposalStatus = 'approved';
+      toolApprove.disabled = true;
+      toolExecute.disabled = false;
+      toolDiscard.disabled = false;
+      toolStatus.textContent = 'Operator approval recorded. Execute remains a separate action.';
+      addActivity('Tool approved', 'operator', 'eligible');
+      return;
+    }
+    if (
+      message.commandName === 'tools.execute.stdio'
+      || message.commandName === 'tools.execute.http'
+    ) {
+      renderToolExecution(payload);
+      return;
+    }
+    if (message.commandName === 'tools.discard') {
+      const discarded = payload?.discarded === true;
+      resetToolProposal();
+      toolStatus.textContent = discarded ? 'Proposal discarded.' : 'Proposal was already absent.';
+      addActivity('Blocked', discarded ? 'Tool proposal discarded.' : 'Tool proposal unavailable.', 'blocked');
+    }
+  }
+
   function scheduleReconnect() {
     if (!state.authenticated || state.reconnectTimer || state.reconnectAttempts >= 5) return;
     const delay = Math.min(5000, 500 * Math.pow(2, state.reconnectAttempts));
@@ -348,6 +702,10 @@ const JS = `(() => {
   }
 
   function handleStateResult(message) {
+    if (safeText(message.commandName).startsWith('tools.')) {
+      handleToolGatewayResult(message);
+      return;
+    }
     const adapter = message.result;
     if (!adapter || typeof adapter !== 'object') {
       addActivity('Blocked', 'Malformed state result.', 'blocked');
@@ -457,6 +815,11 @@ const JS = `(() => {
       addActivity('Accepted', 'Authenticated local Gateway transport connected.', 'accepted');
       if (state.conversationId) inspectConversation();
       else sendCommand('conversation.open', {});
+      if (state.toolBridgeEnabled) {
+        // Metadata-only state command. Fresh MCP process/network probing still
+        // requires the operator to press Refresh inventory.
+        sendCommand('tools.sources.inspect', {});
+      }
       return;
     }
 
@@ -464,15 +827,21 @@ const JS = `(() => {
       const admission = message.admission;
       const commandName = safeText(admission?.commandName);
       if (admission?.outcome === 'eligible') {
-        addActivity(
-          commandName === 'conversation.model.execute' ? 'Model eligible' : 'State eligible',
-          commandName || 'Command admitted.',
-          'eligible',
-        );
+        const title = commandName === 'conversation.model.execute'
+          ? 'Model eligible'
+          : commandName.startsWith('tools.')
+            ? 'Tool eligible'
+            : 'State eligible';
+        addActivity(title, commandName || 'Command admitted.', 'eligible');
       } else {
         const reason = safeText(admission?.reason) || 'command denied';
         addActivity('Blocked', reason, 'blocked');
-        turnStatus.textContent = reason;
+        if (commandName.startsWith('tools.')) {
+          restoreToolActionAfterRejection(commandName);
+          toolStatus.textContent = reason;
+        } else {
+          turnStatus.textContent = reason;
+        }
         if (
           commandName === 'conversation.model.execute'
           && state.conversationId
@@ -493,6 +862,10 @@ const JS = `(() => {
     }
 
     if (message.type === 'execution-command-result') {
+      if (safeText(message.commandName).startsWith('tools.')) {
+        handleToolGatewayResult(message);
+        return;
+      }
       const result = message.result;
       if (!result || typeof result !== 'object') {
         addActivity('Blocked', 'Malformed model execution result.', 'blocked');
@@ -538,10 +911,21 @@ const JS = `(() => {
       state.modelBridgeEnabled = modelBridge?.enabled === true;
       state.modelProvider = state.modelBridgeEnabled ? safeText(modelBridge.providerId) : null;
       state.model = state.modelBridgeEnabled ? safeText(modelBridge.model) : null;
+      const tools = config?.tools;
+      state.toolBridgeEnabled = tools?.enabled === true;
+      state.toolSourceCount = state.toolBridgeEnabled && Number.isSafeInteger(tools?.sourceCount)
+        ? tools.sourceCount
+        : 0;
+      toolsPanel.hidden = !state.toolBridgeEnabled;
+      toolSourceCount.textContent = String(state.toolSourceCount) + ' source'
+        + (state.toolSourceCount === 1 ? '' : 's');
     } catch {
       state.modelBridgeEnabled = false;
       state.modelProvider = null;
       state.model = null;
+      state.toolBridgeEnabled = false;
+      state.toolSourceCount = 0;
+      toolsPanel.hidden = true;
     }
   }
 
@@ -626,6 +1010,113 @@ const JS = `(() => {
     });
   });
 
+  toolSource.addEventListener('change', () => {
+    resetToolInventory();
+    toolStatus.textContent = 'Select Refresh inventory to probe this source.';
+    toolResult.textContent = 'No tool result.';
+  });
+
+  toolRefresh.addEventListener('click', () => {
+    const source = selectedToolSource();
+    if (!source || state.toolProposalId) return;
+    toolStatus.textContent = 'Refreshing MCP inventory…';
+    addActivity('Tool requested', 'Fresh inventory for ' + source.sourceId, 'requested');
+    try {
+      sendCommand(
+        toolCommand('tools.source.inspect', source.transport),
+        { sourceId: source.sourceId },
+        toolPermission(source.transport),
+      );
+    } catch {
+      toolStatus.textContent = 'Gateway is not connected.';
+    }
+  });
+
+  toolPropose.addEventListener('click', () => {
+    const source = selectedToolSource();
+    const selectedTool = safeText(toolName.value);
+    if (!source || !selectedTool || state.toolProposalId) return;
+
+    let args;
+    try {
+      args = JSON.parse(toolArguments.value || '{}');
+    } catch {
+      toolStatus.textContent = 'Arguments must be valid JSON.';
+      addActivity('Blocked', 'Tool arguments are not valid JSON.', 'blocked');
+      return;
+    }
+    if (!args || typeof args !== 'object' || Array.isArray(args)) {
+      toolStatus.textContent = 'Arguments must be a JSON object.';
+      addActivity('Blocked', 'Tool arguments must be a JSON object.', 'blocked');
+      return;
+    }
+
+    toolStatus.textContent = 'Creating governed tool proposal…';
+    addActivity('Tool requested', selectedTool + ' on ' + source.sourceId, 'requested');
+    try {
+      sendCommand(
+        toolCommand('tools.propose', source.transport),
+        {
+          sourceId: source.sourceId,
+          toolName: selectedTool,
+          arguments: args,
+        },
+        toolPermission(source.transport),
+      );
+    } catch {
+      toolStatus.textContent = 'Gateway is not connected.';
+    }
+  });
+
+  toolApprove.addEventListener('click', () => {
+    if (!state.toolProposalId || state.toolProposalStatus !== 'approval-required') return;
+    toolApprove.disabled = true;
+    toolStatus.textContent = 'Recording explicit operator approval…';
+    try {
+      sendCommand('tools.approve', {
+        proposalId: state.toolProposalId,
+      });
+    } catch {
+      toolApprove.disabled = false;
+      toolStatus.textContent = 'Gateway is not connected.';
+    }
+  });
+
+  toolExecute.addEventListener('click', () => {
+    if (
+      !state.toolProposalId
+      || state.toolProposalStatus !== 'approved'
+      || !state.toolProposalTransport
+    ) return;
+    toolExecute.disabled = true;
+    toolDiscard.disabled = true;
+    toolStatus.textContent = 'Executing governed tool…';
+    addActivity('Tool requested', 'Execution requested for approved proposal.', 'requested');
+    try {
+      sendCommand(
+        toolCommand('tools.execute', state.toolProposalTransport),
+        { proposalId: state.toolProposalId },
+        toolPermission(state.toolProposalTransport),
+      );
+    } catch {
+      toolExecute.disabled = false;
+      toolDiscard.disabled = false;
+      toolStatus.textContent = 'Gateway is not connected.';
+    }
+  });
+
+  toolDiscard.addEventListener('click', () => {
+    if (!state.toolProposalId) return;
+    const proposalId = state.toolProposalId;
+    toolDiscard.disabled = true;
+    try {
+      sendCommand('tools.discard', { proposalId });
+    } catch {
+      toolDiscard.disabled = false;
+      toolStatus.textContent = 'Gateway is not connected.';
+    }
+  });
+
   byId('new-conversation').addEventListener('click', () => {
     if (state.activeTurnId) {
       turnStatus.textContent = 'Cancel the active turn first.';
@@ -660,6 +1151,11 @@ const JS = `(() => {
     state.activeTurnId = null;
     state.pendingUserMessages.clear();
     state.openAfterClose = false;
+    state.toolSources = [];
+    state.toolInventory = [];
+    resetToolProposal();
+    toolResult.textContent = 'No tool result.';
+    toolStatus.textContent = '';
     clearMessages();
     chatPanel.hidden = true;
     bootstrapPanel.hidden = false;
@@ -778,6 +1274,20 @@ export function createFuryGatewayWebChatHandler(
   } else if (options.modelProvider !== undefined || options.model !== undefined) {
     throw new Error('Gateway WebChat disabled model bridge must not expose model metadata');
   }
+
+  const toolBridgeEnabled = options.toolBridgeEnabled === true;
+  if (toolBridgeEnabled) {
+    if (
+      !Number.isSafeInteger(options.toolSourceCount)
+      || (options.toolSourceCount as number) < 1
+      || (options.toolSourceCount as number) > 32
+    ) {
+      throw new Error('Gateway WebChat tool source count must be an integer from 1 to 32');
+    }
+  } else if (options.toolSourceCount !== undefined) {
+    throw new Error('Gateway WebChat disabled tool bridge must not expose tool metadata');
+  }
+
   const webChatConfig = JSON.stringify(Object.freeze({
     format: FURY_GATEWAY_WEBCHAT_CONFIG_FORMAT,
     modelBridge: modelBridgeEnabled
@@ -785,6 +1295,12 @@ export function createFuryGatewayWebChatHandler(
           enabled: true as const,
           providerId: options.modelProvider!,
           model: options.model!,
+        })
+      : Object.freeze({ enabled: false as const }),
+    tools: toolBridgeEnabled
+      ? Object.freeze({
+          enabled: true as const,
+          sourceCount: options.toolSourceCount!,
         })
       : Object.freeze({ enabled: false as const }),
     executionAuthority: false as const,

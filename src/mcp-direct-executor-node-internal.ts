@@ -103,6 +103,38 @@ export interface McpDirectGovernedExecutionInternalResult {
   readonly result: unknown;
 }
 
+export type McpDirectExecutionPreCallRejectionReason =
+  | 'identity_or_protocol_drift'
+  | 'tool_missing'
+  | 'input_schema_drift'
+  | 'risk_class_drift'
+  | 'definition_invalid'
+  | 'call_unavailable';
+
+export class McpDirectExecutionPreCallRejectedError extends Error {
+  readonly code = 'MCP_DIRECT_EXECUTION_PRE_CALL_REJECTED';
+  readonly retrySafe = false;
+  readonly executed = false;
+  readonly succeeded = false;
+  readonly verified = false;
+  readonly sourceId: string;
+  readonly toolName: string;
+  readonly reason: McpDirectExecutionPreCallRejectionReason;
+
+  constructor(
+    sourceId: string,
+    toolName: string,
+    reason: McpDirectExecutionPreCallRejectionReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'McpDirectExecutionPreCallRejectedError';
+    this.sourceId = sourceId;
+    this.toolName = toolName;
+    this.reason = reason;
+  }
+}
+
 export class McpDirectExecutionOutcomeUnknownError extends Error {
   readonly code = 'MCP_DIRECT_EXECUTION_OUTCOME_UNKNOWN';
   readonly retrySafe = false;
@@ -436,30 +468,70 @@ export async function executeMcpDirectApprovedToolInternal(
       || fresh.lifecycle.protocolEra !== approvedLifecycle.protocolEra
       || fresh.lifecycle.handshake !== approvedLifecycle.handshake
     ) {
-      throw new Error('MCP fresh connection identity/protocol does not match approved lifecycle');
+      throw new McpDirectExecutionPreCallRejectedError(
+        approvedLifecycle.source.sourceId,
+        proposal.toolName,
+        'identity_or_protocol_drift',
+        'MCP fresh connection identity/protocol does not match approved lifecycle',
+      );
     }
 
     const freshSelected = fresh.lifecycle.inventory?.find(tool => tool.name === proposal.toolName);
     if (!freshSelected) {
-      throw new Error('MCP approved tool is missing from fresh inventory');
+      throw new McpDirectExecutionPreCallRejectedError(
+        approvedLifecycle.source.sourceId,
+        proposal.toolName,
+        'tool_missing',
+        'MCP approved tool is missing from fresh inventory',
+      );
     }
     if (
       freshSelected.inputSchemaSha256 !== approvedSelected.inputSchemaSha256
       || freshSelected.inputSchemaSha256 !== proposal.inputSchemaSha256
     ) {
-      throw new Error('MCP selected tool input schema drifted after approval');
+      throw new McpDirectExecutionPreCallRejectedError(
+        approvedLifecycle.source.sourceId,
+        proposal.toolName,
+        'input_schema_drift',
+        'MCP selected tool input schema drifted after approval',
+      );
     }
     if (freshSelected.risk.riskClass !== proposal.riskClass) {
-      throw new Error('MCP selected tool risk class drifted after approval');
+      throw new McpDirectExecutionPreCallRejectedError(
+        approvedLifecycle.source.sourceId,
+        proposal.toolName,
+        'risk_class_drift',
+        'MCP selected tool risk class drifted after approval',
+      );
     }
 
     const rawTool = fresh.tools.find(tool => tool.name === proposal.toolName);
     if (!rawTool) {
-      throw new Error('MCP selected tool definition is missing from fresh inventory');
+      throw new McpDirectExecutionPreCallRejectedError(
+        approvedLifecycle.source.sourceId,
+        proposal.toolName,
+        'definition_invalid',
+        'MCP selected tool definition is missing from fresh inventory',
+      );
     }
-    const prepared = buildFreshToolDefinition(rawTool);
+    let prepared: ReturnType<typeof buildFreshToolDefinition>;
+    try {
+      prepared = buildFreshToolDefinition(rawTool);
+    } catch {
+      throw new McpDirectExecutionPreCallRejectedError(
+        approvedLifecycle.source.sourceId,
+        proposal.toolName,
+        'definition_invalid',
+        'MCP fresh selected tool definition is invalid before execution',
+      );
+    }
     if (fresh.client.callTool === undefined) {
-      throw new Error('MCP runtime client does not expose governed callTool capability');
+      throw new McpDirectExecutionPreCallRejectedError(
+        approvedLifecycle.source.sourceId,
+        proposal.toolName,
+        'call_unavailable',
+        'MCP runtime client does not expose governed callTool capability',
+      );
     }
 
     const now = options.now?.() ?? Date.now();

@@ -145,6 +145,22 @@
       "types": "./dist/gateway-local-model-runtime-node.d.ts",
       "import": "./dist/gateway-local-model-runtime-node.js"
     },
+    "./fury-kernel-tool-bridge-node": {
+      "types": "./dist/fury-kernel-tool-bridge-node.d.ts",
+      "import": "./dist/fury-kernel-tool-bridge-node.js"
+    },
+    "./gateway-tool-command-node": {
+      "types": "./dist/gateway-tool-command-node.d.ts",
+      "import": "./dist/gateway-tool-command-node.js"
+    },
+    "./gateway-tool-bridge-adapter-node": {
+      "types": "./dist/gateway-tool-bridge-adapter-node.d.ts",
+      "import": "./dist/gateway-tool-bridge-adapter-node.js"
+    },
+    "./gateway-local-tool-runtime-node": {
+      "types": "./dist/gateway-local-tool-runtime-node.d.ts",
+      "import": "./dist/gateway-local-tool-runtime-node.js"
+    },
     "./skill-registry": {
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"

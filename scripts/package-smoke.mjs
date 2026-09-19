@@ -254,7 +254,7 @@ try {
   const directMcpExecutorExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
-    "const m = await import('furypipe/mcp-direct-executor-node'); if (typeof m.executeMcpDirectApprovedTool !== 'function' || typeof m.executeMcpDirectReplay !== 'function' || typeof m.createMcpDirectReplayIntent !== 'function' || typeof m.McpDirectReplayGovernanceError !== 'function' || typeof m.McpDirectExecutionOutcomeUnknownError !== 'function' || typeof m.McpDirectExecutionVerificationError !== 'function' || typeof m.McpDirectExecutionEvidenceError !== 'function' || typeof m.McpDirectExecutionDurabilityError !== 'function') process.exit(1);",
+    "const m = await import('furypipe/mcp-direct-executor-node'); if (typeof m.executeMcpDirectApprovedTool !== 'function' || typeof m.executeMcpDirectReplay !== 'function' || typeof m.createMcpDirectReplayIntent !== 'function' || typeof m.McpDirectReplayGovernanceError !== 'function' || typeof m.McpDirectExecutionPreCallRejectedError !== 'function' || typeof m.McpDirectExecutionOutcomeUnknownError !== 'function' || typeof m.McpDirectExecutionVerificationError !== 'function' || typeof m.McpDirectExecutionEvidenceError !== 'function' || typeof m.McpDirectExecutionDurabilityError !== 'function') process.exit(1);",
   ], installDir);
   assert(directMcpExecutorExport.stderr === '', `Direct MCP executor package export wrote stderr: ${directMcpExecutorExport.stderr}`);
   const directMcpDurableReplayExport = await run(process.execPath, [
@@ -329,6 +329,32 @@ try {
     "const m = await import('furypipe/gateway-local-model-runtime-node'); if (typeof m.createFuryGatewayLocalModelRuntime !== 'function') process.exit(1);",
   ], installDir);
   assert(gatewayLocalModelRuntimeExport.stderr === '', `Gateway local model runtime export wrote stderr: ${gatewayLocalModelRuntimeExport.stderr}`);
+  const furyKernelToolBridgeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/fury-kernel-tool-bridge-node'); if (typeof m.createFuryKernelToolBridge !== 'function' || m.FURY_KERNEL_TOOL_BRIDGE_FORMAT !== 'furypipe-kernel-tool-bridge/v1') process.exit(1);",
+  ], installDir);
+  assert(furyKernelToolBridgeExport.stderr === '', `Fury Kernel tool bridge export wrote stderr: ${furyKernelToolBridgeExport.stderr}`);
+  const gatewayToolCommandExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-tool-command-node'); if (!Array.isArray(m.FURY_GATEWAY_TOOL_COMMAND_NAMES) || !Array.isArray(m.FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS)) process.exit(1);",
+  ], installDir);
+  assert(gatewayToolCommandExport.stderr === '', `Gateway tool command export wrote stderr: ${gatewayToolCommandExport.stderr}`);
+
+  const gatewayToolBridgeAdapterExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-tool-bridge-adapter-node'); if (typeof m.createFuryGatewayToolBridgeAdapter !== 'function' || m.FURY_GATEWAY_TOOL_RESULT_FORMAT !== 'furypipe-gateway-tool-result/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayToolBridgeAdapterExport.stderr === '', `Gateway tool bridge adapter export wrote stderr: ${gatewayToolBridgeAdapterExport.stderr}`);
+
+  const gatewayLocalToolRuntimeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-local-tool-runtime-node'); if (typeof m.createFuryGatewayLocalToolRuntime !== 'function' || m.FURY_GATEWAY_LOCAL_TOOL_CONFIG_FORMAT !== 'furypipe-gateway-local-tool-config/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayLocalToolRuntimeExport.stderr === '', `Gateway local tool runtime export wrote stderr: ${gatewayLocalToolRuntimeExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',

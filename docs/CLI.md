@@ -147,6 +147,91 @@ Partial configuration fails closed. FuryPipe does not infer a provider, model, c
 
 When enabled, user-message acceptance and provider inference remain distinct operations. `conversation.model.execute` requires the dedicated `capability.provider-inference` session scope and declared `provider-inference` permission. Provider output is treated as unverified application data until separate evidence verification says otherwise.
 
+### Optional governed MCP tools
+
+WebChat MCP tools are also **off by default**. Enable them with a separate strict host-owned configuration file:
+
+```text
+FURYPIPE_WEBCHAT_MCP_CONFIG=/absolute/path/to/webchat-mcp.json
+```
+
+The file uses `furypipe-gateway-local-tool-config/v1`. Raw MCP application results are **not browser-visible by default**; `allowDisplayResult` must be explicitly set to `true` if the operator wants bounded JSON results rendered in the local WebChat.
+
+Example stdio source:
+
+```json
+{
+  "format": "furypipe-gateway-local-tool-config/v1",
+  "allowDisplayResult": false,
+  "sources": [
+    {
+      "sourceId": "local-tools",
+      "transport": "stdio",
+      "trust": "trusted",
+      "command": "node",
+      "args": ["/absolute/path/to/mcp-server.mjs"],
+      "principalId": "local-tools-service",
+      "env": {
+        "SERVICE_TOKEN": "FURYPIPE_LOCAL_TOOLS_TOKEN"
+      },
+      "policy": {
+        "governedReadTools": ["search"],
+        "operatorApprovalTools": ["create-item"]
+      }
+    }
+  ]
+}
+```
+
+The values inside `env` are **host environment variable names**, not credentials. In the example above, FuryPipe resolves the value of `FURYPIPE_LOCAL_TOOLS_TOKEN` process-locally and passes it to the MCP process as `SERVICE_TOKEN`. The secret value is not copied into WebChat configuration, lifecycle summaries or Gateway results.
+
+Example Streamable HTTP source:
+
+```json
+{
+  "format": "furypipe-gateway-local-tool-config/v1",
+  "sources": [
+    {
+      "sourceId": "remote-tools",
+      "transport": "streamable_http",
+      "trust": "untrusted",
+      "url": "https://mcp.example.com/v1",
+      "allowedHosts": ["mcp.example.com"],
+      "principalId": "remote-tools-service",
+      "headers": {
+        "Authorization": "FURYPIPE_REMOTE_MCP_AUTH"
+      },
+      "policy": {
+        "governedReadTools": [],
+        "operatorApprovalTools": ["search"]
+      }
+    }
+  ]
+}
+```
+
+Header values are likewise environment-variable references. For example, `FURYPIPE_REMOTE_MCP_AUTH` may contain the complete runtime Authorization value.
+
+The two policy lists are exact allowlists and must not overlap. `governedReadTools` does not bypass MCP Direct risk classification: automatic governed approval is still restricted to tools that FuryPipe independently proves are trusted, read-only and closed-world. Other permitted tools require an explicit local operator approval action.
+
+WebChat preserves the tool lifecycle instead of collapsing it:
+
+```text
+configured
+!= connected
+!= healthy
+!= listed
+!= selected
+!= proposed
+!= approved
+!= permitted
+!= executed
+!= succeeded
+!= verified
+```
+
+The browser can inspect sanitized source metadata, request a fresh inventory, create a proposal, explicitly approve an operator-gated proposal and request execution. It never receives the process-local MCP lifecycle, operator intent or execution permit objects that carry authority. Tool output is shown only in the Tools panel and is never inserted automatically into the assistant transcript.
+
 ## Doctor
 
 `furypipe doctor` inspects runtime configuration without intentionally reading or printing provider credentials. It reports the effective model-scope mode/source and visual policy. In automatic mode the diagnostic leaves `effectiveModels` empty because Model Fabric discovery is dynamic rather than a static catalog.
