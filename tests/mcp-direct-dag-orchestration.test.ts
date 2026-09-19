@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
@@ -279,4 +281,116 @@ describe('M6 durable admission boundary', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+});
+
+describe('M6 real MCP v2 integration', () => {
+  it('executes a diamond A/B -> C through fresh M1-M5 authority for every node', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m6-real-mcp-'));
+    const fixturePath = fileURLToPath(new URL('./fixtures/mcp-direct-execution-stdio-server.mjs', import.meta.url));
+    const store = createRecoveryStore(root, {
+      namespace: 'mcp-direct-dag',
+      maxObjectBytes: 64 * 1024,
+      maxTotalBytes: 2 * 1024 * 1024,
+      maxGlobalBytes: 4 * 1024 * 1024,
+    });
+    const dag = plan([
+      node('c', ['a', 'b'], { inputRefs: [
+        { name: 'a', nodeId: 'a', output: 'result' },
+        { name: 'b', nodeId: 'b', output: 'result' },
+      ] }),
+      node('a'),
+      node('b'),
+    ]);
+    const freshAuthorities: string[] = [];
+    try {
+      const result = await executeMcpDirectDag(dag, {
+        recoveryStore: store,
+        scopeSha256: '1'.repeat(64),
+        runIdSha256: '2'.repeat(64),
+        authorizeNode: async (entry) => {
+          freshAuthorities.push(entry.id);
+          const counterPath = join(root, `${entry.id}.counter`);
+          const provisional: McpDirectRuntimeConfig = {
+            source: {
+              sourceId: `m6-${entry.id}`,
+              transport: 'stdio',
+              endpointFingerprint: '0'.repeat(64),
+              trust: 'trusted',
+            },
+            command: process.execPath,
+            args: [fixturePath, counterPath],
+            maxBufferBytes: 1024 * 1024,
+          };
+          const config: McpDirectRuntimeConfig = {
+            ...provisional,
+            source: {
+              ...provisional.source,
+              endpointFingerprint: deriveMcpDirectEndpointFingerprint(provisional),
+            },
+          };
+          const inventory = await probeMcpDirectInventory(config, {
+            clientInfo: { name: 'furypipe-m6-dag', version: '1.0.0' },
+            connectTimeoutMs: 10_000,
+            listTimeoutMs: 10_000,
+            probeTimeoutMs: 2_000,
+          });
+          const selected = selectMcpDirectTool(inventory.lifecycle, 'governed-echo');
+          const proposal = await createMcpDirectToolProposal(selected, inventory.catalog, { message: entry.id });
+          const policy = {
+            format: 'furypipe-mcp-direct-policy/v1' as const,
+            policyId: `m6-policy-${entry.id}`,
+            governedPolicyAllowlist: [{
+              sourceId: selected.source.sourceId,
+              endpointFingerprint: selected.source.endpointFingerprint,
+              toolName: 'governed-echo',
+            }],
+            operatorApprovalAllowlist: [],
+          };
+          const decision = evaluateMcpDirectPolicy(selected, proposal, policy);
+          const approved = approveMcpDirectPolicyDecision(selected, proposal, decision, 'governed_policy');
+          return {
+            approvalId: approved.approval?.policyDecisionIdSha256 ?? entry.nodeId,
+            permitId: approved.approval?.inputSha256 ?? entry.nodeId,
+            expiresAt: Date.now() + 30_000,
+            config,
+            proposal,
+            approved,
+            coordinator: createMcpDirectDurableReplayCoordinator({
+              store,
+              tenantId: 'm6-tenant',
+              principalId: 'm6-principal',
+            }),
+          };
+        },
+        executeNode: async (entry, authority) => {
+          const governed = authority as typeof authority & {
+            readonly config: McpDirectRuntimeConfig;
+            readonly proposal: Awaited<ReturnType<typeof createMcpDirectToolProposal>>;
+            readonly approved: Awaited<ReturnType<typeof approveMcpDirectPolicyDecision>>;
+            readonly coordinator: ReturnType<typeof createMcpDirectDurableReplayCoordinator>;
+          };
+          const executed = await executeMcpDirectApprovedTool(
+            governed.config,
+            governed.approved,
+            governed.proposal,
+            {
+              clientInfo: { name: 'furypipe-m6-dag', version: '1.0.0' },
+              durableReplay: governed.coordinator,
+              callTimeoutMs: 10_000,
+            },
+          );
+          return {
+            outcome: 'succeeded',
+            outputDigest: createHash('sha256').update(JSON.stringify(executed.result)).digest('hex'),
+            verified: executed.receipt.verified,
+          };
+        },
+      });
+      expect(result.state).toBe('succeeded');
+      expect(freshAuthorities).toEqual(['a', 'b', 'c']);
+      expect(Object.values(result.nodes).every((entry) => entry.verified)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
