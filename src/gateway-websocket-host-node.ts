@@ -869,6 +869,87 @@ export async function listenFuryGatewayWebSocketHost(
                   });
                 }
               }
+
+              if (
+                evaluated.admission.outcome === 'eligible'
+                && options.handleAdmittedExecutionCommand
+                && admittedExecutionCommandNames.has(evaluated.admission.commandName)
+              ) {
+                const payload =
+                  accepted.message.payload as FuryGatewayTransportCommandPayload;
+                if (inFlightExecutionCommands >= maxInFlightExecutionCommands) {
+                  safeSend(
+                    ws,
+                    maxBufferedAmountBytes,
+                    safeServerMessage({
+                      type: 'execution-command-result',
+                      connectionId: state.connection.connectionId,
+                      messageId: accepted.message.messageId,
+                      sequence: accepted.message.sequence,
+                      commandName: payload.commandName,
+                      result: Object.freeze({
+                        status: 'rejected',
+                        error: Object.freeze({ code: 'execution-command-backpressure' }),
+                        executionAuthority: false,
+                      }),
+                    }),
+                  );
+                } else {
+                  inFlightExecutionCommands += 1;
+                  const dispatch = Object.freeze({
+                    connectionId: state.connection.connectionId,
+                    messageId: accepted.message.messageId,
+                    sequence: accepted.message.sequence,
+                    commandName: payload.commandName,
+                    input: payload.input,
+                    transportReceipt: evaluated.transportReceipt,
+                    admission: evaluated.admission,
+                    executionAuthority: false as const,
+                  });
+                  queueMicrotask(() => {
+                    Promise.resolve()
+                      .then(() => options.handleAdmittedExecutionCommand!(dispatch))
+                      .then((result) => {
+                        safeSend(
+                          ws,
+                          maxBufferedAmountBytes,
+                          safeServerMessage({
+                            type: 'execution-command-result',
+                            connectionId: state.connection.connectionId,
+                            messageId: dispatch.messageId,
+                            sequence: dispatch.sequence,
+                            commandName: payload.commandName,
+                            result,
+                          }),
+                        );
+                      })
+                      .catch(() => {
+                        safeSend(
+                          ws,
+                          maxBufferedAmountBytes,
+                          safeServerMessage({
+                            type: 'execution-command-result',
+                            connectionId: state.connection.connectionId,
+                            messageId: dispatch.messageId,
+                            sequence: dispatch.sequence,
+                            commandName: payload.commandName,
+                            result: Object.freeze({
+                              status: 'rejected',
+                              error: Object.freeze({ code: 'execution-command-handler-error' }),
+                              executionAuthority: false,
+                            }),
+                          }),
+                        );
+                      })
+                      .finally(() => {
+                        inFlightExecutionCommands = Math.max(
+                          0,
+                          inFlightExecutionCommands - 1,
+                        );
+                      });
+                  });
+                }
+              }
             } else if (accepted.message.type === 'ping') {
               const payload = accepted.message.payload as { readonly nonce: string };
               safeSend(
