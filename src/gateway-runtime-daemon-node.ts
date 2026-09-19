@@ -67,6 +67,7 @@ export interface FuryGatewayDaemonOptions {
   readonly commandRegistry: FuryGatewayCommandRegistry;
   readonly resolveConnection: FuryGatewayWebSocketConnectionResolver;
   readonly handleHttpRequest?: FuryGatewayWebSocketHttpRequestHandler;
+  readonly admittedStateCommandNames?: readonly string[];
   readonly handleAdmittedStateCommand?: FuryGatewayWebSocketStateCommandHandler;
   readonly config?: FuryGatewayDaemonConfig;
   readonly now?: () => number;
@@ -282,6 +283,9 @@ export async function startFuryGatewayDaemon(
     ...(options.handleHttpRequest === undefined
       ? {}
       : { handleHttpRequest: options.handleHttpRequest }),
+    ...(options.admittedStateCommandNames === undefined
+      ? {}
+      : { admittedStateCommandNames: options.admittedStateCommandNames }),
     ...(options.handleAdmittedStateCommand === undefined
       ? {}
       : { handleAdmittedStateCommand: options.handleAdmittedStateCommand }),
