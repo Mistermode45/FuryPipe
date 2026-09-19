@@ -1,6 +1,6 @@
 # FuryPipe VNext — Phase 2A Local WebChat + Fury Kernel Facade
 
-**Status:** architecture gate  
+**Status:** Gates 2A.0–2A.3 implemented; exact-HEAD validation pending  
 **Base:** PR #209 exact HEAD `2a9d83dc835ca10b246bdc6a5e2de55e4a68739d`  
 **Track:** `vnext-phase2a-webchat-kernel-facade`
 
@@ -302,28 +302,48 @@ Must test at minimum:
 - no runtime behavior change.
 
 ### Gate 2A.1 — Kernel conversation foundation
+Implementation present on this track:
 - bounded in-memory conversation store;
-- exact schemas;
-- state machine;
-- cancellation;
+- exact schemas and server-owned opaque conversation IDs;
+- state machine, cancellation and explicit close/reclamation;
 - idempotency/replay protections;
+- immutable snapshots;
+- package export and smoke coverage;
 - no provider/tool execution;
 - unit tests.
 
+Validation remains evidence-bound to the exact final HEAD; superseded CI runs do not count as final PASS evidence.
+
 ### Gate 2A.2 — Gateway conversation adapter
-- explicit narrow scopes;
-- registered conversation commands;
-- admission required;
-- network callback schedules Kernel work but never executes capability code inline;
-- integration tests.
+Implementation present on this track:
+- explicit `conversations.inspect` and `conversations.write` scopes;
+- five registered conversation commands with zero plugin permissions;
+- command admission required before state dispatch;
+- transport receipt, command admission and state-command result remain distinct;
+- network callback schedules bounded synchronous state work in a microtask;
+- state dispatch backpressure is independent from capability execution;
+- result serialization is bounded and oversized inspection pages fail closed;
+- denied admission never reaches the Kernel adapter;
+- unit and real WebSocket integration tests.
+
+The state dispatcher is not a provider/tool/process/MCP/repository execution boundary and continues to emit `executionAuthority:false`.
 
 ### Gate 2A.3 — local WebChat
-- static local assets;
-- #208 bootstrap/cookie reuse;
-- WebSocket protocol;
-- reconnect/resync;
-- accessibility and browser QA;
-- CSP/security headers.
+Implementation present on this track:
+- static local HTML/CSS/JavaScript under `/gateway/webchat/`;
+- #208 one-time bootstrap and HttpOnly browser cookie reused unchanged;
+- no bootstrap secret in URL/query/hash;
+- exact loopback origin and same Gateway WebSocket protocol;
+- reconnect/resync with stale-socket race protection;
+- deterministic conversation close/open rollover;
+- no browser transcript persistence;
+- DOM updates use `textContent`, not dynamic `innerHTML`;
+- restrictive CSP, no-store, COOP/CORP, Permissions-Policy and no third-party scripts/CDNs;
+- responsive/accessibility-oriented UI with explicit authority-state legend;
+- HTTP security tests;
+- real Chromium/Firefox/WebKit desktop+mobile browser QA added to the existing Cross-Browser workflow.
+
+Model inference remains deliberately absent until Gate 2A.4.
 
 ### Gate 2A.4 — Model Fabric bridge
 - explicit provider-inference authority;
