@@ -145,8 +145,9 @@ Suggested public facade:
 
 ```ts
 interface FuryKernel {
-  openConversation(input: KernelOpenConversationInput): KernelConversationSnapshot;
+  openConversation(): KernelConversationSnapshot;
   inspectConversation(id: string): KernelConversationSnapshot;
+  closeConversation(id: string): KernelClosedConversation;
   submitMessage(input: KernelSubmitMessageInput): Promise<KernelTurnResult>;
   cancelTurn(input: KernelCancelTurnInput): KernelCancellationResult;
 }
