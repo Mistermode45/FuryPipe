@@ -660,8 +660,8 @@ export async function listenFuryGatewayWebSocketHost(
                 safeServerMessage({
                   type: 'command-admission',
                   connectionId: state.connection.connectionId,
-                  messageId: accepted.message.messageId,
-                  sequence: accepted.message.sequence,
+                  messageId: dispatch.messageId,
+                  sequence: dispatch.sequence,
                   transportReceipt: evaluated.transportReceipt,
                   admission: evaluated.admission,
                 }),
@@ -680,8 +680,8 @@ export async function listenFuryGatewayWebSocketHost(
                     safeServerMessage({
                       type: 'state-command-result',
                       connectionId: state.connection.connectionId,
-                      messageId: accepted.message.messageId,
-                      sequence: accepted.message.sequence,
+                      messageId: dispatch.messageId,
+                      sequence: dispatch.sequence,
                       commandName: payload.commandName,
                       result: Object.freeze({
                         status: 'rejected',
@@ -694,8 +694,8 @@ export async function listenFuryGatewayWebSocketHost(
                   inFlightStateCommands += 1;
                   const dispatch = Object.freeze({
                     connectionId: state.connection.connectionId,
-                    messageId: accepted.message.messageId,
-                    sequence: accepted.message.sequence,
+                    messageId: dispatch.messageId,
+                    sequence: dispatch.sequence,
                     commandName: payload.commandName,
                     input: payload.input,
                     transportReceipt: evaluated.transportReceipt,
@@ -718,8 +718,8 @@ export async function listenFuryGatewayWebSocketHost(
                         safeServerMessage({
                           type: 'state-command-result',
                           connectionId: state.connection.connectionId,
-                          messageId: accepted.message.messageId,
-                          sequence: accepted.message.sequence,
+                          messageId: dispatch.messageId,
+                          sequence: dispatch.sequence,
                           commandName: payload.commandName,
                           result,
                         }),
@@ -731,8 +731,8 @@ export async function listenFuryGatewayWebSocketHost(
                         safeServerMessage({
                           type: 'state-command-result',
                           connectionId: state.connection.connectionId,
-                          messageId: accepted.message.messageId,
-                          sequence: accepted.message.sequence,
+                          messageId: dispatch.messageId,
+                          sequence: dispatch.sequence,
                           commandName: payload.commandName,
                           result: Object.freeze({
                             status: 'rejected',
@@ -755,8 +755,8 @@ export async function listenFuryGatewayWebSocketHost(
                 safeServerMessage({
                   type: 'pong',
                   connectionId: state.connection.connectionId,
-                  messageId: accepted.message.messageId,
-                  sequence: accepted.message.sequence,
+                  messageId: dispatch.messageId,
+                  sequence: dispatch.sequence,
                   nonce: payload.nonce,
                 }),
               );
@@ -767,8 +767,8 @@ export async function listenFuryGatewayWebSocketHost(
                 safeServerMessage({
                   type: 'resync-unavailable',
                   connectionId: state.connection.connectionId,
-                  messageId: accepted.message.messageId,
-                  sequence: accepted.message.sequence,
+                  messageId: dispatch.messageId,
+                  sequence: dispatch.sequence,
                 }),
               );
             }
