@@ -342,11 +342,17 @@ export function furyGatewayCliHelp(): string {
     '  FURYPIPE_CONFIG        FuryPipe config JSON path',
     '  FURYPIPE_GATEWAY_HOST  127.0.0.1, ::1, or localhost only',
     '  FURYPIPE_GATEWAY_PORT  local Gateway port (default 48722)',
+    '  FURYPIPE_WEBCHAT_PROVIDER  optional: openai, anthropic, or google',
+    '  FURYPIPE_WEBCHAT_MODEL     exact model id when provider is configured',
+    '  FURYPIPE_WEBCHAT_MAX_OUTPUT_TOKENS  optional bounded output limit',
+    '  OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_API_KEY',
+    '                        provider credential selected by the explicit provider',
     '',
     'Security:',
     '  The local Gateway never treats localhost as authentication.',
     '  Start emits one short-lived one-time bootstrap code.',
-    '  No command execution authority is granted by this CLI phase.',
+    '  Provider inference is disabled unless provider, model, and credential are explicit.',
+    '  Browser admission is not a provider execution permit; the model bridge creates one-shot permits.',
   ].join('\n');
 }
 
@@ -384,6 +390,7 @@ function renderStart(
       websocketUrl: runtime.daemon.address.url,
       webChatUrl: `${runtime.config.config.origin}${FURY_GATEWAY_WEBCHAT_PATH}`,
       origin: runtime.config.config.origin,
+      model: runtime.model,
       bootstrap: {
         format: runtime.ticket.format,
         code: runtime.ticket.code,
@@ -399,6 +406,9 @@ function renderStart(
     `  WebSocket: ${runtime.daemon.address.url}`,
     `  WebChat:   ${runtime.config.config.origin}${FURY_GATEWAY_WEBCHAT_PATH}`,
     `  Origin:    ${runtime.config.config.origin}`,
+    `  Model:     ${runtime.model.enabled
+      ? `${runtime.model.providerId}/${runtime.model.model}`
+      : 'disabled'}`,
     '',
     'Local browser bootstrap code (one-time, short-lived):',
     `  ${runtime.ticket.code}`,
