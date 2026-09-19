@@ -1,4 +1,8 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { describe, expect, it, vi } from 'vitest';
+import { createRecoveryStore } from '../src/core/recovery-store.js';
 import {
   createMcpDirectDagPlan,
   executeMcpDirectDag,
@@ -191,5 +195,84 @@ describe('MCP direct multi-call DAG orchestration', () => {
     });
     expect(result.state).toBe('unknown');
     expect(result.nodes.a?.wireCallStarted).toBe(true);
+  });
+});
+
+describe('M6 durable admission boundary', () => {
+  it('uses atomic RecoveryStore admission to prevent duplicate node execution', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m6-dag-'));
+    const store = createRecoveryStore(root, {
+      namespace: 'mcp-direct-dag',
+      maxObjectBytes: 64 * 1024,
+      maxTotalBytes: 512 * 1024,
+      maxGlobalBytes: 1024 * 1024,
+    });
+    const dag = plan([node('a')]);
+    const scopeSha256 = 'a'.repeat(64);
+    const runIdSha256 = 'b'.repeat(64);
+    let wireCalls = 0;
+    const options = () => ({
+      recoveryStore: store,
+      scopeSha256,
+      runIdSha256,
+      authorizeNode: async () => ({ approvalId: 'fresh-a', permitId: 'fresh-p', expiresAt: Date.now() + 30_000 }),
+      executeNode: async () => {
+        wireCalls += 1;
+        return { outcome: 'succeeded' as const, outputDigest: 'c'.repeat(64), verified: true };
+      },
+    });
+    try {
+      const first = await executeMcpDirectDag(dag, options());
+      const second = await executeMcpDirectDag(dag, options());
+      expect(first.state).toBe('succeeded');
+      expect(second.state).toBe('unknown');
+      expect(second.nodes.a?.errorCode).toBe('durability-failed-before-execution');
+      expect(wireCalls).toBe(1);
+      const records = await store.list?.({ metadata: {
+        system: 'mcp-direct-dag',
+        scopeSha256,
+        runIdSha256,
+        planDigest: dag.digest,
+      }});
+      expect(records).toHaveLength(2);
+      const serialized = JSON.stringify(records);
+      expect(serialized).not.toContain('fresh-a');
+      expect(serialized).not.toContain('fresh-p');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('serializes concurrent schedulers at the node admission boundary', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'furypipe-m6-dag-race-'));
+    const store = createRecoveryStore(root, {
+      namespace: 'mcp-direct-dag',
+      maxObjectBytes: 64 * 1024,
+      maxTotalBytes: 512 * 1024,
+      maxGlobalBytes: 1024 * 1024,
+    });
+    const dag = plan([node('a')]);
+    let wireCalls = 0;
+    const makeOptions = () => ({
+      recoveryStore: store,
+      scopeSha256: 'd'.repeat(64),
+      runIdSha256: 'e'.repeat(64),
+      authorizeNode: async () => ({ approvalId: 'fresh', permitId: 'permit', expiresAt: Date.now() + 30_000 }),
+      executeNode: async () => {
+        wireCalls += 1;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return { outcome: 'succeeded' as const, outputDigest: 'f'.repeat(64), verified: true };
+      },
+    });
+    try {
+      const [one, two] = await Promise.all([
+        executeMcpDirectDag(dag, makeOptions()),
+        executeMcpDirectDag(dag, makeOptions()),
+      ]);
+      expect([one.state, two.state].sort()).toEqual(['succeeded', 'unknown']);
+      expect(wireCalls).toBe(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
