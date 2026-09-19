@@ -365,18 +365,12 @@ try {
     "const m = await import('furypipe/gateway'); if (typeof m.parseFuryGatewayConnectEnvelope !== 'function' || typeof m.deriveFuryGatewayConnectFingerprint !== 'function' || typeof m.createFuryGatewayHealthSnapshot !== 'function' || typeof m.FuryGatewayProtocolError !== 'function' || typeof m.authenticateGatewayConnection !== 'undefined' || typeof m.pairGatewayDevice !== 'undefined' || typeof m.executeGatewayCommand !== 'undefined') process.exit(1);",
   ], installDir);
   assert(gatewayExport.stderr === '', `Fury Gateway package export wrote stderr: ${gatewayExport.stderr}`);
-  const gatewayAuthExport = await run(process.execPath, [
+  const gatewayHiddenExports = await run(process.execPath, [
     '--input-type=module',
     '-e',
-    "const m = await import('furypipe/gateway-auth-node'); if (typeof m.createFuryGatewayDeviceAuthCoordinator !== 'function' || typeof m.createFuryGatewayDeviceProof !== 'function' || typeof m.deriveFuryGatewayDeviceId !== 'function' || typeof m.FuryGatewayDeviceAuthError !== 'function' || typeof m.authorizeGatewayCommand !== 'undefined') process.exit(1);",
+    "for (const subpath of ['gateway-auth-node','gateway-pairing-node']) { try { await import('furypipe/' + subpath); process.exit(2); } catch (error) { if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }",
   ], installDir);
-  assert(gatewayAuthExport.stderr === '', `Gateway auth package export wrote stderr: ${gatewayAuthExport.stderr}`);
-  const gatewayPairingExport = await run(process.execPath, [
-    '--input-type=module',
-    '-e',
-    "const m = await import('furypipe/gateway-pairing-node'); if (typeof m.createFuryGatewayPairingCoordinator !== 'function' || typeof m.FuryGatewayPairingError !== 'function' || typeof m.authorizeGatewayCommand !== 'undefined') process.exit(1);",
-  ], installDir);
-  assert(gatewayPairingExport.stderr === '', `Gateway pairing package export wrote stderr: ${gatewayPairingExport.stderr}`);
+  assert(gatewayHiddenExports.stderr === '', `Hidden Gateway authority package paths wrote stderr: ${gatewayHiddenExports.stderr}`);
   const providerRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
