@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { RecoveryStore } from './core/recovery-store.js';
 
 export type McpDirectDagRiskClass = 'closed_world_read' | 'mutation' | 'open_world';
@@ -327,7 +327,9 @@ async function persist(
     nodeId: evidence.nodeId,
     recordType: evidence.state === 'executing' ? 'node-attempt' : 'node-terminal',
     attempt: 1,
+    reservationIdSha256: createHash('sha256').update(randomUUID()).digest('hex'),
   } as const;
+  const { reservationIdSha256: _reservationIdSha256, ...broadMetadata } = metadata;
   const bytes = new TextEncoder().encode(JSON.stringify({
     format: evidence.format,
     planDigest: evidence.planDigest,
@@ -342,16 +344,10 @@ async function persist(
   const store = options.recoveryStore;
   if (!store.putBounded) throw new McpDirectDagValidationError('RecoveryStore atomic bounded put is required');
   await store.putBounded(bytes, metadata, {
-    metadata,
+    metadata: broadMetadata,
     maxMatches: 1,
     additionalBounds: [{
-      metadata: {
-        system: 'mcp-direct-dag',
-        scopeSha256,
-        runIdSha256,
-        planDigest: evidence.planDigest,
-        recordType: metadata.recordType,
-      },
+      metadata: broadMetadata,
       maxMatches: maxRecoveryEvidence,
     }],
   });
@@ -516,10 +512,11 @@ export async function executeMcpDirectDag(
       }
     };
     await Promise.all(batch.map((node) => runOne(node)));
-    if ([...results.values()].some((entry) => entry.state === 'unknown')) overall = 'unknown';
-    if ([...results.values()].some((entry) => ['failed', 'verification_failed', 'blocked', 'cancelled', 'expired'].includes(entry.state))) {
-      if (overall === 'succeeded') overall = 'failed';
-    }
+    const batchStates = [...results.values()];
+    if (batchStates.some((entry) => entry.state === 'unknown')) overall = 'unknown';
+    else if (batchStates.some((entry) => entry.state === 'expired')) overall = 'expired';
+    else if (batchStates.some((entry) => entry.state === 'cancelled')) overall = 'cancelled';
+    else if (batchStates.some((entry) => ['failed', 'verification_failed', 'blocked'].includes(entry.state))) overall = 'failed';
     if (now() - startedAt > plan.quotas.maxWallClockMs) {
       for (const node of plan.nodes) if (!results.has(node.id)) set(node.id, 'expired', { errorCode: 'wall-clock-quota-exceeded' });
       overall = 'expired';
