@@ -45,6 +45,7 @@ export interface FuryKernelToolBridgeOptions {
   readonly clientInfo: McpDirectClientInfo;
   readonly now?: () => number;
   readonly maxPendingProposals?: number;
+  readonly maxConcurrentProbes?: number;
   readonly maxConcurrentExecutions?: number;
   readonly maxDisplayResultBytes?: number;
   readonly connectTimeoutMs?: number;
@@ -168,6 +169,7 @@ export interface FuryKernelToolBridge {
   ): 'stdio' | 'streamable_http' | undefined;
   discard(proposalId: string): boolean;
   pendingProposalCount(): number;
+  activeProbeCount(): number;
   activeExecutionCount(): number;
 }
 
@@ -194,6 +196,8 @@ interface PendingProposal {
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const DEFAULT_MAX_PENDING_PROPOSALS = 128;
 const HARD_MAX_PENDING_PROPOSALS = 1024;
+const DEFAULT_MAX_CONCURRENT_PROBES = 4;
+const HARD_MAX_CONCURRENT_PROBES = 16;
 const DEFAULT_MAX_CONCURRENT_EXECUTIONS = 4;
 const HARD_MAX_CONCURRENT_EXECUTIONS = 32;
 const DEFAULT_MAX_DISPLAY_RESULT_BYTES = 64 * 1024;
@@ -274,6 +278,38 @@ function exactDataRecord(
     }
   }
   return record;
+}
+
+function dataArraySnapshot(
+  value: unknown,
+  label: string,
+  maximum: number,
+): readonly unknown[] {
+  if (!Array.isArray(value) || value.length > maximum) {
+    throw new Error(`${label} must be a bounded data array`);
+  }
+  const own = Object.getOwnPropertyNames(value);
+  if (
+    own.some((name) =>
+      name !== 'length'
+      && !/^(?:0|[1-9][0-9]*)$/u.test(name)
+    )
+  ) {
+    throw new Error(`${label} contains unsupported array properties`);
+  }
+  const output: unknown[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (
+      !descriptor
+      || !descriptor.enumerable
+      || !('value' in descriptor)
+    ) {
+      throw new Error(`${label} contains sparse, hidden, or accessor entries`);
+    }
+    output.push(descriptor.value);
+  }
+  return Object.freeze(output);
 }
 
 function stringArraySnapshot(
@@ -471,21 +507,27 @@ function snapshotPolicy(value: unknown): McpDirectPolicy {
     record.format !== 'furypipe-mcp-direct-policy/v1'
     || typeof record.policyId !== 'string'
     || !SAFE_ID.test(record.policyId)
-    || !Array.isArray(record.governedPolicyAllowlist)
-    || !Array.isArray(record.operatorApprovalAllowlist)
-    || record.governedPolicyAllowlist.length > 256
-    || record.operatorApprovalAllowlist.length > 256
   ) {
     throw new Error('MCP policy configuration is invalid');
   }
+  const governedPolicyAllowlist = dataArraySnapshot(
+    record.governedPolicyAllowlist,
+    'MCP governed policy allowlist',
+    256,
+  );
+  const operatorApprovalAllowlist = dataArraySnapshot(
+    record.operatorApprovalAllowlist,
+    'MCP operator approval allowlist',
+    256,
+  );
   return Object.freeze({
     format: 'furypipe-mcp-direct-policy/v1' as const,
     policyId: record.policyId,
     governedPolicyAllowlist: Object.freeze(
-      record.governedPolicyAllowlist.map(snapshotPolicyPair),
+      governedPolicyAllowlist.map(snapshotPolicyPair),
     ),
     operatorApprovalAllowlist: Object.freeze(
-      record.operatorApprovalAllowlist.map(snapshotPolicyPair),
+      operatorApprovalAllowlist.map(snapshotPolicyPair),
     ),
   });
 }
@@ -527,11 +569,16 @@ function exactInput(
 function normalizeSources(
   sources: readonly FuryKernelToolBridgeSource[],
 ): ReadonlyMap<string, SourceState> {
-  if (!Array.isArray(sources) || sources.length < 1 || sources.length > MAX_SOURCES) {
+  const candidates = dataArraySnapshot(
+    sources,
+    'tool bridge sources',
+    MAX_SOURCES,
+  );
+  if (candidates.length < 1) {
     throw new Error(`tool bridge requires 1-${MAX_SOURCES} host-owned MCP sources`);
   }
   const output = new Map<string, SourceState>();
-  for (const candidate of sources) {
+  for (const candidate of candidates) {
     const entry = exactDataRecord(
       candidate,
       ['config', 'policy'],
@@ -684,41 +731,111 @@ function receiptState(
 export function createFuryKernelToolBridge(
   options: FuryKernelToolBridgeOptions,
 ): FuryKernelToolBridge {
+  const config = exactDataRecord(
+    options,
+    [
+      'sources',
+      'clientInfo',
+      'now',
+      'maxPendingProposals',
+      'maxConcurrentProbes',
+      'maxConcurrentExecutions',
+      'maxDisplayResultBytes',
+      'connectTimeoutMs',
+      'listTimeoutMs',
+      'probeTimeoutMs',
+      'listMaxPages',
+      'callTimeoutMs',
+      'permitTtlMs',
+      'maxExecutionResultBytes',
+    ],
+    'Fury Kernel tool bridge configuration',
+  );
+  const clientInfoRecord = exactDataRecord(
+    config.clientInfo,
+    ['name', 'version'],
+    'MCP clientInfo',
+  );
   if (
-    !options
-    || typeof options !== 'object'
-    || !options.clientInfo
-    || typeof options.clientInfo.name !== 'string'
-    || typeof options.clientInfo.version !== 'string'
+    typeof clientInfoRecord.name !== 'string'
+    || clientInfoRecord.name.length === 0
+    || typeof clientInfoRecord.version !== 'string'
+    || clientInfoRecord.version.length === 0
   ) {
-    throw new Error('Fury Kernel tool bridge configuration is incomplete');
+    throw new Error('Fury Kernel tool bridge clientInfo is invalid');
   }
-  const sources = normalizeSources(options.sources);
-  const now = options.now ?? Date.now;
-  safeNow(now);
+  const clientInfo: McpDirectClientInfo = Object.freeze({
+    name: clientInfoRecord.name,
+    version: clientInfoRecord.version,
+  });
+  const sources = normalizeSources(
+    config.sources as readonly FuryKernelToolBridgeSource[],
+  );
+  const now = config.now === undefined ? Date.now : config.now;
+  if (typeof now !== 'function') {
+    throw new Error('Fury Kernel tool bridge clock is invalid');
+  }
+  safeNow(now as () => number);
+  const clock = now as () => number;
   const maxPendingProposals = boundedInteger(
-    options.maxPendingProposals,
+    config.maxPendingProposals as number | undefined,
     DEFAULT_MAX_PENDING_PROPOSALS,
     1,
     HARD_MAX_PENDING_PROPOSALS,
     'maxPendingProposals',
   );
+  const maxConcurrentProbes = boundedInteger(
+    config.maxConcurrentProbes as number | undefined,
+    DEFAULT_MAX_CONCURRENT_PROBES,
+    1,
+    HARD_MAX_CONCURRENT_PROBES,
+    'maxConcurrentProbes',
+  );
   const maxConcurrentExecutions = boundedInteger(
-    options.maxConcurrentExecutions,
+    config.maxConcurrentExecutions as number | undefined,
     DEFAULT_MAX_CONCURRENT_EXECUTIONS,
     1,
     HARD_MAX_CONCURRENT_EXECUTIONS,
     'maxConcurrentExecutions',
   );
   const maxDisplayResultBytes = boundedInteger(
-    options.maxDisplayResultBytes,
+    config.maxDisplayResultBytes as number | undefined,
     DEFAULT_MAX_DISPLAY_RESULT_BYTES,
     1024,
     HARD_MAX_DISPLAY_RESULT_BYTES,
     'maxDisplayResultBytes',
   );
+  const connectTimeoutMs = positiveIntegerOrUndefined(
+    config.connectTimeoutMs,
+    'connectTimeoutMs',
+  );
+  const listTimeoutMs = positiveIntegerOrUndefined(
+    config.listTimeoutMs,
+    'listTimeoutMs',
+  );
+  const probeTimeoutMs = positiveIntegerOrUndefined(
+    config.probeTimeoutMs,
+    'probeTimeoutMs',
+  );
+  const listMaxPages = positiveIntegerOrUndefined(
+    config.listMaxPages,
+    'listMaxPages',
+  );
+  const callTimeoutMs = positiveIntegerOrUndefined(
+    config.callTimeoutMs,
+    'callTimeoutMs',
+  );
+  const permitTtlMs = positiveIntegerOrUndefined(
+    config.permitTtlMs,
+    'permitTtlMs',
+  );
+  const maxExecutionResultBytes = positiveIntegerOrUndefined(
+    config.maxExecutionResultBytes,
+    'maxExecutionResultBytes',
+  );
 
   const pending = new Map<string, PendingProposal>();
+  let activeProbes = 0;
   let activeExecutions = 0;
 
   const pruneExpired = (at: number): void => {
@@ -735,16 +852,26 @@ export function createFuryKernelToolBridge(
     return source;
   };
 
-  const probe = async (source: SourceState) => probeMcpDirectInventory(
-    source.config,
-    {
-      clientInfo: options.clientInfo,
-      ...(options.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: options.connectTimeoutMs }),
-      ...(options.listTimeoutMs === undefined ? {} : { listTimeoutMs: options.listTimeoutMs }),
-      ...(options.probeTimeoutMs === undefined ? {} : { probeTimeoutMs: options.probeTimeoutMs }),
-      ...(options.listMaxPages === undefined ? {} : { listMaxPages: options.listMaxPages }),
-    },
-  );
+  const probe = async (source: SourceState) => {
+    if (activeProbes >= maxConcurrentProbes) {
+      throw new Error('tool probe concurrency limit is reached');
+    }
+    activeProbes += 1;
+    try {
+      return await probeMcpDirectInventory(
+        source.config,
+        {
+          clientInfo,
+          ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
+          ...(listTimeoutMs === undefined ? {} : { listTimeoutMs }),
+          ...(probeTimeoutMs === undefined ? {} : { probeTimeoutMs }),
+          ...(listMaxPages === undefined ? {} : { listMaxPages }),
+        },
+      );
+    } finally {
+      activeProbes = Math.max(0, activeProbes - 1);
+    }
+  };
 
   return Object.freeze({
     inspectSources(): readonly FuryKernelToolSourceSummary[] {
@@ -775,7 +902,7 @@ export function createFuryKernelToolBridge(
 
     async propose(input: FuryKernelToolProposalInput): Promise<FuryKernelToolProposalResult> {
       const valid = exactInput(input);
-      const at = safeNow(now);
+      const at = safeNow(clock);
       pruneExpired(at);
       if (pending.size >= maxPendingProposals) {
         throw new Error('tool proposal capacity is exhausted');
@@ -837,7 +964,7 @@ export function createFuryKernelToolBridge(
 
     approve(proposalId: string): FuryKernelToolApprovalResult {
       assertSafeId(proposalId, 'proposalId');
-      const at = safeNow(now);
+      const at = safeNow(clock);
       pruneExpired(at);
       const record = pending.get(proposalId);
       if (!record) throw new Error('tool proposal is missing or expired');
@@ -879,7 +1006,7 @@ export function createFuryKernelToolBridge(
 
     async execute(proposalId: string): Promise<FuryKernelToolExecutionResult> {
       assertSafeId(proposalId, 'proposalId');
-      const at = safeNow(now);
+      const at = safeNow(clock);
       pruneExpired(at);
       const record = pending.get(proposalId);
       if (!record) throw new Error('tool proposal is missing or expired');
@@ -898,16 +1025,16 @@ export function createFuryKernelToolBridge(
           record.approvedLifecycle,
           record.proposal,
           {
-            clientInfo: options.clientInfo,
-            ...(options.connectTimeoutMs === undefined ? {} : { connectTimeoutMs: options.connectTimeoutMs }),
-            ...(options.listTimeoutMs === undefined ? {} : { listTimeoutMs: options.listTimeoutMs }),
-            ...(options.probeTimeoutMs === undefined ? {} : { probeTimeoutMs: options.probeTimeoutMs }),
-            ...(options.listMaxPages === undefined ? {} : { listMaxPages: options.listMaxPages }),
-            ...(options.callTimeoutMs === undefined ? {} : { callTimeoutMs: options.callTimeoutMs }),
-            ...(options.permitTtlMs === undefined ? {} : { permitTtlMs: options.permitTtlMs }),
-            ...(options.maxExecutionResultBytes === undefined
+            clientInfo,
+            ...(connectTimeoutMs === undefined ? {} : { connectTimeoutMs }),
+            ...(listTimeoutMs === undefined ? {} : { listTimeoutMs }),
+            ...(probeTimeoutMs === undefined ? {} : { probeTimeoutMs }),
+            ...(listMaxPages === undefined ? {} : { listMaxPages }),
+            ...(callTimeoutMs === undefined ? {} : { callTimeoutMs }),
+            ...(permitTtlMs === undefined ? {} : { permitTtlMs }),
+            ...(maxExecutionResultBytes === undefined
               ? {}
-              : { maxResultBytes: options.maxExecutionResultBytes }),
+              : { maxResultBytes: maxExecutionResultBytes }),
           },
         );
         return Object.freeze({
@@ -1016,7 +1143,7 @@ export function createFuryKernelToolBridge(
       proposalId: string,
     ): 'stdio' | 'streamable_http' | undefined {
       if (typeof proposalId !== 'string' || !SAFE_ID.test(proposalId)) return undefined;
-      pruneExpired(safeNow(now));
+      pruneExpired(safeNow(clock));
       return pending.get(proposalId)?.source.config.source.transport;
     },
 
@@ -1029,8 +1156,12 @@ export function createFuryKernelToolBridge(
     },
 
     pendingProposalCount(): number {
-      pruneExpired(safeNow(now));
+      pruneExpired(safeNow(clock));
       return pending.size;
+    },
+
+    activeProbeCount(): number {
+      return activeProbes;
     },
 
     activeExecutionCount(): number {
