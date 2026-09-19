@@ -5,9 +5,15 @@ import type { FuryGatewayWebSocketHttpRequestHandler } from './gateway-websocket
 export const FURY_GATEWAY_WEBCHAT_PATH = '/gateway/webchat/' as const;
 export const FURY_GATEWAY_WEBCHAT_SCRIPT_PATH = '/gateway/webchat/app.js' as const;
 export const FURY_GATEWAY_WEBCHAT_STYLE_PATH = '/gateway/webchat/styles.css' as const;
+export const FURY_GATEWAY_WEBCHAT_CONFIG_PATH = '/gateway/webchat/config.json' as const;
+export const FURY_GATEWAY_WEBCHAT_CONFIG_FORMAT =
+  'furypipe-gateway-webchat-config/v1' as const;
 
 export interface FuryGatewayWebChatOptions {
   readonly origin: string;
+  readonly modelBridgeEnabled?: boolean;
+  readonly modelProvider?: 'openai' | 'anthropic' | 'google';
+  readonly model?: string;
 }
 
 const HTML = `<!doctype html>
@@ -224,6 +230,9 @@ const JS = `(() => {
     reconnectTimer: null,
     openAfterClose: false,
     pendingUserMessages: new Map(),
+    modelBridgeEnabled: false,
+    modelProvider: null,
+    model: null,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -293,7 +302,7 @@ const JS = `(() => {
     return prefix + '-' + suffix;
   }
 
-  function sendCommand(commandName, input) {
+  function sendCommand(commandName, input, declaredPluginPermissions = []) {
     if (!state.ws || state.ws.readyState !== WebSocket.OPEN || !state.connectionId) {
       throw new Error('Gateway WebSocket is not connected');
     }
@@ -306,7 +315,7 @@ const JS = `(() => {
       sentAt: Date.now(),
       payload: {
         commandName,
-        declaredPluginPermissions: [],
+        declaredPluginPermissions,
         input,
       },
     };
@@ -386,8 +395,27 @@ const JS = `(() => {
       if (pending) renderMessage('user', pending);
       state.activeTurnId = payload?.turn?.turnId ?? null;
       cancelTurn.disabled = !state.activeTurnId;
-      turnStatus.textContent = state.activeTurnId ? 'Turn accepted — model bridge pending' : '';
-      addActivity('Accepted', 'User turn accepted. No provider inference authority was granted.', 'accepted');
+      addActivity('Accepted', 'User turn accepted. Provider inference is still a separate command.', 'accepted');
+      if (state.activeTurnId && state.modelBridgeEnabled) {
+        turnStatus.textContent = 'Requesting governed model execution…';
+        addActivity(
+          'Model requested',
+          (state.modelProvider || 'provider') + ' / ' + (state.model || 'model'),
+          'requested',
+        );
+        sendCommand(
+          'conversation.model.execute',
+          {
+            conversationId: state.conversationId,
+            turnId: state.activeTurnId,
+          },
+          ['provider-inference'],
+        );
+      } else {
+        turnStatus.textContent = state.activeTurnId
+          ? 'Turn accepted — model bridge not configured'
+          : '';
+      }
       return;
     }
     if (message.commandName === 'conversation.cancel') {
@@ -433,12 +461,27 @@ const JS = `(() => {
 
     if (message.type === 'command-admission') {
       const admission = message.admission;
+      const commandName = safeText(admission?.commandName);
       if (admission?.outcome === 'eligible') {
-        addActivity('State eligible', safeText(admission.commandName) || 'Command admitted.', 'eligible');
+        addActivity(
+          commandName === 'conversation.model.execute' ? 'Model eligible' : 'State eligible',
+          commandName || 'Command admitted.',
+          'eligible',
+        );
       } else {
         const reason = safeText(admission?.reason) || 'command denied';
         addActivity('Blocked', reason, 'blocked');
         turnStatus.textContent = reason;
+        if (
+          commandName === 'conversation.model.execute'
+          && state.conversationId
+          && state.activeTurnId
+        ) {
+          sendCommand('conversation.cancel', {
+            conversationId: state.conversationId,
+            turnId: state.activeTurnId,
+          });
+        }
       }
       return;
     }
@@ -448,8 +491,56 @@ const JS = `(() => {
       return;
     }
 
+    if (message.type === 'execution-command-result') {
+      const result = message.result;
+      if (!result || typeof result !== 'object') {
+        addActivity('Blocked', 'Malformed model execution result.', 'blocked');
+        return;
+      }
+      if (result.status === 'completed') {
+        const provider = result.provider && typeof result.provider === 'object'
+          ? safeText(result.provider.providerId) + ' / ' + safeText(result.provider.model)
+          : 'provider response';
+        addActivity('Model response', provider, 'response');
+        turnStatus.textContent = 'Model response received — resynchronizing…';
+        inspectConversation();
+      } else if (result.status === 'cancelled') {
+        addActivity('Blocked', 'Model execution cancelled.', 'blocked');
+        turnStatus.textContent = 'Turn cancelled';
+        inspectConversation();
+      } else {
+        const code = safeText(result.failureCode)
+          || safeText(result.error?.code)
+          || 'model-execution-failed';
+        addActivity('Blocked', code, 'blocked');
+        turnStatus.textContent = code;
+        inspectConversation();
+      }
+      return;
+    }
+
     if (message.type === 'error') {
       addActivity('Blocked', safeText(message.code) || 'Gateway protocol error.', 'blocked');
+    }
+  }
+
+  async function loadWebChatConfig() {
+    try {
+      const response = await fetch('/gateway/webchat/config.json', {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      if (!response.ok) return;
+      const config = await response.json();
+      const modelBridge = config?.modelBridge;
+      state.modelBridgeEnabled = modelBridge?.enabled === true;
+      state.modelProvider = state.modelBridgeEnabled ? safeText(modelBridge.providerId) : null;
+      state.model = state.modelBridgeEnabled ? safeText(modelBridge.model) : null;
+    } catch {
+      state.modelBridgeEnabled = false;
+      state.modelProvider = null;
+      state.model = null;
     }
   }
 
@@ -577,6 +668,8 @@ const JS = `(() => {
   byId('clear-activity').addEventListener('click', () => {
     activityList.replaceChildren();
   });
+
+  void loadWebChatConfig();
 })();
 `;
 
