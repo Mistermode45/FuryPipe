@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { isAbsolute } from 'node:path';
 
 import {
   createFuryKernelToolBridge,
@@ -523,8 +524,12 @@ export function createFuryGatewayLocalToolRuntime(
       requiresNetwork: false,
     });
   }
-  if (file.length > MAX_TEXT || file.includes('\0')) {
-    throw new Error('FURYPIPE_WEBCHAT_MCP_CONFIG path is invalid');
+  if (
+    file.length > MAX_TEXT
+    || file.includes('\0')
+    || !isAbsolute(file)
+  ) {
+    throw new Error('FURYPIPE_WEBCHAT_MCP_CONFIG path must be an absolute path');
   }
 
   const parsed = parseFile(file, env);
