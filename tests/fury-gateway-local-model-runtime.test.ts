@@ -137,6 +137,58 @@ describe('local Gateway WebChat model runtime', () => {
       .toBe('Hello from the governed provider.');
   });
 
+  it('refreshes operator-config provider evidence for long-lived local WebChat sessions', async () => {
+    let now = 1_000;
+    const kernel = createFuryKernelConversationStore({ now: () => now });
+    const runtime = createFuryGatewayLocalModelRuntime({
+      kernel,
+      env: {
+        FURYPIPE_WEBCHAT_PROVIDER: 'openai',
+        FURYPIPE_WEBCHAT_MODEL: 'gpt-5.6-sol',
+        OPENAI_API_KEY: 'test-key',
+      },
+      now: () => now,
+      fetchImpl: async () => new Response(JSON.stringify({
+        id: 'resp_refresh',
+        output: [{
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'Still governed.' }],
+        }],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    });
+    expect(runtime.bridge).toBeDefined();
+
+    // Move beyond the original 10-minute operator-config observation.
+    now += 11 * 60_000;
+    const conversationId = kernel.openConversation().conversationId;
+    const accepted = kernel.submitUserMessage({
+      conversationId,
+      messageId: 'refresh-user',
+      content: 'Continue after the previous health window.',
+    });
+
+    const result = await runtime.bridge!.executeTurn({
+      conversationId,
+      turnId: accepted.turn.turnId,
+    });
+
+    expect(result).toMatchObject({
+      status: 'completed',
+      provider: {
+        providerId: 'openai',
+        model: 'gpt-5.6-sol',
+        providerRequestStatus: 'accepted',
+      },
+      executionAuthority: false,
+    });
+    expect(kernel.inspectConversation(conversationId).messages.at(-1)?.content)
+      .toBe('Still governed.');
+  });
+
   it('rejects malformed output-token limits before any provider execution', () => {
     const kernel = createFuryKernelConversationStore();
     for (const value of ['0', '65537', 'not-a-number']) {
