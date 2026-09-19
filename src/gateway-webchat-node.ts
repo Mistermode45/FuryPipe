@@ -294,6 +294,13 @@ const JS = `(() => {
     modelBridgeEnabled: false,
     modelProvider: null,
     model: null,
+    toolBridgeEnabled: false,
+    toolSourceCount: 0,
+    toolSources: [],
+    toolInventory: [],
+    toolProposalId: null,
+    toolProposalTransport: null,
+    toolProposalStatus: null,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -311,6 +318,18 @@ const JS = `(() => {
   const turnStatus = byId('turn-status');
   const cancelTurn = byId('cancel-turn');
   const activityList = byId('activity-list');
+  const toolsPanel = byId('tools-panel');
+  const toolSourceCount = byId('tool-source-count');
+  const toolSource = byId('tool-source');
+  const toolName = byId('tool-name');
+  const toolArguments = byId('tool-arguments');
+  const toolRefresh = byId('tool-refresh');
+  const toolPropose = byId('tool-propose');
+  const toolApprove = byId('tool-approve');
+  const toolExecute = byId('tool-execute');
+  const toolDiscard = byId('tool-discard');
+  const toolStatus = byId('tool-status');
+  const toolResult = byId('tool-result');
 
   const safeText = (value) => typeof value === 'string' ? value : '';
 
@@ -394,6 +413,226 @@ const JS = `(() => {
       turnOffset: 0,
       turnLimit: 32,
     });
+  }
+
+  function toolPermission(transport) {
+    return transport === 'stdio'
+      ? ['process']
+      : transport === 'streamable_http'
+        ? ['network']
+        : [];
+  }
+
+  function toolCommand(base, transport) {
+    if (transport === 'stdio') return base + '.stdio';
+    if (transport === 'streamable_http') return base + '.http';
+    throw new Error('Tool source transport is unavailable');
+  }
+
+  function selectedToolSource() {
+    const sourceId = safeText(toolSource.value);
+    return state.toolSources.find((source) => source.sourceId === sourceId) || null;
+  }
+
+  function resetToolProposal() {
+    state.toolProposalId = null;
+    state.toolProposalTransport = null;
+    state.toolProposalStatus = null;
+    toolApprove.disabled = true;
+    toolExecute.disabled = true;
+    toolDiscard.disabled = true;
+  }
+
+  function resetToolInventory() {
+    state.toolInventory = [];
+    toolName.replaceChildren();
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'Refresh inventory first';
+    toolName.append(option);
+    toolName.disabled = true;
+    toolPropose.disabled = true;
+    resetToolProposal();
+  }
+
+  function renderToolSources(sources) {
+    state.toolSources = Array.isArray(sources)
+      ? sources.filter((source) =>
+          source
+          && typeof source.sourceId === 'string'
+          && (source.transport === 'stdio' || source.transport === 'streamable_http'))
+      : [];
+    toolSource.replaceChildren();
+    if (state.toolSources.length === 0) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No configured source';
+      toolSource.append(option);
+      toolSource.disabled = true;
+      toolRefresh.disabled = true;
+    } else {
+      for (const source of state.toolSources) {
+        const option = document.createElement('option');
+        option.value = source.sourceId;
+        option.textContent = source.sourceId + ' · ' + source.transport + ' · ' + safeText(source.trust);
+        toolSource.append(option);
+      }
+      toolSource.disabled = false;
+      toolRefresh.disabled = false;
+    }
+    toolSourceCount.textContent = String(state.toolSources.length) + ' source' + (state.toolSources.length === 1 ? '' : 's');
+    resetToolInventory();
+  }
+
+  function renderToolInventory(payload) {
+    const tools = Array.isArray(payload?.tools) ? payload.tools : [];
+    state.toolInventory = tools.filter((tool) =>
+      tool && typeof tool.name === 'string' && typeof tool.riskClass === 'string'
+    );
+    toolName.replaceChildren();
+    if (state.toolInventory.length === 0) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No listed tool';
+      toolName.append(option);
+      toolName.disabled = true;
+      toolPropose.disabled = true;
+    } else {
+      for (const tool of state.toolInventory) {
+        const option = document.createElement('option');
+        option.value = tool.name;
+        option.textContent = tool.name + ' · ' + tool.riskClass;
+        toolName.append(option);
+      }
+      toolName.disabled = false;
+      toolPropose.disabled = false;
+    }
+    resetToolProposal();
+  }
+
+  function renderToolExecution(payload) {
+    const stateReceipt = payload?.state;
+    const executed = stateReceipt?.executed;
+    const succeeded = stateReceipt?.succeeded;
+    const verified = stateReceipt?.verified === true;
+
+    if (executed === true) addActivity('Tool executed', safeText(payload.toolName) || 'tool', 'executed');
+    if (succeeded === true) addActivity('Tool succeeded', safeText(payload.toolName) || 'tool', 'succeeded');
+    if (verified) addActivity('Evidence verified', safeText(payload.toolName) || 'tool', 'verified');
+    else if (executed === true) addActivity('Unverified', 'Execution receipt is not verified evidence.', 'requested');
+
+    if (payload?.displayResult?.available === true) {
+      try {
+        toolResult.textContent = JSON.stringify(payload.displayResult.value, null, 2);
+      } catch {
+        toolResult.textContent = 'Tool result could not be rendered.';
+      }
+    } else if (payload?.displayResult?.reason) {
+      toolResult.textContent = 'Tool result withheld: ' + safeText(payload.displayResult.reason);
+    } else if (payload?.status === 'outcome-unknown') {
+      toolResult.textContent = 'Execution outcome is unknown. FuryPipe will not retry automatically.';
+    } else {
+      toolResult.textContent = 'No displayable tool result.';
+    }
+
+    const status = safeText(payload?.status) || 'unknown';
+    toolStatus.textContent =
+      'executed=' + String(executed)
+      + ' · succeeded=' + String(succeeded)
+      + ' · verified=' + String(verified)
+      + ' · status=' + status;
+    resetToolProposal();
+  }
+
+  function handleToolGatewayResult(message) {
+    const adapter = message.result;
+    if (!adapter || typeof adapter !== 'object') {
+      toolStatus.textContent = 'Malformed tool result.';
+      addActivity('Blocked', 'Malformed tool result.', 'blocked');
+      return;
+    }
+    if (adapter.status !== 'ok') {
+      const code = safeText(adapter.error?.code) || 'tool-command-rejected';
+      toolStatus.textContent = code;
+      addActivity('Blocked', code, 'blocked');
+      return;
+    }
+
+    const payload = adapter.result;
+    if (message.commandName === 'tools.sources.inspect') {
+      renderToolSources(payload);
+      addActivity('Accepted', 'Configured MCP source metadata loaded.', 'accepted');
+      return;
+    }
+    if (
+      message.commandName === 'tools.source.inspect.stdio'
+      || message.commandName === 'tools.source.inspect.http'
+    ) {
+      renderToolInventory(payload);
+      toolStatus.textContent = 'Inventory refreshed.';
+      addActivity('Accepted', 'Fresh MCP inventory listed.', 'accepted');
+      return;
+    }
+    if (
+      message.commandName === 'tools.propose.stdio'
+      || message.commandName === 'tools.propose.http'
+    ) {
+      const proposalStatus = safeText(payload?.status);
+      if (proposalStatus === 'denied') {
+        resetToolProposal();
+        toolStatus.textContent = 'Policy denied this tool proposal.';
+        addActivity('Blocked', safeText(payload?.policy?.reason) || 'policy-denied', 'blocked');
+        return;
+      }
+      const proposalId = safeText(payload?.proposalId);
+      const source = selectedToolSource();
+      if (!proposalId || !source) {
+        resetToolProposal();
+        toolStatus.textContent = 'Proposal result is incomplete.';
+        addActivity('Blocked', 'Proposal result is incomplete.', 'blocked');
+        return;
+      }
+      state.toolProposalId = proposalId;
+      state.toolProposalTransport = source.transport;
+      state.toolProposalStatus = proposalStatus;
+      toolDiscard.disabled = false;
+      if (proposalStatus === 'approval-required') {
+        toolApprove.disabled = false;
+        toolExecute.disabled = true;
+        toolStatus.textContent = 'Operator approval required.';
+        addActivity('Tool requested', safeText(payload.toolName) || 'tool', 'requested');
+        addActivity('Blocked', 'Explicit operator approval required.', 'blocked');
+      } else if (proposalStatus === 'approved') {
+        toolApprove.disabled = true;
+        toolExecute.disabled = false;
+        toolStatus.textContent = 'Approved by governed policy; execution remains separate.';
+        addActivity('Tool requested', safeText(payload.toolName) || 'tool', 'requested');
+        addActivity('Tool approved', 'governed_policy', 'eligible');
+      }
+      return;
+    }
+    if (message.commandName === 'tools.approve') {
+      state.toolProposalStatus = 'approved';
+      toolApprove.disabled = true;
+      toolExecute.disabled = false;
+      toolDiscard.disabled = false;
+      toolStatus.textContent = 'Operator approval recorded. Execute remains a separate action.';
+      addActivity('Tool approved', 'operator', 'eligible');
+      return;
+    }
+    if (
+      message.commandName === 'tools.execute.stdio'
+      || message.commandName === 'tools.execute.http'
+    ) {
+      renderToolExecution(payload);
+      return;
+    }
+    if (message.commandName === 'tools.discard') {
+      const discarded = payload?.discarded === true;
+      resetToolProposal();
+      toolStatus.textContent = discarded ? 'Proposal discarded.' : 'Proposal was already absent.';
+      addActivity('Blocked', discarded ? 'Tool proposal discarded.' : 'Tool proposal unavailable.', 'blocked');
+    }
   }
 
   function scheduleReconnect() {
