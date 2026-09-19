@@ -298,6 +298,77 @@ describe('Fury Gateway sessions', () => {
     })).toThrowError(/safe non-negative timestamp/u);
   });
 
+  it('releases terminal session quota only after the bounded retention window', () => {
+    let now = 195_000;
+    const principalRegistry = createFuryGatewayPrincipalRegistry({ now: () => now });
+    const principal = principalRegistry.recordAuthenticatedPrincipal(principalAssertion());
+    const sessions = createFuryGatewaySessionCoordinator({
+      principalRegistry,
+      gatewayInstanceId: 'gateway-test',
+      now: () => now,
+      defaultTtlMs: 30_000,
+      maxTtlMs: 60_000,
+      terminalRetentionMs: 30_000,
+      maxSessions: 1,
+    });
+    const first = sessions.issueSession({
+      principal,
+      role: 'operator',
+      scopes: ['gateway.inspect'],
+      binding: { kind: 'local-operator' },
+    });
+    expect(sessions.revokeSession(first.sessionId)).toBe(true);
+
+    expect(() => sessions.issueSession({
+      principal,
+      role: 'operator',
+      scopes: ['gateway.inspect'],
+      binding: { kind: 'local-operator' },
+    })).toThrowError(/registry is full/u);
+
+    now += 30_001;
+    expect(sessions.activeCount()).toBe(0);
+    const second = sessions.issueSession({
+      principal,
+      role: 'operator',
+      scopes: ['gateway.inspect'],
+      binding: { kind: 'local-operator' },
+    });
+    expect(sessions.isActiveSession(second)).toBe(true);
+  });
+
+  it('rejects stale paired-device authentication at session issuance', () => {
+    let now = 198_000;
+    const clock = () => now;
+    const node = authenticatedNode(clock);
+    const pairing = createFuryGatewayPairingCoordinator({ now: clock });
+    const request = pairing.requestPairing(node.device);
+    pairing.approvePairing(request.requestId, 'principal:owner');
+
+    const principalRegistry = createFuryGatewayPrincipalRegistry({ now: clock });
+    const principal = principalRegistry.recordAuthenticatedPrincipal(principalAssertion({
+      principalId: 'principal:node-service',
+      kind: 'service',
+      issuer: 'gateway-service-auth',
+      subject: 'node-service',
+      authenticationMethod: 'service-credential',
+    }));
+    const sessions = createFuryGatewaySessionCoordinator({
+      principalRegistry,
+      gatewayInstanceId: 'gateway-test',
+      now: clock,
+      maxDeviceAuthAgeMs: 5_000,
+    });
+
+    now += 5_001;
+    expect(() => sessions.issueSession({
+      principal,
+      role: 'node',
+      scopes: ['capability.process'],
+      binding: { kind: 'paired-device', device: node.device, pairing },
+    })).toThrowError(/fresh matching device authentication evidence/u);
+  });
+
   it('binds a paired-device session to the exact authenticated connection evidence', () => {
     let now = 200_000;
     const clock = () => now;
@@ -443,6 +514,35 @@ describe('Fury Gateway command admission', () => {
       commandRegistry: registry,
       commandName: 'repository.read',
       declaredPluginPermissions: [],
+    }).reason).toBe('plugin-permission-mismatch');
+  });
+
+  it('denies malformed declared plugin-permission sets', () => {
+    const harness = operatorHarness(['capability.repository-read']);
+    const registry = createFuryGatewayCommandRegistry([{
+      format: FURY_GATEWAY_COMMAND_FORMAT,
+      name: 'repository.read',
+      allowedRoles: ['operator'],
+      requiredScopes: ['capability.repository-read'],
+      requiredPluginPermissions: ['repository-read'],
+      riskClass: 'read',
+      requiresFreshApproval: false,
+    }]);
+
+    expect(evaluateFuryGatewayCommandAdmission({
+      sessionCoordinator: harness.sessions,
+      session: harness.session,
+      commandRegistry: registry,
+      commandName: 'repository.read',
+      declaredPluginPermissions: ['repository-read', 'repository-read'],
+    }).reason).toBe('plugin-permission-mismatch');
+
+    expect(evaluateFuryGatewayCommandAdmission({
+      sessionCoordinator: harness.sessions,
+      session: harness.session,
+      commandRegistry: registry,
+      commandName: 'repository.read',
+      declaredPluginPermissions: ['not-a-real-permission' as never],
     }).reason).toBe('plugin-permission-mismatch');
   });
 
