@@ -79,6 +79,7 @@ describe('local Gateway MCP tool runtime', () => {
         operatorApprovalToolCount: 0,
         credentialRefs: 0,
       }],
+      displayResults: false,
     });
     expect(runtime.requiresProcess).toBe(true);
     expect(runtime.requiresNetwork).toBe(false);
@@ -240,10 +241,48 @@ describe('local Gateway MCP tool runtime', () => {
         operatorApprovalToolCount: 1,
         credentialRefs: 1,
       }],
+      displayResults: false,
     });
     expect(runtime.requiresProcess).toBe(false);
     expect(runtime.requiresNetwork).toBe(true);
     expect(JSON.stringify(runtime.config)).not.toContain('secret-canary');
+  });
+
+  it('enables raw display results only through explicit host opt-in', async () => {
+    const file = configFile({
+      format: FURY_GATEWAY_LOCAL_TOOL_CONFIG_FORMAT,
+      allowDisplayResult: true,
+      sources: [stdioSource()],
+    });
+    const runtime = createFuryGatewayLocalToolRuntime({
+      env: { FURYPIPE_WEBCHAT_MCP_CONFIG: file },
+    });
+    if (!runtime.config.enabled || !runtime.bridge) {
+      throw new Error('expected enabled tool runtime');
+    }
+    expect(runtime.config.displayResults).toBe(true);
+
+    const proposal = await runtime.bridge.propose({
+      sourceId: 'fixture',
+      toolName: 'governed-echo',
+      arguments: { message: 'display opt in' },
+    });
+    const executed = await runtime.bridge.execute(proposal.proposalId!);
+    expect(executed.displayResult).toMatchObject({
+      available: true,
+    });
+    expect(JSON.stringify(executed.displayResult?.value)).toContain('display opt in');
+  }, 30_000);
+
+  it('rejects non-boolean display-result policy', () => {
+    const file = configFile({
+      format: FURY_GATEWAY_LOCAL_TOOL_CONFIG_FORMAT,
+      allowDisplayResult: 'yes',
+      sources: [stdioSource()],
+    });
+    expect(() => createFuryGatewayLocalToolRuntime({
+      env: { FURYPIPE_WEBCHAT_MCP_CONFIG: file },
+    })).toThrow(/allowDisplayResult must be a boolean/u);
   });
 
   it('rejects unsupported fields, duplicate source IDs and invalid config format', () => {
