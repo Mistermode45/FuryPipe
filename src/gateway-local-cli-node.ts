@@ -216,6 +216,10 @@ export async function startFuryGatewayLocalRuntime(
           model: modelRuntime.config.model,
         }
       : {}),
+    toolBridgeEnabled: toolRuntime.bridge !== undefined,
+    ...(toolRuntime.config.enabled
+      ? { toolSourceCount: toolRuntime.config.sourceCount }
+      : {}),
   });
   const conversationAdapter = createFuryGatewayConversationAdapter({
     kernel,
