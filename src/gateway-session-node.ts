@@ -150,6 +150,7 @@ export interface FuryGatewaySessionCoordinatorOptions {
   readonly defaultTtlMs?: number;
   readonly maxTtlMs?: number;
   readonly maxDeviceAuthAgeMs?: number;
+  readonly terminalRetentionMs?: number;
   readonly maxSessions?: number;
 }
 
@@ -171,7 +172,8 @@ export interface FuryGatewaySessionCoordinator {
 
 interface SessionState {
   readonly lease: FuryGatewaySessionLease;
-  status: 'active' | 'revoked';
+  status: FuryGatewaySessionStatus;
+  terminalAt?: number;
 }
 
 const SESSION_EVIDENCE = new WeakSet<object>();
@@ -184,6 +186,9 @@ const MAX_SESSION_TTL_MS = 60 * 60_000;
 const DEFAULT_MAX_DEVICE_AUTH_AGE_MS = 60_000;
 const MIN_DEVICE_AUTH_AGE_MS = 5_000;
 const MAX_DEVICE_AUTH_AGE_MS = 5 * 60_000;
+const DEFAULT_TERMINAL_RETENTION_MS = 5 * 60_000;
+const MIN_TERMINAL_RETENTION_MS = 30_000;
+const MAX_TERMINAL_RETENTION_MS = 60 * 60_000;
 const DEFAULT_MAX_SESSIONS = 8_192;
 const MAX_SESSIONS = 100_000;
 
@@ -247,18 +252,24 @@ function nextSessionId(states: Map<string, SessionState>): string {
   return sessionId;
 }
 
-function sessionStatus(
+function refreshSessionStatus(
   state: SessionState,
   principalRegistry: FuryGatewayPrincipalRegistry,
   at: number,
 ): FuryGatewaySessionStatus {
-  if (state.status === 'revoked') return 'revoked';
-  if (state.lease.expiresAt < at) return 'expired';
+  if (state.status !== 'active') return state.status;
+  if (state.lease.expiresAt < at) {
+    state.status = 'expired';
+    state.terminalAt = state.lease.expiresAt;
+    return state.status;
+  }
   if (!principalRegistry.isActiveGeneration(
     state.lease.principalId,
     state.lease.principalGeneration,
   )) {
-    return 'principal-revoked';
+    state.status = 'principal-revoked';
+    state.terminalAt = at;
+    return state.status;
   }
   return 'active';
 }
@@ -323,6 +334,13 @@ export function createFuryGatewaySessionCoordinator(
     MAX_DEVICE_AUTH_AGE_MS,
     'maxDeviceAuthAgeMs',
   );
+  const terminalRetentionMs = boundedInteger(
+    options.terminalRetentionMs,
+    DEFAULT_TERMINAL_RETENTION_MS,
+    MIN_TERMINAL_RETENTION_MS,
+    MAX_TERMINAL_RETENTION_MS,
+    'terminalRetentionMs',
+  );
   const maxSessions = boundedInteger(
     options.maxSessions,
     DEFAULT_MAX_SESSIONS,
@@ -335,8 +353,12 @@ export function createFuryGatewaySessionCoordinator(
 
   const gc = (at: number): void => {
     for (const [sessionId, state] of states) {
-      const status = sessionStatus(state, principalRegistry, at);
-      if (status === 'expired' || status === 'principal-revoked') {
+      const status = refreshSessionStatus(state, principalRegistry, at);
+      if (
+        status !== 'active'
+        && state.terminalAt !== undefined
+        && at - state.terminalAt > terminalRetentionMs
+      ) {
         states.delete(sessionId);
       }
     }
@@ -463,16 +485,19 @@ export function createFuryGatewaySessionCoordinator(
       if (typeof sessionId !== 'string' || !SESSION_ID_RE.test(sessionId)) {
         throw new FuryGatewaySessionError('invalid-session', 'gateway session ID is invalid');
       }
+      const at = finiteNow(now);
+      gc(at);
       const state = states.get(sessionId);
-      if (!state || state.status === 'revoked') return false;
+      if (!state || refreshSessionStatus(state, principalRegistry, at) !== 'active') return false;
       state.status = 'revoked';
+      state.terminalAt = at;
       return true;
     },
 
     inspectSession(session: FuryGatewaySessionLease): FuryGatewaySessionInspection {
       const at = finiteNow(now);
       const state = resolveState(session);
-      const status = sessionStatus(state, principalRegistry, at);
+      const status = refreshSessionStatus(state, principalRegistry, at);
       return Object.freeze({
         sessionId: session.sessionId,
         principalId: session.principalId,
@@ -490,7 +515,7 @@ export function createFuryGatewaySessionCoordinator(
       const at = finiteNow(now);
       try {
         const state = resolveState(session);
-        return sessionStatus(state, principalRegistry, at) === 'active';
+        return refreshSessionStatus(state, principalRegistry, at) === 'active';
       } catch {
         return false;
       }
@@ -501,7 +526,7 @@ export function createFuryGatewaySessionCoordinator(
       gc(at);
       let count = 0;
       for (const state of states.values()) {
-        if (sessionStatus(state, principalRegistry, at) === 'active') count += 1;
+        if (refreshSessionStatus(state, principalRegistry, at) === 'active') count += 1;
       }
       return count;
     },
