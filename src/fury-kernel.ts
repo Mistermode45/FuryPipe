@@ -376,7 +376,13 @@ export function createFuryKernelConversationStore(
   };
 
   return Object.freeze({
-    openConversation(): FuryKernelConversationSnapshot {
+    openConversation(...args: readonly unknown[]): FuryKernelConversationSnapshot {
+      if (args.length !== 0) {
+        throw new FuryKernelConversationError(
+          'invalid-conversation',
+          'conversation creation accepts no caller-supplied fields or identifiers',
+        );
+      }
       if (conversations.size >= maxConversations) {
         throw new FuryKernelConversationError('conversation-limit', 'active conversation limit reached');
       }
