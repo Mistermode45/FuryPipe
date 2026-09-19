@@ -14,7 +14,10 @@ import {
 } from 'ws';
 
 import type { FuryGatewayAuthenticatedDevice } from './gateway-auth-node.js';
-import type { FuryGatewayCommandRegistry } from './gateway-command-authorization-node.js';
+import type {
+  FuryGatewayCommandAdmissionDecision,
+  FuryGatewayCommandRegistry,
+} from './gateway-command-authorization-node.js';
 import type { FuryGatewayPairingCoordinator } from './gateway-pairing-node.js';
 import type { FuryGatewayRole } from './gateway.js';
 import type {
@@ -24,9 +27,11 @@ import type {
 import {
   createFuryGatewayTransportCoordinator,
   FuryGatewayTransportError,
+  type FuryGatewayTransportCommandPayload,
   type FuryGatewayTransportConnection,
   type FuryGatewayTransportCoordinator,
   type FuryGatewayTransportCoordinatorOptions,
+  type FuryGatewayTransportReceipt,
 } from './gateway-transport-node.js';
 
 export const FURY_GATEWAY_WEBSOCKET_PATH = '/gateway/v1' as const;
@@ -57,6 +62,28 @@ export type FuryGatewayWebSocketHttpRequestHandler = (
   request: IncomingMessage,
   response: ServerResponse,
 ) => boolean | Promise<boolean>;
+
+export interface FuryGatewayWebSocketAdmittedStateCommand {
+  readonly connectionId: string;
+  readonly messageId: string;
+  readonly sequence: number;
+  readonly commandName: string;
+  readonly input: unknown;
+  readonly transportReceipt: FuryGatewayTransportReceipt;
+  readonly admission: FuryGatewayCommandAdmissionDecision;
+  readonly executionAuthority: false;
+}
+
+/**
+ * State-only dispatch boundary.
+ *
+ * This callback is scheduled after command admission and MUST NOT perform
+ * provider inference, tool/MCP execution, process execution, network access,
+ * repository writes, or any other capability execution.
+ */
+export type FuryGatewayWebSocketStateCommandHandler = (
+  command: FuryGatewayWebSocketAdmittedStateCommand,
+) => unknown;
 
 export type FuryGatewayWebSocketSafeEvent =
   | {
@@ -100,6 +127,7 @@ export interface FuryGatewayWebSocketHostOptions {
    * Returning false delegates to the host's default 404.
    */
   readonly handleHttpRequest?: FuryGatewayWebSocketHttpRequestHandler;
+  readonly handleAdmittedStateCommand?: FuryGatewayWebSocketStateCommandHandler;
   readonly host?: string;
   readonly port?: number;
   readonly allowedOrigins?: readonly string[];
@@ -113,6 +141,7 @@ export interface FuryGatewayWebSocketHostOptions {
   readonly maxBufferedAmountBytes?: number;
   readonly heartbeatIntervalMs?: number;
   readonly maxPendingUpgrades?: number;
+  readonly maxInFlightStateCommands?: number;
   readonly onEvent?: (event: FuryGatewayWebSocketSafeEvent) => void;
 }
 
@@ -160,6 +189,8 @@ const MIN_HEARTBEAT_INTERVAL_MS = 1_000;
 const MAX_HEARTBEAT_INTERVAL_MS = 5 * 60_000;
 const DEFAULT_MAX_PENDING_UPGRADES = 64;
 const MAX_PENDING_UPGRADES = 1024;
+const DEFAULT_MAX_IN_FLIGHT_STATE_COMMANDS = 32;
+const MAX_IN_FLIGHT_STATE_COMMANDS = 256;
 const DEFAULT_MAX_PAYLOAD_BYTES = 64 * 1024;
 const MIN_MAX_PAYLOAD_BYTES = 1024;
 const HARD_MAX_PAYLOAD_BYTES = 1024 * 1024;
@@ -383,6 +414,13 @@ export async function listenFuryGatewayWebSocketHost(
     MAX_PENDING_UPGRADES,
     'maxPendingUpgrades',
   );
+  const maxInFlightStateCommands = boundedInteger(
+    options.maxInFlightStateCommands,
+    DEFAULT_MAX_IN_FLIGHT_STATE_COMMANDS,
+    1,
+    MAX_IN_FLIGHT_STATE_COMMANDS,
+    'maxInFlightStateCommands',
+  );
 
   const transport: FuryGatewayTransportCoordinator =
     createFuryGatewayTransportCoordinator(
@@ -445,6 +483,7 @@ export async function listenFuryGatewayWebSocketHost(
 
   const active = new Map<WebSocket, ActiveSocketState>();
   let pendingUpgrades = 0;
+  let inFlightStateCommands = 0;
   let stopped = false;
 
   const cleanupSocket = (
@@ -627,6 +666,87 @@ export async function listenFuryGatewayWebSocketHost(
                   admission: evaluated.admission,
                 }),
               );
+
+              if (
+                evaluated.admission.outcome === 'eligible'
+                && options.handleAdmittedStateCommand
+              ) {
+                const payload =
+                  accepted.message.payload as FuryGatewayTransportCommandPayload;
+                if (inFlightStateCommands >= maxInFlightStateCommands) {
+                  safeSend(
+                    ws,
+                    maxBufferedAmountBytes,
+                    safeServerMessage({
+                      type: 'state-command-result',
+                      connectionId: state.connection.connectionId,
+                      messageId: accepted.message.messageId,
+                      sequence: accepted.message.sequence,
+                      commandName: payload.commandName,
+                      result: Object.freeze({
+                        status: 'rejected',
+                        error: Object.freeze({ code: 'state-command-backpressure' }),
+                        executionAuthority: false,
+                      }),
+                    }),
+                  );
+                } else {
+                  inFlightStateCommands += 1;
+                  const dispatch = Object.freeze({
+                    connectionId: state.connection.connectionId,
+                    messageId: accepted.message.messageId,
+                    sequence: accepted.message.sequence,
+                    commandName: payload.commandName,
+                    input: payload.input,
+                    transportReceipt: evaluated.transportReceipt,
+                    admission: evaluated.admission,
+                    executionAuthority: false as const,
+                  });
+                  queueMicrotask(() => {
+                    try {
+                      const result = options.handleAdmittedStateCommand?.(dispatch);
+                      if (
+                        result
+                        && typeof result === 'object'
+                        && typeof (result as { then?: unknown }).then === 'function'
+                      ) {
+                        throw new Error('state command handlers must be synchronous');
+                      }
+                      safeSend(
+                        ws,
+                        maxBufferedAmountBytes,
+                        safeServerMessage({
+                          type: 'state-command-result',
+                          connectionId: state.connection.connectionId,
+                          messageId: accepted.message.messageId,
+                          sequence: accepted.message.sequence,
+                          commandName: payload.commandName,
+                          result,
+                        }),
+                      );
+                    } catch {
+                      safeSend(
+                        ws,
+                        maxBufferedAmountBytes,
+                        safeServerMessage({
+                          type: 'state-command-result',
+                          connectionId: state.connection.connectionId,
+                          messageId: accepted.message.messageId,
+                          sequence: accepted.message.sequence,
+                          commandName: payload.commandName,
+                          result: Object.freeze({
+                            status: 'rejected',
+                            error: Object.freeze({ code: 'state-command-handler-error' }),
+                            executionAuthority: false,
+                          }),
+                        }),
+                      );
+                    } finally {
+                      inFlightStateCommands = Math.max(0, inFlightStateCommands - 1);
+                    }
+                  });
+                }
+              }
             } else if (accepted.message.type === 'ping') {
               const payload = accepted.message.payload as { readonly nonce: string };
               safeSend(
