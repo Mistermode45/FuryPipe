@@ -1,5 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import type { FuryGatewayAuthenticatedDevice } from './gateway-auth-node.js';
+import {
+  isGeneratedFuryGatewayAuthenticatedDevice,
+  type FuryGatewayAuthenticatedDevice,
+} from './gateway-auth-node.js';
 import type { FuryGatewayRole } from './gateway.js';
 
 export const FURY_GATEWAY_PAIRING_REQUEST_FORMAT = 'furypipe-gateway-pairing-request/v1' as const;
@@ -107,8 +110,7 @@ function pairingKey(deviceId: string, role: FuryGatewayRole): string {
 
 function assertAuthenticatedDevice(device: FuryGatewayAuthenticatedDevice): void {
   if (
-    !device
-    || typeof device !== 'object'
+    !isGeneratedFuryGatewayAuthenticatedDevice(device)
     || device.authority !== 'authenticated-device'
     || device.pairing !== 'unpaired'
     || device.authorization !== 'none'
