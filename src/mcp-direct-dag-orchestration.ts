@@ -276,6 +276,10 @@ export function createMcpDirectDagPlan(input: McpDirectDagPlanInput): McpDirectD
     depths.set(id, depth);
     if (depth > input.quotas.maxDepth) throw new McpDirectDagValidationError('depth quota exceeded');
   }
+  const aggregateOutputBytes = input.nodes.reduce((total, node) => total + (node.outputBytes ?? 0), 0);
+  if (aggregateOutputBytes > input.quotas.maxAggregateOutputBytes) {
+    throw new McpDirectDagValidationError('aggregate output quota exceeded');
+  }
   const nodes = input.nodes
     .map((node) => ({ ...canonicalNode(node), nodeId: digest(canonicalNode(node)) }) as McpDirectDagNodeDefinition)
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -348,6 +352,14 @@ async function persist(
     maxMatches: 1,
     additionalBounds: [{
       metadata: broadMetadata,
+      maxMatches: maxRecoveryEvidence,
+    }, {
+      metadata: {
+        system: 'mcp-direct-dag',
+        scopeSha256,
+        runIdSha256,
+        planDigest: evidence.planDigest,
+      },
       maxMatches: maxRecoveryEvidence,
     }],
   });
