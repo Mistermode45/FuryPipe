@@ -441,6 +441,19 @@ const JS = `(() => {
     toolApprove.disabled = true;
     toolExecute.disabled = true;
     toolDiscard.disabled = true;
+    toolSource.disabled = state.toolSources.length === 0;
+    toolRefresh.disabled = state.toolSources.length === 0;
+    toolName.disabled = state.toolInventory.length === 0;
+    toolArguments.disabled = false;
+    toolPropose.disabled = state.toolInventory.length === 0;
+  }
+
+  function lockToolProposalInputs() {
+    toolSource.disabled = true;
+    toolRefresh.disabled = true;
+    toolName.disabled = true;
+    toolArguments.disabled = true;
+    toolPropose.disabled = true;
   }
 
   function resetToolInventory() {
@@ -595,6 +608,7 @@ const JS = `(() => {
       state.toolProposalId = proposalId;
       state.toolProposalTransport = source.transport;
       state.toolProposalStatus = proposalStatus;
+      lockToolProposalInputs();
       toolDiscard.disabled = false;
       if (proposalStatus === 'approval-required') {
         toolApprove.disabled = false;
@@ -954,6 +968,113 @@ const JS = `(() => {
     });
   });
 
+  toolSource.addEventListener('change', () => {
+    resetToolInventory();
+    toolStatus.textContent = 'Select Refresh inventory to probe this source.';
+    toolResult.textContent = 'No tool result.';
+  });
+
+  toolRefresh.addEventListener('click', () => {
+    const source = selectedToolSource();
+    if (!source || state.toolProposalId) return;
+    toolStatus.textContent = 'Refreshing MCP inventory…';
+    addActivity('Tool requested', 'Fresh inventory for ' + source.sourceId, 'requested');
+    try {
+      sendCommand(
+        toolCommand('tools.source.inspect', source.transport),
+        { sourceId: source.sourceId },
+        toolPermission(source.transport),
+      );
+    } catch {
+      toolStatus.textContent = 'Gateway is not connected.';
+    }
+  });
+
+  toolPropose.addEventListener('click', () => {
+    const source = selectedToolSource();
+    const selectedTool = safeText(toolName.value);
+    if (!source || !selectedTool || state.toolProposalId) return;
+
+    let args;
+    try {
+      args = JSON.parse(toolArguments.value || '{}');
+    } catch {
+      toolStatus.textContent = 'Arguments must be valid JSON.';
+      addActivity('Blocked', 'Tool arguments are not valid JSON.', 'blocked');
+      return;
+    }
+    if (!args || typeof args !== 'object' || Array.isArray(args)) {
+      toolStatus.textContent = 'Arguments must be a JSON object.';
+      addActivity('Blocked', 'Tool arguments must be a JSON object.', 'blocked');
+      return;
+    }
+
+    toolStatus.textContent = 'Creating governed tool proposal…';
+    addActivity('Tool requested', selectedTool + ' on ' + source.sourceId, 'requested');
+    try {
+      sendCommand(
+        toolCommand('tools.propose', source.transport),
+        {
+          sourceId: source.sourceId,
+          toolName: selectedTool,
+          arguments: args,
+        },
+        toolPermission(source.transport),
+      );
+    } catch {
+      toolStatus.textContent = 'Gateway is not connected.';
+    }
+  });
+
+  toolApprove.addEventListener('click', () => {
+    if (!state.toolProposalId || state.toolProposalStatus !== 'approval-required') return;
+    toolApprove.disabled = true;
+    toolStatus.textContent = 'Recording explicit operator approval…';
+    try {
+      sendCommand('tools.approve', {
+        proposalId: state.toolProposalId,
+      });
+    } catch {
+      toolApprove.disabled = false;
+      toolStatus.textContent = 'Gateway is not connected.';
+    }
+  });
+
+  toolExecute.addEventListener('click', () => {
+    if (
+      !state.toolProposalId
+      || state.toolProposalStatus !== 'approved'
+      || !state.toolProposalTransport
+    ) return;
+    toolExecute.disabled = true;
+    toolDiscard.disabled = true;
+    toolStatus.textContent = 'Executing governed tool…';
+    addActivity('Tool requested', 'Execution requested for approved proposal.', 'requested');
+    try {
+      sendCommand(
+        toolCommand('tools.execute', state.toolProposalTransport),
+        { proposalId: state.toolProposalId },
+        toolPermission(state.toolProposalTransport),
+      );
+    } catch {
+      toolExecute.disabled = false;
+      toolDiscard.disabled = false;
+      toolStatus.textContent = 'Gateway is not connected.';
+    }
+  });
+
+  toolDiscard.addEventListener('click', () => {
+    if (!state.toolProposalId) return;
+    const proposalId = state.toolProposalId;
+    toolDiscard.disabled = true;
+    try {
+      sendCommand('tools.discard', { proposalId });
+    } catch {
+      toolDiscard.disabled = false;
+      toolStatus.textContent = 'Gateway is not connected.';
+    }
+  });
+
   byId('new-conversation').addEventListener('click', () => {
     if (state.activeTurnId) {
       turnStatus.textContent = 'Cancel the active turn first.';
@@ -988,6 +1109,11 @@ const JS = `(() => {
     state.activeTurnId = null;
     state.pendingUserMessages.clear();
     state.openAfterClose = false;
+    state.toolSources = [];
+    state.toolInventory = [];
+    resetToolProposal();
+    toolResult.textContent = 'No tool result.';
+    toolStatus.textContent = '';
     clearMessages();
     chatPanel.hidden = true;
     bootstrapPanel.hidden = false;
