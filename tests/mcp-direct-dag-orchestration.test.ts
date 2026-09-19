@@ -302,6 +302,12 @@ describe('M6 real MCP v2 integration', () => {
       node('b'),
     ]);
     const freshAuthorities: string[] = [];
+    const governedByNode = new Map<string, {
+      readonly config: McpDirectRuntimeConfig;
+      readonly proposal: Awaited<ReturnType<typeof createMcpDirectToolProposal>>;
+      readonly approved: Awaited<ReturnType<typeof approveMcpDirectPolicyDecision>>;
+      readonly coordinator: ReturnType<typeof createMcpDirectDurableReplayCoordinator>;
+    }>();
     try {
       const result = await executeMcpDirectDag(dag, {
         recoveryStore: store,
@@ -348,10 +354,7 @@ describe('M6 real MCP v2 integration', () => {
           };
           const decision = evaluateMcpDirectPolicy(selected, proposal, policy);
           const approved = approveMcpDirectPolicyDecision(selected, proposal, decision, 'governed_policy');
-          return {
-            approvalId: approved.approval?.policyDecisionIdSha256 ?? entry.nodeId,
-            permitId: approved.approval?.inputSha256 ?? entry.nodeId,
-            expiresAt: Date.now() + 30_000,
+          governedByNode.set(entry.id, {
             config,
             proposal,
             approved,
@@ -360,15 +363,16 @@ describe('M6 real MCP v2 integration', () => {
               tenantId: 'm6-tenant',
               principalId: 'm6-principal',
             }),
+          });
+          return {
+            approvalId: entry.nodeId,
+            permitId: entry.nodeId,
+            expiresAt: Date.now() + 30_000,
           };
         },
-        executeNode: async (entry, authority) => {
-          const governed = authority as typeof authority & {
-            readonly config: McpDirectRuntimeConfig;
-            readonly proposal: Awaited<ReturnType<typeof createMcpDirectToolProposal>>;
-            readonly approved: Awaited<ReturnType<typeof approveMcpDirectPolicyDecision>>;
-            readonly coordinator: ReturnType<typeof createMcpDirectDurableReplayCoordinator>;
-          };
+        executeNode: async (entry) => {
+          const governed = governedByNode.get(entry.id);
+          if (!governed) throw new Error('fresh governed node material missing');
           const executed = await executeMcpDirectApprovedTool(
             governed.config,
             governed.approved,
