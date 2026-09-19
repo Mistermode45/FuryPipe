@@ -10,6 +10,7 @@ import {
   executeMcpDirectApprovedTool,
   McpDirectExecutionDurabilityError,
   McpDirectExecutionEvidenceError,
+  McpDirectExecutionPreCallRejectedError,
   McpDirectExecutionOutcomeUnknownError,
   McpDirectExecutionVerificationError,
   type McpDirectExecutionReceipt,
@@ -1067,6 +1068,23 @@ export function createFuryKernelToolBridge(
           executionAuthority: false as const,
         });
       } catch (error) {
+        if (error instanceof McpDirectExecutionPreCallRejectedError) {
+          return Object.freeze({
+            format: FURY_KERNEL_TOOL_BRIDGE_FORMAT,
+            status: 'failed' as const,
+            proposalId,
+            sourceId: error.sourceId,
+            toolName: error.toolName,
+            state: Object.freeze({
+              executed: false,
+              succeeded: false,
+              verified: false,
+            }),
+            failureCode: error.code,
+            retrySafe: false as const,
+            executionAuthority: false as const,
+          });
+        }
         if (error instanceof McpDirectExecutionOutcomeUnknownError) {
           return Object.freeze({
             format: FURY_KERNEL_TOOL_BRIDGE_FORMAT,
