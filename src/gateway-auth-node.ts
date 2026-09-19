@@ -242,8 +242,47 @@ export function createFuryGatewayDeviceProof(
   });
 }
 
+function exactPlainDataRecord(
+  value: unknown,
+  allowedKeys: readonly string[],
+  label: string,
+): Readonly<Record<string, unknown>> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new FuryGatewayDeviceAuthError('invalid-proof', `${label} must be a plain object`);
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new FuryGatewayDeviceAuthError('invalid-proof', `${label} must use a plain-object prototype`);
+  }
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    throw new FuryGatewayDeviceAuthError('invalid-proof', `${label} must not contain symbol keys`);
+  }
+  const record = value as Record<string, unknown>;
+  const allow = new Set(allowedKeys);
+  for (const key of Object.getOwnPropertyNames(record)) {
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) {
+      throw new FuryGatewayDeviceAuthError('invalid-proof', `${label} must contain enumerable data properties only`);
+    }
+    if (!allow.has(key)) {
+      throw new FuryGatewayDeviceAuthError('invalid-proof', `${label} contains unsupported field: ${key}`);
+    }
+  }
+  for (const key of allowedKeys) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) {
+      throw new FuryGatewayDeviceAuthError('invalid-proof', `${label} is missing required field: ${key}`);
+    }
+  }
+  return record;
+}
+
 function assertProofShape(proof: FuryGatewayDeviceProof): void {
-  if (!proof || typeof proof !== 'object' || proof.format !== FURY_GATEWAY_DEVICE_PROOF_FORMAT) {
+  exactPlainDataRecord(
+    proof,
+    ['format', 'challengeId', 'nonce', 'signedAt', 'deviceId', 'publicKey', 'connectFingerprint', 'signature'],
+    'gateway device proof',
+  );
+  if (proof.format !== FURY_GATEWAY_DEVICE_PROOF_FORMAT) {
     throw new FuryGatewayDeviceAuthError('invalid-proof', 'unsupported gateway device proof');
   }
   const strings = [
