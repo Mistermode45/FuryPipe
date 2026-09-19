@@ -1,6 +1,6 @@
 # FuryPipe VNext — Phase 2A Local WebChat + Fury Kernel Facade
 
-**Status:** Gates 2A.0–2A.3 implemented; exact-HEAD validation pending  
+**Status:** Gates 2A.0–2A.4 implemented; exact-HEAD validation pending  
 **Base:** PR #209 exact HEAD `2a9d83dc835ca10b246bdc6a5e2de55e4a68739d`  
 **Track:** `vnext-phase2a-webchat-kernel-facade`
 
@@ -366,6 +366,27 @@ Implementation present on this track:
 - provider-mocked and local HTTP transport integration tests cover success, fallback, cancellation, malformed/tool-call output, credential isolation and context limits.
 
 Final PASS remains evidence-bound to the exact final HEAD after the complete CI/browser/package matrix succeeds.
+
+### Gate 2A.4 — Model Fabric bridge
+Implementation present on this track:
+- local model inference is disabled by default and requires explicit host configuration;
+- the browser cannot choose provider, model, credential, endpoint or fallback route;
+- `conversation.model.execute` is a separate async Gateway command, not a state command;
+- admission requires both `conversations.write` and `capability.provider-inference` plus declared `provider-inference` permission;
+- state and execution allowlists are explicitly disjoint and independently backpressured;
+- provider/model routes are host-owned and exact;
+- every attempt receives a fresh execution policy identity and permit TTL;
+- retry/fallback orchestration rebuilds each attempt from the captured model-neutral BASE prompt;
+- prior transcript is injected as bounded `transcript` context data with secret policy default-deny;
+- provider response bytes are decoded through strict OpenAI / Anthropic / Google text-shape decoders;
+- tool/function-call provider content is rejected at this gate instead of being silently dropped or executed;
+- a model response enters the transcript only after strict decoding and `Kernel.completeTurn()`;
+- provider output is labeled `unverified` and does not become verified evidence by being displayed;
+- cancellation aborts active provider work while preserving any ambiguous transport outcome in execution evidence;
+- credentials remain inside transport credential resolvers and are absent from WebChat config/result surfaces;
+- no MCP/tool/process/repository capability is executed in this gate.
+
+Local operator activation is intentionally opt-in through host environment configuration. Missing/partial configuration fails closed instead of guessing a provider or model.
 
 ### Gate 2A.5 — governed tool bridge
 - separate from plain chat;
