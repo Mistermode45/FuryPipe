@@ -72,8 +72,12 @@ export interface FuryKernelConversationOptions {
   readonly maxInFlightTurns?: number;
 }
 
-export interface FuryKernelOpenConversationInput {
-  readonly conversationId?: string;
+export interface FuryKernelClosedConversation {
+  readonly format: typeof FURY_KERNEL_CONVERSATION_FORMAT;
+  readonly conversationId: string;
+  readonly status: 'closed';
+  readonly closedAt: number;
+  readonly executionAuthority: false;
 }
 
 export interface FuryKernelSubmitMessageInput {
@@ -95,8 +99,9 @@ export interface FuryKernelCancelTurnInput {
 }
 
 export interface FuryKernelConversationStore {
-  openConversation(input?: FuryKernelOpenConversationInput): FuryKernelConversationSnapshot;
+  openConversation(): FuryKernelConversationSnapshot;
   inspectConversation(conversationId: string): FuryKernelConversationSnapshot;
+  closeConversation(conversationId: string): FuryKernelClosedConversation;
   submitUserMessage(input: FuryKernelSubmitMessageInput): FuryKernelAcceptedTurn;
   completeTurn(input: FuryKernelCompleteTurnInput): FuryKernelCompletedTurn;
   cancelTurn(input: FuryKernelCancelTurnInput): FuryKernelCancelledTurn;
@@ -109,6 +114,7 @@ export type FuryKernelConversationErrorCode =
   | 'invalid-conversation'
   | 'invalid-message'
   | 'conversation-limit'
+  | 'conversation-in-flight'
   | 'message-limit'
   | 'turn-limit'
   | 'byte-limit'
@@ -370,20 +376,11 @@ export function createFuryKernelConversationStore(
   };
 
   return Object.freeze({
-    openConversation(input: FuryKernelOpenConversationInput = {}): FuryKernelConversationSnapshot {
-      assertExactKeys(input, ['conversationId'], 'invalid-conversation', 'conversation input');
+    openConversation(): FuryKernelConversationSnapshot {
       if (conversations.size >= maxConversations) {
         throw new FuryKernelConversationError('conversation-limit', 'active conversation limit reached');
       }
-      let id: string;
-      if (input.conversationId === undefined) {
-        id = nextOpaqueId('fkc_', (candidate) => conversations.has(candidate));
-      } else {
-        id = conversationId(input.conversationId);
-        if (conversations.has(id)) {
-          throw new FuryKernelConversationError('invalid-conversation', 'conversation ID already exists');
-        }
-      }
+      const id = nextOpaqueId('fkc_', (candidate) => conversations.has(candidate));
       const at = finiteNow(now);
       const state: ConversationState = {
         conversationId: id,
@@ -400,6 +397,25 @@ export function createFuryKernelConversationStore(
 
     inspectConversation(id: string): FuryKernelConversationSnapshot {
       return snapshot(requireConversation(id));
+    },
+
+    closeConversation(id: string): FuryKernelClosedConversation {
+      const state = requireConversation(id);
+      if (state.activeTurnId !== undefined) {
+        throw new FuryKernelConversationError(
+          'conversation-in-flight',
+          'conversation cannot close while a turn is active',
+        );
+      }
+      const closedAt = finiteNow(now);
+      conversations.delete(state.conversationId);
+      return Object.freeze({
+        format: FURY_KERNEL_CONVERSATION_FORMAT,
+        conversationId: state.conversationId,
+        status: 'closed' as const,
+        closedAt,
+        executionAuthority: false as const,
+      });
     },
 
     submitUserMessage(input: FuryKernelSubmitMessageInput): FuryKernelAcceptedTurn {
