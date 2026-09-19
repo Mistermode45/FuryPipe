@@ -103,7 +103,25 @@ In the current Phase 2A local WebChat:
 - provider inference is not implied by conversation acceptance;
 - tool eligibility/execution/evidence remain distinct lifecycle states.
 
-`furypipe gateway config --json` reports the resolved loopback Gateway configuration without starting the daemon. `furypipe gateway start --json` includes `websocketUrl`, `webChatUrl`, the exact local origin and the one-time bootstrap object for machine-oriented launchers.
+Provider inference is **disabled by default**. To enable the local model bridge, configure one exact route:
+
+```text
+FURYPIPE_WEBCHAT_PROVIDER=openai|anthropic|google
+FURYPIPE_WEBCHAT_MODEL=<exact model id>
+FURYPIPE_WEBCHAT_MAX_OUTPUT_TOKENS=<optional 1..65536>
+
+OPENAI_API_KEY=<credential>       # when provider=openai
+ANTHROPIC_API_KEY=<credential>    # when provider=anthropic
+GOOGLE_API_KEY=<credential>       # when provider=google
+```
+
+Partial configuration fails startup instead of silently falling back. Credentials are resolved inside the provider transport and are not returned by the WebChat configuration endpoint or CLI model status.
+
+When enabled, the browser receives the `capability.provider-inference` session scope and may submit only the registered `conversation.model.execute` command with declared `provider-inference` permission. Command admission still has `executionAuthority:false`; the Fury Kernel model bridge rebuilds the provider attempt from a model-neutral BASE prompt, creates a fresh provider execution policy/permit, runs the existing governed provider executor, decodes only bounded text responses, and only then completes the Kernel turn.
+
+A provider tool/function call is not converted into assistant text. It is rejected by the Phase 2A.4 text decoder and remains reserved for the separately governed tool bridge in Phase 2A.5.
+
+`furypipe gateway config --json` reports the resolved loopback Gateway configuration without starting the daemon. `furypipe gateway start --json` includes `websocketUrl`, `webChatUrl`, the exact local origin, redacted model status and the one-time bootstrap object for machine-oriented launchers.
 
 Remote Gateway/WebChat exposure is out of scope for this phase and must not be created by binding this listener to a non-loopback address.
 
