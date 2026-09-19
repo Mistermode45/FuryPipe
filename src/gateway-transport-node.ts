@@ -87,6 +87,7 @@ export type FuryGatewayTransportErrorCode =
   | 'duplicate-message-id'
   | 'stale-sequence'
   | 'sequence-gap'
+  | 'sequence-exhausted'
   | 'backpressure'
   | 'invalid-transition';
 
@@ -295,6 +296,43 @@ function normalizeRoleLimits(
   return Object.freeze(out);
 }
 
+function normalizeConnectEnvelope(value: unknown): FuryGatewayConnectEnvelope {
+  if (
+    value
+    && typeof value === 'object'
+    && !Array.isArray(value)
+    && (value as Partial<FuryGatewayConnectEnvelope>).authority === 'unverified'
+  ) {
+    const record = value as Record<string, unknown>;
+    const allowed = new Set([
+      'format',
+      'protocolVersion',
+      'role',
+      'client',
+      'capabilities',
+      'commands',
+      'authority',
+    ]);
+    for (const key of Object.keys(record)) {
+      if (!allowed.has(key)) {
+        throw new FuryGatewayTransportError(
+          'invalid-connection',
+          'validated Gateway connect envelope contains unsupported fields',
+        );
+      }
+    }
+    return parseFuryGatewayConnectEnvelope({
+      format: record.format,
+      protocolVersion: record.protocolVersion,
+      role: record.role,
+      client: record.client,
+      capabilities: record.capabilities,
+      commands: record.commands,
+    });
+  }
+  return parseFuryGatewayConnectEnvelope(value);
+}
+
 function assertConnectionMetadata(
   metadata: FuryGatewayTransportConnectionMetadata,
   role: FuryGatewayRole,
@@ -371,7 +409,7 @@ export function createFuryGatewayTransportCoordinator(
     options.maxInboundMessagesPerWindow,
     DEFAULT_MAX_INBOUND_MESSAGES,
     1,
-    100_000,
+    4_096,
     'maxInboundMessagesPerWindow',
   );
   const maxSeenMessageIds = boundedInteger(
@@ -497,7 +535,7 @@ export function createFuryGatewayTransportCoordinator(
           'Gateway transport is not accepting connections',
         );
       }
-      const connect = parseFuryGatewayConnectEnvelope(connectInput);
+      const connect = normalizeConnectEnvelope(connectInput);
       const metadata = assertConnectionMetadata(metadataInput, connect.role, bindPolicy);
       if (states.size >= maxConnections) {
         throw new FuryGatewayTransportError(
@@ -546,6 +584,12 @@ export function createFuryGatewayTransportCoordinator(
       const at = finiteNow(now);
       recordInboundAttempt(state, at);
       const message = parseFuryGatewayMessageText(text);
+      if (state.lastInboundSequence === Number.MAX_SAFE_INTEGER) {
+        throw new FuryGatewayTransportError(
+          'sequence-exhausted',
+          'Gateway inbound sequence space is exhausted',
+        );
+      }
       const expected = state.lastInboundSequence + 1;
       if (message.sequence < expected) {
         throw new FuryGatewayTransportError(
@@ -575,6 +619,12 @@ export function createFuryGatewayTransportCoordinator(
         throw new FuryGatewayTransportError(
           'backpressure',
           'Gateway outbound message queue is full',
+        );
+      }
+      if (!Number.isSafeInteger(state.nextOutboundSequence)) {
+        throw new FuryGatewayTransportError(
+          'sequence-exhausted',
+          'Gateway outbound sequence space is exhausted',
         );
       }
       const sequence = state.nextOutboundSequence;
