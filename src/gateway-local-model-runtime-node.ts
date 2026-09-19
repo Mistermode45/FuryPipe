@@ -245,14 +245,16 @@ export function createFuryGatewayLocalModelRuntime(
   });
 
   const bridge: FuryKernelModelBridge = Object.freeze({
-    async executeTurn(input) {
+    async executeTurn(
+      input: Parameters<FuryKernelModelBridge['executeTurn']>[0],
+    ) {
       // Refresh host-owned operator-config evidence immediately before the
       // governed planner evaluates provider availability. This does not claim
       // live provider health and does not bypass transport credential checks.
       observeConfiguredHealth();
       return governedBridge.executeTurn(input);
     },
-    cancelTurn(conversationId, turnId) {
+    cancelTurn(conversationId: string, turnId: string) {
       return governedBridge.cancelTurn(conversationId, turnId);
     },
     activeExecutionCount() {
