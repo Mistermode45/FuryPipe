@@ -27,6 +27,18 @@ describe('Fury Kernel conversation foundation', () => {
     expect(kernel.inFlightTurnCount()).toBe(0);
   });
 
+  it('rejects caller-supplied conversation creation data at runtime', () => {
+    const kernel = createFuryKernelConversationStore();
+    const unsafeOpen = kernel.openConversation as (...args: readonly unknown[]) => unknown;
+
+    expect(() => unsafeOpen({
+      conversationId: 'fkc_ABCDEFGHIJKLMNOPQRSTUVWX',
+    })).toThrowError(expect.objectContaining({
+      code: 'invalid-conversation',
+    }));
+    expect(kernel.activeConversationCount()).toBe(0);
+  });
+
   it('accepts one user turn and completes it only through the trusted Kernel API', () => {
     let now = 1000;
     const kernel = createFuryKernelConversationStore({ now: () => now });
