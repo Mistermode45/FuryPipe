@@ -6,6 +6,7 @@ import {
 } from '../src/gateway-command-authorization-node.js';
 import {
   FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
+  FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
   createFuryGatewayConversationAdapter,
 } from '../src/gateway-conversation-adapter-node.js';
 import {
