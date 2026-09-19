@@ -5,6 +5,7 @@ import {
   type FuryGatewayAuthenticatedDevice,
 } from './gateway-auth-node.js';
 import {
+  type FuryGatewayPairedDevice,
   type FuryGatewayPairingCoordinator,
 } from './gateway-pairing-node.js';
 import {
@@ -271,6 +272,10 @@ function cloneBinding(binding: FuryGatewaySessionBinding): FuryGatewaySessionBin
   });
 }
 
+export function isFuryGatewayScope(value: unknown): value is FuryGatewayScope {
+  return typeof value === 'string' && SCOPE_SET.has(value);
+}
+
 export function isGeneratedFuryGatewaySessionLease(
   value: unknown,
 ): value is FuryGatewaySessionLease {
@@ -410,7 +415,7 @@ export function createFuryGatewaySessionCoordinator(
             'paired-device session requires fresh matching device authentication evidence',
           );
         }
-        let paired;
+        let paired: FuryGatewayPairedDevice | undefined;
         try {
           paired = input.binding.pairing.inspectPairing(device);
         } catch {
