@@ -302,13 +302,13 @@ function assertBoundedGatewayPayload(value: unknown): void {
     if (nodes > MAX_MESSAGE_PAYLOAD_NODES) {
       throw new FuryGatewayProtocolError(
         'limit-exceeded',
-        \`gateway message payload exceeds \${MAX_MESSAGE_PAYLOAD_NODES} nodes\`,
+        `gateway message payload exceeds ${MAX_MESSAGE_PAYLOAD_NODES} nodes`,
       );
     }
     if (depth > MAX_MESSAGE_PAYLOAD_DEPTH) {
       throw new FuryGatewayProtocolError(
         'limit-exceeded',
-        \`gateway message payload exceeds depth \${MAX_MESSAGE_PAYLOAD_DEPTH}\`,
+        `gateway message payload exceeds depth ${MAX_MESSAGE_PAYLOAD_DEPTH}`,
       );
     }
     if (current === null || typeof current === 'boolean') return;
@@ -322,7 +322,7 @@ function assertBoundedGatewayPayload(value: unknown): void {
       if (utf8Bytes(current) > MAX_MESSAGE_STRING_BYTES || current.includes('\u0000')) {
         throw new FuryGatewayProtocolError(
           'limit-exceeded',
-          \`gateway message payload string exceeds \${MAX_MESSAGE_STRING_BYTES} UTF-8 bytes or contains NUL\`,
+          `gateway message payload string exceeds ${MAX_MESSAGE_STRING_BYTES} UTF-8 bytes or contains NUL`,
         );
       }
       return;
@@ -331,7 +331,7 @@ function assertBoundedGatewayPayload(value: unknown): void {
       if (current.length > MAX_MESSAGE_ARRAY_ITEMS) {
         throw new FuryGatewayProtocolError(
           'limit-exceeded',
-          \`gateway message payload array exceeds \${MAX_MESSAGE_ARRAY_ITEMS} items\`,
+          `gateway message payload array exceeds ${MAX_MESSAGE_ARRAY_ITEMS} items`,
         );
       }
       for (const item of current) visit(item, depth + 1);
@@ -344,7 +344,7 @@ function assertBoundedGatewayPayload(value: unknown): void {
     if (keys.length > MAX_MESSAGE_OBJECT_KEYS) {
       throw new FuryGatewayProtocolError(
         'limit-exceeded',
-        \`gateway message payload object exceeds \${MAX_MESSAGE_OBJECT_KEYS} keys\`,
+        `gateway message payload object exceeds ${MAX_MESSAGE_OBJECT_KEYS} keys`,
       );
     }
     for (const key of keys) {
@@ -407,7 +407,7 @@ export function parseFuryGatewayMessageText(text: string): FuryGatewayMessageEnv
   if (bytes > FURY_GATEWAY_MAX_MESSAGE_BYTES) {
     throw new FuryGatewayProtocolError(
       'limit-exceeded',
-      \`gateway message exceeds \${FURY_GATEWAY_MAX_MESSAGE_BYTES} UTF-8 bytes\`,
+      `gateway message exceeds ${FURY_GATEWAY_MAX_MESSAGE_BYTES} UTF-8 bytes`,
     );
   }
 
