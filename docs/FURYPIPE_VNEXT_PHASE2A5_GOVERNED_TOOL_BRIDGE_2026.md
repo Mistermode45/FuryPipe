@@ -252,6 +252,11 @@ A Gateway/backpressure rejection does not synthesize a new proposal or permit; t
 
 Implemented tests already cover the following; final PASS still requires all checks to be green on one exact final SHA:
 
+Two execution-boundary cases are proven with real stdio MCP fixtures at the bridge level:
+
+- fresh schema drift between proposal and execution is rejected before `callTool` with `MCP_DIRECT_EXECUTION_PRE_CALL_REJECTED`, preserving `executed=false / succeeded=false / verified=false`;
+- transport loss after the MCP server receives `tools/call` is surfaced as `MCP_DIRECT_EXECUTION_OUTCOME_UNKNOWN`, preserving `executed=unknown / succeeded=unknown / verified=false`, `retrySafe=false`, and the consumed proposal cannot be re-executed.
+
 - forged/copied proposal IDs cannot create authority;
 - invalid tool args fail schema validation before execution;
 - source/tool/schema/risk drift fails closed;
@@ -293,7 +298,7 @@ They also assert that the MCP result is rendered only in the Tools panel and nev
 
 ## 14. Gate completion
 
-2A.5 is complete only when the local authenticated operator can inspect, propose, explicitly approve where required, execute and inspect MCP tool receipts while FuryPipe still proves:
+2A.5 is complete only when the local authenticated operator can inspect, propose, explicitly approve where required, execute and inspect MCP tool receipts while FuryPipe still proves the following on one exact final HEAD:
 
 ```text
 browser session != tool authority
