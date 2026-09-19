@@ -189,6 +189,7 @@ async function startHarness(modelEnabled = false, toolEnabled = false) {
         name: 'furypipe-webchat-browser-qa',
         version: '1.0.0',
       },
+      allowDisplayResult: true,
     });
   })();
 
