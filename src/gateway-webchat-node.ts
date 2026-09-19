@@ -590,6 +590,7 @@ const JS = `(() => {
       }
       bootstrapStatus.textContent = 'Browser session established.';
       state.authenticated = true;
+      await webChatConfigReady;
       connectWebSocket();
     } catch {
       bootstrapStatus.textContent = 'Bootstrap request failed.';
@@ -670,7 +671,7 @@ const JS = `(() => {
     activityList.replaceChildren();
   });
 
-  void loadWebChatConfig();
+  const webChatConfigReady = loadWebChatConfig();
 })();
 `;
 
