@@ -38,6 +38,7 @@ import {
 import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
 import { runSetupWizard } from './setup-tui.js';
+import { runFuryGatewayCli } from './gateway-local-cli-node.js';
 import { refreshRuntimeModelCatalog } from './model-catalog-node.js';
 import { normalizeModelScopeEntry, parseModelScopeList, resolvePersistedModelScope } from './model-config.js';
 import { FURYPIPE_DEFAULT_HOST, FURYPIPE_DEFAULT_PORT, parseFuryPipePort } from './runtime-defaults.js';
@@ -362,6 +363,10 @@ Usage:
                         launch the interactive FuryPipe first-run setup
   furypipe doctor [--json]
                         inspect the local runtime and available tools
+  furypipe gateway start [--json]
+                        start the loopback-only VNext Gateway
+  furypipe gateway config [--json]
+                        inspect resolved local Gateway configuration
   furypipe export [...] render files/diff to PNG pages + cost report (see furypipe export --help)
   furypipe link [--route PATTERN=TARGET]... [--] CMD [args...]
                         connect an agent through FuryLink. The '--' separator
@@ -1317,6 +1322,11 @@ async function main(): Promise<void> {
     ));
     return;
   }
+  if (argv[0] === 'gateway') {
+    const code = await runFuryGatewayCli(argv.slice(1));
+    process.exitCode = code;
+    return;
+  }
   if (argv[0] === 'export') {
     await runExport(argv.slice(1));
     return; // server never starts
@@ -1698,156 +1708,3 @@ async function main(): Promise<void> {
       // event instead. Threshold: gz_bytes * 4/3 > inline cap (b64 expansion).
       if (e.reqBodyGz && e.reqBodyGz.byteLength * 4 > TRACK_BODY_INLINE_MAX * 3) {
         const writtenPath = await maybeWriteBodySidecar(
-          e.reqBodyGz,
-          e.reqBodySha8,
-          bodySidecarDir,
-        );
-        if (writtenPath) {
-          e.reqBodySamplePath = writtenPath;
-          e.reqBodyGz = undefined; // tracker will pick up the path instead
-        }
-        // If write failed: leave reqBodyGz; the tracker will silently drop
-        // it (still too big to inline). We never lose the sha8 / error_body.
-      }
-
-      // Persistent JSONL event for offline analysis (furypipe stats etc.).
-      tracker.emit(toTrackEvent(e));
-    },
-  };
-  const handle = createProxy(config);
-
-  const server = createServer((req, res) => {
-    Promise.resolve()
-      .then(async () => {
-        // Local dashboard routes — handled BEFORE the proxy so they never hit
-        // api.anthropic.com (which would 404 them).
-        const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-        const route = dashboardPath(url.pathname);
-        if (route) {
-          if (!isLoopbackAddress(req.socket.remoteAddress) || !isLoopbackHostname(url.hostname)) {
-            await writeWebResponse(new Response('dashboard is loopback-only', { status: 403 }), res);
-            return;
-          }
-          if (isDashboardMutation(route, req.method ?? 'GET')
-            && !isSameOriginDashboardRequest(req, url)) {
-            await writeWebResponse(new Response('cross-origin dashboard mutation denied', { status: 403 }), res);
-            return;
-          }
-          const webRes = await dispatchDashboard(dashboard, route, req, url, opts.port);
-          if (webRes) {
-            await writeWebResponse(webRes, res);
-            return;
-          }
-        }
-        const webReq = toWebRequest(req);
-        const webRes = await handle(webReq);
-        await writeWebResponse(webRes, res);
-      })
-      .catch((err) => {
-        if (isConnectionAbort(err) && (req.aborted || res.destroyed)) return;
-        console.error('[furypipe] handler error:', err);
-        if (!res.headersSent) res.statusCode = 500;
-        if (!res.writableEnded) res.end();
-      });
-  });
-
-  // IPv6 literals need bracket notation to form a valid URL.
-  const displayHost = opts.host.includes(':') ? `[${opts.host}]` : opts.host;
-  const isLoopbackHost =
-    opts.host === '127.0.0.1' || opts.host === 'localhost' || opts.host === '::1';
-  const announce = () => {
-    console.log('[furypipe] Anthropic upstream configured');
-    console.log('[furypipe] OpenAI upstream configured');
-    if (opts.cloudflareUpstream !== undefined) {
-      console.log(
-        '[furypipe] Cloudflare upstream configured',
-      );
-    }
-    console.log('[furypipe] event tracking enabled');
-    if (opts.captureErrorReqBody) {
-      console.warn(
-        '[furypipe] FURYPIPE_DEBUG_CAPTURE_4XX=1 — persisting full 4xx request and upstream error bodies; debugging only.',
-      );
-    }
-  };
-
-  server.on('error', (caught: NodeJS.ErrnoException) => {
-    if (caught.code === 'EADDRINUSE') {
-      console.error(`[furypipe] cannot start: http://${displayHost}:${opts.port} is already in use`);
-      console.error('[furypipe] FuryPipe does not reuse another process. Set FURYPIPE_PORT to a free port and retry.');
-      process.exitCode = 1;
-      return;
-    }
-    const message = caught instanceof Error ? caught.message : String(caught);
-    console.error(`[furypipe] server error: ${message}`);
-    process.exitCode = 1;
-  });
-
-  server.listen(opts.port, opts.host, () => {
-    console.log(`[furypipe] listening on http://${displayHost}:${opts.port}`);
-    if (!isLoopbackHost) {
-      console.warn('[furypipe] non-loopback bind enabled; proxy API is reachable off-host, dashboard routes remain loopback-only');
-    }
-    announce();
-    console.log('[furypipe] dashboard available on loopback');
-
-    // Refresh configured provider catalogs outside the startup critical path.
-    // Missing credentials perform no network request; failures are diagnostic
-    // only and never disable proxying/runtime-observed model discovery.
-    if (!/^(0|false|no|off)$/i.test(process.env.FURYPIPE_MODEL_CATALOG_REFRESH ?? '')) {
-      void refreshRuntimeModelCatalog().then((report) => {
-        const refreshed = report.providers.filter((provider) => provider.status === 'refreshed');
-        const failed = report.providers.filter((provider) => provider.status === 'failed');
-        if (refreshed.length > 0) {
-          console.log(
-            `[furypipe] model catalog refreshed: ${report.registeredModels} model(s) from ` +
-            refreshed.map((provider) => provider.provider).join(', '),
-          );
-        }
-        for (const provider of failed) {
-          console.warn(
-            `[furypipe] model catalog refresh failed for ${provider.provider}: ${provider.reason ?? 'unknown'}` +
-            (provider.httpStatus === undefined ? '' : ` (HTTP ${provider.httpStatus})`),
-          );
-        }
-      }).catch(() => {
-        console.warn('[furypipe] model catalog refresh failed unexpectedly');
-      });
-    }
-  });
-
-  // server.close() only stops accepting new connections and waits for open
-  // ones to drain — it does NOT end idle keep-alive sockets. The dashboard tab
-  // (htmx polls every 2s) and the Claude Code client both hold keep-alive
-  // sockets open, so a naive close() never fires its callback and the first
-  // Ctrl+C appears to hang. We drop idle sockets immediately, force-close any
-  // in-flight ones after a short grace period, and let a second signal exit now.
-  let shuttingDown = false;
-  const shutdown = (sig: string) => {
-    if (shuttingDown) {
-      console.log(`[furypipe] ${sig} again — forcing exit`);
-      process.exit(130);
-    }
-    shuttingDown = true;
-    console.log(`[furypipe] ${sig} — shutting down`);
-    // Flush+close the tracker so we don't drop the last few events on exit.
-    if (tracker instanceof FileTracker) tracker.close();
-    server.close(() => process.exit(0));
-    // Drop idle keep-alive sockets so close()'s callback can actually fire.
-    server.closeIdleConnections?.();
-    // Hard deadline: if a streaming /v1/messages response (or slow upstream)
-    // is still in flight, force the rest closed and exit anyway.
-    const deadline = setTimeout(() => {
-      server.closeAllConnections?.();
-      process.exit(0);
-    }, 1500);
-    deadline.unref();
-  };
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-}
-
-main().catch((err) => {
-  console.error('[furypipe] fatal:', err);
-  process.exit(1);
-});
