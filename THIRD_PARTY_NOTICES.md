@@ -32,6 +32,12 @@ The dependency inventory below was generated from the installed lockfile with `p
 - `json5@2.2.3` declared MIT and is used to read JSON5 OpenClaw configuration.
 - `playwright@1.63.0` and `playwright-core@1.63.0` declared Apache-2.0. Playwright browser binaries are test dependencies and are not shipped as part of the FuryPipe npm package.
 
+## Post-inventory dependency additions
+
+- `ws@8.21.3` is a direct runtime dependency for the loopback Fury Gateway WebSocket host. It is MIT licensed. FuryPipe disables per-message compression for this control-plane use and does not install the optional native `bufferutil` or `utf-8-validate` addons.
+- `@types/ws@8.18.1` is a development-only TypeScript declaration dependency and is MIT licensed.
+- The recorded 2026-09-14 license-count table above predates these direct dependency additions and is intentionally not rewritten as if it were a new inventory.
+
 ## Upstream provenance
 
 FuryPipe derives from and studies upstream/open-source work documented in:
