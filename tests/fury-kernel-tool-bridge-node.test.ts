@@ -77,6 +77,7 @@ function bridge(
   mode: 'auto' | 'operator' | 'deny',
   options: {
     readonly maxPendingProposals?: number;
+    readonly allowDisplayResult?: boolean;
     readonly maxDisplayResultBytes?: number;
     readonly secret?: string;
   } = {},
@@ -91,6 +92,9 @@ function bridge(
     ...(options.maxPendingProposals === undefined
       ? {}
       : { maxPendingProposals: options.maxPendingProposals }),
+    ...(options.allowDisplayResult === undefined
+      ? {}
+      : { allowDisplayResult: options.allowDisplayResult }),
     ...(options.maxDisplayResultBytes === undefined
       ? {}
       : { maxDisplayResultBytes: options.maxDisplayResultBytes }),
@@ -176,13 +180,13 @@ describe('Fury Kernel governed MCP tool bridge', () => {
         verificationKind: 'schema',
       },
       displayResult: {
-        available: true,
+        available: false,
+        reason: 'display-disabled',
       },
       retrySafe: false,
       executionAuthority: false,
     });
-    expect(JSON.stringify(executed.displayResult?.value))
-      .toContain('hello governed tool');
+    expect(executed.displayResult?.value).toBeUndefined();
     expect(instance.pendingProposalCount()).toBe(0);
   }, 30_000);
 
@@ -291,7 +295,10 @@ describe('Fury Kernel governed MCP tool bridge', () => {
   }, 30_000);
 
   it('withholds oversized display output without rewriting the successful execution receipt', async () => {
-    const instance = bridge('auto', { maxDisplayResultBytes: 1024 });
+    const instance = bridge('auto', {
+      allowDisplayResult: true,
+      maxDisplayResultBytes: 1024,
+    });
     const proposed = await instance.propose({
       sourceId: 'tool-bridge-fixture',
       toolName: 'governed-echo',
@@ -314,7 +321,7 @@ describe('Fury Kernel governed MCP tool bridge', () => {
   }, 30_000);
 
   it('snapshots proposal arguments before the asynchronous inventory probe', async () => {
-    const instance = bridge('auto');
+    const instance = bridge('auto', { allowDisplayResult: true });
     const args = { message: 'snapshot-before-await' };
 
     const proposing = instance.propose({
@@ -421,6 +428,29 @@ describe('Fury Kernel governed MCP tool bridge', () => {
     })).toThrow(/data properties|plain data object/u);
     expect(getterCalls).toBe(0);
   });
+
+  it('bounds concurrent MCP inventory probes independently from executions', async () => {
+    const config = sourceConfig();
+    const instance = createFuryKernelToolBridge({
+      sources: [{
+        config,
+        policy: policy(config, 'auto'),
+      }],
+      clientInfo: { name: 'furypipe-tool-bridge-test', version: '1.0.0' },
+      maxConcurrentProbes: 1,
+      connectTimeoutMs: 10_000,
+      listTimeoutMs: 10_000,
+      probeTimeoutMs: 2_000,
+    });
+
+    const first = instance.inspectSource('tool-bridge-fixture');
+    expect(instance.activeProbeCount()).toBe(1);
+    await expect(instance.inspectSource('tool-bridge-fixture'))
+      .rejects.toThrow(/probe concurrency/i);
+    await first;
+    expect(instance.activeProbeCount()).toBe(0);
+    expect(instance.activeExecutionCount()).toBe(0);
+  }, 20_000);
 
   it('prunes expired proposal authority before approval', async () => {
     let now = 1_000;
