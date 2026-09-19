@@ -2,7 +2,7 @@
 
 ## Status
 
-Architecture only. M6 execution is not implemented.
+Architecture implemented in the stacked M6 Draft PR. Runtime details are in `docs/MULTI_CALL_DAG_ORCHESTRATION_RUNTIME_2026.md`.
 
 M6 may not consume, replay, or reinterpret M5 durable evidence. Every node
 must obtain fresh governed authority through the existing M1/M2/M3/M4
