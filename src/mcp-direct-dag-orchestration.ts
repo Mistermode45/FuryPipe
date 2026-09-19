@@ -322,7 +322,7 @@ async function persist(
     runIdSha256,
     planDigest: evidence.planDigest,
     nodeId: evidence.nodeId,
-    recordType: 'node-evidence',
+    recordType: evidence.state === 'executing' ? 'node-attempt' : 'node-terminal',
     attempt: 1,
   } as const;
   const bytes = new TextEncoder().encode(JSON.stringify({
@@ -336,14 +336,10 @@ async function persist(
     wireCallStarted: evidence.wireCallStarted,
     timestamp: evidence.timestamp,
   }));
-  const bound = {
-    metadata: { ...metadata, recordType: 'node-evidence' },
-    maxMatches: options.planDigestEvidenceQuota ?? 1,
-  };
   const store = options.recoveryStore;
   if (!store.putBounded) throw new McpDirectDagValidationError('RecoveryStore atomic bounded put is required');
   await store.putBounded(bytes, metadata, {
-    metadata: { ...metadata, recordType: 'node-evidence' },
+    metadata,
     maxMatches: 1,
     additionalBounds: [{
       metadata: {
@@ -351,9 +347,9 @@ async function persist(
         scopeSha256: options.scopeSha256,
         runIdSha256,
         planDigest: evidence.planDigest,
-        recordType: 'node-evidence',
+        recordType: metadata.recordType,
       },
-      maxMatches: options.planDigestEvidenceQuota ?? 64,
+      maxMatches: 2 * 64,
     }],
   });
 }
