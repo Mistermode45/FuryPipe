@@ -171,7 +171,7 @@ export function resolveFuryGatewayLocalConfig(
   options: FuryGatewayLocalConfigOptions = {},
 ): FuryGatewayLocalConfigResolution {
   const env = options.env ?? process.env;
-  const file = options.file ?? env.FURYPIPE_CONFIG?.trim() || defaultFuryGatewayConfigFile();
+  const file = options.file ?? (env.FURYPIPE_CONFIG?.trim() || defaultFuryGatewayConfigFile());
   const root = parseFile(file);
   const gateway = gatewayBlock(root);
 
