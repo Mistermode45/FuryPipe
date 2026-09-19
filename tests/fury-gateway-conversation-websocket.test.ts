@@ -297,6 +297,92 @@ describe('Fury Gateway conversation WebSocket integration', () => {
     expect(kernel.activeConversationCount()).toBe(0);
   });
 
+
+  it('rejects a state handler without an explicit command allowlist', async () => {
+    const harness = operatorHarness(['conversations.write']);
+    const commandRegistry = createFuryGatewayCommandRegistry(
+      FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
+    );
+
+    await expect(listenFuryGatewayWebSocketHost({
+      sessionCoordinator: harness.sessionCoordinator,
+      commandRegistry,
+      allowedOrigins: ['http://localhost:3000'],
+      resolveConnection: () => ({
+        session: harness.session,
+        clientKind: 'browser',
+      }),
+      handleAdmittedStateCommand: () => ({ ok: true }),
+    })).rejects.toThrow(/allowlist/u);
+  });
+
+  it('does not dispatch an eligible command that is absent from the state-only allowlist', async () => {
+    const harness = operatorHarness([
+      'conversations.inspect',
+      'conversations.write',
+      'capability.repository-read',
+    ]);
+    const commandRegistry = createFuryGatewayCommandRegistry([
+      ...FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
+      {
+        format: 'furypipe-gateway-command-definition/v1',
+        name: 'repository.read',
+        allowedRoles: ['operator'],
+        requiredScopes: ['capability.repository-read'],
+        requiredPluginPermissions: ['repository-read'],
+        riskClass: 'read',
+        requiresFreshApproval: false,
+      },
+    ]);
+    let dispatchCalls = 0;
+
+    const handle = await listenFuryGatewayWebSocketHost({
+      sessionCoordinator: harness.sessionCoordinator,
+      commandRegistry,
+      allowedOrigins: ['http://localhost:3000'],
+      resolveConnection: () => ({
+        session: harness.session,
+        clientKind: 'browser',
+      }),
+      admittedStateCommandNames: FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
+      handleAdmittedStateCommand: () => {
+        dispatchCalls += 1;
+        return { status: 'unexpected' };
+      },
+    });
+    handles.push(handle);
+
+    const { ws, hello } = await connect(handle.address.url);
+    const connectionId = String(hello.connectionId);
+    const responsePromise = nextJson(ws);
+    ws.send(JSON.stringify({
+      format: FURY_GATEWAY_TRANSPORT_MESSAGE_FORMAT,
+      messageId: 'non-state-eligible',
+      connectionId,
+      sequence: 1,
+      type: 'command',
+      sentAt: 10_000,
+      payload: {
+        commandName: 'repository.read',
+        declaredPluginPermissions: ['repository-read'],
+        input: { path: 'README.md' },
+      },
+    }));
+    const admission = await responsePromise;
+
+    expect(admission).toMatchObject({
+      type: 'command-admission',
+      admission: {
+        outcome: 'eligible',
+        executionAuthority: false,
+      },
+      executionAuthority: false,
+    });
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
+    expect(dispatchCalls).toBe(0);
+  });
+
   it('converts synchronous state-handler failures into bounded non-authoritative results', async () => {
     const harness = operatorHarness(['conversations.write']);
     const commandRegistry = createFuryGatewayCommandRegistry(
