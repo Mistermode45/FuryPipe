@@ -16,6 +16,7 @@ import {
   type FuryGatewayWebSocketHostOptions,
   type FuryGatewayWebSocketHttpRequestHandler,
   type FuryGatewayWebSocketSafeEvent,
+  type FuryGatewayWebSocketStateCommandHandler,
 } from './gateway-websocket-host-node.js';
 
 export const FURY_GATEWAY_DAEMON_EVENT_FORMAT =
@@ -57,6 +58,7 @@ export interface FuryGatewayDaemonConfig {
   readonly maxBufferedAmountBytes?: number;
   readonly heartbeatIntervalMs?: number;
   readonly maxPendingUpgrades?: number;
+  readonly maxInFlightStateCommands?: number;
   readonly maxEventHistory?: number;
 }
 
@@ -65,6 +67,7 @@ export interface FuryGatewayDaemonOptions {
   readonly commandRegistry: FuryGatewayCommandRegistry;
   readonly resolveConnection: FuryGatewayWebSocketConnectionResolver;
   readonly handleHttpRequest?: FuryGatewayWebSocketHttpRequestHandler;
+  readonly handleAdmittedStateCommand?: FuryGatewayWebSocketStateCommandHandler;
   readonly config?: FuryGatewayDaemonConfig;
   readonly now?: () => number;
 }
@@ -279,6 +282,9 @@ export async function startFuryGatewayDaemon(
     ...(options.handleHttpRequest === undefined
       ? {}
       : { handleHttpRequest: options.handleHttpRequest }),
+    ...(options.handleAdmittedStateCommand === undefined
+      ? {}
+      : { handleAdmittedStateCommand: options.handleAdmittedStateCommand }),
     ...(config.host === undefined ? {} : { host: config.host }),
     ...(config.port === undefined ? {} : { port: config.port }),
     ...(config.allowedOrigins === undefined ? {} : { allowedOrigins: config.allowedOrigins }),
@@ -306,6 +312,9 @@ export async function startFuryGatewayDaemon(
     ...(config.maxPendingUpgrades === undefined
       ? {}
       : { maxPendingUpgrades: config.maxPendingUpgrades }),
+    ...(config.maxInFlightStateCommands === undefined
+      ? {}
+      : { maxInFlightStateCommands: config.maxInFlightStateCommands }),
     onEvent: onWebSocketEvent,
   };
 
