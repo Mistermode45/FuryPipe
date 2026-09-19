@@ -274,21 +274,24 @@ async function readBoundedBody(
   if (declaredLength !== undefined) {
     const parsed = Number(declaredLength);
     if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > maxBytes) {
+      request.resume();
       return undefined;
     }
   }
 
   const chunks: Buffer[] = [];
   let total = 0;
+  let overflow = false;
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
     total += buffer.byteLength;
     if (total > maxBytes) {
-      request.destroy();
-      return undefined;
+      overflow = true;
+      continue;
     }
-    chunks.push(buffer);
+    if (!overflow) chunks.push(buffer);
   }
+  if (overflow) return undefined;
   return Buffer.concat(chunks, total).toString('utf8');
 }
 
@@ -553,7 +556,11 @@ export function createFuryGatewayLocalBootstrapManager(
           emptyResponse(response, 204);
           return true;
         }
-        browserSessions.delete(digestSecret(tokens[0]!));
+        const digest = digestSecret(tokens[0]!);
+        const browserSession = browserSessions.get(digest);
+        if (browserSession?.origin === origin) {
+          browserSessions.delete(digest);
+        }
         clearCookie(response);
         emptyResponse(response, 204);
         return true;
@@ -608,6 +615,7 @@ export function createFuryGatewayLocalBootstrapManager(
     ): FuryGatewayWebSocketResolvedConnection | undefined {
       const at = finiteNow(now);
       gc(at);
+      if (!isLoopback(request.socket.remoteAddress)) return undefined;
       const origin = requestOrigin(request, allowedOrigins);
       if (!origin) return undefined;
 
