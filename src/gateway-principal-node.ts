@@ -256,6 +256,7 @@ export function createFuryGatewayPrincipalRegistry(
       && state.generation === principal.generation
       && state.kind === principal.kind
       && state.issuer === principal.issuer
+      && state.subjectSha256 === principal.subjectSha256
       && state.authenticationMethod === principal.authenticationMethod;
   };
 
