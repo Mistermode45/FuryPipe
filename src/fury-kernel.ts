@@ -458,8 +458,7 @@ export function createFuryKernelConversationStore(
       const turn: MutableTurn = {
         turnId: nextOpaqueId(
           'fkt_',
-          (candidate) => [...conversations.values()]
-            .some((conversation) => conversation.turns.some((existing) => existing.turnId === candidate)),
+          (candidate) => state.turns.some((existing) => existing.turnId === candidate),
         ),
         requestMessageId: id,
         status: 'accepted',
