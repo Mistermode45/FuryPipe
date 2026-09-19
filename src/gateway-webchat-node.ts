@@ -755,6 +755,38 @@ export function createFuryGatewayWebChatHandler(
     throw new Error('Gateway WebChat requires an exact local origin');
   }
   const local = normalizeOrigin(options.origin);
+  const modelBridgeEnabled = options.modelBridgeEnabled === true;
+  if (modelBridgeEnabled) {
+    if (
+      options.modelProvider !== 'openai'
+      && options.modelProvider !== 'anthropic'
+      && options.modelProvider !== 'google'
+    ) {
+      throw new Error('Gateway WebChat model provider is invalid');
+    }
+    if (
+      typeof options.model !== 'string'
+      || options.model.length < 1
+      || options.model.length > 256
+      || options.model.trim() !== options.model
+      || /[\u0000-\u001f\u007f]/u.test(options.model)
+    ) {
+      throw new Error('Gateway WebChat model identifier is invalid');
+    }
+  } else if (options.modelProvider !== undefined || options.model !== undefined) {
+    throw new Error('Gateway WebChat disabled model bridge must not expose model metadata');
+  }
+  const webChatConfig = JSON.stringify(Object.freeze({
+    format: FURY_GATEWAY_WEBCHAT_CONFIG_FORMAT,
+    modelBridge: modelBridgeEnabled
+      ? Object.freeze({
+          enabled: true as const,
+          providerId: options.modelProvider!,
+          model: options.model!,
+        })
+      : Object.freeze({ enabled: false as const }),
+    executionAuthority: false as const,
+  }));
   const csp = [
     "default-src 'none'",
     "base-uri 'none'",
@@ -797,6 +829,7 @@ export function createFuryGatewayWebChatHandler(
       parsed.pathname !== FURY_GATEWAY_WEBCHAT_PATH
       && parsed.pathname !== FURY_GATEWAY_WEBCHAT_SCRIPT_PATH
       && parsed.pathname !== FURY_GATEWAY_WEBCHAT_STYLE_PATH
+      && parsed.pathname !== FURY_GATEWAY_WEBCHAT_CONFIG_PATH
     ) {
       return false;
     }
@@ -818,8 +851,17 @@ export function createFuryGatewayWebChatHandler(
       send(request, response, 200, 'text/html; charset=utf-8', HTML, csp);
     } else if (parsed.pathname === FURY_GATEWAY_WEBCHAT_SCRIPT_PATH) {
       send(request, response, 200, 'text/javascript; charset=utf-8', JS, csp);
-    } else {
+    } else if (parsed.pathname === FURY_GATEWAY_WEBCHAT_STYLE_PATH) {
       send(request, response, 200, 'text/css; charset=utf-8', CSS, csp);
+    } else {
+      send(
+        request,
+        response,
+        200,
+        'application/json; charset=utf-8',
+        webChatConfig,
+        csp,
+      );
     }
     return true;
   };
