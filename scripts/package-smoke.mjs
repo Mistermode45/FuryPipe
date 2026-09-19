@@ -329,6 +329,18 @@ try {
     "const m = await import('furypipe/gateway-local-model-runtime-node'); if (typeof m.createFuryGatewayLocalModelRuntime !== 'function') process.exit(1);",
   ], installDir);
   assert(gatewayLocalModelRuntimeExport.stderr === '', `Gateway local model runtime export wrote stderr: ${gatewayLocalModelRuntimeExport.stderr}`);
+  const furyKernelToolBridgeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/fury-kernel-tool-bridge-node'); if (typeof m.createFuryKernelToolBridge !== 'function' || m.FURY_KERNEL_TOOL_BRIDGE_FORMAT !== 'furypipe-kernel-tool-bridge/v1') process.exit(1);",
+  ], installDir);
+  assert(furyKernelToolBridgeExport.stderr === '', `Fury Kernel tool bridge export wrote stderr: ${furyKernelToolBridgeExport.stderr}`);
+  const gatewayToolCommandExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-tool-command-node'); if (!Array.isArray(m.FURY_GATEWAY_TOOL_COMMAND_NAMES) || !Array.isArray(m.FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS)) process.exit(1);",
+  ], installDir);
+  assert(gatewayToolCommandExport.stderr === '', `Gateway tool command export wrote stderr: ${gatewayToolCommandExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
