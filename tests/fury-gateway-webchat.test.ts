@@ -22,6 +22,8 @@ async function startWebChatServer(
     readonly modelBridgeEnabled?: boolean;
     readonly modelProvider?: 'openai' | 'anthropic' | 'google';
     readonly model?: string;
+    readonly toolBridgeEnabled?: boolean;
+    readonly toolSourceCount?: number;
   } = {},
 ): Promise<{ readonly origin: string }> {
   let handler: ReturnType<typeof createFuryGatewayWebChatHandler> | undefined;
@@ -110,6 +112,12 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
     expect(js).toContain("'conversation.model.execute'");
     expect(js).toContain("'provider-inference'");
     expect(js).toContain("'conversation.inspect'");
+    expect(js).toContain("'tools.sources.inspect'");
+    expect(js).toContain("'tools.propose'");
+    expect(js).toContain("'tools.approve'");
+    expect(js).toContain("'tools.execute'");
+    expect(js).toContain("'process'");
+    expect(js).toContain("'network'");
     expect(js).toContain('textContent');
     expect(js).not.toContain('innerHTML');
     expect(js).not.toMatch(/https?:\/\//u);
@@ -123,6 +131,7 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
     expect(await disabledResponse.json()).toEqual({
       format: 'furypipe-gateway-webchat-config/v1',
       modelBridge: { enabled: false },
+      tools: { enabled: false },
       executionAuthority: false,
     });
 
@@ -140,9 +149,46 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
         providerId: 'openai',
         model: 'gpt-5.6-sol',
       },
+      tools: { enabled: false },
       executionAuthority: false,
     });
     expect(JSON.stringify(payload)).not.toMatch(/api[_-]?key|credential|token/i);
+  });
+
+  it('serves only redacted tool availability metadata', async () => {
+    const enabled = await startWebChatServer({
+      toolBridgeEnabled: true,
+      toolSourceCount: 2,
+    });
+    const response = await fetch(enabled.origin + FURY_GATEWAY_WEBCHAT_CONFIG_PATH);
+    const payload = await response.json();
+
+    expect(payload).toEqual({
+      format: 'furypipe-gateway-webchat-config/v1',
+      modelBridge: { enabled: false },
+      tools: {
+        enabled: true,
+        sourceCount: 2,
+      },
+      executionAuthority: false,
+    });
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toMatch(/credential|token|header|command|url|policy|fingerprint/i);
+  });
+
+  it('rejects contradictory or malformed tool metadata', () => {
+    expect(() => createFuryGatewayWebChatHandler({
+      origin: 'http://127.0.0.1:48722',
+      toolSourceCount: 1,
+    })).toThrow(/disabled tool bridge/u);
+
+    for (const count of [0, 33, 1.5]) {
+      expect(() => createFuryGatewayWebChatHandler({
+        origin: 'http://127.0.0.1:48722',
+        toolBridgeEnabled: true,
+        toolSourceCount: count,
+      })).toThrow(/source count/u);
+    }
   });
 
   it('rejects contradictory or malformed model metadata', () => {
