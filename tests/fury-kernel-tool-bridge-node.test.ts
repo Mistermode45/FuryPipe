@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -489,6 +489,11 @@ describe('Fury Kernel governed MCP tool bridge', () => {
     const root = mkdtempSync(join(tmpdir(), 'furypipe-tool-bridge-drift-'));
     try {
       const statePath = join(root, 'state.json');
+      writeFileSync(
+        statePath,
+        JSON.stringify({ mode: 'stable', calls: 0 }),
+        'utf8',
+      );
       const config = fixtureConfig(
         'tool-bridge-drift-fixture',
         driftFixturePath,
@@ -519,6 +524,13 @@ describe('Fury Kernel governed MCP tool bridge', () => {
         approvalKind: 'governed_policy',
       });
 
+      // Flip the real MCP server schema only after the proposal was created.
+      writeFileSync(
+        statePath,
+        JSON.stringify({ mode: 'drift', calls: 0 }),
+        'utf8',
+      );
+
       const executed = await instance.execute(proposed.proposalId!);
       expect(executed).toMatchObject({
         status: 'failed',
@@ -535,10 +547,10 @@ describe('Fury Kernel governed MCP tool bridge', () => {
       });
 
       const state = JSON.parse(readFileSync(statePath, 'utf8')) as {
-        launches: number;
+        mode: string;
         calls: number;
       };
-      expect(state.launches).toBeGreaterThanOrEqual(2);
+      expect(state.mode).toBe('drift');
       expect(state.calls).toBe(0);
       expect(instance.pendingProposalCount()).toBe(0);
     } finally {
