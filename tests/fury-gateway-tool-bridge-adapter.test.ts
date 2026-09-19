@@ -87,6 +87,7 @@ function fakeBridge(overrides: Partial<FuryKernelToolBridge> = {}): FuryKernelTo
       proposalId.includes('http') ? 'streamable_http' : 'stdio',
     discard: () => true,
     pendingProposalCount: () => 0,
+    activeProbeCount: () => 0,
     activeExecutionCount: () => 0,
   };
   return Object.freeze({ ...base, ...overrides });
