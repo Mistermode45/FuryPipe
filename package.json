@@ -117,6 +117,10 @@
       "types": "./dist/agent-runtime.d.ts",
       "import": "./dist/agent-runtime.js"
     },
+    "./fury-kernel": {
+      "types": "./dist/fury-kernel.d.ts",
+      "import": "./dist/fury-kernel.js"
+    },
     "./skill-registry": {
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"
