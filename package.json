@@ -109,14 +109,6 @@
       "types": "./dist/gateway.d.ts",
       "import": "./dist/gateway.js"
     },
-    "./gateway-auth-node": {
-      "types": "./dist/gateway-auth-node.d.ts",
-      "import": "./dist/gateway-auth-node.js"
-    },
-    "./gateway-pairing-node": {
-      "types": "./dist/gateway-pairing-node.d.ts",
-      "import": "./dist/gateway-pairing-node.js"
-    },
     "./agent-fabric": {
       "types": "./dist/agent-fabric.d.ts",
       "import": "./dist/agent-fabric.js"
