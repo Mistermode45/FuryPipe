@@ -153,6 +153,10 @@
       "types": "./dist/gateway-tool-command-node.d.ts",
       "import": "./dist/gateway-tool-command-node.js"
     },
+    "./gateway-tool-bridge-adapter-node": {
+      "types": "./dist/gateway-tool-bridge-adapter-node.d.ts",
+      "import": "./dist/gateway-tool-bridge-adapter-node.js"
+    },
     "./skill-registry": {
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"
