@@ -69,6 +69,27 @@ authorization = none
 
 Pairing therefore pins identity but grants no command/tool scope.
 
+## Process-local provenance
+
+A successful signature verification returns an authenticated-device object that is also registered in a process-local provenance set.
+
+Therefore:
+
+```text
+valid serialized shape
+!= authenticated-device authority
+
+copied object
+!= authenticated-device authority
+
+JSON round-trip
+!= authenticated-device authority
+```
+
+The pairing coordinator accepts only provenance-bearing evidence produced by the actual verifier in this process.
+
+This follows the same anti-forgery pattern already used by FuryPipe governed execution surfaces: public data can describe evidence, but serialized data alone cannot recreate process-local authority.
+
 ## Device identity
 
 The device uses an Ed25519 key pair.
