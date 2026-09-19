@@ -647,6 +647,10 @@ const JS = `(() => {
   }
 
   function handleStateResult(message) {
+    if (safeText(message.commandName).startsWith('tools.')) {
+      handleToolGatewayResult(message);
+      return;
+    }
     const adapter = message.result;
     if (!adapter || typeof adapter !== 'object') {
       addActivity('Blocked', 'Malformed state result.', 'blocked');
@@ -756,6 +760,11 @@ const JS = `(() => {
       addActivity('Accepted', 'Authenticated local Gateway transport connected.', 'accepted');
       if (state.conversationId) inspectConversation();
       else sendCommand('conversation.open', {});
+      if (state.toolBridgeEnabled) {
+        // Metadata-only state command. Fresh MCP process/network probing still
+        // requires the operator to press Refresh inventory.
+        sendCommand('tools.sources.inspect', {});
+      }
       return;
     }
 
@@ -763,15 +772,20 @@ const JS = `(() => {
       const admission = message.admission;
       const commandName = safeText(admission?.commandName);
       if (admission?.outcome === 'eligible') {
-        addActivity(
-          commandName === 'conversation.model.execute' ? 'Model eligible' : 'State eligible',
-          commandName || 'Command admitted.',
-          'eligible',
-        );
+        const title = commandName === 'conversation.model.execute'
+          ? 'Model eligible'
+          : commandName.startsWith('tools.')
+            ? 'Tool eligible'
+            : 'State eligible';
+        addActivity(title, commandName || 'Command admitted.', 'eligible');
       } else {
         const reason = safeText(admission?.reason) || 'command denied';
         addActivity('Blocked', reason, 'blocked');
-        turnStatus.textContent = reason;
+        if (commandName.startsWith('tools.')) {
+          toolStatus.textContent = reason;
+        } else {
+          turnStatus.textContent = reason;
+        }
         if (
           commandName === 'conversation.model.execute'
           && state.conversationId
@@ -792,6 +806,10 @@ const JS = `(() => {
     }
 
     if (message.type === 'execution-command-result') {
+      if (safeText(message.commandName).startsWith('tools.')) {
+        handleToolGatewayResult(message);
+        return;
+      }
       const result = message.result;
       if (!result || typeof result !== 'object') {
         addActivity('Blocked', 'Malformed model execution result.', 'blocked');
@@ -837,10 +855,21 @@ const JS = `(() => {
       state.modelBridgeEnabled = modelBridge?.enabled === true;
       state.modelProvider = state.modelBridgeEnabled ? safeText(modelBridge.providerId) : null;
       state.model = state.modelBridgeEnabled ? safeText(modelBridge.model) : null;
+      const tools = config?.tools;
+      state.toolBridgeEnabled = tools?.enabled === true;
+      state.toolSourceCount = state.toolBridgeEnabled && Number.isSafeInteger(tools?.sourceCount)
+        ? tools.sourceCount
+        : 0;
+      toolsPanel.hidden = !state.toolBridgeEnabled;
+      toolSourceCount.textContent = String(state.toolSourceCount) + ' source'
+        + (state.toolSourceCount === 1 ? '' : 's');
     } catch {
       state.modelBridgeEnabled = false;
       state.modelProvider = null;
       state.model = null;
+      state.toolBridgeEnabled = false;
+      state.toolSourceCount = 0;
+      toolsPanel.hidden = true;
     }
   }
 
