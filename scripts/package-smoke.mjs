@@ -368,7 +368,7 @@ try {
   const gatewayHiddenExports = await run(process.execPath, [
     '--input-type=module',
     '-e',
-    "for (const subpath of ['gateway-auth-node','gateway-pairing-node','gateway-principal-node','gateway-session-node','gateway-command-authorization-node','gateway-transport-node']) { try { await import('furypipe/' + subpath); process.exit(2); } catch (error) { if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }",
+    "for (const subpath of ['gateway-auth-node','gateway-pairing-node','gateway-principal-node','gateway-session-node','gateway-command-authorization-node','gateway-transport-node','gateway-websocket-host-node']) { try { await import('furypipe/' + subpath); process.exit(2); } catch (error) { if (error?.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }",
   ], installDir);
   assert(gatewayHiddenExports.stderr === '', `Hidden Gateway authority package paths wrote stderr: ${gatewayHiddenExports.stderr}`);
   const providerRuntimeExport = await run(process.execPath, [

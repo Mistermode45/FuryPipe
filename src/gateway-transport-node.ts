@@ -204,6 +204,7 @@ const MAX_MESSAGE_ID_BYTES = 96;
 const MAX_COMMAND_NAME_BYTES = 128;
 const MAX_NONCE_BYTES = 128;
 const MAX_CURSOR_BYTES = 256;
+const CONNECTION_ID_PREFIX = 'gwc_';
 
 const MESSAGE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
 const COMMAND_NAME_RE = /^[a-z][a-z0-9._:-]*$/u;
@@ -742,7 +743,7 @@ export function createFuryGatewayTransportCoordinator(
 
       let connectionId: string;
       do {
-        connectionId = randomBytes(18).toString('base64url');
+        connectionId = `${CONNECTION_ID_PREFIX}${randomBytes(18).toString('base64url')}`;
       } while (states.has(connectionId));
 
       const evidence = Object.freeze({
