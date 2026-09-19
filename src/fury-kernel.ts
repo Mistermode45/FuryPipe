@@ -194,6 +194,31 @@ function boundedInteger(
   return resolved;
 }
 
+function assertExactKeys(
+  value: unknown,
+  allowedKeys: readonly string[],
+  code: FuryKernelConversationErrorCode,
+  label: string,
+): asserts value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new FuryKernelConversationError(code, `${label} must be a plain object`);
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new FuryKernelConversationError(code, `${label} must use a plain-object prototype`);
+  }
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    throw new FuryKernelConversationError(code, `${label} must not contain symbol keys`);
+  }
+  const allowed = new Set(allowedKeys);
+  for (const key of Object.getOwnPropertyNames(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || !('value' in descriptor) || !allowed.has(key)) {
+      throw new FuryKernelConversationError(code, `${label} contains unsupported fields`);
+    }
+  }
+}
+
 function canonicalId(
   value: unknown,
   pattern: RegExp,
@@ -346,9 +371,7 @@ export function createFuryKernelConversationStore(
 
   return Object.freeze({
     openConversation(input: FuryKernelOpenConversationInput = {}): FuryKernelConversationSnapshot {
-      if (!input || typeof input !== 'object' || Array.isArray(input)) {
-        throw new FuryKernelConversationError('invalid-conversation', 'conversation input must be an object');
-      }
+      assertExactKeys(input, ['conversationId'], 'invalid-conversation', 'conversation input');
       if (conversations.size >= maxConversations) {
         throw new FuryKernelConversationError('conversation-limit', 'active conversation limit reached');
       }
@@ -380,9 +403,12 @@ export function createFuryKernelConversationStore(
     },
 
     submitUserMessage(input: FuryKernelSubmitMessageInput): FuryKernelAcceptedTurn {
-      if (!input || typeof input !== 'object' || Array.isArray(input)) {
-        throw new FuryKernelConversationError('invalid-message', 'message input must be an object');
-      }
+      assertExactKeys(
+        input,
+        ['conversationId', 'messageId', 'content'],
+        'invalid-message',
+        'message input',
+      );
       const state = requireConversation(input.conversationId);
       const id = messageId(input.messageId);
       const body = messageContent(input.content, maxMessageBytes);
@@ -414,7 +440,11 @@ export function createFuryKernelConversationStore(
 
       const at = finiteNow(now);
       const turn = {
-        turnId: nextOpaqueId('fkt_', () => false),
+        turnId: nextOpaqueId(
+          'fkt_',
+          (candidate) => [...conversations.values()]
+            .some((conversation) => conversation.turns.some((existing) => existing.turnId === candidate)),
+        ),
         requestMessageId: id,
         status: 'accepted' as const,
         createdAt: at,
@@ -445,9 +475,12 @@ export function createFuryKernelConversationStore(
     },
 
     completeTurn(input: FuryKernelCompleteTurnInput): FuryKernelCompletedTurn {
-      if (!input || typeof input !== 'object' || Array.isArray(input)) {
-        throw new FuryKernelConversationError('invalid-message', 'turn completion input must be an object');
-      }
+      assertExactKeys(
+        input,
+        ['conversationId', 'turnId', 'messageId', 'content'],
+        'invalid-message',
+        'turn completion input',
+      );
       const state = requireConversation(input.conversationId);
       const requestedTurnId = turnId(input.turnId);
       const turn = findTurn(state, requestedTurnId);
@@ -494,9 +527,12 @@ export function createFuryKernelConversationStore(
     },
 
     cancelTurn(input: FuryKernelCancelTurnInput): FuryKernelCancelledTurn {
-      if (!input || typeof input !== 'object' || Array.isArray(input)) {
-        throw new FuryKernelConversationError('turn-not-found', 'turn cancellation input must be an object');
-      }
+      assertExactKeys(
+        input,
+        ['conversationId', 'turnId'],
+        'turn-not-found',
+        'turn cancellation input',
+      );
       const state = requireConversation(input.conversationId);
       const requestedTurnId = turnId(input.turnId);
       const turn = findTurn(state, requestedTurnId);
