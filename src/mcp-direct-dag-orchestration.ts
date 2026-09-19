@@ -283,11 +283,24 @@ export function createMcpDirectDagPlan(input: McpDirectDagPlanInput): McpDirectD
   const nodes = input.nodes
     .map((node) => ({ ...canonicalNode(node), nodeId: digest(canonicalNode(node)) }) as McpDirectDagNodeDefinition)
     .sort((a, b) => a.id.localeCompare(b.id));
+  const canonicalQuotas: McpDirectDagQuotas = {
+    maxNodes: input.quotas.maxNodes,
+    maxEdges: input.quotas.maxEdges,
+    maxDepth: input.quotas.maxDepth,
+    maxFanIn: input.quotas.maxFanIn,
+    maxFanOut: input.quotas.maxFanOut,
+    maxPlanBytes: input.quotas.maxPlanBytes,
+    maxNodeInputBytes: input.quotas.maxNodeInputBytes,
+    maxAggregateOutputBytes: input.quotas.maxAggregateOutputBytes,
+    maxWallClockMs: input.quotas.maxWallClockMs,
+    maxConcurrentNodes: input.quotas.maxConcurrentNodes,
+    maxRecoveryEvidence: input.quotas.maxRecoveryEvidence,
+  };
   const serial = {
     formatVersion: 1,
     nodes,
     edges: [...edges].sort((a, b) => a.from.localeCompare(b.from) || a.to.localeCompare(b.to)),
-    quotas: input.quotas,
+    quotas: canonicalQuotas,
   };
   const serialized = JSON.stringify(serial);
   const byteLength = new TextEncoder().encode(serialized).byteLength;
@@ -297,7 +310,7 @@ export function createMcpDirectDagPlan(input: McpDirectDagPlanInput): McpDirectD
     digest: digest(serial),
     nodes: freezeDeep(nodes),
     edges: freezeDeep(serial.edges),
-    quotas: freezeDeep({ ...input.quotas }),
+    quotas: freezeDeep({ ...canonicalQuotas }),
     topologicalOrder: freezeDeep([...topologicalOrder]),
     byteLength,
   });
