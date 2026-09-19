@@ -502,6 +502,7 @@ export function createFuryGatewaySessionCoordinator(
 
     inspectSession(session: FuryGatewaySessionLease): FuryGatewaySessionInspection {
       const at = finiteNow(now);
+      gc(at);
       const state = resolveState(session);
       const status = refreshSessionStatus(state, principalRegistry, at);
       return Object.freeze({
@@ -520,6 +521,7 @@ export function createFuryGatewaySessionCoordinator(
     isActiveSession(session: FuryGatewaySessionLease): boolean {
       const at = finiteNow(now);
       try {
+        gc(at);
         const state = resolveState(session);
         return refreshSessionStatus(state, principalRegistry, at) === 'active';
       } catch {
