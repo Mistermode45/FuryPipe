@@ -139,7 +139,7 @@ const HTML = `<!doctype html>
         </div>
         <div class="tool-control tool-arguments">
           <label for="tool-arguments">Arguments (JSON)</label>
-          <textarea id="tool-arguments" rows="5" spellcheck="false">{}</textarea>
+          <textarea id="tool-arguments" rows="5" maxlength="49152" spellcheck="false">{}</textarea>
         </div>
         <div class="tool-actions tool-lifecycle-actions">
           <button id="tool-propose" type="button" disabled>Propose</button>
@@ -456,6 +456,23 @@ const JS = `(() => {
     toolPropose.disabled = true;
   }
 
+  function restoreToolActionAfterRejection(commandName) {
+    if (commandName === 'tools.approve' && state.toolProposalStatus === 'approval-required') {
+      toolApprove.disabled = false;
+      toolDiscard.disabled = false;
+    }
+    if (
+      (commandName === 'tools.execute.stdio' || commandName === 'tools.execute.http')
+      && state.toolProposalStatus === 'approved'
+    ) {
+      toolExecute.disabled = false;
+      toolDiscard.disabled = false;
+    }
+    if (commandName === 'tools.discard' && state.toolProposalId) {
+      toolDiscard.disabled = false;
+    }
+  }
+
   function resetToolInventory() {
     state.toolInventory = [];
     toolName.replaceChildren();
@@ -566,6 +583,7 @@ const JS = `(() => {
     }
     if (adapter.status !== 'ok') {
       const code = safeText(adapter.error?.code) || 'tool-command-rejected';
+      restoreToolActionAfterRejection(safeText(message.commandName));
       toolStatus.textContent = code;
       addActivity('Blocked', code, 'blocked');
       return;
@@ -796,6 +814,7 @@ const JS = `(() => {
         const reason = safeText(admission?.reason) || 'command denied';
         addActivity('Blocked', reason, 'blocked');
         if (commandName.startsWith('tools.')) {
+          restoreToolActionAfterRejection(commandName);
           toolStatus.textContent = reason;
         } else {
           turnStatus.textContent = reason;
