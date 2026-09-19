@@ -102,6 +102,7 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
     expect(cssResponse.headers.get('content-type')).toBe('text/css; charset=utf-8');
     expect(js.length).toBeGreaterThan(1000);
     expect(css.length).toBeGreaterThan(1000);
+    expect(css).toContain('[hidden] { display: none !important; }');
 
     expect(js).toContain("'/gateway/local-bootstrap/v1'");
     expect(js).toContain("'/gateway/local-logout/v1'");
