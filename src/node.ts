@@ -38,7 +38,6 @@ import {
 import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
 import { runSetupWizard } from './setup-tui.js';
-import { runFuryGatewayCli } from './gateway-local-cli-node.js';
 import { refreshRuntimeModelCatalog } from './model-catalog-node.js';
 import { normalizeModelScopeEntry, parseModelScopeList, resolvePersistedModelScope } from './model-config.js';
 import { FURYPIPE_DEFAULT_HOST, FURYPIPE_DEFAULT_PORT, parseFuryPipePort } from './runtime-defaults.js';
@@ -1323,6 +1322,10 @@ async function main(): Promise<void> {
     return;
   }
   if (argv[0] === 'gateway') {
+    // Keep the heavier Gateway/WebSocket stack out of the legacy CLI startup
+    // path. Commands such as --version, setup and doctor must not initialize
+    // transport dependencies they do not use.
+    const { runFuryGatewayCli } = await import('./gateway-local-cli-node.js');
     const code = await runFuryGatewayCli(argv.slice(1));
     process.exitCode = code;
     return;
