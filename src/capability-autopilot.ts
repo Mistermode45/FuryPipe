@@ -7,6 +7,14 @@ import {
   type FuryCapabilityIndexKind,
   type FuryCapabilityIndexRecord,
 } from './capability-index.js';
+import {
+  isGeneratedFuryCapabilitySignalRegistry,
+  type FuryCapabilitySignalEvidenceKind,
+  type FuryCapabilitySignalHealth,
+  type FuryCapabilitySignalRegistry,
+  type FuryCapabilitySignalSnapshotRecord,
+  type FuryCapabilitySignalStatus,
+} from './capability-signals.js';
 
 export const FURY_CAPABILITY_SELECTION_FORMAT =
   'furypipe-capability-selection/v1' as const;
@@ -63,7 +71,25 @@ export interface FuryCapabilitySelectionInput {
   readonly availablePermissions?: readonly string[];
   /** Optional family hints from a trusted deterministic classifier/host. */
   readonly requiredFamilies?: readonly string[];
+  /**
+   * Optional process-local measured evidence. Signals can refine current
+   * health and deterministic tie-breaking but never grant authority.
+   */
+  readonly signals?: FuryCapabilitySignalRegistry;
   readonly options?: FuryCapabilitySelectionOptions;
+}
+
+export interface FurySelectedCapabilitySignal {
+  readonly status: FuryCapabilitySignalStatus;
+  readonly fingerprintSha256?: string;
+  readonly health?: FuryCapabilitySignalHealth;
+  readonly latencyMs?: number;
+  readonly observedCostUsd?: number;
+  readonly costBasis?: string;
+  readonly observedAt?: number;
+  readonly expiresAt?: number;
+  readonly source?: string;
+  readonly evidenceKind?: FuryCapabilitySignalEvidenceKind;
 }
 
 export interface FurySelectedCapability {
@@ -77,6 +103,7 @@ export interface FurySelectedCapability {
   readonly requestedExplicitly: boolean;
   readonly requiredPermissions: readonly string[];
   readonly estimatedContextTokens?: number;
+  readonly measuredSignal?: FurySelectedCapabilitySignal;
 }
 
 export interface FuryBlockedCapability {
@@ -95,6 +122,7 @@ export interface FuryCapabilitySelectionPlan {
   readonly format: typeof FURY_CAPABILITY_SELECTION_FORMAT;
   readonly objectiveDigestSha256: string;
   readonly indexDigestSha256: string;
+  readonly signalSnapshotDigestSha256?: string;
   readonly selectionDigestSha256: string;
   readonly selected: readonly FurySelectedCapability[];
   readonly blocked: readonly FuryBlockedCapability[];
@@ -103,6 +131,9 @@ export interface FuryCapabilitySelectionPlan {
   >;
   readonly missingExplicitRequests: readonly FuryMissingExplicitCapability[];
   readonly candidatesConsidered: number;
+  readonly signalRecordsConsidered?: number;
+  readonly signalFreshRecords?: number;
+  readonly signalStaleRecords?: number;
   readonly selectedCount: number;
   readonly estimatedContextTokensKnown: number;
   readonly estimatedContextTokensUnknown: number;
@@ -117,6 +148,7 @@ interface ScoredCapability {
   readonly penalty: number;
   readonly score: number;
   readonly reason: FuryCapabilitySelectionReason;
+  readonly signal?: FuryCapabilitySignalSnapshotRecord;
 }
 
 const CAPABILITY_SELECTION_EVIDENCE = new WeakSet<object>();
@@ -412,8 +444,17 @@ function candidateTokenWeights(
   return weights;
 }
 
+function measuredHealth(
+  signal: FuryCapabilitySignalSnapshotRecord | undefined,
+): FuryCapabilitySignalHealth | undefined {
+  return signal?.status === 'fresh'
+    ? signal.observation.health
+    : undefined;
+}
+
 function blockReasonFor(
   record: FuryCapabilityIndexRecord,
+  signal: FuryCapabilitySignalSnapshotRecord | undefined,
   hostCompatibility: ReadonlySet<string> | undefined,
   availablePermissions: ReadonlySet<string>,
 ): FuryCapabilitySelectionBlockReason | undefined {
@@ -421,9 +462,23 @@ function blockReasonFor(
   if (record.trust === 'unverified') return 'trust-unverified';
   if (record.trust === 'unknown') return 'trust-unknown';
   if (record.license === 'unknown') return 'license-unknown';
+
+  // Source-of-truth health cannot be improved by runtime metrics.
   if (record.health === 'blocked') return 'health-blocked';
   if (record.health === 'unavailable') return 'health-unavailable';
-  if (record.health === 'unknown') return 'health-unknown';
+
+  // Fresh measured evidence may worsen health, or resolve an indexed
+  // "unknown". Stale evidence never resolves unknown health.
+  const signalHealth = measuredHealth(signal);
+  if (signalHealth === 'blocked') return 'health-blocked';
+  if (signalHealth === 'unavailable') return 'health-unavailable';
+  if (
+    record.health === 'unknown'
+    && signalHealth !== 'ready'
+    && signalHealth !== 'degraded'
+  ) {
+    return 'health-unknown';
+  }
 
   if (record.compatibility.length > 0) {
     if (hostCompatibility === undefined) return 'compatibility-unproven';
@@ -438,14 +493,76 @@ function blockReasonFor(
   return undefined;
 }
 
-function riskPenalty(record: FuryCapabilityIndexRecord): number {
+function riskPenalty(
+  record: FuryCapabilityIndexRecord,
+  signal: FuryCapabilitySignalSnapshotRecord | undefined,
+): number {
   const contextPenalty = record.estimatedContextTokens === undefined
     ? 0
     : Math.min(4, record.estimatedContextTokens / 2_048);
-  const healthPenalty = record.health === 'degraded' ? 0.5 : 0;
+  const signalHealth = measuredHealth(signal);
+  const healthPenalty =
+    record.health === 'degraded' || signalHealth === 'degraded'
+      ? 0.5
+      : 0;
   return Number((
     RISK_PENALTIES[record.riskClass] + healthPenalty + contextPenalty
   ).toFixed(6));
+}
+
+function signalSummary(
+  signal: FuryCapabilitySignalSnapshotRecord | undefined,
+): FurySelectedCapabilitySignal {
+  if (!signal) {
+    return Object.freeze({
+      status: 'unknown' as const,
+    });
+  }
+  const observation = signal.observation;
+  return Object.freeze({
+    status: signal.status,
+    fingerprintSha256: observation.fingerprintSha256,
+    ...(observation.health === undefined ? {} : { health: observation.health }),
+    ...(observation.latencyMs === undefined ? {} : { latencyMs: observation.latencyMs }),
+    ...(observation.observedCostUsd === undefined
+      ? {}
+      : { observedCostUsd: observation.observedCostUsd }),
+    ...(observation.costBasis === undefined ? {} : { costBasis: observation.costBasis }),
+    observedAt: observation.observedAt,
+    expiresAt: observation.expiresAt,
+    source: observation.source,
+    evidenceKind: observation.evidenceKind,
+  });
+}
+
+function compareMeasuredCost(
+  a: FuryCapabilitySignalSnapshotRecord | undefined,
+  b: FuryCapabilitySignalSnapshotRecord | undefined,
+): number {
+  if (a?.status !== 'fresh' || b?.status !== 'fresh') return 0;
+  const ao = a.observation;
+  const bo = b.observation;
+  if (
+    ao.observedCostUsd === undefined
+    || bo.observedCostUsd === undefined
+    || ao.costBasis === undefined
+    || bo.costBasis === undefined
+    || ao.costBasis !== bo.costBasis
+  ) {
+    return 0;
+  }
+  return ao.observedCostUsd - bo.observedCostUsd;
+}
+
+function compareMeasuredLatency(
+  a: FuryCapabilitySignalSnapshotRecord | undefined,
+  b: FuryCapabilitySignalSnapshotRecord | undefined,
+): number {
+  if (a?.status !== 'fresh' || b?.status !== 'fresh') return 0;
+  const aLatency = a.observation.latencyMs;
+  const bLatency = b.observation.latencyMs;
+  if (aLatency === undefined || bLatency === undefined) return 0;
+  return aLatency - bLatency;
 }
 
 function relevantReason(
@@ -508,6 +625,7 @@ export function selectFuryCapabilitiesForTask(
       'hostCompatibility',
       'availablePermissions',
       'requiredFamilies',
+      'signals',
       'options',
     ],
     ['objective', 'index'],
@@ -537,6 +655,16 @@ export function selectFuryCapabilitiesForTask(
     (root.requiredFamilies as readonly string[] | undefined) ?? [],
     'requiredFamilies',
   ) ?? new Set<string>();
+
+  let signals: FuryCapabilitySignalRegistry | undefined;
+  if (root.signals !== undefined) {
+    if (!isGeneratedFuryCapabilitySignalRegistry(root.signals)) {
+      throw new TypeError(
+        'Capability Autopilot selection requires a process-local signal registry',
+      );
+    }
+    signals = root.signals;
+  }
 
   const options = root.options === undefined
     ? {}
@@ -582,6 +710,11 @@ export function selectFuryCapabilitiesForTask(
   if (snapshot.count > maxCandidates) {
     throw new RangeError('Capability Autopilot candidate bound exceeded');
   }
+  const signalSnapshot = signals?.snapshot();
+  const signalByIdentity = new Map<string, FuryCapabilitySignalSnapshotRecord>();
+  for (const signal of signalSnapshot?.records ?? []) {
+    signalByIdentity.set(identity(signal.kind, signal.id), signal);
+  }
 
   const requestedFound = new Set<string>();
   const tokenWeights = new Map<string, ReadonlyMap<string, number>>();
@@ -602,9 +735,11 @@ export function selectFuryCapabilitiesForTask(
     const key = identity(record.kind, record.id);
     const requestedExplicitly = explicit.keys.has(key);
     if (requestedExplicitly) requestedFound.add(key);
+    const signal = signalByIdentity.get(key);
 
     const hardBlock = blockReasonFor(
       record,
+      signal,
       hostCompatibility,
       availablePermissions,
     );
@@ -641,7 +776,7 @@ export function selectFuryCapabilitiesForTask(
     }
 
     relevance = Number(relevance.toFixed(6));
-    const penalty = riskPenalty(record);
+    const penalty = riskPenalty(record, signal);
     const score = Number((
       (requestedExplicitly ? 1_000_000 : 0) + relevance - penalty
     ).toFixed(6));
@@ -669,6 +804,7 @@ export function selectFuryCapabilitiesForTask(
       penalty,
       score,
       reason: relevantReason(requestedExplicitly, familyMatches),
+      ...(signal === undefined ? {} : { signal }),
     }));
   }
 
@@ -676,6 +812,8 @@ export function selectFuryCapabilitiesForTask(
     Number(b.requestedExplicitly) - Number(a.requestedExplicitly)
     || b.score - a.score
     || a.penalty - b.penalty
+    || compareMeasuredCost(a.signal, b.signal)
+    || compareMeasuredLatency(a.signal, b.signal)
     || (a.record.estimatedContextTokens ?? Number.MAX_SAFE_INTEGER)
       - (b.record.estimatedContextTokens ?? Number.MAX_SAFE_INTEGER)
     || a.record.kind.localeCompare(b.record.kind)
@@ -722,6 +860,9 @@ export function selectFuryCapabilitiesForTask(
       ...(candidate.record.estimatedContextTokens === undefined
         ? {}
         : { estimatedContextTokens: candidate.record.estimatedContextTokens }),
+      ...(signals === undefined
+        ? {}
+        : { measuredSignal: signalSummary(candidate.signal) }),
     }));
   }
 
@@ -749,11 +890,16 @@ export function selectFuryCapabilitiesForTask(
   const selectionDigestSha256 = sha256(JSON.stringify({
     objectiveDigestSha256,
     indexDigestSha256: snapshot.digestSha256,
+    ...(signalSnapshot === undefined
+      ? {}
+      : { signalSnapshotDigestSha256: signalSnapshot.digestSha256 }),
     selected: selected.map((item) => [
       item.kind,
       item.id,
       item.fingerprintSha256,
       item.score,
+      item.measuredSignal?.status ?? null,
+      item.measuredSignal?.fingerprintSha256 ?? null,
     ]),
   }));
 
@@ -761,12 +907,22 @@ export function selectFuryCapabilitiesForTask(
     format: FURY_CAPABILITY_SELECTION_FORMAT,
     objectiveDigestSha256,
     indexDigestSha256: snapshot.digestSha256,
+    ...(signalSnapshot === undefined
+      ? {}
+      : { signalSnapshotDigestSha256: signalSnapshot.digestSha256 }),
     selectionDigestSha256,
     selected: Object.freeze(selected),
     blocked: Object.freeze(blocked.slice(0, maxBlockedDetails)),
     blockedCounts: blockedCountsObject(blockedCounts),
     missingExplicitRequests: Object.freeze(missingExplicitRequests),
     candidatesConsidered: snapshot.count,
+    ...(signalSnapshot === undefined
+      ? {}
+      : {
+          signalRecordsConsidered: signalSnapshot.count,
+          signalFreshRecords: signalSnapshot.fresh,
+          signalStaleRecords: signalSnapshot.stale,
+        }),
     selectedCount: selected.length,
     estimatedContextTokensKnown,
     estimatedContextTokensUnknown,
