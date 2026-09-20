@@ -563,3 +563,23 @@
 - Draft PR #111 opened against `v5-production-hardening`: https://github.com/Mistermode45/FuryPipe/pull/111. Verified `OPEN`, `DRAFT`, not merged; base SHA `bc92bef794df25b2a7c5418464a7fee0e4c695f8`; head SHA `5e09fd436b750530319ea242b6d0c1ffac0b6d55` at first CI completion.
 - GitHub CI first pass: 20 controls `PASS`, including the 9/9 matrix across Ubuntu 24.04, macOS 14, Windows 2025 × Node 22.23.2, 24.21.0, 26.8.2; CodeQL, frozen audit, SBOM, provenance input, action pinning, contract, secret scan and license reports passed. GitHub Dependency Review and packed npm artifact attestation were `SKIPPED` by repository workflow conditions, not counted as passes. A documentation-only follow-up updates this evidence; its final-head CI is rechecked separately.
 - Stop boundary: do not merge this PR, merge the default/release branch, publish npm, tag, release or deploy production without explicit approval.
+
+## 2026-09-21 — FuryPipe VNext Phase 6 Browser + Coding Runtime — local gate
+
+- Source of truth revalidated before editing : repository `Mistermode45/FuryPipe`, PR #216 OPEN/DRAFT, GitHub head `a8ac42103c96b28305d213c9db02edf37c9aa221`, base `vnext-phase4-channels-notifications`. Le descendant local Phase 5 `3beec507992f4cb698c2ceda4190dca9a2e6c6a5` a été conservé hors de la branche Phase 6.
+- Branche active : `vnext-phase6-browser-coding-runtime`, worktree isolé, parent exact `a8ac42103c96b28305d213c9db02edf37c9aa221` avant changement.
+- Architecture/documentation : `docs/FURYPIPE_VNEXT_PHASE6_BROWSER_CODING_RUNTIME_2026.md` fixe les frontières Gateway/Kernel/RecoveryStore existantes, les états unknown, les quotas et la non-autorité des observations.
+- Browser : lifecycle session/page, permits process-local one-shot liés au principal/session/page/action/cible/policy/TTL, validation SSRF et DNS mixte, revalidation des redirects/final URLs, observation data-only, upload/download gouvernés, hash exact de fichier, redaction et `outcome-unknown` après timeout/cancel.
+- Coding : repository capability process-local, worktree provider injecté avec base SHA exact, sandbox read/write séparée et chemins bornés, process shell-free allowlisté, quotas/TTL/output/env, patch exact-base/exact-file/text-only/atomic-per-file fail-closed, CodeGraph V1 incrémental borné et relations package/workspace, coordinator de vérification sans promotion automatique de `exit 0`.
+- Fichiers ajoutés : `src/browser-runtime.ts`, `src/coding-runtime.ts`, `src/patch-engine.ts`, `src/codegraph.ts`, `src/phase6-verification.ts`, `src/phase6.ts`, tests ciblés, documentation et `scripts/phase6-package-smoke.mjs`. `package.json` expose les six surfaces publiques Phase 6 et la documentation packagée.
+- `pnpm install --frozen-lockfile` : PASS, lockfile inchangé.
+- Tests ciblés Phase 6 : PASS, 4 fichiers / 18 tests.
+- `pnpm test` : PASS, 247 fichiers / 2 835 tests.
+- `pnpm run typecheck` : PASS, TypeScript principal et hosted MCP.
+- `pnpm run build` : PASS, bibliothèque/déclarations, `dist/node.js`, `dist/mcp.js`, version smoke `0.15.0`.
+- `node scripts/phase6-package-smoke.mjs` : PASS, tarball installé dans un répertoire temporaire et six exports publics Phase 6 importés depuis le package installé.
+- `pnpm run package:smoke` : PASS, package smoke, Phase 6 package smoke, benchmark-claim, provider-attempt et governed-provider smoke ; sorties 0.
+- `pnpm run audit` : PASS, aucune vulnérabilité connue dans les dépendances de production.
+- `git diff --check` : PASS après documentation et packaging local.
+- Limites : aucun navigateur réel/Playwright, DNS pinning hébergé, junction/reparse point multi-OS, provider Git réel, Gateway hébergé ou CI GitHub n’est encore prouvé sur ce HEAD ; aucun merge, release, tag, publish npm, deploy ou force push effectué.
+- Phase 7 : NOT_STARTED par invariant de fermeture ; elle reste interdite tant que les gates hébergés Phase 6 sur l’exact HEAD ne sont pas verts.

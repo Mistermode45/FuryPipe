@@ -263,3 +263,27 @@ Baseline d'intégration : `v5-production-hardening` / `bc92bef794df25b2a7c541846
 | Portée PR | REVIEWED | 18 fichiers au total (16 fichiers de transports/executor/docs/tests + `BASELINE.md` et `WORKLOG.md`); fichiers réservés, manifest, lockfile et smoke script exclus |
 | CI GitHub / PR | PASS / OPEN DRAFT | PR #111 vers `v5-production-hardening`, head `5e09fd436b750530319ea242b6d0c1ffac0b6d55`; 20 contrôles PASS, matrice 9/9; Dependency Review et attestation du tarball `SKIPPED` conditionnellement; PR non fusionnée |
 | Publish / release / tag / production deploy | NOT_EXECUTED | explicitement hors de ce travail |
+
+## FuryPipe VNext Phase 6 Browser + Coding Runtime — 2026-09-21
+
+| Vérification | Résultat | Mesure / preuve |
+|---|---|---|
+| Source de vérité | PASS local | PR #216 OPEN/DRAFT ; base Phase 5 GitHub `a8ac42103c96b28305d213c9db02edf37c9aa221` revalidée avant création du worktree Phase 6 |
+| Branche / parent | PASS local | `vnext-phase6-browser-coding-runtime`, parent exact `a8ac42103c96b28305d213c9db02edf37c9aa221`; descendant local Phase 5 `3beec507992f4cb698c2ceda4190dca9a2e6c6a5` préservé hors piste |
+| Architecture / threat model | PASS local borné | `docs/FURYPIPE_VNEXT_PHASE6_BROWSER_CODING_RUNTIME_2026.md`; aucune seconde Gateway/Kernel/RecoveryStore, observations data-only, états unknown et frontières de publication explicites |
+| Browser runtime | PASS local borné | lifecycle, permits WeakMap one-shot, SSRF/DNS mixte/redirect, observations non fiables, upload/download et receipts testés par `tests/browser-runtime.test.ts` |
+| Coding runtime | PASS local borné | repository/worktree, sandbox, process shell-free borné, patch engine exact-base/exact-file, CodeGraph V1 et verification coordinator testés par les quatre fichiers Phase 6 |
+| `pnpm install --frozen-lockfile` | PASS | lockfile inchangé |
+| Tests ciblés Phase 6 | PASS | 4 fichiers ; 18 tests |
+| `pnpm test` | PASS | 247 fichiers ; 2 835 tests ; sortie 0 |
+| `pnpm run typecheck` | PASS | TypeScript principal + hosted MCP ; sortie 0 |
+| `pnpm run build` | PASS | dist bibliothèque/déclarations + Node/MCP + version smoke `0.15.0` |
+| Phase 6 package smoke | PASS | `scripts/phase6-package-smoke.mjs` ; six exports importés depuis un tarball installé |
+| `pnpm run package:smoke` complet | PASS | package, Phase 6, benchmark-claim, provider-attempt et governed-provider smoke ; sorties 0 |
+| `pnpm run audit` | PASS | aucune vulnérabilité connue dans les dépendances production |
+| `git diff --check` | PASS | sortie sans erreur après les dernières écritures locales |
+| CI GitHub exact HEAD | NOT_EXECUTED | publication de branche/Draft PR et checks hébergés encore à faire |
+| Secret Scan / Benchmark Contract / Browser QA | NOT_EXECUTED | doivent être lus sur l’exact SHA publié, aucun ancien résultat ne sera réutilisé |
+| Provider/browser/OS runtime réel | RUNTIME_VALIDATION_REQUIRED | pas de Playwright réel, DNS pinning, Git provider réel, junction/reparse multi-OS ni Gateway hébergé exécuté |
+| Merge / release / tag / npm publish / deploy | NOT_EXECUTED | interdits par le périmètre de cette phase |
+| Phase 7 Memory VNext | NOT_STARTED | gate de fermeture Phase 6 non satisfaite tant que CI exact-head n’est pas verte |
