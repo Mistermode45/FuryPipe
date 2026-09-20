@@ -205,7 +205,7 @@ describe('local Gateway Continuous Memory runtime', () => {
       env: {
         FURYPIPE_WEBCHAT_MEMORY_CONFIG: file,
       },
-    })).toThrow(/FURYPIPE_MEMORY_KEY_V1/u);
+    })).toThrow(/memory encryption key material/u);
 
     expect(() => createFuryGatewayLocalMemoryRuntime({
       env: envFor(file, {
