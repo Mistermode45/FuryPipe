@@ -171,6 +171,13 @@ export class FuryGatewayAutomationRunAdmissionError extends Error {
   }
 }
 
+interface ClaimIdentity {
+  readonly runIdSha256: string;
+  readonly triggerIdSha256: string;
+  readonly generation: number;
+  readonly claimIdSha256: string;
+}
+
 interface PermitState {
   readonly coordinator: FuryGatewayAutomationRunAdmissionCoordinator;
   readonly claim: FuryGatewayAutomationClaimEvidence;
@@ -299,7 +306,7 @@ function createCommandAdmission(
 }
 
 function admissionDecision(input: {
-  readonly claim: FuryGatewayAutomationClaimEvidence;
+  readonly claim: ClaimIdentity;
   readonly definition?: FuryGatewayAutomationDefinitionInspection;
   readonly authority?: FuryGatewayAutomationRunAuthorityInput;
   readonly gateway?: FuryGatewayCommandAdmissionDecision;
@@ -355,7 +362,7 @@ function admissionDecision(input: {
 }
 
 function deny(
-  claim: FuryGatewayAutomationClaimEvidence,
+  claim: ClaimIdentity,
   reason: Exclude<FuryGatewayAutomationRunAdmissionReason, 'eligible'>,
   extras: {
     readonly definition?: FuryGatewayAutomationDefinitionInspection;
@@ -447,17 +454,25 @@ export function createFuryGatewayAutomationRunAdmissionCoordinator(
       authorityInput: FuryGatewayAutomationRunAuthorityInput,
     ): Promise<FuryGatewayAutomationRunAdmissionResult> {
       if (!isGeneratedFuryGatewayAutomationClaimEvidence(claim)) {
-        const placeholder = (
-          claim && typeof claim === 'object'
-          && typeof (claim as { runIdSha256?: unknown }).runIdSha256 === 'string'
-        )
-          ? claim
-          : Object.freeze({
-              runIdSha256: sha256('invalid-run'),
-              triggerIdSha256: sha256('invalid-trigger'),
-              generation: 0,
-              claimIdSha256: sha256('invalid-claim'),
-            }) as FuryGatewayAutomationClaimEvidence;
+        const candidate = claim as unknown as Partial<ClaimIdentity> | undefined;
+        const placeholder: ClaimIdentity = Object.freeze({
+          runIdSha256:
+            typeof candidate?.runIdSha256 === 'string'
+              ? candidate.runIdSha256
+              : sha256('invalid-run'),
+          triggerIdSha256:
+            typeof candidate?.triggerIdSha256 === 'string'
+              ? candidate.triggerIdSha256
+              : sha256('invalid-trigger'),
+          generation:
+            Number.isSafeInteger(candidate?.generation)
+              ? candidate!.generation!
+              : 0,
+          claimIdSha256:
+            typeof candidate?.claimIdSha256 === 'string'
+              ? candidate.claimIdSha256
+              : sha256('invalid-claim'),
+        });
         return deny(placeholder, 'invalid-claim');
       }
       const authority = exactAuthorityInput(authorityInput);
