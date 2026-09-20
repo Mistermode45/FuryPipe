@@ -419,14 +419,23 @@ export function isGeneratedFuryCapabilitySignalRegistry(
 export function createFuryCapabilitySignalRegistry(
   options: FuryCapabilitySignalRegistryOptions = {},
 ): FuryCapabilitySignalRegistry {
+  const root = exactPlainRecord(
+    options,
+    ['maxRecords', 'now'],
+    [],
+    'Capability signal registry options',
+  );
   const maxRecords = boundedInteger(
-    options.maxRecords,
+    root.maxRecords as number | undefined,
     DEFAULT_MAX_RECORDS,
     1,
     HARD_MAX_RECORDS,
     'maxRecords',
   );
-  const now = options.now ?? Date.now;
+  if (root.now !== undefined && typeof root.now !== 'function') {
+    throw new TypeError('Capability signal registry now must be a function');
+  }
+  const now = (root.now as (() => number) | undefined) ?? Date.now;
   finiteNow(now);
   const records = new Map<string, FuryCapabilitySignalObservation>();
 
