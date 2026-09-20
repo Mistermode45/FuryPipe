@@ -467,12 +467,15 @@ describe('local Gateway Continuous Memory runtime', () => {
     });
     if (!encrypted.engine || !encrypted.scopes) throw new Error('encrypted runtime did not enable');
 
+    // Do not require the outer memory boundary to disclose whether the
+    // integrity failure was caused by legacy plaintext or another storage issue.
+    // The security contract is fail-closed before recalled data is used.
     await expect(encrypted.engine.beforeTurn({
       conversationId: 'legacy-b',
       turnId: 'legacy-turn-b',
       scopes: encrypted.scopes,
       messages: [{ role: 'user', content: 'recall legacy memory' }],
       now: 2_000,
-    })).rejects.toThrow(/plaintext|rekey|encryption/u);
+    })).rejects.toThrow(/Recovery revision failed integrity verification/u);
   }, 30_000);
 });
