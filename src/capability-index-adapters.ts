@@ -231,15 +231,16 @@ function modelFamilies(entry: ModelFabricEntry): readonly string[] {
 }
 
 function latestModelObservedAt(entry: ModelFabricEntry): string | undefined {
-  const timestamps = [
-    entry.lastObservedAt,
-    ...entry.provenance.map((item) => item.observedAt),
-  ]
+  const evidenceTimestamps = entry.provenance
+    .map((item) => item.observedAt)
     .filter((value): value is string =>
       typeof value === 'string' && Number.isFinite(Date.parse(value)))
     .sort((a, b) => Date.parse(b) - Date.parse(a));
-  if (timestamps.length === 0) return undefined;
-  return new Date(Date.parse(timestamps[0]!)).toISOString();
+  const selected = evidenceTimestamps[0] ?? entry.lastObservedAt;
+  if (selected === undefined || !Number.isFinite(Date.parse(selected))) {
+    return undefined;
+  }
+  return new Date(Date.parse(selected)).toISOString();
 }
 
 function mcpRisk(risk: McpToolRiskClass): FuryCapabilityIndexRiskClass {
