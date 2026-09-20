@@ -9,6 +9,10 @@ import {
   type FuryCapabilityIndexEntryInput,
 } from '../src/capability-index.js';
 import {
+  createFuryCapabilitySignalRegistry,
+  FURY_CAPABILITY_SIGNAL_FORMAT,
+} from '../src/capability-signals.js';
+import {
   createFuryKernelCapabilityExposurePlan,
   FURY_KERNEL_CAPABILITY_EXPOSURE_FORMAT,
   isGeneratedFuryKernelCapabilityExposurePlan,
@@ -380,5 +384,215 @@ describe('Fury Kernel Capability Autopilot exposure', () => {
 
     expect(() => createFuryKernelCapabilityExposurePlan(input as never))
       .toThrow(/unsupported or unsafe fields/u);
+  });
+
+  it('carries only revalidated measured signal metadata into Kernel exposure', () => {
+    const index = createFuryCapabilityIndex();
+    index.upsert(entry('repo-review'));
+    const signals = createFuryCapabilitySignalRegistry({
+      now: () => 1_500,
+    });
+    signals.observe({
+      format: FURY_CAPABILITY_SIGNAL_FORMAT,
+      kind: 'skill',
+      id: 'repo-review',
+      observedAt: 1_000,
+      expiresAt: 2_000,
+      source: 'runtime-observation-v1',
+      evidenceKind: 'runtime-observation',
+      health: 'ready',
+      latencyMs: 95,
+      observedCostUsd: 0.002,
+      costBasis: 'same-workload-fixture-v1',
+    });
+
+    const selection = selectFuryCapabilitiesForTask({
+      objective: 'Repository review',
+      index,
+      signals,
+    });
+    const exposure = createFuryKernelCapabilityExposurePlan({
+      selection,
+      index,
+      signals,
+    });
+
+    expect(exposure.status).toBe('ready');
+    if (exposure.status !== 'ready') throw new Error('expected ready exposure');
+    expect(exposure.signalSnapshotDigestSha256)
+      .toBe(selection.signalSnapshotDigestSha256);
+    expect(exposure.descriptors[0]).toMatchObject({
+      id: 'repo-review',
+      measuredSignal: {
+        status: 'fresh',
+        health: 'ready',
+        latencyMs: 95,
+        observedCostUsd: 0.002,
+        costBasis: 'same-workload-fixture-v1',
+        observedAt: 1_000,
+        expiresAt: 2_000,
+        source: 'runtime-observation-v1',
+        evidenceKind: 'runtime-observation',
+      },
+      activationAuthorized: false,
+      connectionAuthorized: false,
+      executionAuthorized: false,
+    });
+    expect(JSON.stringify(exposure)).not.toContain('"executionAuthority":true');
+  });
+
+  it('blocks a signal-backed selection when the signal registry is missing at exposure time', () => {
+    const index = createFuryCapabilityIndex();
+    index.upsert(entry('repo-review'));
+    const signals = createFuryCapabilitySignalRegistry({
+      now: () => 1_500,
+    });
+    signals.observe({
+      format: FURY_CAPABILITY_SIGNAL_FORMAT,
+      kind: 'skill',
+      id: 'repo-review',
+      observedAt: 1_000,
+      expiresAt: 2_000,
+      source: 'runtime-observation-v1',
+      evidenceKind: 'runtime-observation',
+      latencyMs: 100,
+    });
+    const selection = selectFuryCapabilitiesForTask({
+      objective: 'Repository review',
+      index,
+      signals,
+    });
+
+    expect(createFuryKernelCapabilityExposurePlan({
+      selection,
+      index,
+    })).toMatchObject({
+      status: 'blocked',
+      reason: 'signal-reselection-required',
+      descriptors: [],
+      executionAuthority: false,
+    });
+  });
+
+  it('blocks exposure when measured evidence expires after selection', () => {
+    let now = 1_500;
+    const index = createFuryCapabilityIndex();
+    index.upsert(entry('repo-review'));
+    const signals = createFuryCapabilitySignalRegistry({
+      now: () => now,
+    });
+    signals.observe({
+      format: FURY_CAPABILITY_SIGNAL_FORMAT,
+      kind: 'skill',
+      id: 'repo-review',
+      observedAt: 1_000,
+      expiresAt: 2_000,
+      source: 'runtime-observation-v1',
+      evidenceKind: 'runtime-observation',
+      latencyMs: 100,
+    });
+    const selection = selectFuryCapabilitiesForTask({
+      objective: 'Repository review',
+      index,
+      signals,
+    });
+
+    now = 2_000;
+    const exposure = createFuryKernelCapabilityExposurePlan({
+      selection,
+      index,
+      signals,
+    });
+    expect(exposure).toMatchObject({
+      status: 'blocked',
+      reason: 'signal-reselection-required',
+      descriptors: [],
+    });
+    expect(exposure.signalSnapshotDigestSha256)
+      .not.toBe(selection.signalSnapshotDigestSha256);
+  });
+
+  it('blocks exposure when measured evidence is replaced after selection', () => {
+    const index = createFuryCapabilityIndex();
+    index.upsert(entry('repo-review'));
+    const signals = createFuryCapabilitySignalRegistry({
+      now: () => 1_500,
+    });
+    signals.observe({
+      format: FURY_CAPABILITY_SIGNAL_FORMAT,
+      kind: 'skill',
+      id: 'repo-review',
+      observedAt: 1_000,
+      expiresAt: 2_000,
+      source: 'runtime-observation-v1',
+      evidenceKind: 'runtime-observation',
+      latencyMs: 100,
+    });
+    const selection = selectFuryCapabilitiesForTask({
+      objective: 'Repository review',
+      index,
+      signals,
+    });
+
+    signals.observe({
+      format: FURY_CAPABILITY_SIGNAL_FORMAT,
+      kind: 'skill',
+      id: 'repo-review',
+      observedAt: 1_100,
+      expiresAt: 2_100,
+      source: 'runtime-observation-v2',
+      evidenceKind: 'runtime-observation',
+      latencyMs: 80,
+    });
+
+    expect(createFuryKernelCapabilityExposurePlan({
+      selection,
+      index,
+      signals,
+    })).toMatchObject({
+      status: 'blocked',
+      reason: 'signal-reselection-required',
+    });
+  });
+
+  it('rejects a forged measured signal registry before snapshot evaluation', () => {
+    const index = createFuryCapabilityIndex();
+    index.upsert(entry('repo-review'));
+    const genuineSignals = createFuryCapabilitySignalRegistry({
+      now: () => 1_500,
+    });
+    genuineSignals.observe({
+      format: FURY_CAPABILITY_SIGNAL_FORMAT,
+      kind: 'skill',
+      id: 'repo-review',
+      observedAt: 1_000,
+      expiresAt: 2_000,
+      source: 'runtime-observation-v1',
+      evidenceKind: 'runtime-observation',
+      latencyMs: 100,
+    });
+    const selection = selectFuryCapabilitiesForTask({
+      objective: 'Repository review',
+      index,
+      signals: genuineSignals,
+    });
+
+    const snapshot = vi.fn(() => {
+      throw new Error('FORGED_SIGNAL_REGISTRY_MUST_NOT_RUN');
+    });
+    const forged = {
+      snapshot,
+      observe: vi.fn(),
+      get: vi.fn(),
+      remove: vi.fn(),
+      size: vi.fn(),
+    };
+
+    expect(() => createFuryKernelCapabilityExposurePlan({
+      selection,
+      index,
+      signals: forged as never,
+    })).toThrow(/process-local signal registry/u);
+    expect(snapshot).not.toHaveBeenCalled();
   });
 });
