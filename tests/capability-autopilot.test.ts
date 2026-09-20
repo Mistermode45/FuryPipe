@@ -1,0 +1,433 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  selectFuryCapabilitiesForTask,
+} from '../src/capability-autopilot.js';
+import {
+  createFuryCapabilityIndex,
+  FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+  type FuryCapabilityIndex,
+  type FuryCapabilityIndexEntryInput,
+  type FuryCapabilityIndexKind,
+} from '../src/capability-index.js';
+
+function capability(
+  id: string,
+  overrides: Partial<FuryCapabilityIndexEntryInput> = {},
+): FuryCapabilityIndexEntryInput {
+  return {
+    format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+    kind: 'skill',
+    id,
+    name: id.replaceAll('-', ' '),
+    description: 'General capability metadata for deterministic routing.',
+    families: ['general'],
+    tags: [],
+    keywords: [],
+    trust: 'verified',
+    license: 'verified',
+    health: 'ready',
+    riskClass: 'none',
+    requiredPermissions: [],
+    compatibility: [],
+    estimatedContextTokens: 128,
+    source: {
+      system: 'skill-registry',
+      sourceId: id,
+    },
+    ...overrides,
+  };
+}
+
+function indexOf(...entries: FuryCapabilityIndexEntryInput[]): FuryCapabilityIndex {
+  const index = createFuryCapabilityIndex();
+  for (const entry of entries) index.upsert(entry);
+  return index;
+}
+
+describe('Capability Autopilot V2 deterministic shortlist', () => {
+  it('selects a small relevant set and never returns execution authority', () => {
+    const objective = 'Review this TypeScript repository architecture and security.';
+    const index = indexOf(
+      capability('repo-review', {
+        name: 'Repository security review',
+        description: 'Review TypeScript repository architecture, tests and security.',
+        families: ['coding', 'repository'],
+        tags: ['security', 'review'],
+        keywords: ['typescript', 'architecture review'],
+        estimatedContextTokens: 320,
+      }),
+      capability('marketing-copy', {
+        name: 'Marketing copy',
+        description: 'Write launch copy and social posts.',
+        families: ['marketing'],
+        keywords: ['campaign', 'copywriting'],
+      }),
+      capability('security-audit', {
+        name: 'Security audit',
+        description: 'Analyze application security and trust boundaries.',
+        families: ['security'],
+        keywords: ['security', 'threat model'],
+        estimatedContextTokens: 220,
+      }),
+    );
+
+    const plan = selectFuryCapabilitiesForTask({
+      objective,
+      index,
+      requiredFamilies: ['repository'],
+    });
+
+    expect(plan.format).toBe('furypipe-capability-selection/v1');
+    expect(plan.executionAuthority).toBe(false);
+    expect(plan.authority).toBe('selection-only');
+    expect(plan.objectiveDigestSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(plan.indexDigestSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(plan.selectionDigestSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(plan.selected[0]).toMatchObject({
+      kind: 'skill',
+      id: 'repo-review',
+      reason: 'family-match',
+      requestedExplicitly: false,
+    });
+    expect(plan.selected.some((item) => item.id === 'marketing-copy')).toBe(false);
+    expect(JSON.stringify(plan)).not.toContain(objective);
+    expect(JSON.stringify(plan)).not.toContain('executionAuthority":true');
+  });
+
+  it('makes identical selections regardless of index insertion order', () => {
+    const entries = [
+      capability('a', {
+        description: 'TypeScript repository architecture.',
+        families: ['coding'],
+      }),
+      capability('b', {
+        description: 'TypeScript repository testing.',
+        families: ['coding'],
+      }),
+      capability('c', {
+        description: 'TypeScript repository documentation.',
+        families: ['coding'],
+      }),
+    ];
+
+    const forward = indexOf(...entries);
+    const reverse = indexOf(...[...entries].reverse());
+
+    const a = selectFuryCapabilitiesForTask({
+      objective: 'TypeScript repository',
+      index: forward,
+      options: { maxSelected: 2 },
+    });
+    const b = selectFuryCapabilitiesForTask({
+      objective: 'TypeScript repository',
+      index: reverse,
+      options: { maxSelected: 2 },
+    });
+
+    expect(a.selected.map((item) => item.id)).toEqual(
+      b.selected.map((item) => item.id),
+    );
+    expect(a.selectionDigestSha256).toBe(b.selectionDigestSha256);
+  });
+
+  it('boosts explicit requests but never lets them bypass trust, license, health or permissions', () => {
+    const index = indexOf(
+      capability('trusted-skill', {
+        description: 'Unrelated but explicitly requested.',
+      }),
+      capability('unverified-skill', {
+        trust: 'unverified',
+      }),
+      capability('unknown-license', {
+        license: 'unknown',
+      }),
+      capability('blocked-health', {
+        health: 'blocked',
+      }),
+      capability('network-skill', {
+        requiredPermissions: ['network'],
+      }),
+    );
+
+    const plan = selectFuryCapabilitiesForTask({
+      objective: 'Do the task.',
+      index,
+      explicitRequests: [
+        { kind: 'skill', id: 'trusted-skill' },
+        { kind: 'skill', id: 'unverified-skill' },
+        { kind: 'skill', id: 'unknown-license' },
+        { kind: 'skill', id: 'blocked-health' },
+        { kind: 'skill', id: 'network-skill' },
+      ],
+      availablePermissions: [],
+      options: { maxSelected: 8, maxSelectedByKind: { skill: 8 } },
+    });
+
+    expect(plan.selected).toEqual([
+      expect.objectContaining({
+        id: 'trusted-skill',
+        reason: 'explicit-request',
+        requestedExplicitly: true,
+      }),
+    ]);
+    expect(plan.blocked).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'unverified-skill', reason: 'trust-unverified', requestedExplicitly: true }),
+      expect.objectContaining({ id: 'unknown-license', reason: 'license-unknown', requestedExplicitly: true }),
+      expect.objectContaining({ id: 'blocked-health', reason: 'health-blocked', requestedExplicitly: true }),
+      expect.objectContaining({ id: 'network-skill', reason: 'missing-permission', requestedExplicitly: true }),
+    ]));
+  });
+
+  it('fails compatibility closed when requirements are unknown or incomplete', () => {
+    const index = indexOf(capability('node-typescript', {
+      description: 'Node TypeScript implementation.',
+      compatibility: ['node', 'typescript'],
+    }));
+
+    const unknown = selectFuryCapabilitiesForTask({
+      objective: 'Node TypeScript implementation',
+      index,
+    });
+    expect(unknown.selected).toHaveLength(0);
+    expect(unknown.blockedCounts).toMatchObject({
+      'compatibility-unproven': 1,
+    });
+
+    const incomplete = selectFuryCapabilitiesForTask({
+      objective: 'Node TypeScript implementation',
+      index,
+      hostCompatibility: ['node'],
+    });
+    expect(incomplete.selected).toHaveLength(0);
+    expect(incomplete.blockedCounts).toMatchObject({
+      'compatibility-mismatch': 1,
+    });
+
+    const compatible = selectFuryCapabilitiesForTask({
+      objective: 'Node TypeScript implementation',
+      index,
+      hostCompatibility: ['node', 'typescript'],
+    });
+    expect(compatible.selected.map((item) => item.id)).toContain('node-typescript');
+  });
+
+  it('requires all indexed permissions to already exist in the planning context', () => {
+    const index = indexOf(capability('repo-network-tool', {
+      kind: 'mcp-tool',
+      description: 'Read repository metadata over a network integration.',
+      requiredPermissions: ['network', 'repository-read'],
+      source: {
+        system: 'mcp-host',
+        sourceId: 'repo-network-tool',
+      },
+    }));
+
+    const blocked = selectFuryCapabilitiesForTask({
+      objective: 'Read repository metadata',
+      index,
+      availablePermissions: ['repository-read'],
+    });
+    expect(blocked.selected).toHaveLength(0);
+    expect(blocked.blockedCounts).toMatchObject({
+      'missing-permission': 1,
+    });
+
+    const eligible = selectFuryCapabilitiesForTask({
+      objective: 'Read repository metadata',
+      index,
+      availablePermissions: ['network', 'repository-read'],
+    });
+    expect(eligible.selected[0]).toMatchObject({
+      kind: 'mcp-tool',
+      id: 'repo-network-tool',
+      executionAuthority: undefined,
+    });
+    expect(eligible.executionAuthority).toBe(false);
+  });
+
+  it('uses context and risk only as bounded penalties, never as authority', () => {
+    const index = indexOf(
+      capability('cheap-read', {
+        description: 'Repository inspect.',
+        riskClass: 'read',
+        estimatedContextTokens: 100,
+      }),
+      capability('expensive-admin', {
+        description: 'Repository inspect.',
+        riskClass: 'admin',
+        estimatedContextTokens: 8_000,
+      }),
+    );
+
+    const plan = selectFuryCapabilitiesForTask({
+      objective: 'Repository inspect',
+      index,
+      options: { maxSelected: 2, maxSelectedByKind: { skill: 2 } },
+    });
+
+    expect(plan.selected.map((item) => item.id)).toEqual([
+      'cheap-read',
+      'expensive-admin',
+    ]);
+    expect(plan.selected[0]!.penalty).toBeLessThan(plan.selected[1]!.penalty);
+    expect(plan.estimatedContextTokensKnown).toBe(8_100);
+  });
+
+  it('enforces global and per-kind caps deterministically', () => {
+    const index = indexOf(
+      capability('skill-a', { description: 'Repository testing security.' }),
+      capability('skill-b', { description: 'Repository testing security.' }),
+      capability('plugin-a', {
+        kind: 'plugin',
+        description: 'Repository testing security.',
+        source: { system: 'plugin-registry', sourceId: 'plugin-a' },
+      }),
+      capability('plugin-b', {
+        kind: 'plugin',
+        description: 'Repository testing security.',
+        source: { system: 'plugin-registry', sourceId: 'plugin-b' },
+      }),
+      capability('model-a', {
+        kind: 'model',
+        description: 'Repository testing security.',
+        source: { system: 'model-fabric', sourceId: 'model-a' },
+      }),
+    );
+
+    const plan = selectFuryCapabilitiesForTask({
+      objective: 'Repository testing security',
+      index,
+      options: {
+        maxSelected: 3,
+        maxSelectedByKind: {
+          skill: 1,
+          plugin: 1,
+          model: 1,
+        },
+      },
+    });
+
+    expect(plan.selected).toHaveLength(3);
+    expect(plan.selected.filter((item) => item.kind === 'skill')).toHaveLength(1);
+    expect(plan.selected.filter((item) => item.kind === 'plugin')).toHaveLength(1);
+    expect(plan.selected.filter((item) => item.kind === 'model')).toHaveLength(1);
+    expect((plan.blockedCounts['kind-cap'] ?? 0) + (plan.blockedCounts['global-cap'] ?? 0))
+      .toBeGreaterThan(0);
+  });
+
+  it('reports missing explicit requests without fabricating capabilities', () => {
+    const index = indexOf(capability('known'));
+
+    const plan = selectFuryCapabilitiesForTask({
+      objective: 'Use a requested integration.',
+      index,
+      explicitRequests: [
+        { kind: 'plugin', id: 'does-not-exist' },
+      ],
+    });
+
+    expect(plan.selected).toHaveLength(0);
+    expect(plan.missingExplicitRequests).toEqual([
+      { kind: 'plugin', id: 'does-not-exist' },
+    ]);
+  });
+
+  it('bounds blocked details while preserving aggregate counts', () => {
+    const index = createFuryCapabilityIndex();
+    for (let i = 0; i < 20; i += 1) {
+      index.upsert(capability(`blocked-${i}`, {
+        trust: 'unverified',
+      }));
+    }
+
+    const plan = selectFuryCapabilitiesForTask({
+      objective: 'blocked',
+      index,
+      options: {
+        maxBlockedDetails: 3,
+      },
+    });
+
+    expect(plan.blocked).toHaveLength(3);
+    expect(plan.blockedCounts).toMatchObject({
+      'trust-unverified': 20,
+    });
+  });
+
+  it('rejects unsafe selector inputs and duplicate explicit requests', () => {
+    const index = indexOf(capability('known'));
+
+    expect(() => selectFuryCapabilitiesForTask({
+      objective: '',
+      index,
+    })).toThrow(/bounded non-empty/u);
+
+    expect(() => selectFuryCapabilitiesForTask({
+      objective: 'task',
+      index,
+      hostCompatibility: ['node', 'node'],
+    })).toThrow(/duplicate facts/u);
+
+    expect(() => selectFuryCapabilitiesForTask({
+      objective: 'task',
+      index,
+      explicitRequests: [
+        { kind: 'skill', id: 'known' },
+        { kind: 'skill', id: 'known' },
+      ],
+    })).toThrow(/must be unique/u);
+
+    expect(() => selectFuryCapabilitiesForTask({
+      objective: 'task',
+      index,
+      explicitRequests: [{
+        kind: 'agent' as FuryCapabilityIndexKind,
+        id: 'unknown',
+      }],
+    })).toThrow(/kind is unsupported/u);
+  });
+
+  it('rejects indexes larger than the caller selection bound', () => {
+    const index = createFuryCapabilityIndex();
+    index.upsert(capability('one'));
+    index.upsert(capability('two'));
+
+    expect(() => selectFuryCapabilitiesForTask({
+      objective: 'general',
+      index,
+      options: { maxCandidates: 1 },
+    })).toThrow(/candidate bound exceeded/u);
+  });
+
+  it('does not select a plugin, MCP tool or model merely because it exists', () => {
+    const index = indexOf(
+      capability('plugin-unrelated', {
+        kind: 'plugin',
+        description: 'Design asset integration.',
+        families: ['design'],
+        source: { system: 'plugin-registry', sourceId: 'plugin-unrelated' },
+      }),
+      capability('tool-unrelated', {
+        kind: 'mcp-tool',
+        description: 'Calendar scheduling integration.',
+        families: ['calendar'],
+        source: { system: 'mcp-host', sourceId: 'tool-unrelated' },
+      }),
+      capability('model-unrelated', {
+        kind: 'model',
+        description: 'Image generation model.',
+        families: ['image'],
+        source: { system: 'model-fabric', sourceId: 'model-unrelated' },
+      }),
+    );
+
+    const plan = selectFuryCapabilitiesForTask({
+      objective: 'Review a TypeScript repository.',
+      index,
+    });
+
+    expect(plan.selected).toHaveLength(0);
+    expect(plan.executionAuthority).toBe(false);
+  });
+});
