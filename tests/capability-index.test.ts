@@ -223,6 +223,32 @@ describe('Capability Autopilot V2 local index', () => {
     expect(() => index.upsert(custom)).toThrow(/plain data object/u);
   });
 
+  it('rejects accessor, sparse and symbol-bearing nested metadata arrays', () => {
+    const index = createFuryCapabilityIndex();
+
+    const accessor = ['coding'] as string[];
+    Object.defineProperty(accessor, '0', {
+      enumerable: true,
+      get() {
+        throw new Error('NESTED_ARRAY_GETTER_MUST_NOT_RUN');
+      },
+    });
+    expect(() => index.upsert(entry({
+      families: accessor,
+    }))).toThrow(/accessor entries/u);
+
+    const sparse = new Array<string>(1);
+    expect(() => index.upsert(entry({
+      tags: sparse,
+    }))).toThrow(/sparse/u);
+
+    const symbol = ['repository'] as Array<string> & Record<symbol, string>;
+    symbol[Symbol('hidden')] = 'hidden';
+    expect(() => index.upsert(entry({
+      keywords: symbol,
+    }))).toThrow(/symbol properties/u);
+  });
+
   it('rejects credential-like material from index metadata', () => {
     const index = createFuryCapabilityIndex();
 
