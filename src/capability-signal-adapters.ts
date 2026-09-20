@@ -20,6 +20,7 @@ export interface FuryCapabilitySignalProjectionReport {
   readonly source: 'provider-runtime';
   readonly observed: number;
   readonly skippedUnmeasured: number;
+  readonly skippedUnregisteredProvider: number;
   readonly skippedInvalidIdentity: number;
   readonly authority: 'projection-only';
   readonly executionAuthority: false;
@@ -142,12 +143,19 @@ export function projectProviderRuntimeModelSignals(
   );
   let observed = 0;
   let skippedUnmeasured = 0;
+  let skippedUnregisteredProvider = 0;
   let skippedInvalidIdentity = 0;
+  const runtimeRegistry = providerRuntime.registry(now);
 
   for (const model of models.list()) {
     const capabilityId = `${model.provider}/${model.id}`;
     if (!MODEL_CAPABILITY_ID_RE.test(capabilityId)) {
       skippedInvalidIdentity += 1;
+      continue;
+    }
+
+    if (!runtimeRegistry.get(model.provider)) {
+      skippedUnregisteredProvider += 1;
       continue;
     }
 
@@ -181,6 +189,7 @@ export function projectProviderRuntimeModelSignals(
     source: 'provider-runtime' as const,
     observed,
     skippedUnmeasured,
+    skippedUnregisteredProvider,
     skippedInvalidIdentity,
     authority: 'projection-only' as const,
     executionAuthority: false as const,
