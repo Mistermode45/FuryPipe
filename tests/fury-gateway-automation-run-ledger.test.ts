@@ -128,6 +128,29 @@ describe('Fury Gateway durable automation trigger/run ledger', () => {
     });
   });
 
+  it('returns the latest durable trigger watermark for one automation', async () => {
+    const dir = root();
+    let now = 10;
+    const ledger = createFuryGatewayAutomationRunLedger({
+      store: recovery(dir),
+      now: () => now++,
+    });
+
+    await ledger.registerTrigger(triggerInput({
+      occurrenceKey: 'interval:1000',
+      scheduledFor: 1_000,
+    }) as never);
+    await ledger.registerTrigger(triggerInput({
+      occurrenceKey: 'interval:5000',
+      scheduledFor: 5_000,
+    }) as never);
+
+    const latest = await ledger.latestTrigger('morning-brief');
+    expect(latest?.scheduledFor).toBe(5_000);
+    expect(latest?.automationId).toBe('morning-brief');
+    expect(latest?.executionAuthority).toBe(false);
+  });
+
   it('recovers a pending run after a fresh process/store instance', async () => {
     const dir = root();
     const first = createFuryGatewayAutomationRunLedger({

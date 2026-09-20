@@ -189,6 +189,9 @@ export interface FuryGatewayAutomationRunLedger {
     runIdSha256: string,
     now?: number,
   ): Promise<FuryGatewayAutomationRunStatus | undefined>;
+  inspectTrigger(
+    runIdSha256: string,
+  ): Promise<FuryGatewayAutomationTriggerOccurrence | undefined>;
   claim(
     runIdSha256: string,
     claimantInstanceId: string,
@@ -207,6 +210,9 @@ export interface FuryGatewayAutomationRunLedger {
     outcome: 'blocked' | 'cancelled',
     evidence?: { readonly evidenceSha256?: string; readonly now?: number },
   ): Promise<FuryGatewayAutomationRunStatus>;
+  latestTrigger(
+    automationId: string,
+  ): Promise<FuryGatewayAutomationTriggerOccurrence | undefined>;
   countRuns(): Promise<number>;
 }
 
@@ -475,7 +481,7 @@ function recordMetadata(record: DurableRunRecord): RecoveryMetadata {
     runIdSha256: record.runIdSha256,
     triggerIdSha256: record.triggerIdSha256,
     ...(type === 'trigger'
-      ? {}
+      ? { automationId: (record as TriggerRecord).automationId }
       : {
           generation: (record as ClaimRecord | ArmedRecord | TerminalRecord).generation,
           claimIdSha256:
@@ -850,6 +856,10 @@ async function loadedRun(
       || handle.metadata?.recordType !== recordType(record)
       || handle.metadata?.triggerIdSha256 !== record.triggerIdSha256
       || (
+        recordType(record) === 'trigger'
+        && handle.metadata?.automationId !== (record as TriggerRecord).automationId
+      )
+      || (
         recordType(record) !== 'trigger'
         && (
           handle.metadata?.generation
@@ -1136,6 +1146,14 @@ export function isGeneratedFuryGatewayAutomationRunLedger(
     && GENERATED_LEDGERS.has(value);
 }
 
+export function isGeneratedFuryGatewayAutomationClaimEvidence(
+  value: unknown,
+): value is FuryGatewayAutomationClaimEvidence {
+  return typeof value === 'object'
+    && value !== null
+    && CLAIM_STATES.has(value);
+}
+
 export function createFuryGatewayAutomationRunLedger(
   options: FuryGatewayAutomationRunLedgerOptions,
 ): FuryGatewayAutomationRunLedger {
@@ -1314,6 +1332,15 @@ export function createFuryGatewayAutomationRunLedger(
     ): Promise<FuryGatewayAutomationRunStatus | undefined> {
       const at = atInput === undefined ? nowValue(now) : safeTimestamp(atInput);
       return (await loadStatus(runIdSha256, at)).status;
+    },
+
+    async inspectTrigger(
+      runIdSha256: string,
+    ): Promise<FuryGatewayAutomationTriggerOccurrence | undefined> {
+      assertSha(runIdSha256);
+      const records = await loadedRun(store, runIdSha256);
+      if (records.length === 0) return undefined;
+      return classifyLoaded(records, runIdSha256).trigger.record;
     },
 
     async claim(
@@ -1773,6 +1800,45 @@ export function createFuryGatewayAutomationRunLedger(
         );
       }
       return status;
+    },
+
+    async latestTrigger(
+      automationIdInput: string,
+    ): Promise<FuryGatewayAutomationTriggerOccurrence | undefined> {
+      const id = automationId(automationIdInput);
+      const handles = await store.list({
+        metadata: {
+          system: SYSTEM,
+          recordType: 'trigger',
+          automationId: id,
+        },
+        limit: maxRecords,
+      });
+      let latest: FuryGatewayAutomationTriggerOccurrence | undefined;
+      for (const handle of handles) {
+        const record = parseRecord(await store.get(handle));
+        if (
+          record.format !== FURY_GATEWAY_AUTOMATION_TRIGGER_RECORD_FORMAT
+          || record.automationId !== id
+          || handle.metadata?.automationId !== id
+        ) {
+          throw new FuryGatewayAutomationRunLedgerError(
+            'run-state-corrupt',
+            record.runIdSha256,
+          );
+        }
+        if (
+          latest === undefined
+          || record.scheduledFor > latest.scheduledFor
+          || (
+            record.scheduledFor === latest.scheduledFor
+            && record.createdAt > latest.createdAt
+          )
+        ) {
+          latest = record;
+        }
+      }
+      return latest;
     },
 
     async countRuns(): Promise<number> {

@@ -454,6 +454,20 @@ try {
   ], installDir);
   assert(gatewayAutomationRunLedgerExport.stderr === '', `Gateway automation run ledger export wrote stderr: ${gatewayAutomationRunLedgerExport.stderr}`);
 
+  const gatewayAutomationSchedulerExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-scheduler-node'); if (typeof m.createFuryGatewayAutomationScheduler !== 'function' || typeof m.isGeneratedFuryGatewayAutomationScheduler !== 'function' || m.FURY_GATEWAY_AUTOMATION_SCHEDULER_TICK_FORMAT !== 'furypipe-gateway-automation-scheduler-tick/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationSchedulerExport.stderr === '', `Gateway automation scheduler export wrote stderr: ${gatewayAutomationSchedulerExport.stderr}`);
+
+  const gatewayAutomationRunAdmissionExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-run-admission-node'); if (typeof m.createFuryGatewayAutomationRunAdmissionCoordinator !== 'function' || typeof m.isGeneratedFuryGatewayAutomationRunPermit !== 'function' || m.FURY_GATEWAY_AUTOMATION_RUN_ADMISSION_FORMAT !== 'furypipe-gateway-automation-run-admission/v1' || m.FURY_GATEWAY_AUTOMATION_RUN_PERMIT_FORMAT !== 'furypipe-gateway-automation-run-permit/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationRunAdmissionExport.stderr === '', `Gateway automation run admission export wrote stderr: ${gatewayAutomationRunAdmissionExport.stderr}`);
+
   const gatewayNotificationExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
