@@ -583,3 +583,13 @@
 - `git diff --check` : PASS après documentation et packaging local.
 - Limites : aucun navigateur réel/Playwright, DNS pinning hébergé, junction/reparse point multi-OS, provider Git réel, Gateway hébergé ou CI GitHub n’est encore prouvé sur ce HEAD ; aucun merge, release, tag, publish npm, deploy ou force push effectué.
 - Phase 7 : NOT_STARTED par invariant de fermeture ; elle reste interdite tant que les gates hébergés Phase 6 sur l’exact HEAD ne sont pas verts.
+
+## 2026-09-21 — FuryPipe VNext Phase 6 — exact-head closure
+
+- Source de vérité finale : PR #217 OPEN/DRAFT vers `vnext-phase5-automations-webhooks`, base exacte `672a57a83c33990eb2be71f656929a1ed7ed5ae5`, head exact `2a67a417a6ebeed2885c35284f7537c1519eea86`. Aucun merge, release, tag, publication npm, déploiement ou force push n’a été exécuté.
+- Correctif de portabilité découvert par la CI : `validatedUploadPath()` canonicalise maintenant chaque racine d’upload par `realpath` avant le contrôle de containment. Le test de chemin de téléchargement compare aussi une relation de chemins canonique et multi-plateforme. Commits : `82465ec1` puis `2a67a417`.
+- Gates locales finales après correction : `pnpm install --frozen-lockfile` PASS ; `pnpm test` PASS, 249 fichiers / 2 865 tests ; `pnpm run typecheck` PASS principal + hosted MCP ; `pnpm run build` PASS, version smoke `0.15.0` ; `pnpm run audit` PASS, aucune vulnérabilité production connue ; `pnpm run package:smoke` PASS pour package, Phase 6, benchmark-claim, provider-attempt et governed-provider ; `git diff --check` PASS.
+- CI hébergée sur le HEAD exact : matrice 9/9 PASS (Ubuntu 24.04, macOS 14, Windows 2025 × Node 22.23.2, 24.21.0, 26.8.2), Secret Scan PASS, Benchmark Contract PASS, RC Preparation Evidence PASS, Dashboard Browser QA PASS, Web Studio Browser QA PASS et Cross-Browser QA PASS.
+- Cross-Browser QA exact-head : le premier attempt a exposé un timeout runner au `page.goto()` du sous-harness WebChat outils après 117/117 + 120/120 cross-engine ; la reproduction locale `pnpm run browser:webchat:qa` a passé 15/15, puis le rerun hébergé ciblé a passé 117/117 et 15/15. Ce rerun est une preuve du même SHA, pas une modification du code.
+- Limites restantes : la preuve hébergée couvre les harnesses browser et la CI, pas un provider OAuth réel, un Git provider réel, un host DNS/redirect réel, une junction/reparse multi-OS, un crash/restart de production ou un déploiement. Ces frontières restent `RUNTIME_VALIDATION_REQUIRED`.
+- Phase 6 est fermée au niveau des gates demandées. Phase 7 Memory VNext peut maintenant commencer sur un track séparé empilé sur ce HEAD validé ; aucun code Phase 7 n’est encore présent dans ce track.

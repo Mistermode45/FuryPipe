@@ -52,6 +52,7 @@ bench/runs/
 # Local cross-browser screenshots and JSON evidence (CI uploads its own artifact)
 artifacts/cross-browser-qa/
 artifacts/dashboard-browser-qa/
+artifacts/gateway-webchat-browser-qa/
 
 # eval run artifacts (outputs, not sources)
 eval/verbatim-15/out_*/
