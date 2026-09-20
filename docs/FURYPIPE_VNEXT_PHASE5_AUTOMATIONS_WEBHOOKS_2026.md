@@ -1,6 +1,6 @@
 # FuryPipe VNext — Phase 5 Automations + Webhooks
 
-**Status:** architecture contract + implementation track  
+**Status:** implementation in progress — Gates 5.0–5.3 validated; Gate 5.4 implemented and awaiting exact-head validation  
 **Stack base:** exact validated Phase 4 HEAD `c145e561d5e12e3cf7cc8ae02dced5bfb461b443`  
 **Branch:** `vnext-phase5-automations-webhooks`
 
@@ -284,21 +284,68 @@ A delivered notification must not turn an unverified or outcome-unknown run into
 
 Freeze lifecycle, identities, claims, replay and webhook trust boundaries.
 
-### Gate 5.1 — durable automation definition store
+### Gate 5.1 — durable automation definition store — VALIDATED
 
 Persist versioned definitions through `RecoveryStore` with strict validation, bounded quotas and no credentials/session permits.
 
-### Gate 5.2 — durable trigger/run ledger
+Exact validated Gate 5.1 SHA: `4165308b0aa665bcec799c76d088411b79608d5b`.
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- 9 dedicated definition-store tests;
+- package smoke SUCCESS on Windows/macOS/Linux, Node 22/24/26.
+
+### Gate 5.2 — durable trigger/run ledger — VALIDATED
 
 Create stable trigger/run identities, state transitions, fencing and restart recovery.
 
-### Gate 5.3 — one-shot + interval scheduler
+Exact validated Gate 5.2 SHA: `485c8ebaa3afa9cd38553e0e5ce572b623faba6f`.
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- durable occurrence identity, claim fencing and restart fail-closed semantics;
+- armed-without-terminal recovers as `outcome-unknown`;
+- automatic replay remains forbidden.
+
+### Gate 5.3 — one-shot + interval scheduler — VALIDATED
 
 Deterministic due computation, bounded catch-up and claim leasing.
 
-### Gate 5.4 — governed run admission
+Exact validated Gate 5.3 SHA: `3b3c4e70784625576e501f9d9c23c66682232fd8`.
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- deterministic one-shot and interval occurrence selection;
+- `run-once` coalesces downtime to one latest logical occurrence;
+- `skip` uses an explicit bounded misfire grace;
+- durable trigger watermark prevents clock rollback from backfilling older occurrences;
+- stable trigger identity deduplicates one occurrence across definition revisions;
+- scheduler races converge to one durable run/claim.
+
+### Gate 5.4 — governed run admission — IMPLEMENTED / VALIDATION PENDING
 
 Revalidate current policy/capabilities and mint fresh bounded execution authority per run.
+
+Implemented boundaries:
+
+- current generated claim required;
+- durable trigger must still point at the current exact definition revision/SHA;
+- definition must still be enabled;
+- current generated Gateway session must match the automation owner;
+- existing Gateway command admission is reused for current scopes and plugin/capability permissions;
+- admission decisions remain `executionAuthority:false`;
+- only a process-local short-lived run permit has `executionAuthority:true`;
+- permit lifetime is bounded by permit TTL, claim lease and session expiry;
+- permit consumption revalidates run state, current definition and Gateway session again;
+- copied/forged permits are rejected;
+- consumed permits are one-shot;
+- session/principal revocation, definition drift or run-state transition makes an unconsumed permit stale.
 
 ### Gate 5.5 — authenticated webhook ingress
 
@@ -315,6 +362,14 @@ Redacted status, run history summaries and Phase 4 notification routing.
 ### Gate 5.8 — final durability/restart evidence
 
 Crash/restart tests before and after side-effect attempt, multi-process claim race tests, exact-head CI evidence.
+
+## 13.1 Current validation note
+
+Gate 5.4 implementation HEAD before this documentation update was:
+
+`c7f852f56f87962db68dfc07fba2011334f14349`
+
+GitHub had not materialized workflow runs for that SHA after the implementation commits. This documentation update intentionally creates a fresh synchronization SHA. Gate 5.4 must be considered validated only if the resulting exact HEAD independently passes the full workflow and CI matrix; prior Gate 5.3 evidence must not be reused as Gate 5.4 evidence.
 
 ## 14. Explicit non-goals for Phase 5
 
