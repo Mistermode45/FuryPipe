@@ -93,6 +93,41 @@ describe('Fury Gateway durable automation trigger/run ledger', () => {
     expect(body).toContain('occurrenceKeySha256');
   });
 
+  it('deduplicates the same trigger occurrence across definition revisions', async () => {
+    const dir = root();
+    let now = 10;
+    const ledger = createFuryGatewayAutomationRunLedger({
+      store: recovery(dir),
+      now: () => now++,
+    });
+
+    const first = await ledger.registerTrigger(triggerInput() as never);
+    const afterRevision = await ledger.registerTrigger(triggerInput({
+      definitionRevision: 4,
+      definitionSha256: 'f'.repeat(64),
+    }) as never);
+
+    expect(afterRevision).toEqual(first);
+    expect(await ledger.countRuns()).toBe(1);
+  });
+
+  it('rejects reuse of an occurrence key with a conflicting scheduled timestamp', async () => {
+    const dir = root();
+    const ledger = createFuryGatewayAutomationRunLedger({
+      store: recovery(dir),
+      now: () => 10,
+    });
+
+    await ledger.registerTrigger(triggerInput() as never);
+
+    await expect(ledger.registerTrigger(triggerInput({
+      scheduledFor: 2_000_000,
+    }) as never)).rejects.toMatchObject({
+      name: 'FuryGatewayAutomationRunLedgerError',
+      code: 'run-conflict',
+    });
+  });
+
   it('recovers a pending run after a fresh process/store instance', async () => {
     const dir = root();
     const first = createFuryGatewayAutomationRunLedger({
