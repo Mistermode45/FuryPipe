@@ -11,7 +11,12 @@ import {
   isGeneratedFuryCapabilitySelectionPlan,
   type FuryCapabilitySelectionPlan,
   type FuryCapabilitySelectionReason,
+  type FurySelectedCapabilitySignal,
 } from './capability-autopilot.js';
+import {
+  isGeneratedFuryCapabilitySignalRegistry,
+  type FuryCapabilitySignalRegistry,
+} from './capability-signals.js';
 import {
   revalidateFuryCapabilitySelection,
 } from './capability-index-adapters.js';
@@ -21,6 +26,7 @@ export const FURY_KERNEL_CAPABILITY_EXPOSURE_FORMAT =
 
 export type FuryKernelCapabilityExposureBlockReason =
   | 'reselection-required'
+  | 'signal-reselection-required'
   | 'selection-count-exceeds-limit'
   | 'descriptor-byte-limit'
   | 'total-byte-limit'
@@ -43,6 +49,7 @@ export interface FuryKernelCapabilityDescriptor {
   readonly selectionReason: FuryCapabilitySelectionReason;
   readonly requestedExplicitly: boolean;
   readonly estimatedContextTokens?: number;
+  readonly measuredSignal?: FurySelectedCapabilitySignal;
   readonly fullBodyLoaded: false;
   readonly activationAuthorized: false;
   readonly connectionAuthorized: false;
@@ -55,6 +62,7 @@ export interface FuryKernelCapabilityExposureReady {
   readonly status: 'ready';
   readonly selectionDigestSha256: string;
   readonly indexDigestSha256: string;
+  readonly signalSnapshotDigestSha256?: string;
   readonly exposureDigestSha256: string;
   readonly descriptors: readonly FuryKernelCapabilityDescriptor[];
   readonly selectedCount: number;
@@ -73,6 +81,7 @@ export interface FuryKernelCapabilityExposureBlocked {
   readonly reason: FuryKernelCapabilityExposureBlockReason;
   readonly selectionDigestSha256: string;
   readonly indexDigestSha256: string;
+  readonly signalSnapshotDigestSha256?: string;
   readonly descriptors: readonly [];
   readonly selectedCount: number;
   readonly exposedCount: 0;
@@ -88,6 +97,7 @@ export type FuryKernelCapabilityExposurePlan =
 export interface FuryKernelCapabilityExposureOptions {
   readonly selection: FuryCapabilitySelectionPlan;
   readonly index: FuryCapabilityIndex;
+  readonly signals?: FuryCapabilitySignalRegistry;
   readonly maxCapabilities?: number;
   readonly maxDescriptorBytes?: number;
   readonly maxTotalBytes?: number;
@@ -174,6 +184,29 @@ function cloneSource(
   });
 }
 
+function cloneMeasuredSignal(
+  signal: FurySelectedCapabilitySignal,
+): FurySelectedCapabilitySignal {
+  return Object.freeze({
+    status: signal.status,
+    ...(signal.fingerprintSha256 === undefined
+      ? {}
+      : { fingerprintSha256: signal.fingerprintSha256 }),
+    ...(signal.health === undefined ? {} : { health: signal.health }),
+    ...(signal.latencyMs === undefined ? {} : { latencyMs: signal.latencyMs }),
+    ...(signal.observedCostUsd === undefined
+      ? {}
+      : { observedCostUsd: signal.observedCostUsd }),
+    ...(signal.costBasis === undefined ? {} : { costBasis: signal.costBasis }),
+    ...(signal.observedAt === undefined ? {} : { observedAt: signal.observedAt }),
+    ...(signal.expiresAt === undefined ? {} : { expiresAt: signal.expiresAt }),
+    ...(signal.source === undefined ? {} : { source: signal.source }),
+    ...(signal.evidenceKind === undefined
+      ? {}
+      : { evidenceKind: signal.evidenceKind }),
+  });
+}
+
 function descriptorFor(
   record: FuryCapabilityIndexRecord,
   selected: FuryCapabilitySelectionPlan['selected'][number],
@@ -197,6 +230,9 @@ function descriptorFor(
     ...(record.estimatedContextTokens === undefined
       ? {}
       : { estimatedContextTokens: record.estimatedContextTokens }),
+    ...(selected.measuredSignal === undefined
+      ? {}
+      : { measuredSignal: cloneMeasuredSignal(selected.measuredSignal) }),
     fullBodyLoaded: false as const,
     activationAuthorized: false as const,
     connectionAuthorized: false as const,
@@ -209,6 +245,7 @@ function blocked(
   reason: FuryKernelCapabilityExposureBlockReason,
   selection: FuryCapabilitySelectionPlan,
   indexDigestSha256: string,
+  signalSnapshotDigestSha256?: string,
 ): FuryKernelCapabilityExposureBlocked {
   const value: FuryKernelCapabilityExposureBlocked = Object.freeze({
     format: FURY_KERNEL_CAPABILITY_EXPOSURE_FORMAT,
@@ -216,6 +253,9 @@ function blocked(
     reason,
     selectionDigestSha256: selection.selectionDigestSha256,
     indexDigestSha256,
+    ...(signalSnapshotDigestSha256 === undefined
+      ? {}
+      : { signalSnapshotDigestSha256 }),
     descriptors: Object.freeze([]) as readonly [],
     selectedCount: selection.selectedCount,
     exposedCount: 0,
@@ -243,6 +283,7 @@ export function createFuryKernelCapabilityExposurePlan(
     [
       'selection',
       'index',
+      'signals',
       'maxCapabilities',
       'maxDescriptorBytes',
       'maxTotalBytes',
@@ -261,6 +302,16 @@ export function createFuryKernelCapabilityExposurePlan(
     throw new TypeError(
       'Fury Kernel capability exposure requires a process-local capability index',
     );
+  }
+
+  let signals: FuryCapabilitySignalRegistry | undefined;
+  if (root.signals !== undefined) {
+    if (!isGeneratedFuryCapabilitySignalRegistry(root.signals)) {
+      throw new TypeError(
+        'Fury Kernel capability exposure requires a process-local signal registry',
+      );
+    }
+    signals = root.signals;
   }
 
   const selection = root.selection;
@@ -301,6 +352,26 @@ export function createFuryKernelCapabilityExposurePlan(
       selection,
       revalidation.currentIndexDigestSha256,
     );
+  }
+
+  let currentSignalDigest: string | undefined;
+  if (selection.signalSnapshotDigestSha256 !== undefined) {
+    if (!signals) {
+      return blocked(
+        'signal-reselection-required',
+        selection,
+        revalidation.currentIndexDigestSha256,
+      );
+    }
+    currentSignalDigest = signals.snapshot().digestSha256;
+    if (currentSignalDigest !== selection.signalSnapshotDigestSha256) {
+      return blocked(
+        'signal-reselection-required',
+        selection,
+        revalidation.currentIndexDigestSha256,
+        currentSignalDigest,
+      );
+    }
   }
 
   if (selection.selected.length > maxCapabilities) {
@@ -364,10 +435,15 @@ export function createFuryKernelCapabilityExposurePlan(
     format: FURY_KERNEL_CAPABILITY_EXPOSURE_FORMAT,
     selectionDigestSha256: selection.selectionDigestSha256,
     indexDigestSha256: revalidation.currentIndexDigestSha256,
+    ...(currentSignalDigest === undefined
+      ? {}
+      : { signalSnapshotDigestSha256: currentSignalDigest }),
     descriptors: descriptors.map((descriptor) => [
       descriptor.kind,
       descriptor.id,
       descriptor.fingerprintSha256,
+      descriptor.measuredSignal?.status ?? null,
+      descriptor.measuredSignal?.fingerprintSha256 ?? null,
     ]),
   }));
 
@@ -376,6 +452,9 @@ export function createFuryKernelCapabilityExposurePlan(
     status: 'ready' as const,
     selectionDigestSha256: selection.selectionDigestSha256,
     indexDigestSha256: revalidation.currentIndexDigestSha256,
+    ...(currentSignalDigest === undefined
+      ? {}
+      : { signalSnapshotDigestSha256: currentSignalDigest }),
     exposureDigestSha256,
     descriptors: Object.freeze(descriptors),
     selectedCount: selection.selectedCount,
