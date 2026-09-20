@@ -1667,7 +1667,10 @@ export function createFuryGatewayAutomationRunLedger(
     async settleWithoutSideEffect(
       claim: FuryGatewayAutomationClaimEvidence,
       outcome: 'blocked' | 'cancelled',
-      evidence = {},
+      evidence: {
+        readonly evidenceSha256?: string;
+        readonly now?: number;
+      } = {},
     ): Promise<FuryGatewayAutomationRunStatus> {
       const claimState = CLAIM_STATES.get(claim as object);
       if (!claimState || claimState.ledger !== api) {
