@@ -32,6 +32,36 @@ export interface ProjectProviderRuntimeModelSignalsOptions {
 const MODEL_CAPABILITY_ID_RE =
   /^[A-Za-z0-9][A-Za-z0-9._:/@+~-]{0,255}$/u;
 
+function exactPlainRecord(
+  value: unknown,
+  allowedKeys: readonly string[],
+  label: string,
+): Readonly<Record<string, unknown>> {
+  if (
+    !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+    || Object.getOwnPropertySymbols(value).length > 0
+  ) {
+    throw new TypeError(`${label} must be a plain data object`);
+  }
+  const allowed = new Set(allowedKeys);
+  const record = value as Record<string, unknown>;
+  for (const key of Object.getOwnPropertyNames(record)) {
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    if (
+      !descriptor
+      || !descriptor.enumerable
+      || !('value' in descriptor)
+      || !allowed.has(key)
+    ) {
+      throw new TypeError(`${label} contains unsupported or unsafe fields`);
+    }
+  }
+  return record;
+}
+
 function finiteTimestamp(
   value: number | undefined,
   fallback: number,
@@ -100,7 +130,16 @@ export function projectProviderRuntimeModelSignals(
     );
   }
 
-  const now = finiteTimestamp(options.now, Date.now(), 'signal projection now');
+  const root = exactPlainRecord(
+    options,
+    ['now'],
+    'provider runtime signal projection options',
+  );
+  const now = finiteTimestamp(
+    root.now as number | undefined,
+    Date.now(),
+    'signal projection now',
+  );
   let observed = 0;
   let skippedUnmeasured = 0;
   let skippedInvalidIdentity = 0;
