@@ -10,6 +10,10 @@ import {
   type FuryCapabilityIndexEntryInput,
   type FuryCapabilityIndexKind,
 } from '../src/capability-index.js';
+import {
+  createFuryCapabilitySignalRegistry,
+  FURY_CAPABILITY_SIGNAL_FORMAT,
+} from '../src/capability-signals.js';
 
 function capability(
   id: string,
@@ -489,5 +493,264 @@ describe('Capability Autopilot V2 deterministic shortlist', () => {
 
     expect(plan.selected).toHaveLength(0);
     expect(plan.executionAuthority).toBe(false);
+  });
+
+  it('allows fresh measured health to resolve indexed unknown health without granting authority', () => {
+    const index = indexOf(capability('measured-model', {
+      kind: 'model',
+      health: 'unknown',
+      description: 'Reasoning model for repository review.',
+      source: { system: 'model-fabric', sourceId: 'measured-model' },
+    }));
+    const signals = createFuryCapabilitySignalRegistry({
+      now: () => 1_500,
+    });
+    signals.observe({
+      format: FURY_CAPABILITY_SIGNAL_FORMAT,
+      kind: 'model',
+      id: 'measured-model',
+      observedAt: 1_000,
+      expiresAt: 2_000,
+      source: 'provider-live-probe-v1',
+      evidenceKind: 'live-probe',
+      health: 'ready',
+      latencyMs: 140,
+    });
+
+    const plan = selectFuryCapabilitiesForTask({
+      objective: 'Repository review reasoning model',
+      index,
+      signals,
+    });
+
+    expect(plan.selected).toHaveLength(1);
+    expect(plan.signalSnapshotDigestSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(plan).toMatchObject({
+      signalRecordsConsidered: 1,
+      signalFreshRecords: 1,
+      signalStaleRecords: 0,
+      executionAuthority: false,
+    });
+    expect(plan.selected[0]).toMatchObject({
+      id: 'measured-model',
+      measuredSignal: {
+        status: 'fresh',
+        health: 'ready',
+        latencyMs: 140,
+        observedAt: 1_000,
+        expiresAt: 2_000,
+        source: 'provider-live-probe-v1',
+        evidenceKind: 'live-probe',
+      },
+    });
+    expect('executionAuthority' in (plan.selected[0]?.measuredSignal ?? {})).toBe(false);
+  });
+
+  it('does not let stale measured health resolve indexed unknown health', () => {
+    const index = indexOf(capability('stale-model', {
+      kind: 'model',
+      health: 'unknown',
+      description: 'Reasoning model for repository review.',
+      source: { system: 'model-fabric', sourceId: 'stale-model' },
+    }));
+    const signals = createFuryCapabilitySignalRegistry({
+      now: () => 3_000,
+    });
+    signals.observe({
+      format: FURY_CAPABILITY_SIGNAL_FORMAT,
+      kind: 'model',
+      id: 'stale-model',
+      observedAt: 1_000,
+      expiresAt: 2_000,
+      source: 'provider-live-probe-v1',
+      evidenceKind: 'live-probe',
+      health: 'ready',
+    });
+
+    const plan = selectFuryCapabilitiesForTask({
+      objective: 'Repository review reasoning model',
+      index,
+      signals,
+      explicitRequests: [{ kind: 'model', id: 'stale-model' }],
+    });
+
+    expect(plan.selected).toHaveLength(0);
+    expect(plan.blockedCounts).toMatchObject({
+      'health-unknown': 1,
+    });
+    expect(plan).toMatchObject({
+      signalFreshRecords: 0,
+      signalStaleRecords: 1,
+    });
+  });
+
+  it('lets fresh measured unavailable health block an otherwise ready capability', () => {
+    const index = indexOf(capability('runtime-down', {
+      health: 'ready',
+      description: 'Repository review.',
+    }));
+    const signals = createFuryCapabilitySignalRegistry({
+      now: () => 1_500,
+    });
+    signals.observe({
+      format: FURY_CAPABILITY_SIGNAL_FORMAT,
+      kind: 'skill',
+      id: 'runtime-down',
+      observedAt: 1_000,
+      expiresAt: 2_000,
+      source: 'runtime-observation-v1',
+      evidenceKind: 'runtime-observation',
+      health: 'unavailable',
+    });
+
+    const plan = selectFuryCapabilitiesForTask({
+      objective: 'Repository review',
+      index,
+      signals,
+      explicitRequests: [{ kind: 'skill', id: 'runtime-down' }],
+    });
+
+    expect(plan.selected).toHaveLength(0);
+    expect(plan.blockedCounts).toMatchObject({
+      'health-unavailable': 1,
+    });
+  });
+
+  it('uses measured cost only when candidates share the exact same cost basis', () => {
+    const index = indexOf(
+      capability('alpha', {
+        description: 'Repository review equal task.',
+      }),
+      capability('beta', {
+        description: 'Repository review equal task.',
+      }),
+    );
+    const signals = createFuryCapabilitySignalRegistry({
+      now: () => 1_500,
+    });
+    for (const [id, cost] of [['alpha', 0.02], ['beta', 0.01]] as const) {
+      signals.observe({
+        format: FURY_CAPABILITY_SIGNAL_FORMAT,
+        kind: 'skill',
+        id,
+        observedAt: 1_000,
+        expiresAt: 2_000,
+        source: 'completed-operation-fixture',
+        evidenceKind: 'completed-operation',
+        observedCostUsd: cost,
+        costBasis: 'same-workload-fixture-v1',
+      });
+    }
+
+    const comparable = selectFuryCapabilitiesForTask({
+      objective: 'Repository review equal task',
+      index,
+      signals,
+      options: {
+        maxSelected: 2,
+        maxSelectedByKind: { skill: 2 },
+      },
+    });
+    expect(comparable.selected.map((item) => item.id)).toEqual([
+      'beta',
+      'alpha',
+    ]);
+
+    let now = 1_500;
+    const differentBasis = createFuryCapabilitySignalRegistry({
+      now: () => now,
+    });
+    differentBasis.observe({
+      format: FURY_CAPABILITY_SIGNAL_FORMAT,
+      kind: 'skill',
+      id: 'alpha',
+      observedAt: 1_100,
+      expiresAt: 2_100,
+      source: 'completed-operation-fixture',
+      evidenceKind: 'completed-operation',
+      observedCostUsd: 100,
+      costBasis: 'workload-a',
+    });
+    differentBasis.observe({
+      format: FURY_CAPABILITY_SIGNAL_FORMAT,
+      kind: 'skill',
+      id: 'beta',
+      observedAt: 1_100,
+      expiresAt: 2_100,
+      source: 'completed-operation-fixture',
+      evidenceKind: 'completed-operation',
+      observedCostUsd: 0.000001,
+      costBasis: 'workload-b',
+    });
+    const notComparable = selectFuryCapabilitiesForTask({
+      objective: 'Repository review equal task',
+      index,
+      signals: differentBasis,
+      options: {
+        maxSelected: 2,
+        maxSelectedByKind: { skill: 2 },
+      },
+    });
+    expect(notComparable.selected.map((item) => item.id)).toEqual([
+      'alpha',
+      'beta',
+    ]);
+    now = 3_000;
+    expect(differentBasis.snapshot().stale).toBe(2);
+  });
+
+  it('uses measured latency only as a deterministic tie-break after relevance and policy', () => {
+    const index = indexOf(
+      capability('slow', { description: 'Repository review equal task.' }),
+      capability('fast', { description: 'Repository review equal task.' }),
+    );
+    const signals = createFuryCapabilitySignalRegistry({
+      now: () => 1_500,
+    });
+    for (const [id, latencyMs] of [['slow', 900], ['fast', 120]] as const) {
+      signals.observe({
+        format: FURY_CAPABILITY_SIGNAL_FORMAT,
+        kind: 'skill',
+        id,
+        observedAt: 1_000,
+        expiresAt: 2_000,
+        source: 'runtime-observation-v1',
+        evidenceKind: 'runtime-observation',
+        latencyMs,
+      });
+    }
+
+    const plan = selectFuryCapabilitiesForTask({
+      objective: 'Repository review equal task',
+      index,
+      signals,
+      options: {
+        maxSelected: 2,
+        maxSelectedByKind: { skill: 2 },
+      },
+    });
+
+    expect(plan.selected.map((item) => item.id)).toEqual(['fast', 'slow']);
+  });
+
+  it('rejects a forged measured signal registry before invoking snapshot', () => {
+    const index = indexOf(capability('known'));
+    const snapshot = vi.fn(() => {
+      throw new Error('FORGED_SIGNAL_SNAPSHOT_MUST_NOT_RUN');
+    });
+    const forged = {
+      snapshot,
+      observe: vi.fn(),
+      get: vi.fn(),
+      remove: vi.fn(),
+      size: vi.fn(),
+    };
+
+    expect(() => selectFuryCapabilitiesForTask({
+      objective: 'Repository review',
+      index,
+      signals: forged as never,
+    })).toThrow(/process-local signal registry/u);
+    expect(snapshot).not.toHaveBeenCalled();
   });
 });
