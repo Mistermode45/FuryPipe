@@ -1160,6 +1160,7 @@ async function main(): Promise<void> {
   const harness = await startHarness();
   const modelHarness = await startHarness(true);
   const toolHarness = await startHarness(false, true);
+  const memoryHarness = await startHarness(true, false, true);
   try {
     const observations: QaObservation[] = [];
     observations.push(...await runEngine('chromium', chromium, harness));
@@ -1201,6 +1202,24 @@ async function main(): Promise<void> {
       'WebChat governed tool browser evidence is incomplete',
     );
 
+    const memoryCases: MemoryQaObservation[] = [];
+    memoryCases.push(await runMemoryEnabledCase('chromium', chromium, memoryHarness));
+    memoryCases.push(await runMemoryEnabledCase('firefox', firefox, memoryHarness));
+    memoryCases.push(await runMemoryEnabledCase('webkit', webkit, memoryHarness));
+    assert(
+      memoryCases.every((item) =>
+        item.configRedacted
+        && item.memoryPanelVisible
+        && item.recallObserved
+        && item.learningObserved
+        && item.softForgotten
+        && item.hardPurgeConfirmed
+        && item.hardPurged
+        && item.secretAbsent
+      ),
+      'WebChat governed Memory browser evidence is incomplete',
+    );
+
     const evidence = {
       format: 'furypipe-gateway-webchat-browser-evidence/v1',
       sourceCommit: SOURCE_COMMIT,
@@ -1210,13 +1229,15 @@ async function main(): Promise<void> {
       cases: observations,
       modelCases,
       toolCases,
+      memoryCases,
       summary: {
-        total: observations.length + modelCases.length + toolCases.length,
-        passed: observations.length + modelCases.length + toolCases.length,
+        total: observations.length + modelCases.length + toolCases.length + memoryCases.length,
+        passed: observations.length + modelCases.length + toolCases.length + memoryCases.length,
         engines: ['chromium', 'firefox', 'webkit'],
         viewports: ['desktop', 'mobile'],
         modelEnabledCases: modelCases.length,
         toolEnabledCases: toolCases.length,
+        memoryEnabledCases: memoryCases.length,
       },
     };
     await writeFile(
@@ -1224,8 +1245,9 @@ async function main(): Promise<void> {
       JSON.stringify(evidence, null, 2) + '\n',
       'utf8',
     );
-    console.log('Gateway WebChat browser QA passed: 12/12 real browser cases');
+    console.log('Gateway WebChat browser QA passed: 15/15 real browser cases');
   } finally {
+    await memoryHarness.close();
     await toolHarness.close();
     await modelHarness.close();
     await harness.close();
