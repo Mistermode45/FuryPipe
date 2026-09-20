@@ -264,6 +264,7 @@ export async function startFuryGatewayLocalRuntime(
     ...(toolRuntime.config.enabled
       ? { toolSourceCount: toolRuntime.config.sourceCount }
       : {}),
+    memoryEnabled: memoryBridge !== undefined,
   });
   const conversationAdapter = createFuryGatewayConversationAdapter({
     kernel,
