@@ -24,6 +24,7 @@ async function startWebChatServer(
     readonly model?: string;
     readonly toolBridgeEnabled?: boolean;
     readonly toolSourceCount?: number;
+    readonly memoryEnabled?: boolean;
   } = {},
 ): Promise<{ readonly origin: string }> {
   let handler: ReturnType<typeof createFuryGatewayWebChatHandler> | undefined;
@@ -84,6 +85,10 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
     expect(csp).not.toContain("'unsafe-eval'");
 
     expect(html).toContain('<h1>Local WebChat</h1>');
+    expect(html).toContain('id="memory-panel"');
+    expect(html).toContain('id="memory-purge-confirm"');
+    expect(html).toContain('Soft forget');
+    expect(html).toContain('Hard purge');
     expect(html).toContain(`src="${FURY_GATEWAY_WEBCHAT_SCRIPT_PATH}"`);
     expect(html).toContain(`href="${FURY_GATEWAY_WEBCHAT_STYLE_PATH}"`);
     expect(html).not.toMatch(/<script(?![^>]*\bsrc=)/u);
@@ -121,6 +126,12 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
     expect(js).toContain("'Outcome unknown'");
     expect(js).toContain("'Tool failed'");
     expect(js).toContain("'Blocked'");
+    expect(js).toContain("'memory.status'");
+    expect(js).toContain("'memory.forget'");
+    expect(js).toContain("'memory.purge'");
+    expect(js).toContain("'Memory recall failed'");
+    expect(js).toContain("'Memory learning failed'");
+    expect(js).toContain('memoryPurgeConfirm.checked');
     expect(js).toContain('textContent');
     expect(js).not.toContain('innerHTML');
     expect(js).not.toMatch(/https?:\/\//u);
@@ -135,6 +146,7 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
       format: 'furypipe-gateway-webchat-config/v1',
       modelBridge: { enabled: false },
       tools: { enabled: false },
+      memory: { enabled: false },
       executionAuthority: false,
     });
 
@@ -153,6 +165,7 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
         model: 'gpt-5.6-sol',
       },
       tools: { enabled: false },
+      memory: { enabled: false },
       executionAuthority: false,
     });
     expect(JSON.stringify(payload)).not.toMatch(/api[_-]?key|credential|token/i);
@@ -173,10 +186,29 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
         enabled: true,
         sourceCount: 2,
       },
+      memory: { enabled: false },
       executionAuthority: false,
     });
     const serialized = JSON.stringify(payload);
     expect(serialized).not.toMatch(/credential|token|header|command|url|policy|fingerprint/i);
+  });
+
+  it('exposes only a boolean for Continuous Memory availability', async () => {
+    const enabled = await startWebChatServer({
+      memoryEnabled: true,
+    });
+    const response = await fetch(enabled.origin + FURY_GATEWAY_WEBCHAT_CONFIG_PATH);
+    const payload = await response.json();
+
+    expect(payload).toEqual({
+      format: 'furypipe-gateway-webchat-config/v1',
+      modelBridge: { enabled: false },
+      tools: { enabled: false },
+      memory: { enabled: true },
+      executionAuthority: false,
+    });
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toMatch(/scopeKinds|scopeId|quota|recovery|keyId|credential|token|path/i);
   });
 
   it('rejects contradictory or malformed tool metadata', () => {
