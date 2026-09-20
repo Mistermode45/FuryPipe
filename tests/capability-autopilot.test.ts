@@ -388,6 +388,62 @@ describe('Capability Autopilot V2 deterministic shortlist', () => {
     })).toThrow(/kind is unsupported/u);
   });
 
+  it('requires a process-local FuryPipe index instead of calling methods on a forged object', () => {
+    const snapshot = vi.fn(() => {
+      throw new Error('FORGED_INDEX_CALLBACK_MUST_NOT_RUN');
+    });
+    const forged = {
+      snapshot,
+      get: vi.fn(),
+      list: vi.fn(),
+      upsert: vi.fn(),
+      remove: vi.fn(),
+      size: vi.fn(),
+      metadataBytes: vi.fn(),
+    };
+
+    expect(() => selectFuryCapabilitiesForTask({
+      objective: 'Repository review',
+      index: forged as never,
+    })).toThrow(/process-local FuryPipe index/u);
+    expect(snapshot).not.toHaveBeenCalled();
+  });
+
+  it('rejects accessors and unknown fields at the selector boundary before routing', () => {
+    const index = indexOf(capability('known'));
+    const input = {
+      objective: 'Repository review',
+      index,
+    } as Record<string, unknown>;
+    Object.defineProperty(input, 'objective', {
+      enumerable: true,
+      get() {
+        throw new Error('OBJECTIVE_GETTER_MUST_NOT_RUN');
+      },
+    });
+    expect(() => selectFuryCapabilitiesForTask(input as never))
+      .toThrow(/unsupported or unsafe fields/u);
+
+    expect(() => selectFuryCapabilitiesForTask({
+      objective: 'Repository review',
+      index,
+      unexpected: true,
+    } as never)).toThrow(/unsupported or unsafe fields/u);
+
+    const permissions = ['repository-read'] as string[];
+    Object.defineProperty(permissions, '0', {
+      enumerable: true,
+      get() {
+        throw new Error('PERMISSION_GETTER_MUST_NOT_RUN');
+      },
+    });
+    expect(() => selectFuryCapabilitiesForTask({
+      objective: 'Repository review',
+      index,
+      availablePermissions: permissions,
+    })).toThrow(/accessor entries/u);
+  });
+
   it('rejects indexes larger than the caller selection bound', () => {
     const index = createFuryCapabilityIndex();
     index.upsert(capability('one'));
