@@ -923,6 +923,10 @@ const JS = `(() => {
   }
 
   function handleStateResult(message) {
+    if (safeText(message.commandName).startsWith('memory.')) {
+      handleMemoryGatewayResult(message);
+      return;
+    }
     if (safeText(message.commandName).startsWith('tools.')) {
       handleToolGatewayResult(message);
       return;
@@ -1036,6 +1040,9 @@ const JS = `(() => {
       addActivity('Accepted', 'Authenticated local Gateway transport connected.', 'accepted');
       if (state.conversationId) inspectConversation();
       else sendCommand('conversation.open', {});
+      if (state.memoryEnabled) {
+        sendCommand('memory.status', {});
+      }
       if (state.toolBridgeEnabled) {
         // Metadata-only state command. Fresh MCP process/network probing still
         // requires the operator to press Refresh inventory.
@@ -1052,7 +1059,9 @@ const JS = `(() => {
           ? 'Model eligible'
           : commandName.startsWith('tools.')
             ? 'Tool eligible'
-            : 'State eligible';
+            : commandName.startsWith('memory.')
+              ? 'Memory eligible'
+              : 'State eligible';
         addActivity(title, commandName || 'Command admitted.', 'eligible');
       } else {
         const reason = safeText(admission?.reason) || 'command denied';
@@ -1060,6 +1069,9 @@ const JS = `(() => {
         if (commandName.startsWith('tools.')) {
           restoreToolActionAfterRejection(commandName);
           toolStatus.textContent = reason;
+        } else if (commandName.startsWith('memory.')) {
+          memoryStatus.textContent = reason;
+          updateMemoryControls();
         } else {
           turnStatus.textContent = reason;
         }
@@ -1083,6 +1095,10 @@ const JS = `(() => {
     }
 
     if (message.type === 'execution-command-result') {
+      if (safeText(message.commandName).startsWith('memory.')) {
+        handleMemoryGatewayResult(message);
+        return;
+      }
       if (safeText(message.commandName).startsWith('tools.')) {
         handleToolGatewayResult(message);
         return;
@@ -1097,6 +1113,7 @@ const JS = `(() => {
           ? safeText(result.provider.providerId) + ' / ' + safeText(result.provider.model)
           : 'provider response';
         addActivity('Model response', provider, 'response');
+        if (state.memoryEnabled) renderMemoryLifecycle(result.memory);
         turnStatus.textContent = 'Model response received — resynchronizing…';
         inspectConversation();
       } else if (result.status === 'cancelled') {
@@ -1107,7 +1124,21 @@ const JS = `(() => {
         const code = safeText(result.failureCode)
           || safeText(result.error?.code)
           || 'model-execution-failed';
-        addActivity('Blocked', code, 'blocked');
+        if (code === 'memory-recall-failed') {
+          addActivity(
+            'Memory recall failed',
+            'Provider inference was not started because governed recall failed closed.',
+            'blocked',
+          );
+        } else if (code === 'memory-turn-failed') {
+          addActivity(
+            'Memory turn failed',
+            'The memory/model turn did not complete safely.',
+            'blocked',
+          );
+        } else {
+          addActivity('Blocked', code, 'blocked');
+        }
         turnStatus.textContent = code;
         inspectConversation();
       }
