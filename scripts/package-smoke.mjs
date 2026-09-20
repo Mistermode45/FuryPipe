@@ -356,6 +356,20 @@ try {
   ], installDir);
   assert(gatewayLocalToolRuntimeExport.stderr === '', `Gateway local tool runtime export wrote stderr: ${gatewayLocalToolRuntimeExport.stderr}`);
 
+  const capabilityIndexExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-index'); if (typeof m.createFuryCapabilityIndex !== 'function' || m.FURY_CAPABILITY_INDEX_ENTRY_FORMAT !== 'furypipe-capability-index-entry/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilityIndexExport.stderr === '', `Capability index export wrote stderr: ${capabilityIndexExport.stderr}`);
+
+  const capabilityAutopilotExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-autopilot'); if (typeof m.selectFuryCapabilitiesForTask !== 'function' || m.FURY_CAPABILITY_SELECTION_FORMAT !== 'furypipe-capability-selection/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilityAutopilotExport.stderr === '', `Capability Autopilot export wrote stderr: ${capabilityAutopilotExport.stderr}`);
+
   const gatewayLocalMemoryRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
