@@ -743,6 +743,174 @@ const JS = `(() => {
     }
   }
 
+  const MEMORY_SCOPE_KINDS = new Set(['global', 'workspace', 'project', 'user', 'agent']);
+
+  function updateMemoryControls() {
+    const scope = safeText(memoryScope.value);
+    const key = safeText(memoryKey.value).trim();
+    const ready = state.memoryEnabled
+      && state.memoryScopeKinds.includes(scope)
+      && key.length > 0;
+    memoryForget.disabled = !ready;
+    memoryPurgeConfirm.disabled = !state.memoryEnabled || state.memoryScopeKinds.length === 0;
+    memoryPurge.disabled = !ready || !memoryPurgeConfirm.checked;
+  }
+
+  function renderMemoryStatus(payload) {
+    if (!payload || payload.enabled !== true || payload.encrypted !== true) {
+      state.memoryScopeKinds = [];
+      memoryBadge.textContent = 'Unavailable';
+      memoryStatus.textContent = 'Memory runtime is not available.';
+      memoryScope.replaceChildren();
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No governed scope';
+      memoryScope.append(option);
+      memoryScope.disabled = true;
+      memoryKey.disabled = true;
+      memoryPurgeConfirm.checked = false;
+      updateMemoryControls();
+      return;
+    }
+
+    const scopes = Array.isArray(payload.scopeKinds)
+      ? [...new Set(payload.scopeKinds.filter((kind) =>
+          typeof kind === 'string' && MEMORY_SCOPE_KINDS.has(kind)
+        ))]
+      : [];
+    state.memoryScopeKinds = scopes;
+    memoryScope.replaceChildren();
+    if (scopes.length === 0) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No governed scope';
+      memoryScope.append(option);
+    } else {
+      for (const scope of scopes) {
+        const option = document.createElement('option');
+        option.value = scope;
+        option.textContent = scope;
+        memoryScope.append(option);
+      }
+    }
+    memoryScope.disabled = scopes.length === 0;
+    memoryKey.disabled = scopes.length === 0;
+    memoryPurgeConfirm.disabled = scopes.length === 0;
+    memoryBadge.textContent = 'Encrypted';
+    memoryStatus.textContent = 'Ready · learning '
+      + (payload.learningEnabled === true ? 'enabled' : 'disabled')
+      + ' · inferred '
+      + (payload.policy?.allowInferred === true ? 'enabled' : 'disabled');
+    updateMemoryControls();
+  }
+
+  function handleMemoryGatewayResult(message) {
+    const adapter = message.result;
+    if (!adapter || typeof adapter !== 'object') {
+      memoryStatus.textContent = 'Malformed memory result.';
+      addActivity('Blocked', 'Malformed memory result.', 'blocked');
+      return;
+    }
+    if (adapter.status !== 'ok') {
+      const code = safeText(adapter.error?.code) || 'memory-command-rejected';
+      memoryStatus.textContent = code;
+      addActivity('Blocked', code, 'blocked');
+      updateMemoryControls();
+      return;
+    }
+
+    const payload = adapter.result;
+    if (message.commandName === 'memory.status') {
+      renderMemoryStatus(payload);
+      addActivity(
+        'Memory ready',
+        Array.isArray(payload?.scopeKinds)
+          ? String(payload.scopeKinds.length) + ' governed scope(s)'
+          : 'Governed memory status loaded.',
+        'accepted',
+      );
+      return;
+    }
+
+    if (message.commandName === 'memory.forget' || message.commandName === 'memory.purge') {
+      const hard = message.commandName === 'memory.purge';
+      const deletedRevisions = Number.isSafeInteger(payload?.deletedRevisions)
+        ? payload.deletedRevisions
+        : 0;
+      const deletedPayloads = Number.isSafeInteger(payload?.deletedPayloads)
+        ? payload.deletedPayloads
+        : 0;
+      memoryStatus.textContent = hard
+        ? 'Hard purge completed · revisions=' + deletedRevisions + ' · payloads=' + deletedPayloads
+        : 'Soft forget completed · tombstone/revisions=' + deletedRevisions;
+      addActivity(
+        hard ? 'Memory purged' : 'Memory forgotten',
+        hard
+          ? 'Permanent purge completed. Revisions=' + deletedRevisions + ', payloads=' + deletedPayloads + '.'
+          : 'Soft forget completed through governed Continuous Memory.',
+        hard ? 'blocked' : 'accepted',
+      );
+      memoryPurgeConfirm.checked = false;
+      memoryKey.value = '';
+      updateMemoryControls();
+    }
+  }
+
+  function renderMemoryLifecycle(receipt) {
+    if (!receipt || typeof receipt !== 'object') return;
+    const recall = receipt.recall;
+    if (recall && typeof recall === 'object') {
+      const entries = Number.isSafeInteger(recall.entries) ? recall.entries : 0;
+      const terms = Number.isSafeInteger(recall.queryTermCount) ? recall.queryTermCount : 0;
+      if (entries > 0) {
+        addActivity(
+          'Memory recalled',
+          String(entries) + ' item(s) · query terms=' + terms + '. Recalled data is not instruction authority.',
+          'accepted',
+        );
+      } else {
+        addActivity('No memory recall', 'No matching governed memory item was injected.', 'accepted');
+      }
+      if (recall.truncated === true) {
+        addActivity('Memory recall truncated', 'Recall byte bound was reached.', 'blocked');
+      }
+    }
+
+    const learning = receipt.learning;
+    if (!learning || typeof learning !== 'object') return;
+    if (learning.status === 'failed_after_execution') {
+      addActivity(
+        'Memory learning failed',
+        'Assistant response remains completed. Provider execution was not replayed.',
+        'blocked',
+      );
+      return;
+    }
+    if (learning.status === 'completed') {
+      const added = Number.isSafeInteger(learning.added) ? learning.added : 0;
+      const updated = Number.isSafeInteger(learning.updated) ? learning.updated : 0;
+      const deleted = Number.isSafeInteger(learning.deleted) ? learning.deleted : 0;
+      const skipped = Number.isSafeInteger(learning.skipped) ? learning.skipped : 0;
+      const changed = added + updated + deleted;
+      if (changed > 0) {
+        addActivity(
+          'Memory learning completed',
+          'added=' + added + ' · updated=' + updated + ' · deleted=' + deleted,
+          'accepted',
+        );
+      } else {
+        addActivity('Memory learning completed', 'No durable memory mutation was required.', 'accepted');
+      }
+      if (skipped > 0) {
+        addActivity(
+          'Memory learning skipped',
+          String(skipped) + ' candidate(s) were rejected by memory policy.',
+          'requested',
+        );
+      }
+    }
+  }
+
   function scheduleReconnect() {
     if (!state.authenticated || state.reconnectTimer || state.reconnectAttempts >= 5) return;
     const delay = Math.min(5000, 500 * Math.pow(2, state.reconnectAttempts));
