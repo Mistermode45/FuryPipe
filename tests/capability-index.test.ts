@@ -183,17 +183,17 @@ describe('Capability Autopilot V2 local index', () => {
     }))).toThrow(/record exceeds maxRecordBytes/u);
 
     const total = createFuryCapabilityIndex({
-      maxRecordBytes: 4_096,
-      maxTotalBytes: 1_600,
+      maxRecordBytes: 2_048,
+      maxTotalBytes: 2_500,
     });
     total.upsert(entry({
       id: 'one',
-      description: 'a'.repeat(150),
+      description: 'a'.repeat(700),
       source: { system: 'skill-registry', sourceId: 'one' },
     }));
     expect(() => total.upsert(entry({
       id: 'two',
-      description: 'b'.repeat(700),
+      description: 'b'.repeat(1_000),
       source: { system: 'skill-registry', sourceId: 'two' },
     }))).toThrow(/metadata byte capacity exceeded/u);
   });
