@@ -19,6 +19,7 @@ import type {
 import type { McpToolRiskClass } from './mcp-tool-risk.js';
 import {
   FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+  isGeneratedFuryCapabilityIndex,
   type FuryCapabilityIndex,
   type FuryCapabilityIndexEntryInput,
   type FuryCapabilityIndexHealthState,
@@ -291,6 +292,15 @@ function mcpInspectionMap(
   return output;
 }
 
+function requireIndex(index: FuryCapabilityIndex): FuryCapabilityIndex {
+  if (!isGeneratedFuryCapabilityIndex(index)) {
+    throw new TypeError(
+      'Capability Autopilot projection requires a process-local FuryPipe index',
+    );
+  }
+  return index;
+}
+
 function put(
   index: FuryCapabilityIndex,
   entry: FuryCapabilityIndexEntryInput,
@@ -303,6 +313,7 @@ export function projectSkillsIntoCapabilityIndex(
   registry: AgentSkillRegistry,
   health: FuryCapabilityIndexHealthOverrides['skills'] = {},
 ): FuryCapabilityIndexProjectionReport {
+  requireIndex(index);
   const inspections = registry.inspect();
   const validatedHealth = validateHealthOverrides(health, 'skill health overrides');
   for (const skill of inspections) {
@@ -346,6 +357,7 @@ export function projectPluginsIntoCapabilityIndex(
   registry: FuryPluginBundleRegistry,
   health: FuryCapabilityIndexHealthOverrides['plugins'] = {},
 ): FuryCapabilityIndexProjectionReport {
+  requireIndex(index);
   const inspections = registry.inspect();
   const validatedHealth = validateHealthOverrides(health, 'plugin health overrides');
   for (const plugin of inspections) {
@@ -398,6 +410,7 @@ export function projectModelsIntoCapabilityIndex(
   registry: ModelFabricRegistry,
   health: FuryCapabilityIndexHealthOverrides['models'] = {},
 ): FuryCapabilityIndexProjectionReport {
+  requireIndex(index);
   const entries = registry.list();
   const validatedHealth = validateHealthOverrides(health, 'model health overrides');
   let indexed = 0;
@@ -463,6 +476,7 @@ export function projectMcpIntoCapabilityIndex(
     readonly health?: FuryCapabilityIndexHealthOverrides['mcpServers'];
   } = {},
 ): FuryCapabilityIndexProjectionReport {
+  requireIndex(index);
   const summaries = bridge.inspectSources();
   const validatedHealth = validateHealthOverrides(
     options.health,
@@ -559,6 +573,7 @@ export function revalidateFuryCapabilitySelection(
   plan: FuryCapabilitySelectionPlan,
   index: FuryCapabilityIndex,
 ): FuryCapabilitySelectionRevalidation {
+  requireIndex(index);
   if (
     !plan
     || plan.format !== 'furypipe-capability-selection/v1'
