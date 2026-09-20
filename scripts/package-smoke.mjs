@@ -377,6 +377,20 @@ try {
   ], installDir);
   assert(capabilityAdaptersExport.stderr === '', `Capability index adapters export wrote stderr: ${capabilityAdaptersExport.stderr}`);
 
+  const capabilitySignalsExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-signals'); if (typeof m.createFuryCapabilitySignalRegistry !== 'function' || m.FURY_CAPABILITY_SIGNAL_FORMAT !== 'furypipe-capability-signal/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilitySignalsExport.stderr === '', `Capability signals export wrote stderr: ${capabilitySignalsExport.stderr}`);
+
+  const capabilitySignalAdaptersExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-signal-adapters'); if (typeof m.projectProviderRuntimeModelSignals !== 'function' || m.FURY_CAPABILITY_SIGNAL_PROJECTION_FORMAT !== 'furypipe-capability-signal-projection/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilitySignalAdaptersExport.stderr === '', `Capability signal adapters export wrote stderr: ${capabilitySignalAdaptersExport.stderr}`);
+
   const capabilityExposureExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
