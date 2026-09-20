@@ -182,7 +182,15 @@ function safeRejectedCode(error: unknown): string {
   if (/scope is not configured/i.test(message)) return 'memory-scope-not-configured';
   if (/concurrency limit/i.test(message)) return 'memory-backpressure';
   if (/permit expired/i.test(message)) return 'memory-permit-expired';
-  if (/input|key|scope kind/i.test(message)) return 'memory-input-invalid';
+  if (
+    message === 'memory key is invalid'
+    || message === 'memory scope kind is invalid'
+    || /memory\.(?:forget|purge) input (?:must|contains|is missing)/i.test(message)
+    || /memory operation input (?:must|contains)/i.test(message)
+    || /memory key must be bounded non-empty text/i.test(message)
+  ) {
+    return 'memory-input-invalid';
+  }
   return 'memory-operation-rejected';
 }
 
