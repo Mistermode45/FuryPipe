@@ -362,6 +362,27 @@ try {
     "const m = await import('furypipe/gateway-local-memory-runtime-node'); if (typeof m.createFuryGatewayLocalMemoryRuntime !== 'function' || m.FURY_GATEWAY_LOCAL_MEMORY_CONFIG_FORMAT !== 'furypipe-gateway-local-memory-config/v1') process.exit(1);",
   ], installDir);
   assert(gatewayLocalMemoryRuntimeExport.stderr === '', `Gateway local memory runtime export wrote stderr: ${gatewayLocalMemoryRuntimeExport.stderr}`);
+
+  const furyKernelMemoryBridgeExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/fury-kernel-memory-bridge-node'); if (typeof m.createFuryKernelMemoryBridge !== 'function' || m.FURY_KERNEL_MEMORY_BRIDGE_FORMAT !== 'furypipe-kernel-memory-bridge/v1') process.exit(1);",
+  ], installDir);
+  assert(furyKernelMemoryBridgeExport.stderr === '', `Fury Kernel memory bridge export wrote stderr: ${furyKernelMemoryBridgeExport.stderr}`);
+
+  const gatewayMemoryCommandExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-memory-command-node'); if (!Array.isArray(m.FURY_GATEWAY_MEMORY_COMMAND_NAMES) || !Array.isArray(m.FURY_GATEWAY_MEMORY_COMMAND_DEFINITIONS)) process.exit(1);",
+  ], installDir);
+  assert(gatewayMemoryCommandExport.stderr === '', `Gateway memory command export wrote stderr: ${gatewayMemoryCommandExport.stderr}`);
+
+  const gatewayMemoryAdapterExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-memory-adapter-node'); if (typeof m.createFuryGatewayMemoryAdapter !== 'function' || m.FURY_GATEWAY_MEMORY_RESULT_FORMAT !== 'furypipe-gateway-memory-result/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayMemoryAdapterExport.stderr === '', `Gateway memory adapter export wrote stderr: ${gatewayMemoryAdapterExport.stderr}`);
   const skillRegistryExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
