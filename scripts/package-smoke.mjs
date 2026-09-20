@@ -440,6 +440,13 @@ try {
   ], installDir);
   assert(gatewayChannelObservabilityExport.stderr === '', `Gateway channel observability export wrote stderr: ${gatewayChannelObservabilityExport.stderr}`);
 
+  const gatewayAutomationDefinitionExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-definition-node'); if (typeof m.createFuryGatewayAutomationDefinitionStore !== 'function' || typeof m.isGeneratedFuryGatewayAutomationDefinitionStore !== 'function' || m.FURY_GATEWAY_AUTOMATION_DEFINITION_FORMAT !== 'furypipe-gateway-automation-definition/v1' || m.FURY_GATEWAY_AUTOMATION_DEFINITION_INSPECTION_FORMAT !== 'furypipe-gateway-automation-definition-inspection/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationDefinitionExport.stderr === '', `Gateway automation definition export wrote stderr: ${gatewayAutomationDefinitionExport.stderr}`);
+
   const gatewayNotificationExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
