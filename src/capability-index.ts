@@ -131,6 +131,8 @@ interface StoredCapability {
   readonly bytes: number;
 }
 
+const CAPABILITY_INDEX_EVIDENCE = new WeakSet<object>();
+
 const DEFAULT_MAX_RECORDS = 20_000;
 const HARD_MAX_RECORDS = 100_000;
 const DEFAULT_MAX_RECORD_BYTES = 16 * 1024;
@@ -541,6 +543,14 @@ function sortedRecords(
   return Object.freeze(values);
 }
 
+export function isGeneratedFuryCapabilityIndex(
+  value: unknown,
+): value is FuryCapabilityIndex {
+  return typeof value === 'object'
+    && value !== null
+    && CAPABILITY_INDEX_EVIDENCE.has(value);
+}
+
 export function createFuryCapabilityIndex(
   options: FuryCapabilityIndexOptions = {},
 ): FuryCapabilityIndex {
@@ -569,7 +579,7 @@ export function createFuryCapabilityIndex(
   const records = new Map<string, StoredCapability>();
   let totalBytes = 0;
 
-  return Object.freeze({
+  const api: FuryCapabilityIndex = Object.freeze({
     upsert(entry: FuryCapabilityIndexEntryInput): FuryCapabilityIndexRecord {
       const normalized = normalizeEntry(entry);
       const encoded = JSON.stringify(normalized);
@@ -647,4 +657,6 @@ export function createFuryCapabilityIndex(
       return totalBytes;
     },
   });
+  CAPABILITY_INDEX_EVIDENCE.add(api);
+  return api;
 }
