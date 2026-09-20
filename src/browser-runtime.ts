@@ -702,7 +702,14 @@ async function validatedUploadPath(
   } catch {
     throw new BrowserRuntimeError('upload-invalid', 'upload path is unavailable or not a regular file');
   }
-  if (!roots.some((root) => contained(root, real))) {
+  const canonicalRoots = await Promise.all(roots.map(async (root) => {
+    try {
+      return await realpath(root);
+    } catch {
+      return undefined;
+    }
+  }));
+  if (!canonicalRoots.some((root) => root !== undefined && contained(root, real))) {
     throw new BrowserRuntimeError('upload-invalid', 'upload path is outside the governed upload roots');
   }
   const info = await stat(real);
