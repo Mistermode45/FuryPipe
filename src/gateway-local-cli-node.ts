@@ -22,6 +22,19 @@ import {
   type FuryGatewayLocalMemoryConfig,
 } from './gateway-local-memory-runtime-node.js';
 import {
+  createFuryKernelMemoryBridge,
+} from './fury-kernel-memory-bridge-node.js';
+import {
+  createFuryGatewayMemoryAdapter,
+} from './gateway-memory-adapter-node.js';
+import {
+  FURY_GATEWAY_MEMORY_COMMAND_DEFINITIONS,
+  FURY_GATEWAY_MEMORY_EXECUTION_COMMAND_NAMES,
+  FURY_GATEWAY_MEMORY_STATE_COMMAND_NAMES,
+  type FuryGatewayMemoryExecutionCommandName,
+  type FuryGatewayMemoryStateCommandName,
+} from './gateway-memory-command-node.js';
+import {
   createFuryGatewayLocalToolRuntime,
   type FuryGatewayLocalToolConfig,
 } from './gateway-local-tool-runtime-node.js';
@@ -172,8 +185,23 @@ export async function startFuryGatewayLocalRuntime(
     ...(options.env === undefined ? {} : { env: options.env }),
     now,
   });
+  const memoryBridge = memoryRuntime.engine && memoryRuntime.scopes
+    ? createFuryKernelMemoryBridge({
+        engine: memoryRuntime.engine,
+        scopes: memoryRuntime.scopes,
+        now,
+      })
+    : undefined;
+  const memoryAdapter = memoryBridge
+    ? createFuryGatewayMemoryAdapter({
+        bridge: memoryBridge,
+        config: memoryRuntime.config,
+        maxResultBytes: 32 * 1024,
+      })
+    : undefined;
   const operatorScopes: FuryGatewayScope[] = [...LOCAL_OPERATOR_SCOPES];
   if (modelRuntime.bridge) operatorScopes.push('capability.provider-inference');
+  if (memoryBridge) operatorScopes.push('memory.read', 'memory.write', 'memory.manage');
   if (toolRuntime.bridge) {
     operatorScopes.push('mcp.inspect', 'mcp.manage');
     if (toolRuntime.requiresProcess) operatorScopes.push('capability.process');
@@ -255,11 +283,17 @@ export async function startFuryGatewayLocalRuntime(
     ...(toolRuntime.bridge
       ? FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS
       : []),
+    ...(memoryBridge
+      ? FURY_GATEWAY_MEMORY_COMMAND_DEFINITIONS
+      : []),
   ]);
   const admittedStateCommandNames = Object.freeze([
     ...FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
     ...(toolRuntime.bridge
       ? FURY_GATEWAY_TOOL_STATE_COMMAND_NAMES
+      : []),
+    ...(memoryBridge
+      ? FURY_GATEWAY_MEMORY_STATE_COMMAND_NAMES
       : []),
   ]);
   const admittedExecutionCommandNames = Object.freeze([
@@ -268,6 +302,9 @@ export async function startFuryGatewayLocalRuntime(
       : []),
     ...(toolRuntime.bridge
       ? FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES
+      : []),
+    ...(memoryBridge
+      ? FURY_GATEWAY_MEMORY_EXECUTION_COMMAND_NAMES
       : []),
   ]);
 
@@ -313,6 +350,16 @@ export async function startFuryGatewayLocalRuntime(
             command.input,
           );
         }
+        if (
+          memoryAdapter
+          && (FURY_GATEWAY_MEMORY_STATE_COMMAND_NAMES as readonly string[])
+            .includes(command.commandName)
+        ) {
+          return memoryAdapter.dispatchState(
+            command.commandName as FuryGatewayMemoryStateCommandName,
+            command.input,
+          );
+        }
         throw new Error('local Gateway state command is unsupported');
       },
       ...(admittedExecutionCommandNames.length > 0
@@ -337,6 +384,16 @@ export async function startFuryGatewayLocalRuntime(
               ) {
                 return toolAdapter.dispatchExecution(
                   command.commandName as FuryGatewayToolExecutionCommandName,
+                  command.input,
+                );
+              }
+              if (
+                memoryAdapter
+                && (FURY_GATEWAY_MEMORY_EXECUTION_COMMAND_NAMES as readonly string[])
+                  .includes(command.commandName)
+              ) {
+                return memoryAdapter.dispatchExecution(
+                  command.commandName as FuryGatewayMemoryExecutionCommandName,
                   command.input,
                 );
               }
