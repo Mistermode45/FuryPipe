@@ -447,6 +447,13 @@ try {
   ], installDir);
   assert(gatewayAutomationDefinitionExport.stderr === '', `Gateway automation definition export wrote stderr: ${gatewayAutomationDefinitionExport.stderr}`);
 
+  const gatewayAutomationRunLedgerExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-run-ledger-node'); if (typeof m.createFuryGatewayAutomationRunLedger !== 'function' || typeof m.isGeneratedFuryGatewayAutomationRunLedger !== 'function' || m.FURY_GATEWAY_AUTOMATION_TRIGGER_RECORD_FORMAT !== 'furypipe-gateway-automation-trigger-record/v1' || m.FURY_GATEWAY_AUTOMATION_RUN_STATUS_FORMAT !== 'furypipe-gateway-automation-run-status/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationRunLedgerExport.stderr === '', `Gateway automation run ledger export wrote stderr: ${gatewayAutomationRunLedgerExport.stderr}`);
+
   const gatewayNotificationExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
