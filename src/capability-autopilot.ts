@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import {
   FURY_CAPABILITY_INDEX_KINDS,
+  isGeneratedFuryCapabilityIndex,
   type FuryCapabilityIndex,
   type FuryCapabilityIndexKind,
   type FuryCapabilityIndexRecord,
@@ -458,52 +459,86 @@ function blockedCountsObject(
 export function selectFuryCapabilitiesForTask(
   input: FuryCapabilitySelectionInput,
 ): FuryCapabilitySelectionPlan {
-  if (!input || typeof input !== 'object' || !input.index) {
-    throw new TypeError('Capability Autopilot selection requires an index');
+  const root = exactPlainRecord(
+    input,
+    [
+      'objective',
+      'index',
+      'explicitRequests',
+      'hostCompatibility',
+      'availablePermissions',
+      'requiredFamilies',
+      'options',
+    ],
+    ['objective', 'index'],
+    'Capability Autopilot selection input',
+  );
+  if (!isGeneratedFuryCapabilityIndex(root.index)) {
+    throw new TypeError(
+      'Capability Autopilot selection requires a process-local FuryPipe index',
+    );
   }
+  const index = root.index;
 
-  const objective = normalizeObjective(input.objective);
+  const objective = normalizeObjective(root.objective as string);
   const objectiveTokens = new Set(tokens(objective));
-  const explicit = normalizeExplicitRequests(input.explicitRequests);
+  const explicit = normalizeExplicitRequests(
+    root.explicitRequests as readonly FuryCapabilityExplicitRequest[] | undefined,
+  );
   const hostCompatibility = normalizeFactList(
-    input.hostCompatibility,
+    root.hostCompatibility as readonly string[] | undefined,
     'hostCompatibility',
   );
   const availablePermissions = normalizeFactList(
-    input.availablePermissions ?? [],
+    (root.availablePermissions as readonly string[] | undefined) ?? [],
     'availablePermissions',
   ) ?? new Set<string>();
   const requiredFamilies = normalizeFactList(
-    input.requiredFamilies ?? [],
+    (root.requiredFamilies as readonly string[] | undefined) ?? [],
     'requiredFamilies',
   ) ?? new Set<string>();
 
-  const options = input.options ?? {};
-  const minScore = boundedScore(options.minScore);
+  const options = root.options === undefined
+    ? {}
+    : exactPlainRecord(
+        root.options,
+        [
+          'minScore',
+          'maxSelected',
+          'maxSelectedByKind',
+          'maxBlockedDetails',
+          'maxCandidates',
+        ],
+        [],
+        'Capability Autopilot selection options',
+      );
+  const minScore = boundedScore(options.minScore as number | undefined);
   const maxSelected = boundedInteger(
-    options.maxSelected,
+    options.maxSelected as number | undefined,
     DEFAULT_MAX_SELECTED,
     1,
     HARD_MAX_SELECTED,
     'maxSelected',
   );
   const maxBlockedDetails = boundedInteger(
-    options.maxBlockedDetails,
+    options.maxBlockedDetails as number | undefined,
     DEFAULT_MAX_BLOCKED_DETAILS,
     0,
     HARD_MAX_BLOCKED_DETAILS,
     'maxBlockedDetails',
   );
   const maxCandidates = boundedInteger(
-    options.maxCandidates,
+    options.maxCandidates as number | undefined,
     DEFAULT_MAX_CANDIDATES,
     1,
     HARD_MAX_CANDIDATES,
     'maxCandidates',
   );
-  const kindCaps = normalizeKindCaps(options.maxSelectedByKind);
+  const kindCaps = normalizeKindCaps(
+    options.maxSelectedByKind as FuryCapabilitySelectionOptions['maxSelectedByKind'],
+  );
 
-  const snapshot = input.index.snapshot();
+  const snapshot = index.snapshot();
   if (snapshot.count > maxCandidates) {
     throw new RangeError('Capability Autopilot candidate bound exceeded');
   }
