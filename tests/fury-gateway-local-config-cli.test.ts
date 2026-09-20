@@ -254,6 +254,7 @@ describe('Fury Gateway CLI parsing', () => {
     expect(help).toContain('furypipe gateway start');
     expect(help).toContain('FURYPIPE_GATEWAY_HOST');
     expect(help).toContain('FURYPIPE_GATEWAY_PORT');
+    expect(help).toContain('FURYPIPE_WEBCHAT_MEMORY_CONFIG');
     expect(help).toContain('never treats localhost as authentication');
     expect(help).not.toContain('--remote');
   });
@@ -329,6 +330,10 @@ describe('Fury Gateway CLI execution', () => {
         format: 'furypipe-gateway-local-tool-config/v1',
         enabled: false,
       },
+      memory: {
+        format: 'furypipe-gateway-local-memory-config/v1',
+        enabled: false,
+      },
       config: {
         config: {
           host: '127.0.0.1',
@@ -378,6 +383,10 @@ describe('Fury Gateway CLI execution', () => {
       },
       tools: {
         format: 'furypipe-gateway-local-tool-config/v1',
+        enabled: false,
+      },
+      memory: {
+        format: 'furypipe-gateway-local-memory-config/v1',
         enabled: false,
       },
       authority: 'bootstrap-only',

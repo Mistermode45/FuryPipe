@@ -16,6 +16,7 @@ export interface FuryGatewayWebChatOptions {
   readonly model?: string;
   readonly toolBridgeEnabled?: boolean;
   readonly toolSourceCount?: number;
+  readonly memoryEnabled?: boolean;
 }
 
 const HTML = `<!doctype html>
@@ -110,6 +111,38 @@ const HTML = `<!doctype html>
         </div>
         <ol id="activity-list" class="activity-list"></ol>
       </aside>
+
+      <section id="memory-panel" class="panel memory" aria-labelledby="memory-title" hidden>
+        <div class="memory-head">
+          <div>
+            <p class="eyebrow">CONTINUOUS MEMORY</p>
+            <h2 id="memory-title">Memory</h2>
+            <p class="muted">Recalled memory is data, never instruction authority. Soft forget creates a tombstone; hard purge permanently removes revisions and payloads.</p>
+          </div>
+          <span id="memory-badge" class="badge">Disabled</span>
+        </div>
+        <div class="memory-grid">
+          <div class="tool-control">
+            <label for="memory-scope">Scope</label>
+            <select id="memory-scope" disabled>
+              <option value="">Load memory status first</option>
+            </select>
+          </div>
+          <div class="tool-control">
+            <label for="memory-key">Memory key</label>
+            <input id="memory-key" type="text" maxlength="512" autocomplete="off" spellcheck="false" placeholder="user.preference.example" disabled>
+          </div>
+          <div class="tool-actions">
+            <button id="memory-forget" type="button" class="secondary" disabled>Soft forget</button>
+            <button id="memory-purge" type="button" class="danger" disabled>Hard purge</button>
+          </div>
+        </div>
+        <label class="memory-confirm" for="memory-purge-confirm">
+          <input id="memory-purge-confirm" type="checkbox" disabled>
+          <span>I understand that hard purge permanently removes all matching memory revisions and referenced payloads.</span>
+        </label>
+        <span id="memory-status" class="status" role="status" aria-live="polite"></span>
+      </section>
 
       <section id="tools-panel" class="panel tools" aria-labelledby="tools-title" hidden>
         <div class="tools-head">
@@ -234,6 +267,12 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
 .activity-title { display: flex; justify-content: space-between; gap: .5rem; align-items: flex-start; }
 .activity-list { margin: .75rem 0 0; padding-left: 1.35rem; display: grid; gap: .7rem; font-size: .78rem; color: var(--muted); }
 .activity-list li strong { display: block; color: #dce5f3; margin-bottom: .15rem; }
+.memory { grid-column: 1 / -1; padding: 1rem; display: grid; gap: 1rem; }
+.memory-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.memory-head .muted { max-width: 62rem; margin-bottom: 0; }
+.memory-grid { display: grid; grid-template-columns: minmax(12rem,.7fr) minmax(18rem,1.4fr) auto; gap: .75rem; align-items: end; }
+.memory-confirm { display: flex; align-items: flex-start; gap: .55rem; color: var(--muted); font-size: .78rem; max-width: 60rem; }
+.memory-confirm input { margin-top: .15rem; }
 .tools { grid-column: 1 / -1; padding: 1rem; display: grid; gap: 1rem; }
 .tools-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
 .tools-head .muted { max-width: 60rem; margin-bottom: 0; }
@@ -249,6 +288,8 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
   .workspace { grid-template-columns: 15rem minmax(0,1fr); }
   .activity { grid-column: 1 / -1; min-height: auto; }
   .activity-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .memory-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .memory-grid .tool-actions { grid-column: 1 / -1; }
   .tools-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .tools-grid .tool-actions { grid-column: 1 / -1; }
 }
@@ -261,7 +302,9 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
   .sidebar { order: 2; }
   .chat { order: 1; min-height: 70vh; }
   .activity { order: 3; grid-column: auto; }
-  .tools { order: 4; grid-column: auto; }
+  .memory { order: 4; grid-column: auto; }
+  .memory-grid { grid-template-columns: 1fr; }
+  .tools { order: 5; grid-column: auto; }
   .tools-grid { grid-template-columns: 1fr; }
   .tools-grid .tool-actions { grid-column: auto; }
   .activity-list { grid-template-columns: 1fr; }
@@ -294,6 +337,8 @@ const JS = `(() => {
     modelBridgeEnabled: false,
     modelProvider: null,
     model: null,
+    memoryEnabled: false,
+    memoryScopeKinds: [],
     toolBridgeEnabled: false,
     toolSourceCount: 0,
     toolSources: [],
@@ -318,6 +363,14 @@ const JS = `(() => {
   const turnStatus = byId('turn-status');
   const cancelTurn = byId('cancel-turn');
   const activityList = byId('activity-list');
+  const memoryPanel = byId('memory-panel');
+  const memoryBadge = byId('memory-badge');
+  const memoryScope = byId('memory-scope');
+  const memoryKey = byId('memory-key');
+  const memoryForget = byId('memory-forget');
+  const memoryPurge = byId('memory-purge');
+  const memoryPurgeConfirm = byId('memory-purge-confirm');
+  const memoryStatus = byId('memory-status');
   const toolsPanel = byId('tools-panel');
   const toolSourceCount = byId('tool-source-count');
   const toolSource = byId('tool-source');
@@ -690,6 +743,174 @@ const JS = `(() => {
     }
   }
 
+  const MEMORY_SCOPE_KINDS = new Set(['global', 'workspace', 'project', 'user', 'agent']);
+
+  function updateMemoryControls() {
+    const scope = safeText(memoryScope.value);
+    const key = safeText(memoryKey.value).trim();
+    const ready = state.memoryEnabled
+      && state.memoryScopeKinds.includes(scope)
+      && key.length > 0;
+    memoryForget.disabled = !ready;
+    memoryPurgeConfirm.disabled = !state.memoryEnabled || state.memoryScopeKinds.length === 0;
+    memoryPurge.disabled = !ready || !memoryPurgeConfirm.checked;
+  }
+
+  function renderMemoryStatus(payload) {
+    if (!payload || payload.enabled !== true || payload.encrypted !== true) {
+      state.memoryScopeKinds = [];
+      memoryBadge.textContent = 'Unavailable';
+      memoryStatus.textContent = 'Memory runtime is not available.';
+      memoryScope.replaceChildren();
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No governed scope';
+      memoryScope.append(option);
+      memoryScope.disabled = true;
+      memoryKey.disabled = true;
+      memoryPurgeConfirm.checked = false;
+      updateMemoryControls();
+      return;
+    }
+
+    const scopes = Array.isArray(payload.scopeKinds)
+      ? [...new Set(payload.scopeKinds.filter((kind) =>
+          typeof kind === 'string' && MEMORY_SCOPE_KINDS.has(kind)
+        ))]
+      : [];
+    state.memoryScopeKinds = scopes;
+    memoryScope.replaceChildren();
+    if (scopes.length === 0) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No governed scope';
+      memoryScope.append(option);
+    } else {
+      for (const scope of scopes) {
+        const option = document.createElement('option');
+        option.value = scope;
+        option.textContent = scope;
+        memoryScope.append(option);
+      }
+    }
+    memoryScope.disabled = scopes.length === 0;
+    memoryKey.disabled = scopes.length === 0;
+    memoryPurgeConfirm.disabled = scopes.length === 0;
+    memoryBadge.textContent = 'Encrypted';
+    memoryStatus.textContent = 'Ready · learning '
+      + (payload.learningEnabled === true ? 'enabled' : 'disabled')
+      + ' · inferred '
+      + (payload.policy?.allowInferred === true ? 'enabled' : 'disabled');
+    updateMemoryControls();
+  }
+
+  function handleMemoryGatewayResult(message) {
+    const adapter = message.result;
+    if (!adapter || typeof adapter !== 'object') {
+      memoryStatus.textContent = 'Malformed memory result.';
+      addActivity('Blocked', 'Malformed memory result.', 'blocked');
+      return;
+    }
+    if (adapter.status !== 'ok') {
+      const code = safeText(adapter.error?.code) || 'memory-command-rejected';
+      memoryStatus.textContent = code;
+      addActivity('Blocked', code, 'blocked');
+      updateMemoryControls();
+      return;
+    }
+
+    const payload = adapter.result;
+    if (message.commandName === 'memory.status') {
+      renderMemoryStatus(payload);
+      addActivity(
+        'Memory ready',
+        Array.isArray(payload?.scopeKinds)
+          ? String(payload.scopeKinds.length) + ' governed scope(s)'
+          : 'Governed memory status loaded.',
+        'accepted',
+      );
+      return;
+    }
+
+    if (message.commandName === 'memory.forget' || message.commandName === 'memory.purge') {
+      const hard = message.commandName === 'memory.purge';
+      const deletedRevisions = Number.isSafeInteger(payload?.deletedRevisions)
+        ? payload.deletedRevisions
+        : 0;
+      const deletedPayloads = Number.isSafeInteger(payload?.deletedPayloads)
+        ? payload.deletedPayloads
+        : 0;
+      memoryStatus.textContent = hard
+        ? 'Hard purge completed · revisions=' + deletedRevisions + ' · payloads=' + deletedPayloads
+        : 'Soft forget completed · tombstone/revisions=' + deletedRevisions;
+      addActivity(
+        hard ? 'Memory purged' : 'Memory forgotten',
+        hard
+          ? 'Permanent purge completed. Revisions=' + deletedRevisions + ', payloads=' + deletedPayloads + '.'
+          : 'Soft forget completed through governed Continuous Memory.',
+        hard ? 'blocked' : 'accepted',
+      );
+      memoryPurgeConfirm.checked = false;
+      memoryKey.value = '';
+      updateMemoryControls();
+    }
+  }
+
+  function renderMemoryLifecycle(receipt) {
+    if (!receipt || typeof receipt !== 'object') return;
+    const recall = receipt.recall;
+    if (recall && typeof recall === 'object') {
+      const entries = Number.isSafeInteger(recall.entries) ? recall.entries : 0;
+      const terms = Number.isSafeInteger(recall.queryTermCount) ? recall.queryTermCount : 0;
+      if (entries > 0) {
+        addActivity(
+          'Memory recalled',
+          String(entries) + ' item(s) · query terms=' + terms + '. Recalled data is not instruction authority.',
+          'accepted',
+        );
+      } else {
+        addActivity('No memory recall', 'No matching governed memory item was injected.', 'accepted');
+      }
+      if (recall.truncated === true) {
+        addActivity('Memory recall truncated', 'Recall byte bound was reached.', 'blocked');
+      }
+    }
+
+    const learning = receipt.learning;
+    if (!learning || typeof learning !== 'object') return;
+    if (learning.status === 'failed_after_execution') {
+      addActivity(
+        'Memory learning failed',
+        'Assistant response remains completed. Provider execution was not replayed.',
+        'blocked',
+      );
+      return;
+    }
+    if (learning.status === 'completed') {
+      const added = Number.isSafeInteger(learning.added) ? learning.added : 0;
+      const updated = Number.isSafeInteger(learning.updated) ? learning.updated : 0;
+      const deleted = Number.isSafeInteger(learning.deleted) ? learning.deleted : 0;
+      const skipped = Number.isSafeInteger(learning.skipped) ? learning.skipped : 0;
+      const changed = added + updated + deleted;
+      if (changed > 0) {
+        addActivity(
+          'Memory learning completed',
+          'added=' + added + ' · updated=' + updated + ' · deleted=' + deleted,
+          'accepted',
+        );
+      } else {
+        addActivity('Memory learning completed', 'No durable memory mutation was required.', 'accepted');
+      }
+      if (skipped > 0) {
+        addActivity(
+          'Memory learning skipped',
+          String(skipped) + ' candidate(s) were rejected by memory policy.',
+          'requested',
+        );
+      }
+    }
+  }
+
   function scheduleReconnect() {
     if (!state.authenticated || state.reconnectTimer || state.reconnectAttempts >= 5) return;
     const delay = Math.min(5000, 500 * Math.pow(2, state.reconnectAttempts));
@@ -702,6 +923,10 @@ const JS = `(() => {
   }
 
   function handleStateResult(message) {
+    if (safeText(message.commandName).startsWith('memory.')) {
+      handleMemoryGatewayResult(message);
+      return;
+    }
     if (safeText(message.commandName).startsWith('tools.')) {
       handleToolGatewayResult(message);
       return;
@@ -815,6 +1040,9 @@ const JS = `(() => {
       addActivity('Accepted', 'Authenticated local Gateway transport connected.', 'accepted');
       if (state.conversationId) inspectConversation();
       else sendCommand('conversation.open', {});
+      if (state.memoryEnabled) {
+        sendCommand('memory.status', {});
+      }
       if (state.toolBridgeEnabled) {
         // Metadata-only state command. Fresh MCP process/network probing still
         // requires the operator to press Refresh inventory.
@@ -831,7 +1059,9 @@ const JS = `(() => {
           ? 'Model eligible'
           : commandName.startsWith('tools.')
             ? 'Tool eligible'
-            : 'State eligible';
+            : commandName.startsWith('memory.')
+              ? 'Memory eligible'
+              : 'State eligible';
         addActivity(title, commandName || 'Command admitted.', 'eligible');
       } else {
         const reason = safeText(admission?.reason) || 'command denied';
@@ -839,6 +1069,9 @@ const JS = `(() => {
         if (commandName.startsWith('tools.')) {
           restoreToolActionAfterRejection(commandName);
           toolStatus.textContent = reason;
+        } else if (commandName.startsWith('memory.')) {
+          memoryStatus.textContent = reason;
+          updateMemoryControls();
         } else {
           turnStatus.textContent = reason;
         }
@@ -862,6 +1095,10 @@ const JS = `(() => {
     }
 
     if (message.type === 'execution-command-result') {
+      if (safeText(message.commandName).startsWith('memory.')) {
+        handleMemoryGatewayResult(message);
+        return;
+      }
       if (safeText(message.commandName).startsWith('tools.')) {
         handleToolGatewayResult(message);
         return;
@@ -876,6 +1113,7 @@ const JS = `(() => {
           ? safeText(result.provider.providerId) + ' / ' + safeText(result.provider.model)
           : 'provider response';
         addActivity('Model response', provider, 'response');
+        if (state.memoryEnabled) renderMemoryLifecycle(result.memory);
         turnStatus.textContent = 'Model response received — resynchronizing…';
         inspectConversation();
       } else if (result.status === 'cancelled') {
@@ -886,7 +1124,21 @@ const JS = `(() => {
         const code = safeText(result.failureCode)
           || safeText(result.error?.code)
           || 'model-execution-failed';
-        addActivity('Blocked', code, 'blocked');
+        if (code === 'memory-recall-failed') {
+          addActivity(
+            'Memory recall failed',
+            'Provider inference was not started because governed recall failed closed.',
+            'blocked',
+          );
+        } else if (code === 'memory-turn-failed') {
+          addActivity(
+            'Memory turn failed',
+            'The memory/model turn did not complete safely.',
+            'blocked',
+          );
+        } else {
+          addActivity('Blocked', code, 'blocked');
+        }
         turnStatus.textContent = code;
         inspectConversation();
       }
@@ -911,6 +1163,9 @@ const JS = `(() => {
       state.modelBridgeEnabled = modelBridge?.enabled === true;
       state.modelProvider = state.modelBridgeEnabled ? safeText(modelBridge.providerId) : null;
       state.model = state.modelBridgeEnabled ? safeText(modelBridge.model) : null;
+      const memory = config?.memory;
+      state.memoryEnabled = memory?.enabled === true;
+      memoryPanel.hidden = !state.memoryEnabled;
       const tools = config?.tools;
       state.toolBridgeEnabled = tools?.enabled === true;
       state.toolSourceCount = state.toolBridgeEnabled && Number.isSafeInteger(tools?.sourceCount)
@@ -923,6 +1178,9 @@ const JS = `(() => {
       state.modelBridgeEnabled = false;
       state.modelProvider = null;
       state.model = null;
+      state.memoryEnabled = false;
+      state.memoryScopeKinds = [];
+      memoryPanel.hidden = true;
       state.toolBridgeEnabled = false;
       state.toolSourceCount = 0;
       toolsPanel.hidden = true;
@@ -1008,6 +1266,47 @@ const JS = `(() => {
       conversationId: state.conversationId,
       turnId: state.activeTurnId,
     });
+  });
+
+  memoryScope.addEventListener('change', updateMemoryControls);
+  memoryKey.addEventListener('input', updateMemoryControls);
+  memoryPurgeConfirm.addEventListener('change', updateMemoryControls);
+
+  memoryForget.addEventListener('click', () => {
+    const key = safeText(memoryKey.value).trim();
+    const scopeKind = safeText(memoryScope.value);
+    if (!key || !state.memoryScopeKinds.includes(scopeKind)) return;
+    memoryForget.disabled = true;
+    memoryPurge.disabled = true;
+    memoryStatus.textContent = 'Writing governed memory tombstone…';
+    addActivity('Memory requested', 'Soft forget · scope=' + scopeKind, 'requested');
+    try {
+      sendCommand('memory.forget', { key, scopeKind });
+    } catch {
+      memoryStatus.textContent = 'Gateway is not connected.';
+      updateMemoryControls();
+    }
+  });
+
+  memoryPurge.addEventListener('click', () => {
+    const key = safeText(memoryKey.value).trim();
+    const scopeKind = safeText(memoryScope.value);
+    if (
+      !key
+      || !state.memoryScopeKinds.includes(scopeKind)
+      || !memoryPurgeConfirm.checked
+    ) return;
+    memoryForget.disabled = true;
+    memoryPurge.disabled = true;
+    memoryPurgeConfirm.disabled = true;
+    memoryStatus.textContent = 'Executing explicit hard purge…';
+    addActivity('Memory requested', 'Hard purge · scope=' + scopeKind, 'requested');
+    try {
+      sendCommand('memory.purge', { key, scopeKind });
+    } catch {
+      memoryStatus.textContent = 'Gateway is not connected.';
+      updateMemoryControls();
+    }
   });
 
   toolSource.addEventListener('change', () => {
@@ -1151,6 +1450,21 @@ const JS = `(() => {
     state.activeTurnId = null;
     state.pendingUserMessages.clear();
     state.openAfterClose = false;
+    state.memoryScopeKinds = [];
+    memoryScope.replaceChildren();
+    const memoryOption = document.createElement('option');
+    memoryOption.value = '';
+    memoryOption.textContent = 'Load memory status first';
+    memoryScope.append(memoryOption);
+    memoryScope.disabled = true;
+    memoryKey.value = '';
+    memoryKey.disabled = true;
+    memoryPurgeConfirm.checked = false;
+    memoryPurgeConfirm.disabled = true;
+    memoryForget.disabled = true;
+    memoryPurge.disabled = true;
+    memoryStatus.textContent = '';
+    memoryBadge.textContent = state.memoryEnabled ? 'Configured' : 'Disabled';
     state.toolSources = [];
     state.toolInventory = [];
     resetToolProposal();
@@ -1275,7 +1589,9 @@ export function createFuryGatewayWebChatHandler(
     throw new Error('Gateway WebChat disabled model bridge must not expose model metadata');
   }
 
-  const toolBridgeEnabled = options.toolBridgeEnabled === true;
+  const memoryEnabled = options.memoryEnabled === true;
+
+    const toolBridgeEnabled = options.toolBridgeEnabled === true;
   if (toolBridgeEnabled) {
     if (
       !Number.isSafeInteger(options.toolSourceCount)
@@ -1303,6 +1619,9 @@ export function createFuryGatewayWebChatHandler(
           sourceCount: options.toolSourceCount!,
         })
       : Object.freeze({ enabled: false as const }),
+    memory: Object.freeze({
+      enabled: memoryEnabled,
+    }),
     executionAuthority: false as const,
   }));
   const csp = [

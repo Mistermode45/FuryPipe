@@ -7,6 +7,7 @@ import {
 import {
   createFuryKernelModelBridge,
   type FuryKernelModelBridge,
+  type FuryKernelModelMemoryRuntime,
   type FuryKernelModelRoute,
 } from './fury-kernel-model-bridge.js';
 import type { FuryKernelConversationStore } from './fury-kernel.js';
@@ -54,6 +55,8 @@ export interface FuryGatewayLocalModelRuntimeOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly now?: () => number;
   readonly fetchImpl?: typeof fetch;
+  /** Optional process-local memory authority supplied by the Gateway host. */
+  readonly memory?: FuryKernelModelMemoryRuntime;
 }
 
 const MODEL_RE = /^[^\u0000-\u001f\u007f]{1,256}$/u;
@@ -241,6 +244,7 @@ export function createFuryGatewayLocalModelRuntime(
       fallbackHttpStatuses: Object.freeze([]),
       allowCrossProviderFallback: false,
     }),
+    ...(options.memory === undefined ? {} : { memory: options.memory }),
     now,
   });
 

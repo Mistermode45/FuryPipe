@@ -1,5 +1,6 @@
 import { createServer } from 'node:net';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,6 +17,13 @@ import {
   createFuryGatewayCommandRegistry,
 } from '../src/gateway-command-authorization-node.js';
 import {
+  createRecoveryStore,
+} from '../src/core/recovery-store.js';
+import {
+  createContinuousMemoryEngine,
+  type ContinuousMemoryCandidate,
+} from '../src/continuous-memory.js';
+import {
   FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
   FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
   createFuryGatewayConversationAdapter,
@@ -31,12 +39,18 @@ import {
   createFuryKernelToolBridge,
 } from '../src/fury-kernel-tool-bridge-node.js';
 import {
+  createFuryKernelMemoryBridge,
+} from '../src/fury-kernel-memory-bridge-node.js';
+import {
   deriveMcpDirectEndpointFingerprint,
   type McpDirectRuntimeConfig,
 } from '../src/mcp-direct-client-node.js';
 import {
   createFuryGatewayToolBridgeAdapter,
 } from '../src/gateway-tool-bridge-adapter-node.js';
+import {
+  createFuryGatewayMemoryAdapter,
+} from '../src/gateway-memory-adapter-node.js';
 import {
   FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS,
   FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES,
@@ -48,6 +62,13 @@ import {
   FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS,
   FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES,
 } from '../src/gateway-model-command-node.js';
+import {
+  FURY_GATEWAY_MEMORY_COMMAND_DEFINITIONS,
+  FURY_GATEWAY_MEMORY_EXECUTION_COMMAND_NAMES,
+  FURY_GATEWAY_MEMORY_STATE_COMMAND_NAMES,
+  type FuryGatewayMemoryExecutionCommandName,
+  type FuryGatewayMemoryStateCommandName,
+} from '../src/gateway-memory-command-node.js';
 import {
   FURY_GATEWAY_PRINCIPAL_ASSERTION_FORMAT,
   createFuryGatewayPrincipalRegistry,
@@ -96,7 +117,11 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-async function startHarness(modelEnabled = false, toolEnabled = false) {
+async function startHarness(
+  modelEnabled = false,
+  toolEnabled = false,
+  memoryEnabled = false,
+) {
   const port = await freePort();
   const origin = `http://${HOST}:${port}`;
   const now = () => Date.now();
@@ -109,6 +134,72 @@ async function startHarness(modelEnabled = false, toolEnabled = false) {
     maxConversationBytes: 512 * 1024,
     maxInFlightTurns: 16,
   });
+
+  let memoryCandidates: readonly ContinuousMemoryCandidate[] = Object.freeze([]);
+  const memoryRoot = memoryEnabled
+    ? await mkdtemp(join(tmpdir(), 'furypipe-webchat-memory-browser-qa-'))
+    : undefined;
+  const memoryScopes = memoryEnabled
+    ? Object.freeze({ user: 'browser-qa-private-user-scope' })
+    : undefined;
+  const memoryEngine = memoryRoot && memoryScopes
+    ? createContinuousMemoryEngine({
+        recovery: createRecoveryStore(memoryRoot, {
+          namespace: 'webchat-browser-qa',
+          maxObjectBytes: 256 * 1024,
+          maxTotalBytes: 8 * 1024 * 1024,
+          maxGlobalBytes: 32 * 1024 * 1024,
+          encryption: {
+            activeKeyId: 'browser-qa-key-v1',
+            keys: {
+              'browser-qa-key-v1': new Uint8Array(Buffer.alloc(32, 23)),
+            },
+            allowLegacyPlaintext: false,
+          },
+        }),
+        analyzer: {
+          async selectRecallTerms() {
+            return Object.freeze([]);
+          },
+          async extractCandidates() {
+            return memoryCandidates;
+          },
+        },
+        policy: {
+          allowInferred: false,
+          allowSensitive: false,
+        },
+      })
+    : undefined;
+  const memoryBridge = memoryEngine && memoryScopes
+    ? createFuryKernelMemoryBridge({
+        engine: memoryEngine,
+        scopes: memoryScopes,
+        now,
+      })
+    : undefined;
+  const memoryAdapter = memoryBridge
+    ? createFuryGatewayMemoryAdapter({
+        bridge: memoryBridge,
+        config: Object.freeze({
+          format: 'furypipe-gateway-local-memory-config/v1',
+          enabled: true as const,
+          encrypted: true as const,
+          scopeKinds: Object.freeze(['user'] as const),
+          policy: Object.freeze({
+            allowInferred: false,
+            allowSensitive: false,
+          }),
+          learningEnabled: true,
+          quotas: Object.freeze({
+            maxObjectBytes: 256 * 1024,
+            maxTotalBytes: 8 * 1024 * 1024,
+            maxGlobalBytes: 32 * 1024 * 1024,
+          }),
+        }),
+      })
+    : undefined;
+
   const modelRuntime = createFuryGatewayLocalModelRuntime({
     kernel,
     env: modelEnabled
@@ -119,6 +210,14 @@ async function startHarness(modelEnabled = false, toolEnabled = false) {
           OPENAI_API_KEY: 'browser-qa-local-secret',
         }
       : {},
+    ...(memoryEngine && memoryScopes
+      ? {
+          memory: {
+            engine: memoryEngine,
+            scopes: memoryScopes,
+          },
+        }
+      : {}),
     now,
     ...(modelEnabled
       ? {
@@ -224,6 +323,7 @@ async function startHarness(modelEnabled = false, toolEnabled = false) {
     'conversations.write',
   ];
   if (modelRuntime.bridge) scopes.push('capability.provider-inference');
+  if (memoryBridge) scopes.push('memory.read', 'memory.write', 'memory.manage');
   if (toolBridge) {
     scopes.push('mcp.inspect', 'mcp.manage', 'capability.process');
   }
@@ -256,6 +356,7 @@ async function startHarness(modelEnabled = false, toolEnabled = false) {
       : {}),
     toolBridgeEnabled: toolBridge !== undefined,
     ...(toolBridge ? { toolSourceCount: 1 } : {}),
+    memoryEnabled: memoryBridge !== undefined,
   });
   const adapter = createFuryGatewayConversationAdapter({
     kernel,
@@ -269,14 +370,19 @@ async function startHarness(modelEnabled = false, toolEnabled = false) {
     ...(toolBridge
       ? FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS
       : []),
+    ...(memoryBridge
+      ? FURY_GATEWAY_MEMORY_COMMAND_DEFINITIONS
+      : []),
   ]);
   const admittedStateCommandNames = Object.freeze([
     ...FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
     ...(toolBridge ? FURY_GATEWAY_TOOL_STATE_COMMAND_NAMES : []),
+    ...(memoryBridge ? FURY_GATEWAY_MEMORY_STATE_COMMAND_NAMES : []),
   ]);
   const admittedExecutionCommandNames = Object.freeze([
     ...(modelRuntime.bridge ? FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES : []),
     ...(toolBridge ? FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES : []),
+    ...(memoryBridge ? FURY_GATEWAY_MEMORY_EXECUTION_COMMAND_NAMES : []),
   ]);
 
   const host = await listenFuryGatewayWebSocketHost({
@@ -323,6 +429,16 @@ async function startHarness(modelEnabled = false, toolEnabled = false) {
           command.input,
         );
       }
+      if (
+        memoryAdapter
+        && (FURY_GATEWAY_MEMORY_STATE_COMMAND_NAMES as readonly string[])
+          .includes(command.commandName)
+      ) {
+        return memoryAdapter.dispatchState(
+          command.commandName as FuryGatewayMemoryStateCommandName,
+          command.input,
+        );
+      }
       throw new Error('browser QA received unsupported state command');
     },
     ...(admittedExecutionCommandNames.length > 0
@@ -350,21 +466,70 @@ async function startHarness(modelEnabled = false, toolEnabled = false) {
                 command.input,
               );
             }
+            if (
+              memoryAdapter
+              && (FURY_GATEWAY_MEMORY_EXECUTION_COMMAND_NAMES as readonly string[])
+                .includes(command.commandName)
+            ) {
+              return memoryAdapter.dispatchExecution(
+                command.commandName as FuryGatewayMemoryExecutionCommandName,
+                command.input,
+              );
+            }
             throw new Error('browser QA received unsupported execution command');
           },
         }
       : {}),
   });
 
+  let memorySeedCounter = 0;
   return {
     origin,
     bootstrap,
     kernel,
+    async seedMemory(key: string, text: string) {
+      if (!memoryEngine || !memoryScopes) {
+        throw new Error('browser QA memory harness is disabled');
+      }
+      memorySeedCounter += 1;
+      memoryCandidates = Object.freeze([{
+        action: 'REMEMBER' as const,
+        key,
+        scopeKind: 'user' as const,
+        memoryClass: 'User' as const,
+        text,
+        terms: Object.freeze(['browser', 'memory', 'qa']),
+        importance: 1,
+        confidence: 1,
+        evidence: 'explicit-user' as const,
+      }]);
+      try {
+        const learned = await memoryEngine.afterTurn({
+          conversationId: `browser-memory-seed-${memorySeedCounter}`,
+          turnId: `browser-memory-seed-turn-${memorySeedCounter}`,
+          scopes: memoryScopes,
+          messages: Object.freeze([{
+            role: 'user' as const,
+            content: 'Explicit browser QA memory seed.',
+          }]),
+          now: now(),
+        });
+        assert(
+          learned.added + learned.updated > 0,
+          'browser QA memory seed did not create an active memory',
+        );
+      } finally {
+        memoryCandidates = Object.freeze([]);
+      }
+    },
     async close() {
       bootstrap.revokeAllBrowserSessions();
       await host.stop();
       sessionCoordinator.revokeSession(session.sessionId);
       principalRegistry.revokePrincipal(principal.principalId);
+      if (memoryRoot) {
+        await rm(memoryRoot, { recursive: true, force: true });
+      }
     },
   };
 }
@@ -828,11 +993,174 @@ async function runToolEnabledCase(
   }
 }
 
+
+interface MemoryQaObservation {
+  readonly name: string;
+  readonly engine: EngineName;
+  readonly configRedacted: boolean;
+  readonly memoryPanelVisible: boolean;
+  readonly recallObserved: boolean;
+  readonly learningObserved: boolean;
+  readonly softForgotten: boolean;
+  readonly hardPurgeConfirmed: boolean;
+  readonly hardPurged: boolean;
+  readonly secretAbsent: boolean;
+}
+
+async function runMemoryEnabledCase(
+  engine: EngineName,
+  browserType: BrowserType,
+  harness: Awaited<ReturnType<typeof startHarness>>,
+): Promise<MemoryQaObservation> {
+  const memoryKey = `user.preference.browser-qa-${engine}`;
+  const memoryText = `BROWSER_QA_MEMORY_CANARY_${engine} prefer concise browser memory qa responses`;
+  await harness.seedMemory(memoryKey, memoryText);
+
+  const browser = await browserType.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 1360, height: 900 },
+    deviceScaleFactor: 1,
+  });
+  const page = await context.newPage();
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  const name = `${engine}-memory-enabled`;
+  try {
+    const response = await page.goto(
+      harness.origin + FURY_GATEWAY_WEBCHAT_PATH,
+      { waitUntil: 'load' },
+    );
+    assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+
+    const config = await page.evaluate(async () => {
+      const response = await fetch('/gateway/webchat/config.json', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      return response.json() as Promise<Record<string, unknown>>;
+    });
+    const configJson = JSON.stringify(config);
+    const configRedacted =
+      configJson.includes('"memory":{"enabled":true}')
+      && configJson.includes('"providerId":"openai"')
+      && configJson.includes('"model":"gpt-5.6-sol"')
+      && !/scopeKinds|private-user-scope|browser-qa-key-v1|recovery|quota|credential|api[_-]?key|token|path/i.test(configJson)
+      && !configJson.includes(memoryText);
+    assert(configRedacted, `${name}: WebChat memory config was not correctly redacted`);
+
+    const ticket = harness.bootstrap.issueTicket();
+    await page.locator('#bootstrap-code').fill(ticket.code);
+    await page.locator('#bootstrap-form button[type="submit"]').click();
+    await page.waitForFunction(() =>
+      document.getElementById('connection-label')?.textContent === 'Connected'
+      && (document.getElementById('memory-panel') as HTMLElement | null)?.hidden === false
+      && document.getElementById('memory-badge')?.textContent === 'Encrypted'
+      && (document.getElementById('memory-scope') as HTMLSelectElement | null)?.value === 'user',
+    undefined, { timeout: 12_000 });
+
+    const memoryPanelVisible = await page.locator('#memory-panel').isVisible();
+    assert(memoryPanelVisible, `${name}: Memory panel was not visible`);
+
+    await page.locator('#message-input').fill(
+      `Please use my browser memory qa preference for ${engine}.`,
+    );
+    await page.locator('#send-message').click();
+
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('.message.assistant')].some((element) =>
+        element.textContent?.includes('Governed browser QA model response.'),
+      )
+      && document.getElementById('activity-list')?.textContent?.includes('Memory recalled')
+      && document.getElementById('activity-list')?.textContent?.includes('Memory learning completed'),
+    undefined, { timeout: 15_000 });
+
+    let activity = await page.locator('#activity-list').textContent() ?? '';
+    const recallObserved = activity.includes('Memory recalled');
+    const learningObserved = activity.includes('Memory learning completed');
+    assert(recallObserved, `${name}: recalled-memory lifecycle was not surfaced`);
+    assert(learningObserved, `${name}: memory learning lifecycle was not surfaced`);
+
+    await page.locator('#memory-key').fill(memoryKey);
+    await page.waitForFunction(() =>
+      (document.getElementById('memory-forget') as HTMLButtonElement | null)?.disabled === false,
+    undefined, { timeout: 5_000 });
+    await page.locator('#memory-forget').click();
+    await page.waitForFunction(() =>
+      document.getElementById('memory-status')?.textContent?.includes('Soft forget completed'),
+    undefined, { timeout: 10_000 });
+
+    activity = await page.locator('#activity-list').textContent() ?? '';
+    const softForgotten =
+      (await page.locator('#memory-status').textContent() ?? '').includes('Soft forget completed')
+      && activity.includes('Memory forgotten');
+    assert(softForgotten, `${name}: soft forget did not complete through governed memory`);
+
+    await harness.seedMemory(memoryKey, memoryText);
+
+    await page.locator('#memory-key').fill(memoryKey);
+    await page.locator('#memory-purge-confirm').check();
+    await page.waitForFunction(() =>
+      (document.getElementById('memory-purge') as HTMLButtonElement | null)?.disabled === false,
+    undefined, { timeout: 5_000 });
+    const hardPurgeConfirmed = await page.locator('#memory-purge').isEnabled();
+    assert(hardPurgeConfirmed, `${name}: hard purge did not require/accept explicit confirmation`);
+
+    await page.locator('#memory-purge').click();
+    await page.waitForFunction(() =>
+      document.getElementById('memory-status')?.textContent?.includes('Hard purge completed'),
+    undefined, { timeout: 10_000 });
+
+    activity = await page.locator('#activity-list').textContent() ?? '';
+    const hardPurged =
+      (await page.locator('#memory-status').textContent() ?? '').includes('Hard purge completed')
+      && activity.includes('Memory purged');
+    assert(hardPurged, `${name}: hard purge did not complete through governed memory`);
+
+    const body = await page.locator('body').textContent() ?? '';
+    const secretAbsent =
+      !body.includes(memoryText)
+      && !body.includes('browser-qa-private-user-scope')
+      && !body.includes('browser-qa-key-v1')
+      && !body.includes('BROWSER_QA_MEMORY_CANARY_');
+    assert(secretAbsent, `${name}: raw memory/config material leaked into rendered UI`);
+    assert(consoleErrors.length === 0, `${name}: console errors: ${consoleErrors.join(' | ')}`);
+    assert(pageErrors.length === 0, `${name}: page errors: ${pageErrors.join(' | ')}`);
+
+    await page.locator('#logout').click();
+    await page.waitForFunction(() =>
+      (document.getElementById('bootstrap-panel') as HTMLElement | null)?.hidden === false
+      && (document.getElementById('chat-panel') as HTMLElement | null)?.hidden === true,
+    undefined, { timeout: 8_000 });
+
+    return Object.freeze({
+      name,
+      engine,
+      configRedacted,
+      memoryPanelVisible,
+      recallObserved,
+      learningObserved,
+      softForgotten,
+      hardPurgeConfirmed,
+      hardPurged,
+      secretAbsent,
+    });
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+}
+
 async function main(): Promise<void> {
   await mkdir(REPORT_DIR, { recursive: true });
   const harness = await startHarness();
   const modelHarness = await startHarness(true);
   const toolHarness = await startHarness(false, true);
+  const memoryHarness = await startHarness(true, false, true);
   try {
     const observations: QaObservation[] = [];
     observations.push(...await runEngine('chromium', chromium, harness));
@@ -874,6 +1202,24 @@ async function main(): Promise<void> {
       'WebChat governed tool browser evidence is incomplete',
     );
 
+    const memoryCases: MemoryQaObservation[] = [];
+    memoryCases.push(await runMemoryEnabledCase('chromium', chromium, memoryHarness));
+    memoryCases.push(await runMemoryEnabledCase('firefox', firefox, memoryHarness));
+    memoryCases.push(await runMemoryEnabledCase('webkit', webkit, memoryHarness));
+    assert(
+      memoryCases.every((item) =>
+        item.configRedacted
+        && item.memoryPanelVisible
+        && item.recallObserved
+        && item.learningObserved
+        && item.softForgotten
+        && item.hardPurgeConfirmed
+        && item.hardPurged
+        && item.secretAbsent
+      ),
+      'WebChat governed Memory browser evidence is incomplete',
+    );
+
     const evidence = {
       format: 'furypipe-gateway-webchat-browser-evidence/v1',
       sourceCommit: SOURCE_COMMIT,
@@ -883,13 +1229,15 @@ async function main(): Promise<void> {
       cases: observations,
       modelCases,
       toolCases,
+      memoryCases,
       summary: {
-        total: observations.length + modelCases.length + toolCases.length,
-        passed: observations.length + modelCases.length + toolCases.length,
+        total: observations.length + modelCases.length + toolCases.length + memoryCases.length,
+        passed: observations.length + modelCases.length + toolCases.length + memoryCases.length,
         engines: ['chromium', 'firefox', 'webkit'],
         viewports: ['desktop', 'mobile'],
         modelEnabledCases: modelCases.length,
         toolEnabledCases: toolCases.length,
+        memoryEnabledCases: memoryCases.length,
       },
     };
     await writeFile(
@@ -897,8 +1245,9 @@ async function main(): Promise<void> {
       JSON.stringify(evidence, null, 2) + '\n',
       'utf8',
     );
-    console.log('Gateway WebChat browser QA passed: 12/12 real browser cases');
+    console.log('Gateway WebChat browser QA passed: 15/15 real browser cases');
   } finally {
+    await memoryHarness.close();
     await toolHarness.close();
     await modelHarness.close();
     await harness.close();

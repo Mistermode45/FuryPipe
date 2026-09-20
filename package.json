@@ -161,6 +161,22 @@
       "types": "./dist/gateway-local-tool-runtime-node.d.ts",
       "import": "./dist/gateway-local-tool-runtime-node.js"
     },
+    "./gateway-local-memory-runtime-node": {
+      "types": "./dist/gateway-local-memory-runtime-node.d.ts",
+      "import": "./dist/gateway-local-memory-runtime-node.js"
+    },
+    "./fury-kernel-memory-bridge-node": {
+      "types": "./dist/fury-kernel-memory-bridge-node.d.ts",
+      "import": "./dist/fury-kernel-memory-bridge-node.js"
+    },
+    "./gateway-memory-command-node": {
+      "types": "./dist/gateway-memory-command-node.d.ts",
+      "import": "./dist/gateway-memory-command-node.js"
+    },
+    "./gateway-memory-adapter-node": {
+      "types": "./dist/gateway-memory-adapter-node.d.ts",
+      "import": "./dist/gateway-memory-adapter-node.js"
+    },
     "./skill-registry": {
       "types": "./dist/skill-registry.d.ts",
       "import": "./dist/skill-registry.js"
