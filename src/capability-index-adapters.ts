@@ -43,6 +43,7 @@ export interface FuryCapabilityIndexHealthOverrides {
 
 export interface FuryCapabilityIndexProjectionReport {
   readonly indexed: number;
+  readonly skipped: number;
   readonly source: 'skill-registry' | 'plugin-registry' | 'model-fabric' | 'mcp-host';
   readonly authority: 'projection-only';
   readonly executionAuthority: false;
@@ -76,29 +77,72 @@ const INDEX_HEALTH = new Set<FuryCapabilityIndexHealthState>([
   'ready', 'degraded', 'unavailable', 'blocked', 'unknown',
 ]);
 
-function uniqueMetadata(values: readonly string[]): readonly string[] {
+function uniqueMetadata(
+  values: readonly string[],
+  maxChars = 128,
+): readonly string[] {
   const output = new Map<string, string>();
   for (const value of values) {
     const normalized = value
       .normalize('NFKC')
       .trim()
       .toLocaleLowerCase('en-US');
-    if (!normalized || output.has(normalized)) continue;
+    if (
+      !normalized
+      || normalized.length > maxChars
+      || output.has(normalized)
+    ) continue;
     output.set(normalized, normalized);
   }
   return Object.freeze([...output.values()]);
 }
 
+function validateHealthOverrides(
+  value: Readonly<Record<string, FuryCapabilityIndexHealthState>> | undefined,
+  label: string,
+): Readonly<Record<string, FuryCapabilityIndexHealthState>> {
+  if (value === undefined) return Object.freeze({});
+  if (
+    !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+    || Object.getOwnPropertySymbols(value).length > 0
+  ) {
+    throw new TypeError(`${label} must be a plain data object`);
+  }
+  const names = Object.getOwnPropertyNames(value);
+  if (names.length > 20_000) {
+    throw new RangeError(`${label} exceeds its entry bound`);
+  }
+  const output: Record<string, FuryCapabilityIndexHealthState> = {};
+  for (const name of names) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:/@+~-]{0,255}$/u.test(name)) {
+      throw new TypeError(`${label} contains an invalid capability id`);
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, name);
+    if (
+      !descriptor
+      || !descriptor.enumerable
+      || !('value' in descriptor)
+      || !INDEX_HEALTH.has(descriptor.value as FuryCapabilityIndexHealthState)
+    ) {
+      throw new TypeError(`${label} contains unsafe or invalid health state`);
+    }
+    output[name] = descriptor.value as FuryCapabilityIndexHealthState;
+  }
+  return Object.freeze(output);
+}
+
 function healthOverride(
-  record: Readonly<Record<string, FuryCapabilityIndexHealthState>> | undefined,
+  record: Readonly<Record<string, FuryCapabilityIndexHealthState>>,
   id: string,
 ): FuryCapabilityIndexHealthState {
-  const value = record?.[id];
-  if (value === undefined) return 'unknown';
-  if (!INDEX_HEALTH.has(value)) {
-    throw new Error('Capability Autopilot health override is invalid');
-  }
-  return value;
+  return record[id] ?? 'unknown';
+}
+
+function indexableIdentity(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._:/@+~-]{0,255}$/u.test(value);
 }
 
 function skillTrust(
@@ -260,6 +304,7 @@ export function projectSkillsIntoCapabilityIndex(
   health: FuryCapabilityIndexHealthOverrides['skills'] = {},
 ): FuryCapabilityIndexProjectionReport {
   const inspections = registry.inspect();
+  const validatedHealth = validateHealthOverrides(health, 'skill health overrides');
   for (const skill of inspections) {
     const permissions = new Set<string>([skill.permission]);
     if (skill.network === 'required') permissions.add('network');
@@ -276,7 +321,7 @@ export function projectSkillsIntoCapabilityIndex(
       keywords: uniqueMetadata([skill.id, skill.category, ...skill.stages]),
       trust: skillTrust(skill.provenance.decision, skill.executableByProvenance),
       license: skillLicense(skill.provenance.licenseStatus),
-      health: healthOverride(health, skill.id),
+      health: healthOverride(validatedHealth, skill.id),
       riskClass: skill.permission === 'scoped-write' ? 'write' : 'read',
       requiredPermissions: [...permissions],
       compatibility: [],
@@ -289,6 +334,7 @@ export function projectSkillsIntoCapabilityIndex(
   }
   return Object.freeze({
     indexed: inspections.length,
+    skipped: 0,
     source: 'skill-registry' as const,
     authority: 'projection-only' as const,
     executionAuthority: false as const,
@@ -301,6 +347,7 @@ export function projectPluginsIntoCapabilityIndex(
   health: FuryCapabilityIndexHealthOverrides['plugins'] = {},
 ): FuryCapabilityIndexProjectionReport {
   const inspections = registry.inspect();
+  const validatedHealth = validateHealthOverrides(health, 'plugin health overrides');
   for (const plugin of inspections) {
     const families = new Set<string>(['plugin']);
     if (plugin.mcpProfiles.length > 0) families.add('mcp');
@@ -326,7 +373,7 @@ export function projectPluginsIntoCapabilityIndex(
       keywords: uniqueMetadata([plugin.id, plugin.name, ...plugin.skills]),
       trust: pluginTrust(plugin.source.licenseStatus),
       license: pluginLicense(plugin.source.licenseStatus),
-      health: healthOverride(health, plugin.id),
+      health: healthOverride(validatedHealth, plugin.id),
       riskClass: pluginRisk(plugin.permissions),
       requiredPermissions: plugin.permissions,
       compatibility: [],
@@ -339,6 +386,7 @@ export function projectPluginsIntoCapabilityIndex(
   }
   return Object.freeze({
     indexed: inspections.length,
+    skipped: 0,
     source: 'plugin-registry' as const,
     authority: 'projection-only' as const,
     executionAuthority: false as const,
@@ -351,7 +399,15 @@ export function projectModelsIntoCapabilityIndex(
   health: FuryCapabilityIndexHealthOverrides['models'] = {},
 ): FuryCapabilityIndexProjectionReport {
   const entries = registry.list();
+  const validatedHealth = validateHealthOverrides(health, 'model health overrides');
+  let indexed = 0;
+  let skipped = 0;
   for (const model of entries) {
+    const capabilityId = `${model.provider}/${model.id}`;
+    if (!indexableIdentity(capabilityId)) {
+      skipped += 1;
+      continue;
+    }
     const observedAt = latestModelObservedAt(model);
     const tags = [
       `provider-${model.provider}`,
@@ -369,28 +425,30 @@ export function projectModelsIntoCapabilityIndex(
     put(index, {
       format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
       kind: 'model',
-      id: `${model.provider}/${model.id}`,
-      name: model.displayName,
+      id: capabilityId,
+      name: model.displayName.length <= 256 ? model.displayName : model.id,
       description:
         `Model ${model.displayName} from ${model.provider}; lifecycle ${model.lifecycle}; context limit ${model.limits.contextTokens ?? 'unknown'}; output limit ${model.limits.outputTokens ?? 'unknown'}.`,
       families: uniqueMetadata(modelFamilies(model)),
       tags: uniqueMetadata(tags),
-      keywords: uniqueMetadata(keywords),
+      keywords: uniqueMetadata(keywords, 160),
       trust: modelTrust(model),
       license: 'not-applicable',
-      health: healthOverride(health, `${model.provider}/${model.id}`),
+      health: healthOverride(validatedHealth, capabilityId),
       riskClass: 'process',
       requiredPermissions: ['provider-inference'],
       compatibility: [],
       source: {
         system: 'model-fabric',
-        sourceId: `${model.provider}/${model.id}`,
+        sourceId: capabilityId,
         ...(observedAt === undefined ? {} : { observedAt }),
       },
     });
+    indexed += 1;
   }
   return Object.freeze({
-    indexed: entries.length,
+    indexed,
+    skipped,
     source: 'model-fabric' as const,
     authority: 'projection-only' as const,
     executionAuthority: false as const,
@@ -406,6 +464,10 @@ export function projectMcpIntoCapabilityIndex(
   } = {},
 ): FuryCapabilityIndexProjectionReport {
   const summaries = bridge.inspectSources();
+  const validatedHealth = validateHealthOverrides(
+    options.health,
+    'MCP health overrides',
+  );
   const summaryById = new Map(summaries.map((summary) => [summary.sourceId, summary]));
   const inspections = mcpInspectionMap(options.inspections);
 
@@ -440,7 +502,7 @@ export function projectMcpIntoCapabilityIndex(
       license: 'not-applicable',
       health: inspection
         ? 'ready'
-        : healthOverride(options.health, summary.sourceId),
+        : healthOverride(validatedHealth, summary.sourceId),
       riskClass: 'process',
       requiredPermissions: [permission],
       compatibility: [],
@@ -466,7 +528,7 @@ export function projectMcpIntoCapabilityIndex(
           `risk-${tool.riskClass}`,
           tool.closedWorldReadCandidate ? 'closed-world-read-candidate' : 'policy-gate-required',
         ]),
-        keywords: uniqueMetadata([summary.sourceId, tool.name, 'mcp tool']),
+        keywords: uniqueMetadata([summary.sourceId, tool.name, 'mcp tool'], 160),
         trust: mcpSourceTrust(summary),
         license: 'not-applicable',
         health: 'ready',
@@ -486,6 +548,7 @@ export function projectMcpIntoCapabilityIndex(
 
   return Object.freeze({
     indexed,
+    skipped: 0,
     source: 'mcp-host' as const,
     authority: 'projection-only' as const,
     executionAuthority: false as const,
