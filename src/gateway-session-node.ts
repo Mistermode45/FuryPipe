@@ -14,6 +14,12 @@ import {
   type FuryGatewayPrincipalRegistry,
 } from './gateway-principal-node.js';
 import {
+  isGeneratedFuryGatewayChannelPrincipalBinding,
+  isGeneratedFuryGatewayChannelPrincipalBindingCoordinator,
+  type FuryGatewayChannelPrincipalBinding,
+  type FuryGatewayChannelPrincipalBindingCoordinator,
+} from './gateway-channel-principal-binding-node.js';
+import {
   FURY_GATEWAY_ROLES,
   type FuryGatewayRole,
 } from './gateway.js';
@@ -78,17 +84,33 @@ export interface FuryGatewayPairedDeviceBinding {
   readonly pairing: FuryGatewayPairingCoordinator;
 }
 
+export interface FuryGatewayChannelSessionBinding {
+  readonly kind: 'channel';
+  readonly binding: FuryGatewayChannelPrincipalBinding;
+  readonly coordinator: FuryGatewayChannelPrincipalBindingCoordinator;
+}
+
 export type FuryGatewaySessionBindingInput =
   | FuryGatewayLocalOperatorBinding
-  | FuryGatewayPairedDeviceBinding;
+  | FuryGatewayPairedDeviceBinding
+  | FuryGatewayChannelSessionBinding;
 
 export interface FuryGatewaySessionBinding {
-  readonly kind: 'local-operator' | 'paired-device';
+  readonly kind: 'local-operator' | 'paired-device' | 'channel';
   readonly deviceId?: string;
   readonly publicKeySha256?: string;
   readonly pairingId?: string;
   readonly connectFingerprint?: string;
   readonly deviceAuthenticatedAt?: number;
+  readonly channelBindingId?: string;
+  readonly channelAdapterId?: string;
+  readonly channelKind?: string;
+  readonly channelAccountDigestSha256?: string;
+  readonly channelSenderDigestSha256?: string;
+  readonly channelConversationDigestSha256?: string;
+  readonly channelConversationKind?: 'direct' | 'group' | 'channel';
+  readonly channelThreadDigestSha256?: string;
+  readonly channelPolicyProfileId?: string;
 }
 
 export interface FuryGatewaySessionLease {
@@ -110,7 +132,8 @@ export type FuryGatewaySessionStatus =
   | 'active'
   | 'expired'
   | 'revoked'
-  | 'principal-revoked';
+  | 'principal-revoked'
+  | 'binding-stale';
 
 export interface FuryGatewaySessionInspection {
   readonly sessionId: string;
@@ -176,6 +199,8 @@ export interface FuryGatewaySessionCoordinator {
 
 interface SessionState {
   readonly lease: FuryGatewaySessionLease;
+  readonly channelBindingCoordinator?: FuryGatewayChannelPrincipalBindingCoordinator;
+  readonly channelBindingEvidence?: FuryGatewayChannelPrincipalBinding;
   status: FuryGatewaySessionStatus;
   terminalAt?: number;
 }
@@ -276,6 +301,18 @@ function refreshSessionStatus(
     state.terminalAt = at;
     return state.status;
   }
+  if (
+    state.lease.binding.kind === 'channel'
+    && (
+      !state.channelBindingCoordinator
+      || !state.channelBindingEvidence
+      || !state.channelBindingCoordinator.isCurrentBinding(state.channelBindingEvidence)
+    )
+  ) {
+    state.status = 'binding-stale';
+    state.terminalAt = at;
+    return state.status;
+  }
   return 'active';
 }
 
@@ -287,6 +324,15 @@ function cloneBinding(binding: FuryGatewaySessionBinding): FuryGatewaySessionBin
     ...(binding.pairingId === undefined ? {} : { pairingId: binding.pairingId }),
     ...(binding.connectFingerprint === undefined ? {} : { connectFingerprint: binding.connectFingerprint }),
     ...(binding.deviceAuthenticatedAt === undefined ? {} : { deviceAuthenticatedAt: binding.deviceAuthenticatedAt }),
+    ...(binding.channelBindingId === undefined ? {} : { channelBindingId: binding.channelBindingId }),
+    ...(binding.channelAdapterId === undefined ? {} : { channelAdapterId: binding.channelAdapterId }),
+    ...(binding.channelKind === undefined ? {} : { channelKind: binding.channelKind }),
+    ...(binding.channelAccountDigestSha256 === undefined ? {} : { channelAccountDigestSha256: binding.channelAccountDigestSha256 }),
+    ...(binding.channelSenderDigestSha256 === undefined ? {} : { channelSenderDigestSha256: binding.channelSenderDigestSha256 }),
+    ...(binding.channelConversationDigestSha256 === undefined ? {} : { channelConversationDigestSha256: binding.channelConversationDigestSha256 }),
+    ...(binding.channelConversationKind === undefined ? {} : { channelConversationKind: binding.channelConversationKind }),
+    ...(binding.channelThreadDigestSha256 === undefined ? {} : { channelThreadDigestSha256: binding.channelThreadDigestSha256 }),
+    ...(binding.channelPolicyProfileId === undefined ? {} : { channelPolicyProfileId: binding.channelPolicyProfileId }),
   });
 }
 
@@ -419,6 +465,8 @@ export function createFuryGatewaySessionCoordinator(
       }
 
       let binding: FuryGatewaySessionBinding;
+      let channelBindingCoordinator: FuryGatewayChannelPrincipalBindingCoordinator | undefined;
+      let channelBindingEvidence: FuryGatewayChannelPrincipalBinding | undefined;
       if (input.binding?.kind === 'local-operator') {
         if (
           role !== 'operator'
@@ -467,6 +515,47 @@ export function createFuryGatewaySessionCoordinator(
           connectFingerprint: device.connectFingerprint,
           deviceAuthenticatedAt: device.authenticatedAt,
         });
+      } else if (input.binding?.kind === 'channel') {
+        const channelBinding = input.binding.binding;
+        const coordinator = input.binding.coordinator;
+        if (
+          role !== 'channel'
+          || !isGeneratedFuryGatewayChannelPrincipalBinding(channelBinding)
+          || !isGeneratedFuryGatewayChannelPrincipalBindingCoordinator(coordinator)
+          || !coordinator.isCurrentBinding(channelBinding)
+          || channelBinding.principalId !== input.principal.principalId
+          || channelBinding.principalGeneration !== input.principal.generation
+          || channelBinding.principalAuthenticatedAt !== input.principal.authenticatedAt
+        ) {
+          throw new FuryGatewaySessionError(
+            'invalid-binding',
+            'channel sessions require current matching process-local channel principal binding evidence',
+          );
+        }
+        for (const scope of scopes) {
+          if (!channelBinding.scopes.includes(scope)) {
+            throw new FuryGatewaySessionError(
+              'invalid-scope',
+              'channel session scope exceeds the channel principal binding policy',
+            );
+          }
+        }
+        channelBindingCoordinator = coordinator;
+        channelBindingEvidence = channelBinding;
+        binding = Object.freeze({
+          kind: 'channel' as const,
+          channelBindingId: channelBinding.bindingId,
+          channelAdapterId: channelBinding.adapterId,
+          channelKind: channelBinding.channelKind,
+          channelAccountDigestSha256: channelBinding.accountDigestSha256,
+          channelSenderDigestSha256: channelBinding.senderDigestSha256,
+          channelConversationDigestSha256: channelBinding.conversationDigestSha256,
+          channelConversationKind: channelBinding.conversationKind,
+          ...(channelBinding.threadDigestSha256 === undefined
+            ? {}
+            : { channelThreadDigestSha256: channelBinding.threadDigestSha256 }),
+          channelPolicyProfileId: channelBinding.policyProfileId,
+        });
       } else {
         throw new FuryGatewaySessionError('invalid-binding', 'gateway session binding is unsupported');
       }
@@ -486,7 +575,12 @@ export function createFuryGatewaySessionCoordinator(
         authority: 'session-lease' as const,
       });
       SESSION_EVIDENCE.add(lease);
-      states.set(lease.sessionId, { lease, status: 'active' });
+      states.set(lease.sessionId, {
+        lease,
+        ...(channelBindingCoordinator === undefined ? {} : { channelBindingCoordinator }),
+        ...(channelBindingEvidence === undefined ? {} : { channelBindingEvidence }),
+        status: 'active',
+      });
       return lease;
     },
 
