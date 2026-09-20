@@ -777,22 +777,31 @@ export function createGovernedFuryCapabilitySemanticAnalyzer(
 
       active += 1;
       try {
-        const orchestrator = createProviderRetryFallbackOrchestrator({
-          planner: {
-            basePrompt: prompt,
-            modelAdapters: {
-              registry: createModelAdapterRegistry([]),
-              qualifications: Object.freeze([]),
+        let orchestrator: ReturnType<typeof createProviderRetryFallbackOrchestrator>;
+        try {
+          orchestrator = createProviderRetryFallbackOrchestrator({
+            planner: {
+              basePrompt: prompt,
+              modelAdapters: {
+                registry: createModelAdapterRegistry([]),
+                qualifications: Object.freeze([]),
+              },
+              contextProfiles: {
+                registry: createContextOptimizerProfileRegistry([]),
+                qualifications: Object.freeze([]),
+              },
             },
-            contextProfiles: {
-              registry: createContextOptimizerProfileRegistry([]),
-              qualifications: Object.freeze([]),
-            },
-          },
-          providerRuntime,
-          transports,
-          now,
-        });
+            providerRuntime,
+            transports,
+            now,
+          });
+        } catch {
+          return fallbackResult(
+            selection,
+            objectiveDigestSha256,
+            'provider-failed',
+          );
+        }
 
         let orchestration: FuryProviderRetryFallbackResult;
         try {
