@@ -377,6 +377,13 @@ try {
   ], installDir);
   assert(capabilityAdaptersExport.stderr === '', `Capability index adapters export wrote stderr: ${capabilityAdaptersExport.stderr}`);
 
+  const capabilityExposureExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/fury-kernel-capability-exposure'); if (typeof m.createFuryKernelCapabilityExposurePlan !== 'function' || typeof m.isGeneratedFuryKernelCapabilityExposurePlan !== 'function' || m.FURY_KERNEL_CAPABILITY_EXPOSURE_FORMAT !== 'furypipe-kernel-capability-exposure/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilityExposureExport.stderr === '', `Fury Kernel capability exposure export wrote stderr: ${capabilityExposureExport.stderr}`);
+
   const gatewayLocalMemoryRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
