@@ -3,6 +3,14 @@ import * as os from 'node:os';
 
 import { createFuryGatewayCommandRegistry } from './gateway-command-authorization-node.js';
 import {
+  FURY_GATEWAY_CHANNEL_OBSERVABILITY_COMMAND_DEFINITIONS,
+  FURY_GATEWAY_CHANNEL_OBSERVABILITY_STATE_COMMAND_NAMES,
+  type FuryGatewayChannelObservabilityStateCommandName,
+} from './gateway-channel-observability-command-node.js';
+import type {
+  FuryGatewayChannelObservability,
+} from './gateway-channel-observability-node.js';
+import {
   FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
   FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
   createFuryGatewayConversationAdapter,
@@ -87,6 +95,7 @@ export interface FuryGatewayLocalRuntime {
 export interface FuryGatewayLocalRuntimeOptions extends FuryGatewayLocalConfigOptions {
   readonly now?: () => number;
   readonly localSubject?: string;
+  readonly channelObservability?: FuryGatewayChannelObservability;
 }
 
 export interface FuryGatewayCliWriter {
@@ -200,6 +209,7 @@ export async function startFuryGatewayLocalRuntime(
       })
     : undefined;
   const operatorScopes: FuryGatewayScope[] = [...LOCAL_OPERATOR_SCOPES];
+  if (options.channelObservability) operatorScopes.push('channels.inspect');
   if (modelRuntime.bridge) operatorScopes.push('capability.provider-inference');
   if (memoryBridge) operatorScopes.push('memory.read', 'memory.write', 'memory.manage');
   if (toolRuntime.bridge) {
@@ -265,6 +275,7 @@ export async function startFuryGatewayLocalRuntime(
       ? { toolSourceCount: toolRuntime.config.sourceCount }
       : {}),
     memoryEnabled: memoryBridge !== undefined,
+    channelObservabilityEnabled: options.channelObservability !== undefined,
   });
   const conversationAdapter = createFuryGatewayConversationAdapter({
     kernel,
@@ -287,6 +298,9 @@ export async function startFuryGatewayLocalRuntime(
     ...(memoryBridge
       ? FURY_GATEWAY_MEMORY_COMMAND_DEFINITIONS
       : []),
+    ...(options.channelObservability
+      ? FURY_GATEWAY_CHANNEL_OBSERVABILITY_COMMAND_DEFINITIONS
+      : []),
   ]);
   const admittedStateCommandNames = Object.freeze([
     ...FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
@@ -295,6 +309,9 @@ export async function startFuryGatewayLocalRuntime(
       : []),
     ...(memoryBridge
       ? FURY_GATEWAY_MEMORY_STATE_COMMAND_NAMES
+      : []),
+    ...(options.channelObservability
+      ? FURY_GATEWAY_CHANNEL_OBSERVABILITY_STATE_COMMAND_NAMES
       : []),
   ]);
   const admittedExecutionCommandNames = Object.freeze([
@@ -358,6 +375,16 @@ export async function startFuryGatewayLocalRuntime(
         ) {
           return memoryAdapter.dispatchState(
             command.commandName as FuryGatewayMemoryStateCommandName,
+            command.input,
+          );
+        }
+        if (
+          options.channelObservability
+          && (FURY_GATEWAY_CHANNEL_OBSERVABILITY_STATE_COMMAND_NAMES as readonly string[])
+            .includes(command.commandName)
+        ) {
+          return options.channelObservability.dispatchState(
+            command.commandName as FuryGatewayChannelObservabilityStateCommandName,
             command.input,
           );
         }

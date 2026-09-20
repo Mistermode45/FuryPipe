@@ -17,6 +17,7 @@ export interface FuryGatewayWebChatOptions {
   readonly toolBridgeEnabled?: boolean;
   readonly toolSourceCount?: number;
   readonly memoryEnabled?: boolean;
+  readonly channelObservabilityEnabled?: boolean;
 }
 
 const HTML = `<!doctype html>
@@ -142,6 +143,19 @@ const HTML = `<!doctype html>
           <span>I understand that hard purge permanently removes all matching memory revisions and referenced payloads.</span>
         </label>
         <span id="memory-status" class="status" role="status" aria-live="polite"></span>
+      </section>
+
+      <section id="channels-panel" class="panel channels" aria-labelledby="channels-title" hidden>
+        <div class="channels-head">
+          <div>
+            <p class="eyebrow">CHANNELS + NOTIFICATIONS</p>
+            <h2 id="channels-title">Observability</h2>
+            <p class="muted">Read-only redacted lifecycle state. Browser visibility grants no channel, delivery, notification, or task execution authority.</p>
+          </div>
+          <span id="channels-badge" class="badge">Disabled</span>
+        </div>
+        <p id="channels-status" class="status" role="status" aria-live="polite"></p>
+        <pre id="channels-detail" class="channel-detail" tabindex="0">No channel status.</pre>
       </section>
 
       <section id="tools-panel" class="panel tools" aria-labelledby="tools-title" hidden>
@@ -273,6 +287,10 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
 .memory-grid { display: grid; grid-template-columns: minmax(12rem,.7fr) minmax(18rem,1.4fr) auto; gap: .75rem; align-items: end; }
 .memory-confirm { display: flex; align-items: flex-start; gap: .55rem; color: var(--muted); font-size: .78rem; max-width: 60rem; }
 .memory-confirm input { margin-top: .15rem; }
+.channels { grid-column: 1 / -1; padding: 1rem; display: grid; gap: .75rem; }
+.channels-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.channels-head .muted { max-width: 62rem; margin-bottom: 0; }
+.channel-detail { margin: 0; min-height: 4rem; max-height: 18rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid #293447; background: #090d13; color: #cbd7e7; border-radius: .75rem; padding: .8rem; font-size: .78rem; }
 .tools { grid-column: 1 / -1; padding: 1rem; display: grid; gap: 1rem; }
 .tools-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
 .tools-head .muted { max-width: 60rem; margin-bottom: 0; }
@@ -304,7 +322,8 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
   .activity { order: 3; grid-column: auto; }
   .memory { order: 4; grid-column: auto; }
   .memory-grid { grid-template-columns: 1fr; }
-  .tools { order: 5; grid-column: auto; }
+  .channels { order: 5; grid-column: auto; }
+  .tools { order: 6; grid-column: auto; }
   .tools-grid { grid-template-columns: 1fr; }
   .tools-grid .tool-actions { grid-column: auto; }
   .activity-list { grid-template-columns: 1fr; }
@@ -339,6 +358,7 @@ const JS = `(() => {
     model: null,
     memoryEnabled: false,
     memoryScopeKinds: [],
+    channelObservabilityEnabled: false,
     toolBridgeEnabled: false,
     toolSourceCount: 0,
     toolSources: [],
@@ -371,6 +391,10 @@ const JS = `(() => {
   const memoryPurge = byId('memory-purge');
   const memoryPurgeConfirm = byId('memory-purge-confirm');
   const memoryStatus = byId('memory-status');
+  const channelsPanel = byId('channels-panel');
+  const channelsBadge = byId('channels-badge');
+  const channelsStatus = byId('channels-status');
+  const channelsDetail = byId('channels-detail');
   const toolsPanel = byId('tools-panel');
   const toolSourceCount = byId('tool-source-count');
   const toolSource = byId('tool-source');
@@ -856,6 +880,95 @@ const JS = `(() => {
     }
   }
 
+  function handleChannelGatewayResult(message) {
+    const adapter = message.result;
+    if (!adapter || typeof adapter !== 'object') {
+      channelsStatus.textContent = 'Malformed channel observability result.';
+      channelsBadge.textContent = 'Rejected';
+      addActivity('Blocked', 'Malformed channel observability result.', 'blocked');
+      return;
+    }
+    if (adapter.status !== 'ok') {
+      const code = safeText(adapter.error?.code) || 'channel-observability-rejected';
+      channelsStatus.textContent = code;
+      channelsBadge.textContent = 'Rejected';
+      addActivity('Blocked', code, 'blocked');
+      return;
+    }
+
+    const payload = adapter.result;
+    const channels = payload?.channels;
+    const delivery = payload?.delivery;
+    const notifications = payload?.notifications;
+    if (
+      !payload
+      || payload.executionAuthority !== false
+      || payload.browserAuthority !== 'none'
+      || !channels
+      || !delivery
+      || !notifications
+    ) {
+      channelsStatus.textContent = 'Unsafe or incomplete channel observability payload.';
+      channelsBadge.textContent = 'Rejected';
+      addActivity('Blocked', 'Unsafe or incomplete channel observability payload.', 'blocked');
+      return;
+    }
+
+    const adaptersConfigured = Number.isSafeInteger(channels.adaptersConfigured)
+      ? channels.adaptersConfigured
+      : 0;
+    const deliveryTotal = Number.isSafeInteger(delivery.total)
+      ? delivery.total
+      : 0;
+    const notificationsCreated = Number.isSafeInteger(notifications.notificationsCreated)
+      ? notifications.notificationsCreated
+      : 0;
+    const outcomeUnknown = Number.isSafeInteger(delivery.counts?.['outcome-unknown'])
+      ? delivery.counts['outcome-unknown']
+      : 0;
+
+    channelsBadge.textContent = 'Read only';
+    channelsStatus.textContent =
+      'adapters=' + adaptersConfigured
+      + ' · deliveries=' + deliveryTotal
+      + ' · notifications=' + notificationsCreated
+      + ' · outcome-unknown=' + outcomeUnknown;
+    channelsDetail.textContent = JSON.stringify({
+      channels: {
+        adaptersConfigured,
+        replayEntries: Number.isSafeInteger(channels.replayEntries)
+          ? channels.replayEntries
+          : 0,
+        adapterSummaries: Array.isArray(channels.adapterSummaries)
+          ? channels.adapterSummaries
+          : [],
+        adapterSummariesTruncated: channels.adapterSummariesTruncated === true,
+      },
+      delivery: {
+        counts: delivery.counts ?? {},
+      },
+      notifications: {
+        routesSelected: Number.isSafeInteger(notifications.routesSelected)
+          ? notifications.routesSelected
+          : 0,
+        deliveryPermitsPrepared: Number.isSafeInteger(notifications.deliveryPermitsPrepared)
+          ? notifications.deliveryPermitsPrepared
+          : 0,
+        deliveriesSettled: Number.isSafeInteger(notifications.deliveriesSettled)
+          ? notifications.deliveriesSettled
+          : 0,
+        acknowledgementsPending: Number.isSafeInteger(notifications.acknowledgementsPending)
+          ? notifications.acknowledgementsPending
+          : 0,
+        deliveryStatuses: notifications.deliveryStatuses ?? {},
+        underlyingTaskStatus: safeText(notifications.underlyingTaskStatus) || 'not-inferred',
+      },
+      browserAuthority: 'none',
+      executionAuthority: false,
+    }, null, 2);
+    addActivity('Channel status', 'Redacted channel lifecycle state loaded.', 'accepted');
+  }
+
   function renderMemoryLifecycle(receipt) {
     if (!receipt || typeof receipt !== 'object') return;
     const recall = receipt.recall;
@@ -925,6 +1038,10 @@ const JS = `(() => {
   function handleStateResult(message) {
     if (safeText(message.commandName).startsWith('memory.')) {
       handleMemoryGatewayResult(message);
+      return;
+    }
+    if (safeText(message.commandName).startsWith('channels.')) {
+      handleChannelGatewayResult(message);
       return;
     }
     if (safeText(message.commandName).startsWith('tools.')) {
@@ -1043,6 +1160,9 @@ const JS = `(() => {
       if (state.memoryEnabled) {
         sendCommand('memory.status', {});
       }
+      if (state.channelObservabilityEnabled) {
+        sendCommand('channels.status', {});
+      }
       if (state.toolBridgeEnabled) {
         // Metadata-only state command. Fresh MCP process/network probing still
         // requires the operator to press Refresh inventory.
@@ -1072,6 +1192,9 @@ const JS = `(() => {
         } else if (commandName.startsWith('memory.')) {
           memoryStatus.textContent = reason;
           updateMemoryControls();
+        } else if (commandName.startsWith('channels.')) {
+          channelsStatus.textContent = reason;
+          channelsBadge.textContent = 'Rejected';
         } else {
           turnStatus.textContent = reason;
         }
@@ -1166,6 +1289,10 @@ const JS = `(() => {
       const memory = config?.memory;
       state.memoryEnabled = memory?.enabled === true;
       memoryPanel.hidden = !state.memoryEnabled;
+      const channels = config?.channels;
+      state.channelObservabilityEnabled = channels?.enabled === true;
+      channelsPanel.hidden = !state.channelObservabilityEnabled;
+      channelsBadge.textContent = state.channelObservabilityEnabled ? 'Configured' : 'Disabled';
       const tools = config?.tools;
       state.toolBridgeEnabled = tools?.enabled === true;
       state.toolSourceCount = state.toolBridgeEnabled && Number.isSafeInteger(tools?.sourceCount)
@@ -1181,6 +1308,11 @@ const JS = `(() => {
       state.memoryEnabled = false;
       state.memoryScopeKinds = [];
       memoryPanel.hidden = true;
+      state.channelObservabilityEnabled = false;
+      channelsPanel.hidden = true;
+      channelsBadge.textContent = 'Disabled';
+      channelsStatus.textContent = '';
+      channelsDetail.textContent = 'No channel status.';
       state.toolBridgeEnabled = false;
       state.toolSourceCount = 0;
       toolsPanel.hidden = true;
@@ -1465,6 +1597,9 @@ const JS = `(() => {
     memoryPurge.disabled = true;
     memoryStatus.textContent = '';
     memoryBadge.textContent = state.memoryEnabled ? 'Configured' : 'Disabled';
+    channelsStatus.textContent = '';
+    channelsDetail.textContent = 'No channel status.';
+    channelsBadge.textContent = state.channelObservabilityEnabled ? 'Configured' : 'Disabled';
     state.toolSources = [];
     state.toolInventory = [];
     resetToolProposal();
@@ -1590,8 +1725,9 @@ export function createFuryGatewayWebChatHandler(
   }
 
   const memoryEnabled = options.memoryEnabled === true;
+  const channelObservabilityEnabled = options.channelObservabilityEnabled === true;
 
-    const toolBridgeEnabled = options.toolBridgeEnabled === true;
+  const toolBridgeEnabled = options.toolBridgeEnabled === true;
   if (toolBridgeEnabled) {
     if (
       !Number.isSafeInteger(options.toolSourceCount)
@@ -1621,6 +1757,10 @@ export function createFuryGatewayWebChatHandler(
       : Object.freeze({ enabled: false as const }),
     memory: Object.freeze({
       enabled: memoryEnabled,
+    }),
+    channels: Object.freeze({
+      enabled: channelObservabilityEnabled,
+      browserAuthority: 'none' as const,
     }),
     executionAuthority: false as const,
   }));

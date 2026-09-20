@@ -405,6 +405,55 @@ try {
   ], installDir);
   assert(capabilityExposureExport.stderr === '', `Fury Kernel capability exposure export wrote stderr: ${capabilityExposureExport.stderr}`);
 
+  const gatewayChannelAdapterExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-channel-adapter-node'); if (typeof m.createFuryGatewayChannelAdapterRegistry !== 'function' || typeof m.isGeneratedFuryGatewayChannelInboundEvent !== 'function' || m.FURY_GATEWAY_CHANNEL_ADAPTER_FORMAT !== 'furypipe-gateway-channel-adapter/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayChannelAdapterExport.stderr === '', `Gateway channel adapter export wrote stderr: ${gatewayChannelAdapterExport.stderr}`);
+
+  const gatewayChannelPrincipalBindingExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-channel-principal-binding-node'); if (typeof m.createFuryGatewayChannelPrincipalBindingCoordinator !== 'function' || typeof m.isGeneratedFuryGatewayChannelPrincipalBinding !== 'function' || typeof m.isGeneratedFuryGatewayChannelPrincipalBindingCoordinator !== 'function' || m.FURY_GATEWAY_CHANNEL_PRINCIPAL_BINDING_FORMAT !== 'furypipe-gateway-channel-principal-binding/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayChannelPrincipalBindingExport.stderr === '', `Gateway channel principal binding export wrote stderr: ${gatewayChannelPrincipalBindingExport.stderr}`);
+
+  const gatewayChannelDeliveryExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-channel-delivery-node'); if (typeof m.createFuryGatewayChannelDeliveryCoordinator !== 'function' || typeof m.isGeneratedFuryGatewayChannelDeliveryPermit !== 'function' || typeof m.isGeneratedFuryGatewayChannelDeliveryCoordinator !== 'function' || m.FURY_GATEWAY_CHANNEL_DELIVERY_PERMIT_FORMAT !== 'furypipe-gateway-channel-delivery-permit/v1' || m.FURY_GATEWAY_CHANNEL_DELIVERY_RECEIPT_FORMAT !== 'furypipe-gateway-channel-delivery-receipt/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayChannelDeliveryExport.stderr === '', `Gateway channel delivery export wrote stderr: ${gatewayChannelDeliveryExport.stderr}`);
+
+  const gatewayChannelObservabilityCommandExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-channel-observability-command-node'); if (!Array.isArray(m.FURY_GATEWAY_CHANNEL_OBSERVABILITY_COMMAND_DEFINITIONS) || m.FURY_GATEWAY_CHANNEL_OBSERVABILITY_COMMAND_DEFINITIONS[0]?.name !== 'channels.status') process.exit(1);",
+  ], installDir);
+  assert(gatewayChannelObservabilityCommandExport.stderr === '', `Gateway channel observability command export wrote stderr: ${gatewayChannelObservabilityCommandExport.stderr}`);
+
+  const gatewayChannelObservabilityExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-channel-observability-node'); if (typeof m.createFuryGatewayChannelObservability !== 'function' || typeof m.isGeneratedFuryGatewayChannelObservability !== 'function' || m.FURY_GATEWAY_CHANNEL_OBSERVABILITY_FORMAT !== 'furypipe-gateway-channel-observability/v1' || m.FURY_GATEWAY_CHANNEL_OBSERVABILITY_RESULT_FORMAT !== 'furypipe-gateway-channel-observability-result/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayChannelObservabilityExport.stderr === '', `Gateway channel observability export wrote stderr: ${gatewayChannelObservabilityExport.stderr}`);
+
+  const gatewayNotificationExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-notification-node'); if (typeof m.createFuryGatewayNotificationCoordinator !== 'function' || typeof m.isGeneratedFuryGatewayNotification !== 'function' || typeof m.isGeneratedFuryGatewayNotificationRoutePlan !== 'function' || typeof m.isGeneratedFuryGatewayNotificationCoordinator !== 'function' || m.FURY_GATEWAY_NOTIFICATION_FORMAT !== 'furypipe-gateway-notification/v1' || m.FURY_GATEWAY_NOTIFICATION_DELIVERY_RECEIPT_FORMAT !== 'furypipe-gateway-notification-delivery-receipt/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayNotificationExport.stderr === '', `Gateway notification export wrote stderr: ${gatewayNotificationExport.stderr}`);
+
+  const gatewayDiscordAdapterExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-discord-adapter-node'); if (typeof m.createFuryGatewayDiscordAdapter !== 'function' || typeof m.isGeneratedFuryGatewayDiscordAdapter !== 'function' || typeof m.isGeneratedFuryGatewayDiscordServiceAuthentication !== 'function' || typeof m.isGeneratedFuryGatewayDiscordInboundEvent !== 'function' || m.FURY_GATEWAY_DISCORD_SERVICE_AUTH_FORMAT !== 'furypipe-gateway-discord-service-auth/v1' || m.FURY_GATEWAY_DISCORD_EVENT_FORMAT !== 'furypipe-gateway-discord-event/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayDiscordAdapterExport.stderr === '', `Gateway Discord adapter export wrote stderr: ${gatewayDiscordAdapterExport.stderr}`);
+
   const gatewayLocalMemoryRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
