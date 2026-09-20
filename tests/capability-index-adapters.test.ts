@@ -63,6 +63,7 @@ describe('Capability Autopilot source-of-truth adapters', () => {
 
     expect(report).toEqual({
       indexed: 1,
+      skipped: 0,
       source: 'skill-registry',
       authority: 'projection-only',
       executionAuthority: false,
@@ -205,6 +206,58 @@ describe('Capability Autopilot source-of-truth adapters', () => {
       explicitRequests: [{ kind: 'model', id: 'openai/gpt-5.6-sol' }],
       availablePermissions: ['provider-inference'],
     }).selected).toHaveLength(1);
+  });
+
+  it('rejects accessor-backed health overrides before they can affect eligibility', () => {
+    const registry = createAgentSkillRegistry();
+    registry.register({
+      id: 'safe-skill',
+      category: 'testing',
+      priority: 1,
+      provenance: {
+        sourceKind: 'local',
+        licenseStatus: 'NOT_APPLICABLE',
+        decision: 'ADOPT',
+      },
+    }, {
+      id: 'safe-skill',
+      version: '1.0.0',
+      stages: ['verify'],
+      execute: async () => ({ evidence: [], consumedTokens: 0 }),
+    });
+
+    const health = {} as Record<string, 'ready'>;
+    Object.defineProperty(health, 'safe-skill', {
+      enumerable: true,
+      get() {
+        throw new Error('HEALTH_GETTER_MUST_NOT_RUN');
+      },
+    });
+
+    expect(() => projectSkillsIntoCapabilityIndex(
+      createFuryCapabilityIndex(),
+      registry,
+      health,
+    )).toThrow(/unsafe or invalid health state/u);
+  });
+
+  it('skips a valid Model Fabric identity that exceeds the stricter index identity bound instead of truncating it', () => {
+    const registry = createModelFabricRegistry();
+    const longId = 'm'.repeat(300);
+    registry.upsertMany(normalizeOpenAIModelsPayload({
+      data: [{ id: longId, owned_by: 'openai' }],
+    }, '2026-09-20T10:00:00.000Z'));
+
+    const index = createFuryCapabilityIndex();
+    const report = projectModelsIntoCapabilityIndex(index, registry);
+
+    expect(report).toMatchObject({
+      indexed: 0,
+      skipped: 1,
+      source: 'model-fabric',
+      executionAuthority: false,
+    });
+    expect(index.size()).toBe(0);
   });
 
   it('indexes MCP source metadata without probing, and tools only from already-supplied inventory evidence', () => {
