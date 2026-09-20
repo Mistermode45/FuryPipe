@@ -337,6 +337,8 @@ const JS = `(() => {
     modelBridgeEnabled: false,
     modelProvider: null,
     model: null,
+    memoryEnabled: false,
+    memoryScopeKinds: [],
     toolBridgeEnabled: false,
     toolSourceCount: 0,
     toolSources: [],
@@ -361,6 +363,14 @@ const JS = `(() => {
   const turnStatus = byId('turn-status');
   const cancelTurn = byId('cancel-turn');
   const activityList = byId('activity-list');
+  const memoryPanel = byId('memory-panel');
+  const memoryBadge = byId('memory-badge');
+  const memoryScope = byId('memory-scope');
+  const memoryKey = byId('memory-key');
+  const memoryForget = byId('memory-forget');
+  const memoryPurge = byId('memory-purge');
+  const memoryPurgeConfirm = byId('memory-purge-confirm');
+  const memoryStatus = byId('memory-status');
   const toolsPanel = byId('tools-panel');
   const toolSourceCount = byId('tool-source-count');
   const toolSource = byId('tool-source');
@@ -954,6 +964,9 @@ const JS = `(() => {
       state.modelBridgeEnabled = modelBridge?.enabled === true;
       state.modelProvider = state.modelBridgeEnabled ? safeText(modelBridge.providerId) : null;
       state.model = state.modelBridgeEnabled ? safeText(modelBridge.model) : null;
+      const memory = config?.memory;
+      state.memoryEnabled = memory?.enabled === true;
+      memoryPanel.hidden = !state.memoryEnabled;
       const tools = config?.tools;
       state.toolBridgeEnabled = tools?.enabled === true;
       state.toolSourceCount = state.toolBridgeEnabled && Number.isSafeInteger(tools?.sourceCount)
@@ -966,6 +979,9 @@ const JS = `(() => {
       state.modelBridgeEnabled = false;
       state.modelProvider = null;
       state.model = null;
+      state.memoryEnabled = false;
+      state.memoryScopeKinds = [];
+      memoryPanel.hidden = true;
       state.toolBridgeEnabled = false;
       state.toolSourceCount = 0;
       toolsPanel.hidden = true;
@@ -1318,7 +1334,9 @@ export function createFuryGatewayWebChatHandler(
     throw new Error('Gateway WebChat disabled model bridge must not expose model metadata');
   }
 
-  const toolBridgeEnabled = options.toolBridgeEnabled === true;
+  const memoryEnabled = options.memoryEnabled === true;
+
+    const toolBridgeEnabled = options.toolBridgeEnabled === true;
   if (toolBridgeEnabled) {
     if (
       !Number.isSafeInteger(options.toolSourceCount)
@@ -1346,6 +1364,9 @@ export function createFuryGatewayWebChatHandler(
           sourceCount: options.toolSourceCount!,
         })
       : Object.freeze({ enabled: false as const }),
+    memory: Object.freeze({
+      enabled: memoryEnabled,
+    }),
     executionAuthority: false as const,
   }));
   const csp = [
