@@ -323,6 +323,7 @@ async function startHarness(
     'conversations.write',
   ];
   if (modelRuntime.bridge) scopes.push('capability.provider-inference');
+  if (memoryBridge) scopes.push('memory.read', 'memory.write', 'memory.manage');
   if (toolBridge) {
     scopes.push('mcp.inspect', 'mcp.manage', 'capability.process');
   }
@@ -355,6 +356,7 @@ async function startHarness(
       : {}),
     toolBridgeEnabled: toolBridge !== undefined,
     ...(toolBridge ? { toolSourceCount: 1 } : {}),
+    memoryEnabled: memoryBridge !== undefined,
   });
   const adapter = createFuryGatewayConversationAdapter({
     kernel,
@@ -368,14 +370,19 @@ async function startHarness(
     ...(toolBridge
       ? FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS
       : []),
+    ...(memoryBridge
+      ? FURY_GATEWAY_MEMORY_COMMAND_DEFINITIONS
+      : []),
   ]);
   const admittedStateCommandNames = Object.freeze([
     ...FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
     ...(toolBridge ? FURY_GATEWAY_TOOL_STATE_COMMAND_NAMES : []),
+    ...(memoryBridge ? FURY_GATEWAY_MEMORY_STATE_COMMAND_NAMES : []),
   ]);
   const admittedExecutionCommandNames = Object.freeze([
     ...(modelRuntime.bridge ? FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES : []),
     ...(toolBridge ? FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES : []),
+    ...(memoryBridge ? FURY_GATEWAY_MEMORY_EXECUTION_COMMAND_NAMES : []),
   ]);
 
   const host = await listenFuryGatewayWebSocketHost({
@@ -422,6 +429,16 @@ async function startHarness(
           command.input,
         );
       }
+      if (
+        memoryAdapter
+        && (FURY_GATEWAY_MEMORY_STATE_COMMAND_NAMES as readonly string[])
+          .includes(command.commandName)
+      ) {
+        return memoryAdapter.dispatchState(
+          command.commandName as FuryGatewayMemoryStateCommandName,
+          command.input,
+        );
+      }
       throw new Error('browser QA received unsupported state command');
     },
     ...(admittedExecutionCommandNames.length > 0
@@ -449,21 +466,70 @@ async function startHarness(
                 command.input,
               );
             }
+            if (
+              memoryAdapter
+              && (FURY_GATEWAY_MEMORY_EXECUTION_COMMAND_NAMES as readonly string[])
+                .includes(command.commandName)
+            ) {
+              return memoryAdapter.dispatchExecution(
+                command.commandName as FuryGatewayMemoryExecutionCommandName,
+                command.input,
+              );
+            }
             throw new Error('browser QA received unsupported execution command');
           },
         }
       : {}),
   });
 
+  let memorySeedCounter = 0;
   return {
     origin,
     bootstrap,
     kernel,
+    async seedMemory(key: string, text: string) {
+      if (!memoryEngine || !memoryScopes) {
+        throw new Error('browser QA memory harness is disabled');
+      }
+      memorySeedCounter += 1;
+      memoryCandidates = Object.freeze([{
+        action: 'REMEMBER' as const,
+        key,
+        scopeKind: 'user' as const,
+        memoryClass: 'User' as const,
+        text,
+        terms: Object.freeze(['browser', 'memory', 'qa']),
+        importance: 1,
+        confidence: 1,
+        evidence: 'explicit-user' as const,
+      }]);
+      try {
+        const learned = await memoryEngine.afterTurn({
+          conversationId: `browser-memory-seed-${memorySeedCounter}`,
+          turnId: `browser-memory-seed-turn-${memorySeedCounter}`,
+          scopes: memoryScopes,
+          messages: Object.freeze([{
+            role: 'user' as const,
+            content: 'Explicit browser QA memory seed.',
+          }]),
+          now: now(),
+        });
+        assert(
+          learned.added + learned.updated > 0,
+          'browser QA memory seed did not create an active memory',
+        );
+      } finally {
+        memoryCandidates = Object.freeze([]);
+      }
+    },
     async close() {
       bootstrap.revokeAllBrowserSessions();
       await host.stop();
       sessionCoordinator.revokeSession(session.sessionId);
       principalRegistry.revokePrincipal(principal.principalId);
+      if (memoryRoot) {
+        await rm(memoryRoot, { recursive: true, force: true });
+      }
     },
   };
 }
