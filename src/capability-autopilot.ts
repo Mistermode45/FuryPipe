@@ -119,6 +119,8 @@ interface ScoredCapability {
   readonly reason: FuryCapabilitySelectionReason;
 }
 
+const CAPABILITY_SELECTION_EVIDENCE = new WeakSet<object>();
+
 const DEFAULT_MIN_SCORE = 1.5;
 const DEFAULT_MAX_SELECTED = 8;
 const HARD_MAX_SELECTED = 64;
@@ -486,6 +488,14 @@ function blockedCountsObject(
   )) as FuryCapabilitySelectionPlan['blockedCounts'];
 }
 
+export function isGeneratedFuryCapabilitySelectionPlan(
+  value: unknown,
+): value is FuryCapabilitySelectionPlan {
+  return typeof value === 'object'
+    && value !== null
+    && CAPABILITY_SELECTION_EVIDENCE.has(value);
+}
+
 export function selectFuryCapabilitiesForTask(
   input: FuryCapabilitySelectionInput,
 ): FuryCapabilitySelectionPlan {
@@ -747,7 +757,7 @@ export function selectFuryCapabilitiesForTask(
     ]),
   }));
 
-  return Object.freeze({
+  const plan: FuryCapabilitySelectionPlan = Object.freeze({
     format: FURY_CAPABILITY_SELECTION_FORMAT,
     objectiveDigestSha256,
     indexDigestSha256: snapshot.digestSha256,
@@ -763,4 +773,6 @@ export function selectFuryCapabilitiesForTask(
     authority: 'selection-only' as const,
     executionAuthority: false as const,
   });
+  CAPABILITY_SELECTION_EVIDENCE.add(plan);
+  return plan;
 }
