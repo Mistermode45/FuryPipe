@@ -226,14 +226,14 @@ function decodeKey(
     encoded === undefined
     || !BASE64_32_RE.test(encoded)
   ) {
-    throw new Error(`host environment variable ${envName} must contain one canonical base64 AES-256 key`);
+    throw new Error('memory encryption key material must contain one canonical base64 AES-256 key');
   }
   const decoded = Buffer.from(encoded, 'base64');
   if (
     decoded.byteLength !== 32
     || decoded.toString('base64') !== encoded
   ) {
-    throw new Error(`host environment variable ${envName} must decode to exactly 32 bytes`);
+    throw new Error('memory encryption key material must decode to exactly 32 bytes');
   }
   return new Uint8Array(decoded);
 }
