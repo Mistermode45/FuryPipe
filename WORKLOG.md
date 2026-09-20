@@ -593,3 +593,22 @@
 - Cross-Browser QA exact-head : le premier attempt a exposé un timeout runner au `page.goto()` du sous-harness WebChat outils après 117/117 + 120/120 cross-engine ; la reproduction locale `pnpm run browser:webchat:qa` a passé 15/15, puis le rerun hébergé ciblé a passé 117/117 et 15/15. Ce rerun est une preuve du même SHA, pas une modification du code.
 - Limites restantes : la preuve hébergée couvre les harnesses browser et la CI, pas un provider OAuth réel, un Git provider réel, un host DNS/redirect réel, une junction/reparse multi-OS, un crash/restart de production ou un déploiement. Ces frontières restent `RUNTIME_VALIDATION_REQUIRED`.
 - Phase 6 est fermée au niveau des gates demandées. Phase 7 Memory VNext peut maintenant commencer sur un track séparé empilé sur ce HEAD validé ; aucun code Phase 7 n’est encore présent dans ce track.
+
+## 2026-09-21 — FuryPipe VNext Phase 7 — Gates 7.0 à 7.7 locales
+
+- Source de vérité revalidée : Phase 6 PR #217 est `OPEN + DRAFT`, base Phase 5 `672a57a83c33990eb2be71f656929a1ed7ed5ae5`, head final vérifié `51839182066a4520fed29cf396856495d8400fc3`, tous les contrôles exact-head verts avant le fork.
+- Track isolé créé depuis ce SHA : `vnext-phase7-memory-vnext`. Aucun fichier de l’automation/webhook Phase 5 n’a été modifié.
+- `src/memory-vnext.ts` consomme le `RecoveryStore` fourni par l’hôte et réutilise `optimizeContext()`. Il ne crée ni deuxième RecoveryStore, ni Gateway, ni policy engine.
+- Gate 7.0/7.1 : schémas stricts et états explicites `candidate / accepted / active / disabled / forgotten`; provenance `sourceKind/sourceIdDigest`, timestamps, evidence class, acceptance, retention, scope et visibility.
+- Gate 7.2 : `putBounded()` impose les quotas de records/révisions ; le contenu est immuable ; `requestForget()` publie la tombstone avant le nettoyage local et bloque la résurrection après restart.
+- Gate 7.3/7.4 : recherche par scopes exacts, source revocation, TTL, score déterministe et injection sélective via le Context Optimizer avec provenance et budget UTF-8 final.
+- Gate 7.5/7.6/7.7 : authorizer host-owned default-deny ; source externe et inférence modèle nécessitent une confirmation utilisateur ; secret refusé ; receipts d’oubli local-only ; statut `observability-only` sans autorité.
+- Tests ciblés : PASS, `tests/memory-vnext.test.ts`, 6 tests ; cas external prompt injection, accepted/active/relevant/injected, scope isolation, source revoke, restart/tombstone, TTL/budget, unknown fields/accessors/sparse arrays/secret/default-deny.
+- `pnpm install --frozen-lockfile` : PASS, lockfile inchangé.
+- `pnpm test` : PASS, 250 fichiers / 2 871 tests.
+- `pnpm run typecheck` : PASS, TypeScript principal + hosted MCP.
+- `pnpm run build` : PASS, dist bibliothèque/déclarations + Node/MCP, version `0.15.0`.
+- `pnpm run audit` : PASS, aucune vulnérabilité production connue.
+- `pnpm run package:smoke` : PASS, package smoke complet incluant `scripts/phase7-package-smoke.mjs`; export `furypipe/memory-vnext` et documentation chargés depuis le tarball installé.
+- `git diff --check` : PASS. La preuve CI exact-head reste à obtenir après push ; aucun résultat hébergé n’est déduit des tests locaux.
+- Limites : les copies dans une source externe, backups hors namespace ou systèmes non contrôlés ne sont pas supprimées ; aucun provider/OAuth/LLM réel, embedding, vector DB, déploiement ou runtime production n’est exécuté.
