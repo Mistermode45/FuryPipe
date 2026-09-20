@@ -57,6 +57,7 @@ describe('Capability Autopilot measured signal adapters', () => {
       source: 'provider-runtime',
       observed: 1,
       skippedUnmeasured: 0,
+      skippedUnregisteredProvider: 0,
       skippedInvalidIdentity: 0,
       authority: 'projection-only',
       executionAuthority: false,
@@ -160,6 +161,31 @@ describe('Capability Autopilot measured signal adapters', () => {
     expect(report).toMatchObject({
       observed: 0,
       skippedUnmeasured: 1,
+    });
+    expect(signals.size()).toBe(0);
+  });
+
+  it('skips Model Fabric providers that Provider Runtime does not register', () => {
+    const now = 1_500;
+    const runtime = createProviderRuntimeState(DEFAULT_PROVIDER_REGISTRY);
+    const models = createModelFabricRegistry();
+    models.observe('router-model', 'openrouter');
+    const signals = createFuryCapabilitySignalRegistry({
+      now: () => now,
+    });
+
+    const report = projectProviderRuntimeModelSignals(
+      signals,
+      runtime,
+      models,
+      { now },
+    );
+
+    expect(report).toMatchObject({
+      observed: 0,
+      skippedUnregisteredProvider: 1,
+      skippedInvalidIdentity: 0,
+      executionAuthority: false,
     });
     expect(signals.size()).toBe(0);
   });
