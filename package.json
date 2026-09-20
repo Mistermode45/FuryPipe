@@ -317,6 +317,10 @@
       "types": "./dist/capability-autopilot.d.ts",
       "import": "./dist/capability-autopilot.js"
     },
+    "./capability-index-adapters": {
+      "types": "./dist/capability-index-adapters.d.ts",
+      "import": "./dist/capability-index-adapters.js"
+    },
     "./continuous-memory": {
       "types": "./dist/continuous-memory.d.ts",
       "import": "./dist/continuous-memory.js"
