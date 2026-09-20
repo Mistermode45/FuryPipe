@@ -321,6 +321,14 @@
       "types": "./dist/capability-index-adapters.d.ts",
       "import": "./dist/capability-index-adapters.js"
     },
+    "./capability-signals": {
+      "types": "./dist/capability-signals.d.ts",
+      "import": "./dist/capability-signals.js"
+    },
+    "./capability-signal-adapters": {
+      "types": "./dist/capability-signal-adapters.d.ts",
+      "import": "./dist/capability-signal-adapters.js"
+    },
     "./fury-kernel-capability-exposure": {
       "types": "./dist/fury-kernel-capability-exposure.d.ts",
       "import": "./dist/fury-kernel-capability-exposure.js"
