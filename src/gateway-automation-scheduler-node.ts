@@ -18,6 +18,7 @@ export type FuryGatewayAutomationSchedulerDecision =
   | 'disabled'
   | 'not-due'
   | 'misfire-skipped'
+  | 'clock-regression-ignored'
   | 'claimed'
   | 'observed';
 
@@ -360,6 +361,34 @@ export function createFuryGatewayAutomationScheduler(
       const scheduledFor = plan.scheduledFor;
       if (scheduledFor === undefined) {
         throw new FuryGatewayAutomationSchedulerError('clock-invalid');
+      }
+
+      const latestTrigger = await options.runs.latestTrigger(
+        definition.automationId,
+      );
+      if (
+        latestTrigger !== undefined
+        && scheduledFor < latestTrigger.scheduledFor
+      ) {
+        const watermarkNextDueAt = definition.trigger.kind === 'interval'
+          ? nextIntervalOccurrence(
+              definition,
+              latestTrigger.scheduledFor,
+            )
+          : undefined;
+        return result(
+          definition.automationId,
+          definition.revision,
+          inspected.definitionSha256,
+          observedAt,
+          'clock-regression-ignored',
+          {
+            scheduledFor,
+            ...(watermarkNextDueAt === undefined
+              ? {}
+              : { nextDueAt: watermarkNextDueAt }),
+          },
+        );
       }
 
       const run = await options.runs.registerTrigger({
