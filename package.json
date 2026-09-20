@@ -185,6 +185,10 @@
       "types": "./dist/gateway-channel-observability-node.d.ts",
       "import": "./dist/gateway-channel-observability-node.js"
     },
+    "./gateway-automation-definition-node": {
+      "types": "./dist/gateway-automation-definition-node.d.ts",
+      "import": "./dist/gateway-automation-definition-node.js"
+    },
     "./gateway-notification-node": {
       "types": "./dist/gateway-notification-node.d.ts",
       "import": "./dist/gateway-notification-node.js"
