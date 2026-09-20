@@ -116,6 +116,7 @@ export function projectProviderRuntimeModelSignals(
     !providerRuntime
     || typeof providerRuntime !== 'object'
     || typeof providerRuntime.health !== 'function'
+    || typeof providerRuntime.registry !== 'function'
   ) {
     throw new TypeError(
       'provider runtime signal projection requires ProviderRuntimeState',
