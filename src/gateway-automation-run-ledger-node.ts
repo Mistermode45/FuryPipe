@@ -1239,11 +1239,8 @@ export function createFuryGatewayAutomationRunLedger(
       const triggerIdSha256 = digestParts([
         'trigger',
         id,
-        input.definitionRevision,
-        input.definitionSha256,
         kind,
         occurrenceKeySha256,
-        scheduledFor,
       ]);
       const runIdSha256 = digestParts(['run', triggerIdSha256]);
       const executionIdentitySha256 = digestParts(['execution', runIdSha256]);
@@ -1264,7 +1261,21 @@ export function createFuryGatewayAutomationRunLedger(
       });
 
       const existing = await loadStatus(runIdSha256, nowValue(now));
-      if (existing.status) return existing.status;
+      if (existing.status && existing.classified) {
+        const durableTrigger = existing.classified.trigger.record;
+        if (
+          durableTrigger.scheduledFor !== scheduledFor
+          || durableTrigger.automationId !== id
+          || durableTrigger.sourceKind !== kind
+          || durableTrigger.occurrenceKeySha256 !== occurrenceKeySha256
+        ) {
+          throw new FuryGatewayAutomationRunLedgerError(
+            'run-conflict',
+            runIdSha256,
+          );
+        }
+        return existing.status;
+      }
 
       try {
         await store.putBounded(
