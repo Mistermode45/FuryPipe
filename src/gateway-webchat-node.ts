@@ -16,6 +16,7 @@ export interface FuryGatewayWebChatOptions {
   readonly model?: string;
   readonly toolBridgeEnabled?: boolean;
   readonly toolSourceCount?: number;
+  readonly memoryEnabled?: boolean;
 }
 
 const HTML = `<!doctype html>
@@ -110,6 +111,38 @@ const HTML = `<!doctype html>
         </div>
         <ol id="activity-list" class="activity-list"></ol>
       </aside>
+
+      <section id="memory-panel" class="panel memory" aria-labelledby="memory-title" hidden>
+        <div class="memory-head">
+          <div>
+            <p class="eyebrow">CONTINUOUS MEMORY</p>
+            <h2 id="memory-title">Memory</h2>
+            <p class="muted">Recalled memory is data, never instruction authority. Soft forget creates a tombstone; hard purge permanently removes revisions and payloads.</p>
+          </div>
+          <span id="memory-badge" class="badge">Disabled</span>
+        </div>
+        <div class="memory-grid">
+          <div class="tool-control">
+            <label for="memory-scope">Scope</label>
+            <select id="memory-scope" disabled>
+              <option value="">Load memory status first</option>
+            </select>
+          </div>
+          <div class="tool-control">
+            <label for="memory-key">Memory key</label>
+            <input id="memory-key" type="text" maxlength="512" autocomplete="off" spellcheck="false" placeholder="user.preference.example" disabled>
+          </div>
+          <div class="tool-actions">
+            <button id="memory-forget" type="button" class="secondary" disabled>Soft forget</button>
+            <button id="memory-purge" type="button" class="danger" disabled>Hard purge</button>
+          </div>
+        </div>
+        <label class="memory-confirm" for="memory-purge-confirm">
+          <input id="memory-purge-confirm" type="checkbox" disabled>
+          <span>I understand that hard purge permanently removes all matching memory revisions and referenced payloads.</span>
+        </label>
+        <span id="memory-status" class="status" role="status" aria-live="polite"></span>
+      </section>
 
       <section id="tools-panel" class="panel tools" aria-labelledby="tools-title" hidden>
         <div class="tools-head">
@@ -234,6 +267,12 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
 .activity-title { display: flex; justify-content: space-between; gap: .5rem; align-items: flex-start; }
 .activity-list { margin: .75rem 0 0; padding-left: 1.35rem; display: grid; gap: .7rem; font-size: .78rem; color: var(--muted); }
 .activity-list li strong { display: block; color: #dce5f3; margin-bottom: .15rem; }
+.memory { grid-column: 1 / -1; padding: 1rem; display: grid; gap: 1rem; }
+.memory-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.memory-head .muted { max-width: 62rem; margin-bottom: 0; }
+.memory-grid { display: grid; grid-template-columns: minmax(12rem,.7fr) minmax(18rem,1.4fr) auto; gap: .75rem; align-items: end; }
+.memory-confirm { display: flex; align-items: flex-start; gap: .55rem; color: var(--muted); font-size: .78rem; max-width: 60rem; }
+.memory-confirm input { margin-top: .15rem; }
 .tools { grid-column: 1 / -1; padding: 1rem; display: grid; gap: 1rem; }
 .tools-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
 .tools-head .muted { max-width: 60rem; margin-bottom: 0; }
@@ -249,6 +288,8 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
   .workspace { grid-template-columns: 15rem minmax(0,1fr); }
   .activity { grid-column: 1 / -1; min-height: auto; }
   .activity-list { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .memory-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .memory-grid .tool-actions { grid-column: 1 / -1; }
   .tools-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .tools-grid .tool-actions { grid-column: 1 / -1; }
 }
@@ -261,7 +302,9 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
   .sidebar { order: 2; }
   .chat { order: 1; min-height: 70vh; }
   .activity { order: 3; grid-column: auto; }
-  .tools { order: 4; grid-column: auto; }
+  .memory { order: 4; grid-column: auto; }
+  .memory-grid { grid-template-columns: 1fr; }
+  .tools { order: 5; grid-column: auto; }
   .tools-grid { grid-template-columns: 1fr; }
   .tools-grid .tool-actions { grid-column: auto; }
   .activity-list { grid-template-columns: 1fr; }
