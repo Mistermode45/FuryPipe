@@ -309,6 +309,14 @@
       "types": "./dist/capability-router.d.ts",
       "import": "./dist/capability-router.js"
     },
+    "./capability-index": {
+      "types": "./dist/capability-index.d.ts",
+      "import": "./dist/capability-index.js"
+    },
+    "./capability-autopilot": {
+      "types": "./dist/capability-autopilot.d.ts",
+      "import": "./dist/capability-autopilot.js"
+    },
     "./continuous-memory": {
       "types": "./dist/continuous-memory.d.ts",
       "import": "./dist/continuous-memory.js"
