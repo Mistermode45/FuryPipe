@@ -68,6 +68,7 @@ export interface FuryCapabilitySignalSnapshotRecord {
   readonly kind: FuryCapabilityIndexKind;
   readonly id: string;
   readonly status: 'fresh' | 'stale';
+  readonly observation: FuryCapabilitySignalObservation;
   readonly fingerprintSha256: string;
   readonly observedAt: number;
   readonly expiresAt: number;
@@ -484,6 +485,7 @@ export function createFuryCapabilitySignalRegistry(
           kind: record.kind,
           id: record.id,
           status: at < record.expiresAt ? 'fresh' as const : 'stale' as const,
+          observation: record,
           fingerprintSha256: record.fingerprintSha256,
           observedAt: record.observedAt,
           expiresAt: record.expiresAt,
