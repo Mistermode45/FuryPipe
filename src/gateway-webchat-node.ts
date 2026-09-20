@@ -1268,6 +1268,47 @@ const JS = `(() => {
     });
   });
 
+  memoryScope.addEventListener('change', updateMemoryControls);
+  memoryKey.addEventListener('input', updateMemoryControls);
+  memoryPurgeConfirm.addEventListener('change', updateMemoryControls);
+
+  memoryForget.addEventListener('click', () => {
+    const key = safeText(memoryKey.value).trim();
+    const scopeKind = safeText(memoryScope.value);
+    if (!key || !state.memoryScopeKinds.includes(scopeKind)) return;
+    memoryForget.disabled = true;
+    memoryPurge.disabled = true;
+    memoryStatus.textContent = 'Writing governed memory tombstone…';
+    addActivity('Memory requested', 'Soft forget · scope=' + scopeKind, 'requested');
+    try {
+      sendCommand('memory.forget', { key, scopeKind });
+    } catch {
+      memoryStatus.textContent = 'Gateway is not connected.';
+      updateMemoryControls();
+    }
+  });
+
+  memoryPurge.addEventListener('click', () => {
+    const key = safeText(memoryKey.value).trim();
+    const scopeKind = safeText(memoryScope.value);
+    if (
+      !key
+      || !state.memoryScopeKinds.includes(scopeKind)
+      || !memoryPurgeConfirm.checked
+    ) return;
+    memoryForget.disabled = true;
+    memoryPurge.disabled = true;
+    memoryPurgeConfirm.disabled = true;
+    memoryStatus.textContent = 'Executing explicit hard purge…';
+    addActivity('Memory requested', 'Hard purge · scope=' + scopeKind, 'requested');
+    try {
+      sendCommand('memory.purge', { key, scopeKind });
+    } catch {
+      memoryStatus.textContent = 'Gateway is not connected.';
+      updateMemoryControls();
+    }
+  });
+
   toolSource.addEventListener('change', () => {
     resetToolInventory();
     toolStatus.textContent = 'Select Refresh inventory to probe this source.';
@@ -1409,6 +1450,21 @@ const JS = `(() => {
     state.activeTurnId = null;
     state.pendingUserMessages.clear();
     state.openAfterClose = false;
+    state.memoryScopeKinds = [];
+    memoryScope.replaceChildren();
+    const memoryOption = document.createElement('option');
+    memoryOption.value = '';
+    memoryOption.textContent = 'Load memory status first';
+    memoryScope.append(memoryOption);
+    memoryScope.disabled = true;
+    memoryKey.value = '';
+    memoryKey.disabled = true;
+    memoryPurgeConfirm.checked = false;
+    memoryPurgeConfirm.disabled = true;
+    memoryForget.disabled = true;
+    memoryPurge.disabled = true;
+    memoryStatus.textContent = '';
+    memoryBadge.textContent = state.memoryEnabled ? 'Configured' : 'Disabled';
     state.toolSources = [];
     state.toolInventory = [];
     resetToolProposal();
