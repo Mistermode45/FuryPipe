@@ -370,6 +370,13 @@ try {
   ], installDir);
   assert(capabilityAutopilotExport.stderr === '', `Capability Autopilot export wrote stderr: ${capabilityAutopilotExport.stderr}`);
 
+  const capabilityAdaptersExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-index-adapters'); if (typeof m.projectSkillsIntoCapabilityIndex !== 'function' || typeof m.revalidateFuryCapabilitySelection !== 'function' || m.FURY_CAPABILITY_REVALIDATION_FORMAT !== 'furypipe-capability-revalidation/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilityAdaptersExport.stderr === '', `Capability index adapters export wrote stderr: ${capabilityAdaptersExport.stderr}`);
+
   const gatewayLocalMemoryRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
