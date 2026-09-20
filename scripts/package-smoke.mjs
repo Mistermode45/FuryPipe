@@ -377,6 +377,13 @@ try {
   ], installDir);
   assert(capabilityAdaptersExport.stderr === '', `Capability index adapters export wrote stderr: ${capabilityAdaptersExport.stderr}`);
 
+  const capabilitySemanticAnalyzerExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-semantic-analyzer'); if (typeof m.createGovernedFuryCapabilitySemanticAnalyzer !== 'function' || typeof m.isGeneratedFuryCapabilitySemanticAnalysis !== 'function' || m.FURY_CAPABILITY_SEMANTIC_ANALYSIS_FORMAT !== 'furypipe-capability-semantic-analysis/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilitySemanticAnalyzerExport.stderr === '', `Capability semantic analyzer export wrote stderr: ${capabilitySemanticAnalyzerExport.stderr}`);
+
   const capabilitySignalsExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
