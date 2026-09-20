@@ -72,12 +72,22 @@ export interface FuryCapabilitySelectionRevalidation {
   readonly executionAuthority: false;
 }
 
-const INDEX_TRUST = new Set<FuryCapabilityIndexTrustState>([
-  'trusted', 'verified', 'unverified', 'blocked', 'unknown',
-]);
 const INDEX_HEALTH = new Set<FuryCapabilityIndexHealthState>([
   'ready', 'degraded', 'unavailable', 'blocked', 'unknown',
 ]);
+
+function uniqueMetadata(values: readonly string[]): readonly string[] {
+  const output = new Map<string, string>();
+  for (const value of values) {
+    const normalized = value
+      .normalize('NFKC')
+      .trim()
+      .toLocaleLowerCase('en-US');
+    if (!normalized || output.has(normalized)) continue;
+    output.set(normalized, normalized);
+  }
+  return Object.freeze([...output.values()]);
+}
 
 function healthOverride(
   record: Readonly<Record<string, FuryCapabilityIndexHealthState>> | undefined,
@@ -183,7 +193,8 @@ function latestModelObservedAt(entry: ModelFabricEntry): string | undefined {
     .filter((value): value is string =>
       typeof value === 'string' && Number.isFinite(Date.parse(value)))
     .sort((a, b) => Date.parse(b) - Date.parse(a));
-  return timestamps[0];
+  if (timestamps.length === 0) return undefined;
+  return new Date(Date.parse(timestamps[0]!)).toISOString();
 }
 
 function mcpRisk(risk: McpToolRiskClass): FuryCapabilityIndexRiskClass {
@@ -260,9 +271,9 @@ export function projectSkillsIntoCapabilityIndex(
       name: skill.id.replace(/[._-]+/gu, ' '),
       description:
         `Registered skill ${skill.id}; category ${skill.category}; stages ${skill.stages.join(', ')}; version ${skill.version}.`,
-      families: [skill.category],
-      tags: [...skill.stages, `health-${skill.healthPolicy}`],
-      keywords: [skill.id, skill.category, ...skill.stages],
+      families: uniqueMetadata([skill.category]),
+      tags: uniqueMetadata([...skill.stages, `health-${skill.healthPolicy}`]),
+      keywords: uniqueMetadata([skill.id, skill.category, ...skill.stages]),
       trust: skillTrust(skill.provenance.decision, skill.executableByProvenance),
       license: skillLicense(skill.provenance.licenseStatus),
       health: healthOverride(health, skill.id),
@@ -310,9 +321,9 @@ export function projectPluginsIntoCapabilityIndex(
       name: plugin.name,
       description:
         `Registered opt-in plugin ${plugin.name}; skills ${plugin.skills.length}; MCP profiles ${plugin.mcpProfiles.length}; CLI profiles ${plugin.cliProfiles.length}; provider profiles ${plugin.providerProfiles.length}.`,
-      families: [...families],
-      tags,
-      keywords: [plugin.id, plugin.name, ...plugin.skills],
+      families: uniqueMetadata([...families]),
+      tags: uniqueMetadata(tags),
+      keywords: uniqueMetadata([plugin.id, plugin.name, ...plugin.skills]),
       trust: pluginTrust(plugin.source.licenseStatus),
       license: pluginLicense(plugin.source.licenseStatus),
       health: healthOverride(health, plugin.id),
@@ -362,9 +373,9 @@ export function projectModelsIntoCapabilityIndex(
       name: model.displayName,
       description:
         `Model ${model.displayName} from ${model.provider}; lifecycle ${model.lifecycle}; context limit ${model.limits.contextTokens ?? 'unknown'}; output limit ${model.limits.outputTokens ?? 'unknown'}.`,
-      families: modelFamilies(model),
-      tags,
-      keywords,
+      families: uniqueMetadata(modelFamilies(model)),
+      tags: uniqueMetadata(tags),
+      keywords: uniqueMetadata(keywords),
       trust: modelTrust(model),
       license: 'not-applicable',
       health: healthOverride(health, `${model.provider}/${model.id}`),
@@ -422,9 +433,9 @@ export function projectMcpIntoCapabilityIndex(
       name: summary.sourceId.replace(/[._:-]+/gu, ' '),
       description:
         `Configured MCP source ${summary.sourceId}; transport ${summary.transport}; live inventory is ${inspection ? 'already-provided' : 'not-probed-by-autopilot'}.`,
-      families: ['mcp', summary.transport === 'stdio' ? 'local-process' : 'network'],
-      tags: [`transport-${summary.transport}`, `trust-${summary.trust}`],
-      keywords: [summary.sourceId, 'mcp', summary.transport],
+      families: uniqueMetadata(['mcp', summary.transport === 'stdio' ? 'local-process' : 'network']),
+      tags: uniqueMetadata([`transport-${summary.transport}`, `trust-${summary.trust}`]),
+      keywords: uniqueMetadata([summary.sourceId, 'mcp', summary.transport]),
       trust: mcpSourceTrust(summary),
       license: 'not-applicable',
       health: inspection
@@ -450,12 +461,12 @@ export function projectMcpIntoCapabilityIndex(
         name: tool.name,
         description:
           `Listed MCP tool ${tool.name} from ${summary.sourceId}; risk ${tool.riskClass}; authorization remains false.`,
-        families: ['mcp', 'tool'],
-        tags: [
+        families: uniqueMetadata(['mcp', 'tool']),
+        tags: uniqueMetadata([
           `risk-${tool.riskClass}`,
           tool.closedWorldReadCandidate ? 'closed-world-read-candidate' : 'policy-gate-required',
-        ],
-        keywords: [summary.sourceId, tool.name, 'mcp tool'],
+        ]),
+        keywords: uniqueMetadata([summary.sourceId, tool.name, 'mcp tool']),
         trust: mcpSourceTrust(summary),
         license: 'not-applicable',
         health: 'ready',
