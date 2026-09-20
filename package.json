@@ -321,6 +321,10 @@
       "types": "./dist/capability-index-adapters.d.ts",
       "import": "./dist/capability-index-adapters.js"
     },
+    "./fury-kernel-capability-exposure": {
+      "types": "./dist/fury-kernel-capability-exposure.d.ts",
+      "import": "./dist/fury-kernel-capability-exposure.js"
+    },
     "./continuous-memory": {
       "types": "./dist/continuous-memory.d.ts",
       "import": "./dist/continuous-memory.js"
