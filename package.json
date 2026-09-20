@@ -193,6 +193,10 @@
       "types": "./dist/gateway-automation-run-ledger-node.d.ts",
       "import": "./dist/gateway-automation-run-ledger-node.js"
     },
+    "./gateway-automation-scheduler-node": {
+      "types": "./dist/gateway-automation-scheduler-node.d.ts",
+      "import": "./dist/gateway-automation-scheduler-node.js"
+    },
     "./gateway-notification-node": {
       "types": "./dist/gateway-notification-node.d.ts",
       "import": "./dist/gateway-notification-node.js"
