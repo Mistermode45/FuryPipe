@@ -993,6 +993,168 @@ async function runToolEnabledCase(
   }
 }
 
+
+interface MemoryQaObservation {
+  readonly name: string;
+  readonly engine: EngineName;
+  readonly configRedacted: boolean;
+  readonly memoryPanelVisible: boolean;
+  readonly recallObserved: boolean;
+  readonly learningObserved: boolean;
+  readonly softForgotten: boolean;
+  readonly hardPurgeConfirmed: boolean;
+  readonly hardPurged: boolean;
+  readonly secretAbsent: boolean;
+}
+
+async function runMemoryEnabledCase(
+  engine: EngineName,
+  browserType: BrowserType,
+  harness: Awaited<ReturnType<typeof startHarness>>,
+): Promise<MemoryQaObservation> {
+  const memoryKey = `user.preference.browser-qa-${engine}`;
+  const memoryText = `BROWSER_QA_MEMORY_CANARY_${engine} prefer concise browser memory qa responses`;
+  await harness.seedMemory(memoryKey, memoryText);
+
+  const browser = await browserType.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 1360, height: 900 },
+    deviceScaleFactor: 1,
+  });
+  const page = await context.newPage();
+  const consoleErrors: string[] = [];
+  const pageErrors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+
+  const name = `${engine}-memory-enabled`;
+  try {
+    const response = await page.goto(
+      harness.origin + FURY_GATEWAY_WEBCHAT_PATH,
+      { waitUntil: 'load' },
+    );
+    assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+
+    const config = await page.evaluate(async () => {
+      const response = await fetch('/gateway/webchat/config.json', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+      return response.json() as Promise<Record<string, unknown>>;
+    });
+    const configJson = JSON.stringify(config);
+    const configRedacted =
+      configJson.includes('"memory":{"enabled":true}')
+      && configJson.includes('"providerId":"openai"')
+      && configJson.includes('"model":"gpt-5.6-sol"')
+      && !/scopeKinds|private-user-scope|browser-qa-key-v1|recovery|quota|credential|api[_-]?key|token|path/i.test(configJson)
+      && !configJson.includes(memoryText);
+    assert(configRedacted, `${name}: WebChat memory config was not correctly redacted`);
+
+    const ticket = harness.bootstrap.issueTicket();
+    await page.locator('#bootstrap-code').fill(ticket.code);
+    await page.locator('#bootstrap-form button[type="submit"]').click();
+    await page.waitForFunction(() =>
+      document.getElementById('connection-label')?.textContent === 'Connected'
+      && (document.getElementById('memory-panel') as HTMLElement | null)?.hidden === false
+      && document.getElementById('memory-badge')?.textContent === 'Encrypted'
+      && (document.getElementById('memory-scope') as HTMLSelectElement | null)?.value === 'user',
+    undefined, { timeout: 12_000 });
+
+    const memoryPanelVisible = await page.locator('#memory-panel').isVisible();
+    assert(memoryPanelVisible, `${name}: Memory panel was not visible`);
+
+    await page.locator('#message-input').fill(
+      `Please use my browser memory qa preference for ${engine}.`,
+    );
+    await page.locator('#send-message').click();
+
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('.message.assistant')].some((element) =>
+        element.textContent?.includes('Governed browser QA model response.'),
+      )
+      && document.getElementById('activity-list')?.textContent?.includes('Memory recalled')
+      && document.getElementById('activity-list')?.textContent?.includes('Memory learning completed'),
+    undefined, { timeout: 15_000 });
+
+    let activity = await page.locator('#activity-list').textContent() ?? '';
+    const recallObserved = activity.includes('Memory recalled');
+    const learningObserved = activity.includes('Memory learning completed');
+    assert(recallObserved, `${name}: recalled-memory lifecycle was not surfaced`);
+    assert(learningObserved, `${name}: memory learning lifecycle was not surfaced`);
+
+    await page.locator('#memory-key').fill(memoryKey);
+    await page.waitForFunction(() =>
+      (document.getElementById('memory-forget') as HTMLButtonElement | null)?.disabled === false,
+    undefined, { timeout: 5_000 });
+    await page.locator('#memory-forget').click();
+    await page.waitForFunction(() =>
+      document.getElementById('memory-status')?.textContent?.includes('Soft forget completed'),
+    undefined, { timeout: 10_000 });
+
+    activity = await page.locator('#activity-list').textContent() ?? '';
+    const softForgotten =
+      (await page.locator('#memory-status').textContent() ?? '').includes('Soft forget completed')
+      && activity.includes('Memory forgotten');
+    assert(softForgotten, `${name}: soft forget did not complete through governed memory`);
+
+    await harness.seedMemory(memoryKey, memoryText);
+
+    await page.locator('#memory-key').fill(memoryKey);
+    await page.locator('#memory-purge-confirm').check();
+    await page.waitForFunction(() =>
+      (document.getElementById('memory-purge') as HTMLButtonElement | null)?.disabled === false,
+    undefined, { timeout: 5_000 });
+    const hardPurgeConfirmed = await page.locator('#memory-purge').isEnabled();
+    assert(hardPurgeConfirmed, `${name}: hard purge did not require/accept explicit confirmation`);
+
+    await page.locator('#memory-purge').click();
+    await page.waitForFunction(() =>
+      document.getElementById('memory-status')?.textContent?.includes('Hard purge completed'),
+    undefined, { timeout: 10_000 });
+
+    activity = await page.locator('#activity-list').textContent() ?? '';
+    const hardPurged =
+      (await page.locator('#memory-status').textContent() ?? '').includes('Hard purge completed')
+      && activity.includes('Memory purged');
+    assert(hardPurged, `${name}: hard purge did not complete through governed memory`);
+
+    const body = await page.locator('body').textContent() ?? '';
+    const secretAbsent =
+      !body.includes(memoryText)
+      && !body.includes('browser-qa-private-user-scope')
+      && !body.includes('browser-qa-key-v1')
+      && !body.includes('BROWSER_QA_MEMORY_CANARY_');
+    assert(secretAbsent, `${name}: raw memory/config material leaked into rendered UI`);
+    assert(consoleErrors.length === 0, `${name}: console errors: ${consoleErrors.join(' | ')}`);
+    assert(pageErrors.length === 0, `${name}: page errors: ${pageErrors.join(' | ')}`);
+
+    await page.locator('#logout').click();
+    await page.waitForFunction(() =>
+      (document.getElementById('bootstrap-panel') as HTMLElement | null)?.hidden === false
+      && (document.getElementById('chat-panel') as HTMLElement | null)?.hidden === true,
+    undefined, { timeout: 8_000 });
+
+    return Object.freeze({
+      name,
+      engine,
+      configRedacted,
+      memoryPanelVisible,
+      recallObserved,
+      learningObserved,
+      softForgotten,
+      hardPurgeConfirmed,
+      hardPurged,
+      secretAbsent,
+    });
+  } finally {
+    await context.close();
+    await browser.close();
+  }
+}
+
 async function main(): Promise<void> {
   await mkdir(REPORT_DIR, { recursive: true });
   const harness = await startHarness();
