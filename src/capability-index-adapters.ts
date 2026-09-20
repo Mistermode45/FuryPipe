@@ -28,8 +28,9 @@ import {
   type FuryCapabilityIndexRiskClass,
   type FuryCapabilityIndexTrustState,
 } from './capability-index.js';
-import type {
-  FuryCapabilitySelectionPlan,
+import {
+  isGeneratedFuryCapabilitySelectionPlan,
+  type FuryCapabilitySelectionPlan,
 } from './capability-autopilot.js';
 
 export const FURY_CAPABILITY_REVALIDATION_FORMAT =
@@ -576,7 +577,7 @@ export function revalidateFuryCapabilitySelection(
 ): FuryCapabilitySelectionRevalidation {
   requireIndex(index);
   if (
-    !plan
+    !isGeneratedFuryCapabilitySelectionPlan(plan)
     || plan.format !== 'furypipe-capability-selection/v1'
     || plan.executionAuthority !== false
   ) {
