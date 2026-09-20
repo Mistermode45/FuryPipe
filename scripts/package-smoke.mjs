@@ -356,6 +356,55 @@ try {
   ], installDir);
   assert(gatewayLocalToolRuntimeExport.stderr === '', `Gateway local tool runtime export wrote stderr: ${gatewayLocalToolRuntimeExport.stderr}`);
 
+  const capabilityIndexExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-index'); if (typeof m.createFuryCapabilityIndex !== 'function' || m.FURY_CAPABILITY_INDEX_ENTRY_FORMAT !== 'furypipe-capability-index-entry/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilityIndexExport.stderr === '', `Capability index export wrote stderr: ${capabilityIndexExport.stderr}`);
+
+  const capabilityAutopilotExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-autopilot'); if (typeof m.selectFuryCapabilitiesForTask !== 'function' || m.FURY_CAPABILITY_SELECTION_FORMAT !== 'furypipe-capability-selection/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilityAutopilotExport.stderr === '', `Capability Autopilot export wrote stderr: ${capabilityAutopilotExport.stderr}`);
+
+  const capabilityAdaptersExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-index-adapters'); if (typeof m.projectSkillsIntoCapabilityIndex !== 'function' || typeof m.revalidateFuryCapabilitySelection !== 'function' || m.FURY_CAPABILITY_REVALIDATION_FORMAT !== 'furypipe-capability-revalidation/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilityAdaptersExport.stderr === '', `Capability index adapters export wrote stderr: ${capabilityAdaptersExport.stderr}`);
+
+  const capabilitySemanticAnalyzerExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-semantic-analyzer'); if (typeof m.createGovernedFuryCapabilitySemanticAnalyzer !== 'function' || typeof m.isGeneratedFuryCapabilitySemanticAnalysis !== 'function' || m.FURY_CAPABILITY_SEMANTIC_ANALYSIS_FORMAT !== 'furypipe-capability-semantic-analysis/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilitySemanticAnalyzerExport.stderr === '', `Capability semantic analyzer export wrote stderr: ${capabilitySemanticAnalyzerExport.stderr}`);
+
+  const capabilitySignalsExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-signals'); if (typeof m.createFuryCapabilitySignalRegistry !== 'function' || m.FURY_CAPABILITY_SIGNAL_FORMAT !== 'furypipe-capability-signal/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilitySignalsExport.stderr === '', `Capability signals export wrote stderr: ${capabilitySignalsExport.stderr}`);
+
+  const capabilitySignalAdaptersExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-signal-adapters'); if (typeof m.projectProviderRuntimeModelSignals !== 'function' || m.FURY_CAPABILITY_SIGNAL_PROJECTION_FORMAT !== 'furypipe-capability-signal-projection/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilitySignalAdaptersExport.stderr === '', `Capability signal adapters export wrote stderr: ${capabilitySignalAdaptersExport.stderr}`);
+
+  const capabilityExposureExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/fury-kernel-capability-exposure'); if (typeof m.createFuryKernelCapabilityExposurePlan !== 'function' || typeof m.isGeneratedFuryKernelCapabilityExposurePlan !== 'function' || m.FURY_KERNEL_CAPABILITY_EXPOSURE_FORMAT !== 'furypipe-kernel-capability-exposure/v1') process.exit(1);",
+  ], installDir);
+  assert(capabilityExposureExport.stderr === '', `Fury Kernel capability exposure export wrote stderr: ${capabilityExposureExport.stderr}`);
+
   const gatewayLocalMemoryRuntimeExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
