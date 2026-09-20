@@ -276,6 +276,38 @@ function enumValue<T extends string>(
   return value as T;
 }
 
+function dataArrayValues(
+  value: unknown,
+  label: string,
+  maxItems: number,
+): readonly unknown[] {
+  if (!Array.isArray(value) || value.length > maxItems) {
+    throw new RangeError(`${label} must contain at most ${maxItems} items`);
+  }
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    throw new TypeError(`${label} contains unsupported symbol properties`);
+  }
+  const own = Object.getOwnPropertyNames(value);
+  if (own.some((name) =>
+    name !== 'length' && !/^(?:0|[1-9][0-9]*)$/u.test(name)
+  )) {
+    throw new TypeError(`${label} contains unsupported array properties`);
+  }
+  const output: unknown[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (
+      !descriptor
+      || !descriptor.enumerable
+      || !('value' in descriptor)
+    ) {
+      throw new TypeError(`${label} contains sparse, hidden, or accessor entries`);
+    }
+    output.push(descriptor.value);
+  }
+  return Object.freeze(output);
+}
+
 function canonicalMetadataList(
   value: unknown,
   label: string,
@@ -283,10 +315,8 @@ function canonicalMetadataList(
   maxItemChars: number,
   tokenOnly = true,
 ): readonly string[] {
-  if (!Array.isArray(value) || value.length > maxItems) {
-    throw new RangeError(`${label} must contain at most ${maxItems} items`);
-  }
-  const values = value.map((item) => {
+  const input = dataArrayValues(value, label, maxItems);
+  const values = input.map((item) => {
     const normalized = boundedText(item, label, maxItemChars)
       .toLocaleLowerCase('en-US');
     if (tokenOnly && !TOKEN_RE.test(normalized)) {
