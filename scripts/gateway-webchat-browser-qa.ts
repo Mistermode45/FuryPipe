@@ -1,5 +1,6 @@
 import { createServer } from 'node:net';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,6 +17,13 @@ import {
   createFuryGatewayCommandRegistry,
 } from '../src/gateway-command-authorization-node.js';
 import {
+  createRecoveryStore,
+} from '../src/core/recovery-store.js';
+import {
+  createContinuousMemoryEngine,
+  type ContinuousMemoryCandidate,
+} from '../src/continuous-memory.js';
+import {
   FURY_GATEWAY_CONVERSATION_COMMAND_DEFINITIONS,
   FURY_GATEWAY_CONVERSATION_COMMAND_NAMES,
   createFuryGatewayConversationAdapter,
@@ -31,12 +39,18 @@ import {
   createFuryKernelToolBridge,
 } from '../src/fury-kernel-tool-bridge-node.js';
 import {
+  createFuryKernelMemoryBridge,
+} from '../src/fury-kernel-memory-bridge-node.js';
+import {
   deriveMcpDirectEndpointFingerprint,
   type McpDirectRuntimeConfig,
 } from '../src/mcp-direct-client-node.js';
 import {
   createFuryGatewayToolBridgeAdapter,
 } from '../src/gateway-tool-bridge-adapter-node.js';
+import {
+  createFuryGatewayMemoryAdapter,
+} from '../src/gateway-memory-adapter-node.js';
 import {
   FURY_GATEWAY_TOOL_COMMAND_DEFINITIONS,
   FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES,
@@ -48,6 +62,13 @@ import {
   FURY_GATEWAY_MODEL_EXECUTION_COMMAND_DEFINITIONS,
   FURY_GATEWAY_MODEL_EXECUTION_COMMAND_NAMES,
 } from '../src/gateway-model-command-node.js';
+import {
+  FURY_GATEWAY_MEMORY_COMMAND_DEFINITIONS,
+  FURY_GATEWAY_MEMORY_EXECUTION_COMMAND_NAMES,
+  FURY_GATEWAY_MEMORY_STATE_COMMAND_NAMES,
+  type FuryGatewayMemoryExecutionCommandName,
+  type FuryGatewayMemoryStateCommandName,
+} from '../src/gateway-memory-command-node.js';
 import {
   FURY_GATEWAY_PRINCIPAL_ASSERTION_FORMAT,
   createFuryGatewayPrincipalRegistry,
