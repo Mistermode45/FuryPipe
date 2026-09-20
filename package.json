@@ -189,6 +189,10 @@
       "types": "./dist/gateway-automation-definition-node.d.ts",
       "import": "./dist/gateway-automation-definition-node.js"
     },
+    "./gateway-automation-run-ledger-node": {
+      "types": "./dist/gateway-automation-run-ledger-node.d.ts",
+      "import": "./dist/gateway-automation-run-ledger-node.js"
+    },
     "./gateway-notification-node": {
       "types": "./dist/gateway-notification-node.d.ts",
       "import": "./dist/gateway-notification-node.js"
