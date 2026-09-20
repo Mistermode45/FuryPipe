@@ -250,16 +250,46 @@ function exactPlainRecord(
   return record;
 }
 
+function dataArrayValues(
+  value: unknown,
+  label: string,
+  maxItems: number,
+): readonly unknown[] {
+  if (!Array.isArray(value) || value.length > maxItems) {
+    throw new RangeError(`${label} must contain at most ${maxItems} items`);
+  }
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    throw new TypeError(`${label} contains unsupported symbol properties`);
+  }
+  const own = Object.getOwnPropertyNames(value);
+  if (own.some((name) =>
+    name !== 'length' && !/^(?:0|[1-9][0-9]*)$/u.test(name)
+  )) {
+    throw new TypeError(`${label} contains unsupported array properties`);
+  }
+  const output: unknown[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (
+      !descriptor
+      || !descriptor.enumerable
+      || !('value' in descriptor)
+    ) {
+      throw new TypeError(`${label} contains sparse, hidden, or accessor entries`);
+    }
+    output.push(descriptor.value);
+  }
+  return Object.freeze(output);
+}
+
 function normalizeFactList(
   value: readonly string[] | undefined,
   label: string,
 ): ReadonlySet<string> | undefined {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.length > MAX_HOST_FACTS) {
-    throw new RangeError(`${label} must contain at most ${MAX_HOST_FACTS} items`);
-  }
+  const input = dataArrayValues(value, label, MAX_HOST_FACTS);
   const output = new Set<string>();
-  for (const item of value) {
+  for (const item of input) {
     if (
       typeof item !== 'string'
       || item.length === 0
@@ -289,14 +319,14 @@ function normalizeExplicitRequests(
       values: Object.freeze([]),
     });
   }
-  if (!Array.isArray(value) || value.length > MAX_EXPLICIT_REQUESTS) {
-    throw new RangeError(
-      `explicitRequests must contain at most ${MAX_EXPLICIT_REQUESTS} items`,
-    );
-  }
+  const input = dataArrayValues(
+    value,
+    'explicitRequests',
+    MAX_EXPLICIT_REQUESTS,
+  );
   const keys = new Set<string>();
   const values: FuryCapabilityExplicitRequest[] = [];
-  for (const item of value) {
+  for (const item of input) {
     const record = exactPlainRecord(
       item,
       ['kind', 'id'],
