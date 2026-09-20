@@ -140,12 +140,15 @@ describe('Capability Autopilot governed semantic analyzer', () => {
     });
     expect(selection.selected).toHaveLength(2);
 
+    const baselineIds = selection.selected.map((item) => item.id);
+    const semanticOrder = [...selection.selected].reverse();
     const providerOutput = JSON.stringify({
       format: FURY_CAPABILITY_SEMANTIC_PROVIDER_OUTPUT_FORMAT,
-      rankings: [
-        { kind: 'skill', id: 'test-audit', score: 0.95 },
-        { kind: 'skill', id: 'repo-review', score: 0.6 },
-      ],
+      rankings: semanticOrder.map((item, index) => ({
+        kind: item.kind,
+        id: item.id,
+        score: index === 0 ? 0.95 : 0.6,
+      })),
     });
     const { analyzer, execute } = analyzerFor(providerOutput);
 
@@ -177,18 +180,17 @@ describe('Capability Autopilot governed semantic analyzer', () => {
         outcome: 'SUCCEEDED',
       },
     });
-    expect(result.order.map((item) => item.id)).toEqual([
-      'test-audit',
-      'repo-review',
-    ]);
-    expect(result.order[0]).toMatchObject({
-      baselineRank: 1,
-      semanticScore: 0.95,
-    });
-    expect(result.order[1]).toMatchObject({
-      baselineRank: 0,
-      semanticScore: 0.6,
-    });
+    expect(result.order.map((item) => item.id)).toEqual(
+      semanticOrder.map((item) => item.id),
+    );
+    expect(result.order.map((item) => item.id)).not.toEqual(baselineIds);
+    for (const [index, item] of result.order.entries()) {
+      expect(item.baselineRank).toBe(
+        selection.selected.findIndex((selected) =>
+          selected.kind === item.kind && selected.id === item.id),
+      );
+      expect(item.semanticScore).toBe(index === 0 ? 0.95 : 0.6);
+    }
     expect(isGeneratedFuryCapabilitySemanticAnalysis(result)).toBe(true);
     expect(JSON.stringify(result)).not.toContain(objective);
     expect(JSON.stringify(result)).not.toContain('executionAuthority":true');
