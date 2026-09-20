@@ -1,6 +1,6 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   BrowserRuntimeError,
@@ -190,7 +190,11 @@ describe('Phase 6 managed browser runtime', () => {
       const page = await browser.createPage(session);
       const downloadPermit = await browser.authorize({ action: 'download', session, page, url: 'https://example.com/download' });
       const downloadResult = await browser.invoke(downloadPermit);
-      expect(downloadResult.download?.path.startsWith(root)).toBe(true);
+      const downloadPath = downloadResult.download?.path;
+      expect(downloadPath).toBeDefined();
+      const downloadRelativePath = relative(await realpath(root), downloadPath ?? '');
+      expect(downloadRelativePath).not.toMatch(/^\.\.(?:[\\/]|$)/u);
+      expect(isAbsolute(downloadRelativePath)).toBe(false);
       expect(downloadResult.download?.filename).not.toMatch(/[\/\\]/u);
       expect(downloadResult.download).toMatchObject({
         openedAutomatically: false,
