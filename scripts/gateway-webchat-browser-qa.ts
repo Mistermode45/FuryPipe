@@ -117,7 +117,11 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-async function startHarness(modelEnabled = false, toolEnabled = false) {
+async function startHarness(
+  modelEnabled = false,
+  toolEnabled = false,
+  memoryEnabled = false,
+) {
   const port = await freePort();
   const origin = `http://${HOST}:${port}`;
   const now = () => Date.now();
@@ -130,6 +134,72 @@ async function startHarness(modelEnabled = false, toolEnabled = false) {
     maxConversationBytes: 512 * 1024,
     maxInFlightTurns: 16,
   });
+
+  let memoryCandidates: readonly ContinuousMemoryCandidate[] = Object.freeze([]);
+  const memoryRoot = memoryEnabled
+    ? await mkdtemp(join(tmpdir(), 'furypipe-webchat-memory-browser-qa-'))
+    : undefined;
+  const memoryScopes = memoryEnabled
+    ? Object.freeze({ user: 'browser-qa-private-user-scope' })
+    : undefined;
+  const memoryEngine = memoryRoot && memoryScopes
+    ? createContinuousMemoryEngine({
+        recovery: createRecoveryStore(memoryRoot, {
+          namespace: 'webchat-browser-qa',
+          maxObjectBytes: 256 * 1024,
+          maxTotalBytes: 8 * 1024 * 1024,
+          maxGlobalBytes: 32 * 1024 * 1024,
+          encryption: {
+            activeKeyId: 'browser-qa-key-v1',
+            keys: {
+              'browser-qa-key-v1': new Uint8Array(Buffer.alloc(32, 23)),
+            },
+            allowLegacyPlaintext: false,
+          },
+        }),
+        analyzer: {
+          async selectRecallTerms() {
+            return Object.freeze([]);
+          },
+          async extractCandidates() {
+            return memoryCandidates;
+          },
+        },
+        policy: {
+          allowInferred: false,
+          allowSensitive: false,
+        },
+      })
+    : undefined;
+  const memoryBridge = memoryEngine && memoryScopes
+    ? createFuryKernelMemoryBridge({
+        engine: memoryEngine,
+        scopes: memoryScopes,
+        now,
+      })
+    : undefined;
+  const memoryAdapter = memoryBridge
+    ? createFuryGatewayMemoryAdapter({
+        bridge: memoryBridge,
+        config: Object.freeze({
+          format: 'furypipe-gateway-local-memory-config/v1',
+          enabled: true as const,
+          encrypted: true as const,
+          scopeKinds: Object.freeze(['user'] as const),
+          policy: Object.freeze({
+            allowInferred: false,
+            allowSensitive: false,
+          }),
+          learningEnabled: true,
+          quotas: Object.freeze({
+            maxObjectBytes: 256 * 1024,
+            maxTotalBytes: 8 * 1024 * 1024,
+            maxGlobalBytes: 32 * 1024 * 1024,
+          }),
+        }),
+      })
+    : undefined;
+
   const modelRuntime = createFuryGatewayLocalModelRuntime({
     kernel,
     env: modelEnabled
@@ -140,6 +210,14 @@ async function startHarness(modelEnabled = false, toolEnabled = false) {
           OPENAI_API_KEY: 'browser-qa-local-secret',
         }
       : {},
+    ...(memoryEngine && memoryScopes
+      ? {
+          memory: {
+            engine: memoryEngine,
+            scopes: memoryScopes,
+          },
+        }
+      : {}),
     now,
     ...(modelEnabled
       ? {
