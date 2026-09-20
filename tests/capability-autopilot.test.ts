@@ -241,8 +241,8 @@ describe('Capability Autopilot V2 deterministic shortlist', () => {
     expect(eligible.selected[0]).toMatchObject({
       kind: 'mcp-tool',
       id: 'repo-network-tool',
-      executionAuthority: undefined,
     });
+    expect('executionAuthority' in (eligible.selected[0] ?? {})).toBe(false);
     expect(eligible.executionAuthority).toBe(false);
   });
 
@@ -263,6 +263,10 @@ describe('Capability Autopilot V2 deterministic shortlist', () => {
     const plan = selectFuryCapabilitiesForTask({
       objective: 'Repository inspect',
       index,
+      explicitRequests: [
+        { kind: 'skill', id: 'cheap-read' },
+        { kind: 'skill', id: 'expensive-admin' },
+      ],
       options: { maxSelected: 2, maxSelectedByKind: { skill: 2 } },
     });
 
