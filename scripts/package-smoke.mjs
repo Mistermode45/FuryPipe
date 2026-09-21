@@ -440,6 +440,69 @@ try {
   ], installDir);
   assert(gatewayChannelObservabilityExport.stderr === '', `Gateway channel observability export wrote stderr: ${gatewayChannelObservabilityExport.stderr}`);
 
+  const gatewayAutomationDefinitionExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-definition-node'); if (typeof m.createFuryGatewayAutomationDefinitionStore !== 'function' || typeof m.isGeneratedFuryGatewayAutomationDefinitionStore !== 'function' || m.FURY_GATEWAY_AUTOMATION_DEFINITION_FORMAT !== 'furypipe-gateway-automation-definition/v1' || m.FURY_GATEWAY_AUTOMATION_DEFINITION_INSPECTION_FORMAT !== 'furypipe-gateway-automation-definition-inspection/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationDefinitionExport.stderr === '', `Gateway automation definition export wrote stderr: ${gatewayAutomationDefinitionExport.stderr}`);
+
+  const gatewayAutomationRunLedgerExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-run-ledger-node'); if (typeof m.createFuryGatewayAutomationRunLedger !== 'function' || typeof m.isGeneratedFuryGatewayAutomationRunLedger !== 'function' || m.FURY_GATEWAY_AUTOMATION_TRIGGER_RECORD_FORMAT !== 'furypipe-gateway-automation-trigger-record/v1' || m.FURY_GATEWAY_AUTOMATION_RUN_STATUS_FORMAT !== 'furypipe-gateway-automation-run-status/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationRunLedgerExport.stderr === '', `Gateway automation run ledger export wrote stderr: ${gatewayAutomationRunLedgerExport.stderr}`);
+
+  const gatewayAutomationSchedulerExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-scheduler-node'); if (typeof m.createFuryGatewayAutomationScheduler !== 'function' || typeof m.isGeneratedFuryGatewayAutomationScheduler !== 'function' || m.FURY_GATEWAY_AUTOMATION_SCHEDULER_TICK_FORMAT !== 'furypipe-gateway-automation-scheduler-tick/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationSchedulerExport.stderr === '', `Gateway automation scheduler export wrote stderr: ${gatewayAutomationSchedulerExport.stderr}`);
+
+  const gatewayAutomationCronExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-cron-node'); if (typeof m.normalizeFuryGatewayCronSchedule !== 'function' || typeof m.findFuryGatewayCronOccurrenceAtOrBefore !== 'function' || typeof m.findNextFuryGatewayCronOccurrence !== 'function' || m.FURY_GATEWAY_CRON_FORMAT !== 'furypipe-gateway-cron/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationCronExport.stderr === '', `Gateway automation cron export wrote stderr: ${gatewayAutomationCronExport.stderr}`);
+
+  const gatewayAutomationRunAdmissionExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-run-admission-node'); if (typeof m.createFuryGatewayAutomationRunAdmissionCoordinator !== 'function' || typeof m.isGeneratedFuryGatewayAutomationRunPermit !== 'function' || m.FURY_GATEWAY_AUTOMATION_RUN_ADMISSION_FORMAT !== 'furypipe-gateway-automation-run-admission/v1' || m.FURY_GATEWAY_AUTOMATION_RUN_PERMIT_FORMAT !== 'furypipe-gateway-automation-run-permit/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationRunAdmissionExport.stderr === '', `Gateway automation run admission export wrote stderr: ${gatewayAutomationRunAdmissionExport.stderr}`);
+
+  const gatewayAutomationWebhookExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-webhook-node'); if (typeof m.createFuryGatewayAutomationWebhookCoordinator !== 'function' || typeof m.signFuryGatewayAutomationWebhookRequest !== 'function' || typeof m.isGeneratedFuryGatewayAutomationWebhookCoordinator !== 'function' || m.FURY_GATEWAY_AUTOMATION_WEBHOOK_EVENT_FORMAT !== 'furypipe-gateway-automation-webhook-event/v1' || m.FURY_GATEWAY_AUTOMATION_WEBHOOK_RECEIPT_FORMAT !== 'furypipe-gateway-automation-webhook-receipt/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationWebhookExport.stderr === '', `Gateway automation webhook export wrote stderr: ${gatewayAutomationWebhookExport.stderr}`);
+
+  const gatewayAutomationObservabilityExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-observability-node'); if (typeof m.createFuryGatewayAutomationObservability !== 'function' || typeof m.isGeneratedFuryGatewayAutomationObservability !== 'function' || m.FURY_GATEWAY_AUTOMATION_OBSERVABILITY_FORMAT !== 'furypipe-gateway-automation-observability/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationObservabilityExport.stderr === '', `Gateway automation observability export wrote stderr: ${gatewayAutomationObservabilityExport.stderr}`);
+
+  const gatewayAutomationObservabilityCommandExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-observability-command-node'); if (!Array.isArray(m.FURY_GATEWAY_AUTOMATION_OBSERVABILITY_COMMAND_DEFINITIONS) || !Array.isArray(m.FURY_GATEWAY_AUTOMATION_OBSERVABILITY_STATE_COMMAND_NAMES)) process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationObservabilityCommandExport.stderr === '', `Gateway automation observability command export wrote stderr: ${gatewayAutomationObservabilityCommandExport.stderr}`);
+
+  const gatewayAutomationNotificationExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-notification-node'); if (typeof m.createFuryGatewayAutomationNotificationBridge !== 'function' || typeof m.isGeneratedFuryGatewayAutomationNotificationBridge !== 'function' || m.FURY_GATEWAY_AUTOMATION_NOTIFICATION_INTENT_FORMAT !== 'furypipe-gateway-automation-notification-intent/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationNotificationExport.stderr === '', `Gateway automation notification export wrote stderr: ${gatewayAutomationNotificationExport.stderr}`);
+
   const gatewayNotificationExport = await run(process.execPath, [
     '--input-type=module',
     '-e',

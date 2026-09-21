@@ -185,6 +185,42 @@
       "types": "./dist/gateway-channel-observability-node.d.ts",
       "import": "./dist/gateway-channel-observability-node.js"
     },
+    "./gateway-automation-definition-node": {
+      "types": "./dist/gateway-automation-definition-node.d.ts",
+      "import": "./dist/gateway-automation-definition-node.js"
+    },
+    "./gateway-automation-run-ledger-node": {
+      "types": "./dist/gateway-automation-run-ledger-node.d.ts",
+      "import": "./dist/gateway-automation-run-ledger-node.js"
+    },
+    "./gateway-automation-scheduler-node": {
+      "types": "./dist/gateway-automation-scheduler-node.d.ts",
+      "import": "./dist/gateway-automation-scheduler-node.js"
+    },
+    "./gateway-automation-cron-node": {
+      "types": "./dist/gateway-automation-cron-node.d.ts",
+      "import": "./dist/gateway-automation-cron-node.js"
+    },
+    "./gateway-automation-run-admission-node": {
+      "types": "./dist/gateway-automation-run-admission-node.d.ts",
+      "import": "./dist/gateway-automation-run-admission-node.js"
+    },
+    "./gateway-automation-webhook-node": {
+      "types": "./dist/gateway-automation-webhook-node.d.ts",
+      "import": "./dist/gateway-automation-webhook-node.js"
+    },
+    "./gateway-automation-observability-command-node": {
+      "types": "./dist/gateway-automation-observability-command-node.d.ts",
+      "import": "./dist/gateway-automation-observability-command-node.js"
+    },
+    "./gateway-automation-observability-node": {
+      "types": "./dist/gateway-automation-observability-node.d.ts",
+      "import": "./dist/gateway-automation-observability-node.js"
+    },
+    "./gateway-automation-notification-node": {
+      "types": "./dist/gateway-automation-notification-node.d.ts",
+      "import": "./dist/gateway-automation-notification-node.js"
+    },
     "./gateway-notification-node": {
       "types": "./dist/gateway-notification-node.d.ts",
       "import": "./dist/gateway-notification-node.js"
