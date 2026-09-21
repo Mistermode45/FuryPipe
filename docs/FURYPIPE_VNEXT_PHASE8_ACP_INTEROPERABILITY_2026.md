@@ -859,7 +859,7 @@ Evidence:
 This documentation-only closure commit requires the same 7/7 workflow and 9/9
 CI matrix proof before Gate 8.8 begins.
 
-### Gate 8.8 — governed delegation permits — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
+### Gate 8.8 — governed delegation permits — VALIDATED
 
 Contract:
 
@@ -905,8 +905,29 @@ mismatch, policy mismatch, expiry/one-shot semantics, independent verification,
 unpermitted tool activity, post-invocation transport loss and closed-session
 rejection.
 
-Required exact-head proof is 7/7 workflows and 9/9 CI matrix before Gate 8.8 is
-marked validated.
+Exact validated Gate 8.8 implementation HEAD:
+
+`5b65b950125e97c581e275f98be1c96f1ca64203`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- 263 test files / 2,989 tests SUCCESS on observed Ubuntu/Node 26;
+- 9 dedicated governed delegation tests SUCCESS;
+- exact task/session/root/capability/budget permit binding SUCCESS;
+- copied permits and request/permit mismatch fail closed;
+- policy mismatch, TTL expiry and one-shot consumption semantics SUCCESS;
+- permit consumption precedes every `session/prompt` invocation;
+- independent verifier rejection cannot become `accepted:true`;
+- unpermitted tool activity and post-invocation transport loss produce
+  `outcome:'unknown'` with `automaticReplayAllowed:false`;
+- Phase 8 packed-artifact smoke loads the governed delegation runtime from the
+  packaged tarball;
+- Windows Node 22/24/26 SUCCESS.
+
+This documentation-only closure commit requires the same 7/7 workflow and 9/9
+CI matrix proof before Gate 8.9 begins.
 
 ### Gate 8.9 — remote A2A adapter contract
 
