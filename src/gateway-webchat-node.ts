@@ -18,6 +18,7 @@ export interface FuryGatewayWebChatOptions {
   readonly toolSourceCount?: number;
   readonly memoryEnabled?: boolean;
   readonly channelObservabilityEnabled?: boolean;
+  readonly automationObservabilityEnabled?: boolean;
 }
 
 const HTML = `<!doctype html>
@@ -158,6 +159,19 @@ const HTML = `<!doctype html>
         <pre id="channels-detail" class="channel-detail" tabindex="0">No channel status.</pre>
       </section>
 
+      <section id="automations-panel" class="panel automations" aria-labelledby="automations-title" hidden>
+        <div class="automations-head">
+          <div>
+            <p class="eyebrow">AUTOMATIONS</p>
+            <h2 id="automations-title">Observability</h2>
+            <p class="muted">Read-only redacted schedule and run lifecycle state. Browser visibility grants no scheduling, run, provider, tool, or notification execution authority.</p>
+          </div>
+          <span id="automations-badge" class="badge">Disabled</span>
+        </div>
+        <p id="automations-status" class="status" role="status" aria-live="polite"></p>
+        <pre id="automations-detail" class="automation-detail" tabindex="0">No automation status.</pre>
+      </section>
+
       <section id="tools-panel" class="panel tools" aria-labelledby="tools-title" hidden>
         <div class="tools-head">
           <div>
@@ -291,6 +305,10 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
 .channels-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
 .channels-head .muted { max-width: 62rem; margin-bottom: 0; }
 .channel-detail { margin: 0; min-height: 4rem; max-height: 18rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid #293447; background: #090d13; color: #cbd7e7; border-radius: .75rem; padding: .8rem; font-size: .78rem; }
+.automations { grid-column: 1 / -1; padding: 1rem; display: grid; gap: .75rem; }
+.automations-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
+.automations-head .muted { max-width: 62rem; margin-bottom: 0; }
+.automation-detail { margin: 0; min-height: 4rem; max-height: 18rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid #293447; background: #090d13; color: #cbd7e7; border-radius: .75rem; padding: .8rem; font-size: .78rem; }
 .tools { grid-column: 1 / -1; padding: 1rem; display: grid; gap: 1rem; }
 .tools-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; }
 .tools-head .muted { max-width: 60rem; margin-bottom: 0; }
@@ -323,7 +341,8 @@ textarea { resize: vertical; min-height: 5.5rem; max-height: 18rem; }
   .memory { order: 4; grid-column: auto; }
   .memory-grid { grid-template-columns: 1fr; }
   .channels { order: 5; grid-column: auto; }
-  .tools { order: 6; grid-column: auto; }
+  .automations { order: 6; grid-column: auto; }
+  .tools { order: 7; grid-column: auto; }
   .tools-grid { grid-template-columns: 1fr; }
   .tools-grid .tool-actions { grid-column: auto; }
   .activity-list { grid-template-columns: 1fr; }
@@ -359,6 +378,7 @@ const JS = `(() => {
     memoryEnabled: false,
     memoryScopeKinds: [],
     channelObservabilityEnabled: false,
+    automationObservabilityEnabled: false,
     toolBridgeEnabled: false,
     toolSourceCount: 0,
     toolSources: [],
@@ -395,6 +415,10 @@ const JS = `(() => {
   const channelsBadge = byId('channels-badge');
   const channelsStatus = byId('channels-status');
   const channelsDetail = byId('channels-detail');
+  const automationsPanel = byId('automations-panel');
+  const automationsBadge = byId('automations-badge');
+  const automationsStatus = byId('automations-status');
+  const automationsDetail = byId('automations-detail');
   const toolsPanel = byId('tools-panel');
   const toolSourceCount = byId('tool-source-count');
   const toolSource = byId('tool-source');
@@ -969,6 +993,82 @@ const JS = `(() => {
     addActivity('Channel status', 'Redacted channel lifecycle state loaded.', 'accepted');
   }
 
+  function handleAutomationGatewayResult(message) {
+    const adapter = message.result;
+    if (!adapter || typeof adapter !== 'object') {
+      automationsStatus.textContent = 'Malformed automation observability result.';
+      automationsBadge.textContent = 'Rejected';
+      addActivity('Blocked', 'Malformed automation observability result.', 'blocked');
+      return;
+    }
+    if (adapter.status !== 'ok') {
+      const code = safeText(adapter.error?.code) || 'automation-observability-rejected';
+      automationsStatus.textContent = code;
+      automationsBadge.textContent = 'Rejected';
+      addActivity('Blocked', code, 'blocked');
+      return;
+    }
+
+    const payload = adapter.result;
+    const automations = payload?.automations;
+    const runs = payload?.runs;
+    if (
+      !payload
+      || payload.executionAuthority !== false
+      || payload.authority !== 'observability-only'
+      || !automations
+      || !runs
+    ) {
+      automationsStatus.textContent = 'Unsafe or incomplete automation observability payload.';
+      automationsBadge.textContent = 'Rejected';
+      addActivity('Blocked', 'Unsafe or incomplete automation observability payload.', 'blocked');
+      return;
+    }
+
+    const total = Number.isSafeInteger(automations.total) ? automations.total : 0;
+    const enabled = Number.isSafeInteger(automations.enabled) ? automations.enabled : 0;
+    const runTotal = Number.isSafeInteger(runs.total) ? runs.total : 0;
+    const outcomeUnknown = Number.isSafeInteger(runs.summarizedByState?.['outcome-unknown'])
+      ? runs.summarizedByState['outcome-unknown']
+      : 0;
+
+    automationsBadge.textContent = 'Read only';
+    automationsStatus.textContent =
+      'automations=' + total
+      + ' · enabled=' + enabled
+      + ' · runs=' + runTotal
+      + ' · outcome-unknown=' + outcomeUnknown;
+    automationsDetail.textContent = JSON.stringify({
+      automations: {
+        total,
+        enabled,
+        disabled: Number.isSafeInteger(automations.disabled)
+          ? automations.disabled
+          : 0,
+        notificationConfigured: Number.isSafeInteger(automations.notificationConfigured)
+          ? automations.notificationConfigured
+          : 0,
+        byTriggerKind: automations.byTriggerKind ?? {},
+        summaries: Array.isArray(automations.summaries)
+          ? automations.summaries
+          : [],
+        summariesTruncated: automations.summariesTruncated === true,
+      },
+      runs: {
+        total: runTotal,
+        summarized: Number.isSafeInteger(runs.summarized)
+          ? runs.summarized
+          : 0,
+        summariesTruncated: runs.summariesTruncated === true,
+        summarizedByState: runs.summarizedByState ?? {},
+        recent: Array.isArray(runs.recent) ? runs.recent : [],
+      },
+      authority: 'observability-only',
+      executionAuthority: false,
+    }, null, 2);
+    addActivity('Automation status', 'Redacted automation lifecycle state loaded.', 'accepted');
+  }
+
   function renderMemoryLifecycle(receipt) {
     if (!receipt || typeof receipt !== 'object') return;
     const recall = receipt.recall;
@@ -1042,6 +1142,10 @@ const JS = `(() => {
     }
     if (safeText(message.commandName).startsWith('channels.')) {
       handleChannelGatewayResult(message);
+      return;
+    }
+    if (safeText(message.commandName).startsWith('automations.')) {
+      handleAutomationGatewayResult(message);
       return;
     }
     if (safeText(message.commandName).startsWith('tools.')) {
@@ -1163,6 +1267,9 @@ const JS = `(() => {
       if (state.channelObservabilityEnabled) {
         sendCommand('channels.status', {});
       }
+      if (state.automationObservabilityEnabled) {
+        sendCommand('automations.status', {});
+      }
       if (state.toolBridgeEnabled) {
         // Metadata-only state command. Fresh MCP process/network probing still
         // requires the operator to press Refresh inventory.
@@ -1195,6 +1302,9 @@ const JS = `(() => {
         } else if (commandName.startsWith('channels.')) {
           channelsStatus.textContent = reason;
           channelsBadge.textContent = 'Rejected';
+        } else if (commandName.startsWith('automations.')) {
+          automationsStatus.textContent = reason;
+          automationsBadge.textContent = 'Rejected';
         } else {
           turnStatus.textContent = reason;
         }
@@ -1293,6 +1403,10 @@ const JS = `(() => {
       state.channelObservabilityEnabled = channels?.enabled === true;
       channelsPanel.hidden = !state.channelObservabilityEnabled;
       channelsBadge.textContent = state.channelObservabilityEnabled ? 'Configured' : 'Disabled';
+      const automations = config?.automations;
+      state.automationObservabilityEnabled = automations?.enabled === true;
+      automationsPanel.hidden = !state.automationObservabilityEnabled;
+      automationsBadge.textContent = state.automationObservabilityEnabled ? 'Configured' : 'Disabled';
       const tools = config?.tools;
       state.toolBridgeEnabled = tools?.enabled === true;
       state.toolSourceCount = state.toolBridgeEnabled && Number.isSafeInteger(tools?.sourceCount)
@@ -1313,6 +1427,11 @@ const JS = `(() => {
       channelsBadge.textContent = 'Disabled';
       channelsStatus.textContent = '';
       channelsDetail.textContent = 'No channel status.';
+      state.automationObservabilityEnabled = false;
+      automationsPanel.hidden = true;
+      automationsBadge.textContent = 'Disabled';
+      automationsStatus.textContent = '';
+      automationsDetail.textContent = 'No automation status.';
       state.toolBridgeEnabled = false;
       state.toolSourceCount = 0;
       toolsPanel.hidden = true;
@@ -1726,6 +1845,8 @@ export function createFuryGatewayWebChatHandler(
 
   const memoryEnabled = options.memoryEnabled === true;
   const channelObservabilityEnabled = options.channelObservabilityEnabled === true;
+  const automationObservabilityEnabled =
+    options.automationObservabilityEnabled === true;
 
   const toolBridgeEnabled = options.toolBridgeEnabled === true;
   if (toolBridgeEnabled) {
@@ -1761,6 +1882,11 @@ export function createFuryGatewayWebChatHandler(
     channels: Object.freeze({
       enabled: channelObservabilityEnabled,
       browserAuthority: 'none' as const,
+    }),
+    automations: Object.freeze({
+      enabled: automationObservabilityEnabled,
+      authority: 'observability-only' as const,
+      executionAuthority: false as const,
     }),
     executionAuthority: false as const,
   }));
