@@ -4,6 +4,10 @@ import {
   isGeneratedFuryGatewayAutomationDefinitionStore,
 } from './gateway-automation-definition-node.js';
 import {
+  findFuryGatewayCronOccurrenceAtOrBefore,
+  findNextFuryGatewayCronOccurrence,
+} from './gateway-automation-cron-node.js';
+import {
   FuryGatewayAutomationRunLedgerError,
   type FuryGatewayAutomationClaimEvidence,
   type FuryGatewayAutomationRunLedger,
@@ -149,6 +153,34 @@ function nextIntervalOccurrence(
   return next;
 }
 
+function cronLowerBound(
+  definition: FuryGatewayAutomationDefinition,
+): number {
+  if (definition.trigger.kind !== 'cron') {
+    throw new FuryGatewayAutomationSchedulerError('invalid-options');
+  }
+  return Math.max(
+    definition.createdAt,
+    definition.trigger.startAt ?? 0,
+  );
+}
+
+function nextCronOccurrence(
+  definition: FuryGatewayAutomationDefinition,
+  afterExclusive: number,
+): number | undefined {
+  if (definition.trigger.kind !== 'cron') return undefined;
+  return findNextFuryGatewayCronOccurrence({
+    expression: definition.trigger.expression,
+    timeZone: definition.trigger.timeZone,
+    lowerBound: cronLowerBound(definition),
+    ...(definition.trigger.endAt === undefined
+      ? {}
+      : { upperBound: definition.trigger.endAt }),
+    afterExclusive,
+  });
+}
+
 function duePlan(
   definition: FuryGatewayAutomationDefinition,
   observedAt: number,
@@ -159,6 +191,76 @@ function duePlan(
   if (trigger.kind === 'webhook') {
     return Object.freeze({
       decision: 'not-due' as const,
+    });
+  }
+
+  if (trigger.kind === 'cron') {
+    const lowerBound = cronLowerBound(definition);
+    if (observedAt < lowerBound) {
+      const nextDueAt = findNextFuryGatewayCronOccurrence({
+        expression: trigger.expression,
+        timeZone: trigger.timeZone,
+        lowerBound,
+        ...(trigger.endAt === undefined
+          ? {}
+          : { upperBound: trigger.endAt }),
+        afterExclusive: lowerBound - 1,
+      });
+      return Object.freeze({
+        decision: 'not-due' as const,
+        ...(nextDueAt === undefined ? {} : { nextDueAt }),
+      });
+    }
+
+    const upperBound = trigger.endAt === undefined
+      ? observedAt
+      : Math.min(observedAt, trigger.endAt);
+    if (upperBound < lowerBound) {
+      return Object.freeze({
+        decision: 'not-due' as const,
+      });
+    }
+
+    const scheduledFor = findFuryGatewayCronOccurrenceAtOrBefore({
+      expression: trigger.expression,
+      timeZone: trigger.timeZone,
+      lowerBound,
+      upperBound,
+    });
+
+    if (scheduledFor === undefined) {
+      const nextDueAt = findNextFuryGatewayCronOccurrence({
+        expression: trigger.expression,
+        timeZone: trigger.timeZone,
+        lowerBound,
+        ...(trigger.endAt === undefined
+          ? {}
+          : { upperBound: trigger.endAt }),
+        afterExclusive: observedAt,
+      });
+      return Object.freeze({
+        decision: 'not-due' as const,
+        ...(nextDueAt === undefined ? {} : { nextDueAt }),
+      });
+    }
+
+    const nextDueAt = nextCronOccurrence(definition, scheduledFor);
+    const lateness = observedAt - scheduledFor;
+    if (
+      trigger.misfirePolicy === 'skip'
+      && lateness > misfireGraceMs
+    ) {
+      return Object.freeze({
+        decision: 'misfire-skipped' as const,
+        scheduledFor,
+        ...(nextDueAt === undefined ? {} : { nextDueAt }),
+      });
+    }
+
+    return Object.freeze({
+      decision: 'due' as const,
+      scheduledFor,
+      ...(nextDueAt === undefined ? {} : { nextDueAt }),
     });
   }
 
@@ -236,6 +338,9 @@ function occurrenceKey(
   }
   if (definition.trigger.kind === 'interval') {
     return 'interval:' + scheduledFor;
+  }
+  if (definition.trigger.kind === 'cron') {
+    return 'cron:' + scheduledFor;
   }
   throw new FuryGatewayAutomationSchedulerError('invalid-options');
 }
@@ -394,7 +499,12 @@ export function createFuryGatewayAutomationScheduler(
               definition,
               latestTrigger.scheduledFor,
             )
-          : undefined;
+          : definition.trigger.kind === 'cron'
+            ? nextCronOccurrence(
+                definition,
+                latestTrigger.scheduledFor,
+              )
+            : undefined;
         return result(
           definition.automationId,
           definition.revision,
