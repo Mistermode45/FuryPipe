@@ -288,3 +288,24 @@ Baseline d'intégration : `v5-production-hardening` / `bc92bef794df25b2a7c541846
 | Provider/Git/junction/production runtime | RUNTIME_VALIDATION_REQUIRED | les harnesses browser hébergés ne prouvent pas un provider OAuth réel, un Git provider réel, le DNS pinning d’un host concret, les junction/reparse multi-OS ou un déploiement production |
 | Merge / release / tag / npm publish / deploy | NOT_EXECUTED | interdits par le périmètre de cette phase |
 | Phase 7 Memory VNext | READY_TO_START / NOT_STARTED | gates Phase 6 exact-head vertes ; Phase 7 n’a pas encore modifié ce track |
+
+## FuryPipe VNext Phase 7 Memory VNext — 2026-09-21
+
+| Vérification | Résultat | Mesure / preuve |
+|---|---|---|
+| Base exacte | PASS | track empilé sur le HEAD Phase 6 validé `51839182066a4520fed29cf396856495d8400fc3` |
+| Architecture / provenance | PASS local borné | `docs/FURYPIPE_VNEXT_PHASE7_MEMORY_VNEXT_2026.md`; pas de second RecoveryStore, Gateway ou policy engine |
+| Record / candidate schema | PASS local | `src/memory-vnext.ts` : champs exacts, provenance digested, acceptance distincte, retention/visibility/state discriminés |
+| Gouvernance | PASS local borné | authorizer host-owned default-deny ; external/model evidence exige `user-confirmed` ; observation non persistée |
+| Durable store / restart | PASS local borné | révisions Recovery bornées, tombstone avant purge locale, blocage de résurrection après réouverture |
+| Retrieval / context | PASS local borné | scope exact, source revoke, TTL, score déterministe et `optimizeContext()` partagé ; budget UTF-8 final contrôlé |
+| Tests ciblés | PASS local | `tests/memory-vnext.test.ts` : 6/6 |
+| Suite complète | PASS local | 250 fichiers ; 2 871 tests ; sortie 0 |
+| `pnpm run typecheck` | PASS local | TypeScript principal + hosted MCP ; sortie 0 |
+| `pnpm run build` | PASS local | bibliothèque/déclarations + Node/MCP ; version smoke `0.15.0` |
+| `pnpm run audit` | PASS local | aucune vulnérabilité connue dans les dépendances production |
+| Package smoke | PASS local | package, Phase 6, Phase 7, benchmark-claim, provider-attempt et governed-provider ; tarball installé contrôlé |
+| CI GitHub / exact head implementation | PASS / OPEN DRAFT | PR #218 ; base `51839182066a4520fed29cf396856495d8400fc3`; head `0fd246b9b5afe5de90dccb0556a4c7470eeab807`; merge state `CLEAN`; 15/15 checks PASS |
+| Secret Scan / Browser QA | PASS exact head implementation | `gitleaks`, `contract`, `prepare`, deux Chromium et Cross-Browser QA PASS ; matrice 9/9 OS × Node PASS |
+| Copies externes / providers / runtime | NOT_EXECUTED | aucune source externe, provider, OAuth, déploiement ou suppression distante appelée |
+| Merge / release / tag / npm publish / deploy | NOT_EXECUTED | interdits par le périmètre |
