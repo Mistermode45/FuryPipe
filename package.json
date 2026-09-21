@@ -580,6 +580,10 @@
     "./acp-external-client-runtime-node": {
       "types": "./dist/acp-external-client-runtime-node.d.ts",
       "import": "./dist/acp-external-client-runtime-node.js"
+    },
+    "./acp-delegation-runtime-node": {
+      "types": "./dist/acp-delegation-runtime-node.d.ts",
+      "import": "./dist/acp-delegation-runtime-node.js"
     }
   },
   "files": [

@@ -8,6 +8,9 @@ import {
   isGeneratedCodingSandbox,
   type CodingSandbox,
 } from './coding-runtime.js';
+import {
+  registerFuryAcpExternalSessionInternal,
+} from './acp-external-session-internal-node.js';
 
 export const FURY_ACP_EXTERNAL_AGENT_DESCRIPTOR_FORMAT =
   'furypipe-acp-external-agent-descriptor/v1' as const;
@@ -521,6 +524,10 @@ export function createFuryAcpExternalClientRuntime(options: {
   let activeSessions = 0;
   const runtimeEvidence = Object.freeze({});
   const ownedSessions = new WeakSet<object>();
+  const updateSubscribers = new Map<
+    string,
+    Set<(notification: acp.SessionNotification) => void>
+  >();
 
   const requireOwned = (
     session: FuryAcpExternalSession,
@@ -637,6 +644,9 @@ export function createFuryAcpExternalClientRuntime(options: {
         if (sessionState && sessionState.state === 'ready') {
           sessionState.state = 'disconnected';
         }
+        if (sessionState) {
+          updateSubscribers.delete(sessionState.acpSessionId);
+        }
         connection?.close(new Error('external ACP process closed'));
         finalize();
       });
@@ -653,7 +663,19 @@ export function createFuryAcpExternalClientRuntime(options: {
       }
 
       try {
-        const client = acp.client({ name: 'furypipe-external-acp-client' });
+        const client = acp
+          .client({ name: 'furypipe-external-acp-client' })
+          .onNotification(acp.methods.client.session.update, (ctx) => {
+            const listeners = updateSubscribers.get(ctx.params.sessionId);
+            if (!listeners) return;
+            for (const listener of [...listeners]) {
+              try {
+                listener(ctx.params);
+              } catch {
+                // Delegation observers are evidence collectors, never protocol authority.
+              }
+            }
+          });
         connection = client.connect(acp.ndJsonStream(
           Writable.toWeb(child.stdin),
           Readable.toWeb(protocolOutput) as ReadableStream<Uint8Array>,
@@ -739,6 +761,32 @@ export function createFuryAcpExternalClientRuntime(options: {
         };
         SESSIONS.set(session, sessionState);
         ownedSessions.add(session);
+        registerFuryAcpExternalSessionInternal(session, {
+          agentId: descriptor.agentId,
+          agentIdentitySha256: descriptor.identitySha256,
+          protocolVersion: acp.PROTOCOL_VERSION,
+          workspaceRootSha256: sha256(cwd),
+          agentCapabilitiesSha256,
+          acpSessionId: created.sessionId,
+          connection,
+          lifecycle: () => sessionState?.state ?? 'disconnected',
+          subscribeUpdates(listener) {
+            const current = updateSubscribers.get(created.sessionId)
+              ?? new Set<(notification: acp.SessionNotification) => void>();
+            current.add(listener);
+            updateSubscribers.set(created.sessionId, current);
+            let active = true;
+            return () => {
+              if (!active) return;
+              active = false;
+              const listeners = updateSubscribers.get(created.sessionId);
+              listeners?.delete(listener);
+              if (listeners?.size === 0) {
+                updateSubscribers.delete(created.sessionId);
+              }
+            };
+          },
+        });
         return session;
       } catch (error) {
         clearTimeout(timer);
@@ -777,6 +825,7 @@ export function createFuryAcpExternalClientRuntime(options: {
       const state = requireOwned(session);
       if (state.state === 'ready') {
         state.state = 'closed';
+        updateSubscribers.delete(state.acpSessionId);
         state.connection.close();
         state.child.kill();
         state.finalize();

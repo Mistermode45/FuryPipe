@@ -859,12 +859,54 @@ Evidence:
 This documentation-only closure commit requires the same 7/7 workflow and 9/9
 CI matrix proof before Gate 8.8 begins.
 
-### Gate 8.8 — governed delegation permits
+### Gate 8.8 — governed delegation permits — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
 
-- exact agent/task/root/capability/budget binding;
-- one-shot/TTL;
-- independent result verification;
-- crash/restart/unknown outcome evidence.
+Contract:
+
+- delegation requests are process-local evidence and bind:
+  - current principal digest;
+  - exact configured external-agent identity digest;
+  - exact process-local external session handle digest;
+  - ACP protocol v1;
+  - exact task digest;
+  - canonical workspace-root digest;
+  - exact capability-set digest;
+  - exact budget digest;
+- delegation permits are process-local, short-lived, exact-request-bound and
+  one-shot;
+- permit consumption occurs synchronously before `session/prompt` can be
+  invoked;
+- copied, stale, expired or request-mismatched permits fail closed;
+- policy admission separately binds principal, agent, allowed capability set,
+  budget ceiling and TTL;
+- current external-session lifecycle, agent identity and workspace root are
+  revalidated immediately before permit consumption;
+- only bounded text prompts are delegated in this gate;
+- output/update/message/tool/wall-time budgets are enforced while observing the
+  live ACP turn;
+- unpermitted external tool activity causes cancellation and an
+  `outcome:'unknown'` receipt because side effects may already have started;
+- cancellation, timeout or transport loss after prompt invocation never proves
+  rollback and therefore cannot become success;
+- `automaticReplayAllowed:false` is permanent on delegation receipts;
+- raw task text, raw ACP session IDs and live permit authority are excluded from
+  durable-style receipts;
+- external agent output remains advisory;
+- a separately supplied FuryPipe verifier runs only after a completed turn;
+- only `stopReason:'end_turn'` plus independent
+  `verificationStatus:'verified'` may produce `accepted:true`;
+- verifier rejection/uncertainty cannot be promoted by the external agent;
+- a closed/disconnected session cannot mint a new delegation request;
+- a process restart cannot restore request/permit authority because the backing
+  WeakMap evidence is process-local.
+
+Gate 8.8 adds adversarial tests for exact binding, copied permits, request/permit
+mismatch, policy mismatch, expiry/one-shot semantics, independent verification,
+unpermitted tool activity, post-invocation transport loss and closed-session
+rejection.
+
+Required exact-head proof is 7/7 workflows and 9/9 CI matrix before Gate 8.8 is
+marked validated.
 
 ### Gate 8.9 — remote A2A adapter contract
 

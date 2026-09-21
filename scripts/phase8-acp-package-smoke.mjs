@@ -76,6 +76,10 @@ try {
     'ACP external client runtime export is missing from package.json',
   );
   assert(
+    installedPackage.exports?.['./acp-delegation-runtime-node'],
+    'ACP delegation runtime export is missing from package.json',
+  );
+  assert(
     installedPackage.dependencies?.['@agentclientprotocol/sdk'] === '1.4.0',
     'ACP SDK is not exact-pinned to 1.4.0',
   );
@@ -110,10 +114,16 @@ try {
       "if (e.FURY_ACP_EXTERNAL_SESSION_FORMAT !== 'furypipe-acp-external-session/v1') process.exit(1);",
       "if (typeof e.createFuryAcpExternalAgentRegistry !== 'function') process.exit(1);",
       "if (typeof e.createFuryAcpExternalClientRuntime !== 'function') process.exit(1);",
+      "const d = await import('furypipe/acp-delegation-runtime-node');",
+      "if (d.FURY_ACP_DELEGATION_PERMIT_FORMAT !== 'furypipe-acp-delegation-permit/v1') process.exit(1);",
+      "if (d.FURY_ACP_DELEGATION_RECEIPT_FORMAT !== 'furypipe-acp-delegation-receipt/v1') process.exit(1);",
+      "if (typeof d.prepareFuryAcpDelegationRequest !== 'function') process.exit(1);",
+      "if (typeof d.createFuryAcpDelegationGate !== 'function') process.exit(1);",
+      "if (typeof d.createFuryAcpDelegationRuntime !== 'function') process.exit(1);",
     ].join(' '),
   ], installDir);
   assert(result.stderr === '', `ACP v1 package export wrote stderr: ${result.stderr}`);
-  console.log('phase8 ACP package smoke passed: packed ACP lifecycle, server, Gateway bridge, display projection, permission bridge, governed client capabilities and external client foundation load with exact SDK dependency');
+  console.log('phase8 ACP package smoke passed: packed ACP lifecycle, server, Gateway bridge, display projection, permission bridge, governed client capabilities, external client foundation and governed delegation runtime load with exact SDK dependency');
 } finally {
   if (installDir) await rm(installDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   if (tarball) await rm(tarball, { force: true });
