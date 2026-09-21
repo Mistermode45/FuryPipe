@@ -45,6 +45,30 @@
       "types": "./dist/core/recovery-store.d.ts",
       "import": "./dist/core/recovery-store.js"
     },
+    "./browser-runtime": {
+      "types": "./dist/browser-runtime.d.ts",
+      "import": "./dist/browser-runtime.js"
+    },
+    "./coding-runtime": {
+      "types": "./dist/coding-runtime.d.ts",
+      "import": "./dist/coding-runtime.js"
+    },
+    "./patch-engine": {
+      "types": "./dist/patch-engine.d.ts",
+      "import": "./dist/patch-engine.js"
+    },
+    "./codegraph": {
+      "types": "./dist/codegraph.d.ts",
+      "import": "./dist/codegraph.js"
+    },
+    "./phase6-verification": {
+      "types": "./dist/phase6-verification.d.ts",
+      "import": "./dist/phase6-verification.js"
+    },
+    "./phase6": {
+      "types": "./dist/phase6.d.ts",
+      "import": "./dist/phase6.js"
+    },
     "./context-ir": {
       "types": "./dist/core/context-ir.d.ts",
       "import": "./dist/core/context-ir.js"
@@ -570,6 +594,7 @@
     "docs/FURY_GATEWAY_RUNTIME_DAEMON_2026.md",
     "docs/FURY_GATEWAY_LOCAL_OPERATOR_BOOTSTRAP_2026.md",
     "docs/FURY_GATEWAY_LOCAL_CLI_CONFIG_2026.md",
+    "docs/FURYPIPE_VNEXT_PHASE6_BROWSER_CODING_RUNTIME_2026.md",
     "docs/AGENT_FABRIC.md",
     "docs/LEARNING_KNOWLEDGE.md",
     "docs/LONG_TERM_MEMORY.md",
@@ -621,7 +646,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.hosted-mcp.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package:smoke": "node scripts/package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
+    "package:smoke": "node scripts/package-smoke.mjs && node scripts/phase6-package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
     "vendor:ui": "node scripts/vendor-ui.mjs",
     "browser:webchat:qa": "tsx scripts/gateway-webchat-browser-qa.ts"
