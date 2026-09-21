@@ -929,7 +929,7 @@ Evidence:
 This documentation-only closure commit requires the same 7/7 workflow and 9/9
 CI matrix proof before Gate 8.9 begins.
 
-### Gate 8.9 — remote A2A adapter contract — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
+### Gate 8.9 — remote A2A adapter contract — VALIDATED
 
 Contract:
 
@@ -985,8 +985,39 @@ identity/pin mismatch. It also covers absent credential-profile configuration,
 private or unsafe destination rejection, origin mismatch, payload/time/replay
 bounds, copied evidence, replay uniqueness and malformed v1.0 cards.
 
-Required exact-head proof is 7/7 workflows and 9/9 CI matrix before Gate 8.9 is
-marked validated.
+Exact validated Gate 8.9 implementation/fix HEAD:
+
+`dc69ddaeb0dc62f77e0b2af372d545d6fc30d086`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- 264 test files / 2,998 tests SUCCESS on the observed exact-head matrix;
+- 9 dedicated A2A remote-adapter contract tests SUCCESS;
+- A2A v1.0 Agent Card, stable interface, message-shape and replay-evidence
+  fixtures SUCCESS;
+- Phase 8 packed-artifact smoke loads the remote A2A adapter contract;
+- Secret Scan SUCCESS with no scanner weakening:
+  - the original finding was a prose-only documentation false positive;
+  - current prose was rewritten;
+  - the historical finding is suppressed only by its exact Gitleaks
+    fingerprint;
+  - no path, rule, regex or global allowlist was added;
+- private/local literal destination rejection, exact origin allowlist, HTTPS,
+  scoped auth-profile evidence, redirect denial and future public-DNS
+  revalidation contract are covered by adversarial tests;
+- the adapter performs zero network I/O and exposes no public Gateway route;
+- descriptors/plans retain
+  `authenticated:false`,
+  `networkAuthority:false`,
+  `executionAuthority:false`,
+  `delegationAuthority:false` and
+  `automaticReplayAllowed:false`;
+- Windows Node 22/24/26 SUCCESS.
+
+This documentation-only closure commit requires the same 7/7 workflow and 9/9
+CI matrix proof before Gate 8.10 begins.
 
 ### Gate 8.10 — final interoperability evidence
 
