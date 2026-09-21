@@ -67,7 +67,7 @@ async function harness(
   ],
 ) {
   let now = 100_000;
-  const root = tempRoot('furypipe-acp-client-runtime-');
+  const rootInput = tempRoot('furypipe-acp-client-runtime-');
   const principals = createFuryGatewayPrincipalRegistry({ now: () => now });
   const principal = principals.recordAuthenticatedPrincipal({
     format: FURY_GATEWAY_PRINCIPAL_ASSERTION_FORMAT,
@@ -113,7 +113,7 @@ async function harness(
   });
   const sandbox = await createCodingSandbox({
     policyId: 'acp-client-runtime-test',
-    rootPath: root,
+    rootPath: rootInput,
     readRoots: ['.'],
     writeRoots: ['.'],
     environmentAllowlist: ['SAFE_VALUE'],
@@ -123,6 +123,7 @@ async function harness(
     maxProcesses: 1,
     maxTimeoutMs: 2_000,
   });
+  const root = sandbox.rootPath;
   const runtime = createFuryAcpClientCapabilityRuntime({
     sandbox,
     permissionBridge: permissions,
