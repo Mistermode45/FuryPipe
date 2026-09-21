@@ -146,6 +146,10 @@ async function runPrompt(
       return permissionHandler(ctx.params);
     })
     .connectWith(server.app, async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
       const session = await agent.request(acp.methods.agent.session.new, {
         cwd: '/workspace/project',
         mcpServers: [],

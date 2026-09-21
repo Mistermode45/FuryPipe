@@ -120,6 +120,10 @@ describe('FuryPipe ACP Gateway session bridge', () => {
     const result = await acp.client({ name: 'bridge-client' }).connectWith(
       server.app,
       async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         const session = await agent.request(acp.methods.agent.session.new, {
           cwd: '/workspace/project',
           mcpServers: [],
@@ -183,6 +187,10 @@ describe('FuryPipe ACP Gateway session bridge', () => {
     await acp.client({ name: 'scope-client' }).connectWith(
       server.app,
       async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         await expect(agent.request(acp.methods.agent.session.new, {
           cwd: '/workspace',
           mcpServers: [],
@@ -218,6 +226,10 @@ describe('FuryPipe ACP Gateway session bridge', () => {
     await acp.client({ name: 'revoke-client' }).connectWith(
       server.app,
       async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         const session = await agent.request(acp.methods.agent.session.new, {
           cwd: '/workspace',
           mcpServers: [],
@@ -279,6 +291,10 @@ describe('FuryPipe ACP Gateway session bridge', () => {
     await acp.client({ name: 'evidence-client' }).connectWith(
       server.app,
       async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         sessionId = (await agent.request(acp.methods.agent.session.new, {
           cwd: '/very/private/workspace',
           mcpServers: [],
@@ -350,6 +366,10 @@ describe('FuryPipe ACP Gateway session bridge', () => {
     await acp.client({ name: 'race-client' }).connectWith(
       server.app,
       async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         sessionId = (await agent.request(acp.methods.agent.session.new, {
           cwd: '/workspace',
           mcpServers: [],
@@ -398,6 +418,10 @@ describe('FuryPipe ACP Gateway session bridge', () => {
 
     const stopReason = await acp.client({ name: 'cancel-bridge-client' })
       .connectWith(server.app, async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         const session = await agent.request(acp.methods.agent.session.new, {
           cwd: '/workspace',
           mcpServers: [],
@@ -434,6 +458,10 @@ describe('FuryPipe ACP Gateway session bridge', () => {
     await acp.client({ name: 'copy-client' }).connectWith(
       server.app,
       async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         sessionId = (await agent.request(acp.methods.agent.session.new, {
           cwd: '/workspace',
           mcpServers: [],

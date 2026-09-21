@@ -568,6 +568,8 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
   const agentName = boundedText(options.agentName ?? 'furypipe', 128, 'agentName');
   const agentVersion = boundedText(options.agentVersion ?? '0.15.0', 64, 'agentVersion');
   const sessions = new Map<string, MutableSession>();
+  let connectionClaimed = false;
+  let initialized = false;
   let clientCapabilities = snapshotFuryAcpV1ClientCapabilities(undefined);
 
   const requireSession = (id: unknown): MutableSession => {
@@ -584,9 +586,13 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
   const app = acp
     .agent({ name: agentName })
     .onRequest(acp.methods.agent.initialize, (ctx) => {
+      if (initialized) {
+        throw new acp.RequestError(-32015, 'ACP connection is already initialized');
+      }
       clientCapabilities = snapshotFuryAcpV1ClientCapabilities(
         ctx.params.clientCapabilities,
       );
+      initialized = true;
       // ACP v1 is the only production protocol enabled in this gate.
       // Returning v1 for another requested version follows ACP negotiation:
       // the client must disconnect when it cannot support the returned version.
@@ -595,6 +601,9 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
         agentCapabilities: {
           loadSession: false,
           promptCapabilities: {},
+          sessionCapabilities: {
+            additionalDirectories: {},
+          },
         },
         authMethods: [],
         agentInfo: {
@@ -604,6 +613,9 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
       };
     })
     .onRequest(acp.methods.agent.session.new, async (ctx) => {
+      if (!initialized) {
+        throw new acp.RequestError(-32015, 'ACP connection must be initialized before session/new');
+      }
       if (sessions.size >= maxSessions) {
         throw new acp.RequestError(-32010, 'ACP session limit reached');
       }
@@ -743,6 +755,13 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
       if (session) {
         await options.sessionHooks?.onCancelled?.(snapshot(session));
       }
+    })
+    .onConnect((connection) => {
+      if (connectionClaimed) {
+        connection.close(new Error('ACP v1 server instance cannot be reused across connections'));
+        return;
+      }
+      connectionClaimed = true;
     });
 
   return Object.freeze({

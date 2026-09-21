@@ -60,6 +60,9 @@ describe('FuryPipe ACP v1 server foundation', () => {
     expect(result.initialized.agentCapabilities).toEqual({
       loadSession: false,
       promptCapabilities: {},
+      sessionCapabilities: {
+        additionalDirectories: {},
+      },
     });
     expect(result.initialized.authMethods).toEqual([]);
     expect(result.response.stopReason).toBe('end_turn');
@@ -127,6 +130,10 @@ describe('FuryPipe ACP v1 server foundation', () => {
     await acp.client({ name: 'session-guard-client' }).connectWith(
       server.app,
       async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         await expect(agent.request(acp.methods.agent.session.new, {
           cwd: 'relative/project',
           mcpServers: [],
@@ -157,6 +164,10 @@ describe('FuryPipe ACP v1 server foundation', () => {
     await acp.client({ name: 'content-guard-client' }).connectWith(
       server.app,
       async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         const session = await agent.request(acp.methods.agent.session.new, {
           cwd: '/workspace',
           mcpServers: [],
@@ -197,6 +208,10 @@ describe('FuryPipe ACP v1 server foundation', () => {
     const stopReason = await acp.client({ name: 'cancel-client' }).connectWith(
       server.app,
       async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         const session = await agent.request(acp.methods.agent.session.new, {
           cwd: '/workspace',
           mcpServers: [],
@@ -234,6 +249,10 @@ describe('FuryPipe ACP v1 server foundation', () => {
     await acp.client({ name: 'budget-client' }).connectWith(
       server.app,
       async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         const session = await agent.request(acp.methods.agent.session.new, {
           cwd: '/workspace',
           mcpServers: [],
@@ -275,15 +294,25 @@ describe('FuryPipe ACP v1 server foundation', () => {
 
     const leftSessionId = await acp.client({ name: 'left-client' }).connectWith(
       left.app,
-      async (agent) => (await agent.request(acp.methods.agent.session.new, {
-        cwd: '/left',
-        mcpServers: [],
-      })).sessionId,
+      async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
+        return (await agent.request(acp.methods.agent.session.new, {
+          cwd: '/left',
+          mcpServers: [],
+        })).sessionId;
+      },
     );
 
     await acp.client({ name: 'right-client' }).connectWith(
       right.app,
       async (agent) => {
+        await agent.request(acp.methods.agent.initialize, {
+          protocolVersion: acp.PROTOCOL_VERSION,
+          clientCapabilities: {},
+        });
         await expect(agent.request(acp.methods.agent.session.prompt, {
           sessionId: leftSessionId,
           prompt: [{ type: 'text', text: 'cross-connection attempt' }],

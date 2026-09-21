@@ -683,7 +683,7 @@ Contract:
 Gate 8.4 requires fresh exact-head 7/7 workflow and 9/9 CI proof before
 Gate 8.5 begins.
 
-### Gate 8.5 — governed client FS/terminal capabilities — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
+### Gate 8.5 — governed client FS/terminal capabilities — VALIDATED
 
 Contract:
 
@@ -725,19 +725,55 @@ Contract:
   `automaticReplayAllowed:false`;
 - package export smoke covers the governed client capability runtime.
 
-Required exact-head proof remains 7/7 workflows and 9/9 CI matrix before Gate
-8.5 is marked validated.
+Exact validated Gate 8.5 HEAD:
 
-### Gate 8.6 — ACP conformance + editor compatibility
+`6836845c976e3b0c6cbe272289eb3b1d4bfa7f4d`
 
-- official SDK client fixture;
-- malformed JSON-RPC;
-- wrong protocol version;
-- capability mismatch;
-- cancellation;
-- session concurrency;
-- package smoke;
-- representative ACP client compatibility evidence.
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- 260 test files / 2,959 tests SUCCESS on observed Ubuntu/Node 22;
+- Phase 8 ACP package smoke SUCCESS across the matrix;
+- Windows Node 22/24/26 all passed the canonical Phase 6 root regression and
+  packed-artifact smoke;
+- the temporary path-safe diagnostic was removed before this exact-head proof.
+
+### Gate 8.6 — ACP conformance + editor compatibility — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
+
+Contract:
+
+- ACP SDK remains exact-pinned to `@agentclientprotocol/sdk = 1.4.0`;
+- each Fury ACP server instance is a single connection boundary and fails
+  closed if reused for a second connection;
+- every connection must complete exactly one `initialize` before
+  `session/new`; duplicate initialization cannot rebind advertised
+  capabilities;
+- omitted client capabilities remain unsupported and never become execution
+  authority;
+- additional workspace roots are explicitly advertised through
+  `sessionCapabilities.additionalDirectories`;
+- unsupported protocol versions continue ACP v1 negotiation by returning the
+  latest supported stable version;
+- official SDK `ClientApp` / `ActiveSession` flows are exercised as the
+  representative editor compatibility fixture;
+- malformed NDJSON produces JSON-RPC parse/invalid-request errors without
+  silently becoming protocol input;
+- JSON-RPC batches are rejected on stable ACP v1 before session handlers run;
+- unknown extension methods return method-not-found while the connection
+  remains usable;
+- independent sessions may execute prompts concurrently, while one session
+  cannot run two prompts concurrently;
+- protocol request cancellation reduces authority cooperatively and never
+  implies rollback;
+- `_meta` and other peer metadata remain non-authoritative data;
+- a fresh server instance does not restore stale session IDs or client
+  capability authority from a prior connection;
+- no reconnect/restart path converts evidence into live execution authority;
+- existing Phase 8 packed-artifact smoke remains mandatory.
+
+Required exact-head proof is 7/7 workflows and 9/9 CI matrix before Gate 8.6
+is marked validated.
 
 ### Gate 8.7 — external ACP client foundation
 

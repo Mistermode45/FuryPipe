@@ -85,6 +85,10 @@ try {
       "if (m.FURY_ACP_V1_SERVER_FORMAT !== 'furypipe-acp-v1-server/v1') process.exit(1);",
       "if (typeof m.createFuryAcpV1Server !== 'function') process.exit(1);",
       "if (typeof m.connectFuryAcpV1Stdio !== 'function') process.exit(1);",
+      "const acp = await import('@agentclientprotocol/sdk');",
+      "const server = m.createFuryAcpV1Server({ promptHandler: async (context) => { await context.emitText('packed ACP response'); return { stopReason: 'end_turn' }; } });",
+      "const packedProof = await acp.client({ name: 'furypipe-packed-acp-smoke' }).connectWith(server.app, async (agent) => { const initialized = await agent.request(acp.methods.agent.initialize, { protocolVersion: acp.PROTOCOL_VERSION, clientCapabilities: {} }); if (!initialized.agentCapabilities?.sessionCapabilities?.additionalDirectories) process.exit(1); const session = await agent.request(acp.methods.agent.session.new, { cwd: process.cwd(), additionalDirectories: [process.cwd()], mcpServers: [] }); const response = await agent.request(acp.methods.agent.session.prompt, { sessionId: session.sessionId, prompt: [{ type: 'text', text: 'package smoke' }] }); return response.stopReason; });",
+      "if (packedProof !== 'end_turn') process.exit(1);",
       "const b = await import('furypipe/acp-gateway-session-bridge-node');",
       "if (typeof b.createFuryAcpGatewaySessionBridge !== 'function') process.exit(1);",
       "const p = await import('furypipe/acp-v1-update-projection-node');",
@@ -100,7 +104,7 @@ try {
     ].join(' '),
   ], installDir);
   assert(result.stderr === '', `ACP v1 package export wrote stderr: ${result.stderr}`);
-  console.log('phase8 ACP package smoke passed: server, Gateway bridge, display projection, permission bridge and governed client capability runtime exports load with exact SDK dependency');
+  console.log('phase8 ACP package smoke passed: packed ACP lifecycle, server, Gateway bridge, display projection, permission bridge and governed client capability runtime load with exact SDK dependency');
 } finally {
   if (installDir) await rm(installDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   if (tarball) await rm(tarball, { force: true });
