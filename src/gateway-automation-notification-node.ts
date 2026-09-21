@@ -67,6 +67,7 @@ export type FuryGatewayAutomationNotificationBridgeErrorCode =
   | 'invalid-options'
   | 'invalid-run-id'
   | 'run-not-found'
+  | 'run-not-eligible'
   | 'trigger-not-found'
   | 'definition-not-found'
   | 'definition-corrupt'
@@ -80,6 +81,7 @@ const ERROR_MESSAGES: Readonly<Record<
   'invalid-options': 'Automation notification bridge options are invalid.',
   'invalid-run-id': 'Automation notification run ID is invalid.',
   'run-not-found': 'Automation notification run does not exist.',
+  'run-not-eligible': 'Automation notification run is not terminal or outcome-unknown.',
   'trigger-not-found': 'Automation notification trigger does not exist.',
   'definition-not-found': 'Automation notification definition does not exist.',
   'definition-corrupt': 'Automation notification definition lineage is inconsistent.',
@@ -404,6 +406,12 @@ function notificationPresentation(
         + ' has an unknown side-effect outcome. Automatic replay is disabled.',
       acknowledgementRequired: true,
     });
+  }
+  if (status.state !== 'terminal') {
+    throw new FuryGatewayAutomationNotificationBridgeError(
+      'run-not-eligible',
+      status.runIdSha256,
+    );
   }
   const outcome = status.outcome;
   if (outcome === 'succeeded') {
