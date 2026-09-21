@@ -17,6 +17,7 @@ export const FURY_GATEWAY_AUTOMATION_SCHEDULER_TICK_FORMAT =
 export type FuryGatewayAutomationSchedulerDecision =
   | 'disabled'
   | 'not-due'
+  | 'external-trigger-only'
   | 'misfire-skipped'
   | 'clock-regression-ignored'
   | 'claimed'
@@ -155,6 +156,12 @@ function duePlan(
 ): DuePlan {
   const trigger = definition.trigger;
 
+  if (trigger.kind === 'webhook') {
+    return Object.freeze({
+      decision: 'not-due' as const,
+    });
+  }
+
   if (trigger.kind === 'one-shot') {
     if (observedAt < trigger.at) {
       return Object.freeze({
@@ -227,7 +234,10 @@ function occurrenceKey(
   if (definition.trigger.kind === 'one-shot') {
     return 'one-shot:' + scheduledFor;
   }
-  return 'interval:' + scheduledFor;
+  if (definition.trigger.kind === 'interval') {
+    return 'interval:' + scheduledFor;
+  }
+  throw new FuryGatewayAutomationSchedulerError('invalid-options');
 }
 
 function result(
@@ -330,6 +340,15 @@ export function createFuryGatewayAutomationScheduler(
           inspected.definitionSha256,
           observedAt,
           'disabled',
+        );
+      }
+      if (definition.trigger.kind === 'webhook') {
+        return result(
+          definition.automationId,
+          definition.revision,
+          inspected.definitionSha256,
+          observedAt,
+          'external-trigger-only',
         );
       }
 
