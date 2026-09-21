@@ -926,7 +926,7 @@ Gate 9.0 freezes the Phase 9 architecture and threat model. The
 documentation-only closure commit itself must receive the same exact-head 7/7
 workflow and 9/9 CI proof before Gate 9.1 begins.
 
-### Gate 9.1 — node registry + capability advertisements — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
+### Gate 9.1 — node registry + capability advertisements — VALIDATED
 
 Implementation surface:
 
@@ -965,8 +965,29 @@ Contract:
 - no node command, filesystem, shell, camera, microphone, speaker, notification
   or media execution path exists in Gate 9.1.
 
-Gate 9.1 must receive fresh exact-head 7/7 workflow and 9/9 CI proof before
-Gate 9.2 begins.
+Exact validated Gate 9.1 implementation HEAD:
+
+`f096425df693d996a8e67a8670a81941dd7f138d`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 266 test files / 3,011 tests SUCCESS on observed macOS/Node 26;
+- 11 dedicated Phase 9 node-registry tests SUCCESS;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS, with Phase 6/7/8 packed-artifact smokes remaining
+  green;
+- Secret Scan and Benchmark Contract SUCCESS;
+- RC Preparation Evidence, Dashboard Browser QA, Web Studio Browser QA and
+  Cross-Browser QA SUCCESS;
+- no public Phase 9 runtime export or new dependency was introduced;
+- no node/device command execution path was introduced;
+- no merge, release, tag, npm publish or deploy occurred.
+
+The documentation-only Gate 9.1 closure commit itself requires the same
+exact-head 7/7 workflow and 9/9 CI proof before Gate 9.2 begins.
 
 ### Gate 9.2 — node session/liveness + reconnect governance
 
