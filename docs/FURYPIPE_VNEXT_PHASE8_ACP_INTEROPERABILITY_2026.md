@@ -1019,15 +1019,68 @@ Evidence:
 This documentation-only closure commit requires the same 7/7 workflow and 9/9
 CI matrix proof before Gate 8.10 begins.
 
-### Gate 8.10 — final interoperability evidence
+### Gate 8.10 — final interoperability evidence — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
 
-- exact-head CI matrix;
-- protocol fixtures;
-- package smoke;
-- Secret Scan;
-- browser QA regression;
-- security/adversarial tests;
-- restart and post-invocation uncertainty proof.
+Gate 8.10 adds no new authority, transport, listener, network executor or
+delegation capability. It is the Phase 8 evidence aggregation gate.
+
+Final verification contract:
+
+- `tests/phase8-final-verification.test.ts` pins the reviewed public ACP/A2A
+  evidence formats and constructs real Phase 8 server/registry/adapter objects
+  to prove that protocol metadata remains non-authoritative;
+- ACP stable-v1 protocol/editor conformance remains covered by
+  `tests/acp-v1-conformance.test.ts`, including:
+  - initialize/session ordering;
+  - official SDK active-session/editor-style flow;
+  - omitted client capabilities;
+  - concurrent independent sessions;
+  - cooperative cancellation;
+  - unknown methods;
+  - non-authoritative extension metadata;
+  - malformed NDJSON/primitive frames;
+  - stable-v1 batch rejection;
+  - second-connection rejection;
+  - fresh-server restart authority invalidation;
+- Gateway/session lifecycle, durable digest-only evidence and restart
+  non-reactivation remain covered by
+  `tests/acp-gateway-session-bridge.test.ts`;
+- allow-once permission authority, post-choice Gateway revalidation, copied
+  permit rejection, exact-operation mismatch and expiry remain covered by
+  `tests/acp-permission-bridge.test.ts`;
+- filesystem/terminal bounds, traversal/symlink escape rejection, environment
+  redaction, lost-response uncertainty and
+  `automaticReplayAllowed:false` remain covered by
+  `tests/acp-client-capability-runtime.test.ts`;
+- configured external-agent identity, Phase 6 sandbox command revalidation,
+  copied session rejection, process limits, restart invalidation, protocol
+  mismatch and disconnect semantics remain covered by
+  `tests/acp-external-client-runtime.test.ts`;
+- exact delegation task/session/root/capability/budget binding, one-shot
+  permits, independent verification, output bounds, unpermitted tool activity
+  and post-invocation transport uncertainty remain covered by
+  `tests/acp-delegation-runtime.test.ts`;
+- A2A v1.0 Agent Card/interface identity, explicit HTTPS origin posture,
+  scoped credential-profile evidence, private destination rejection,
+  replay/message evidence, bounded payload/time policy and zero-network-I/O
+  adapter semantics remain covered by
+  `tests/a2a-remote-adapter.test.ts`;
+- `scripts/phase8-acp-package-smoke.mjs` remains the packed-artifact export
+  proof for ACP lifecycle/server/Gateway bridge/display/permission/client
+  capability/external client/delegation/A2A surfaces;
+- final acceptance requires the exact Gate 8.10 HEAD to show:
+  - Secret Scan SUCCESS;
+  - CI 9/9 SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+  - Benchmark Contract SUCCESS;
+  - RC Preparation Evidence SUCCESS;
+  - Dashboard Browser QA SUCCESS;
+  - Web Studio Browser QA SUCCESS;
+  - Cross-Browser QA SUCCESS;
+  - package smoke SUCCESS;
+  - no merge, release, tag, npm publish or deploy.
+
+Required exact-head proof is 7/7 workflows and 9/9 CI matrix before Gate 8.10
+and Phase 8 are marked validated.
 
 ## 19. Required adversarial tests
 
