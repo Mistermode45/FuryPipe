@@ -26,6 +26,7 @@ async function startWebChatServer(
     readonly toolSourceCount?: number;
     readonly memoryEnabled?: boolean;
     readonly channelObservabilityEnabled?: boolean;
+    readonly automationObservabilityEnabled?: boolean;
   } = {},
 ): Promise<{ readonly origin: string }> {
   let handler: ReturnType<typeof createFuryGatewayWebChatHandler> | undefined;
@@ -131,6 +132,8 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
     expect(js).toContain("'Blocked'");
     expect(js).toContain("'memory.status'");
     expect(js).toContain("'channels.status'");
+    expect(js).toContain("'automations.status'");
+    expect(js).toContain("'Automation status'");
     expect(js).toContain('browserAuthority');
     expect(js).toContain("'memory.forget'");
     expect(js).toContain("'memory.purge'");
@@ -153,6 +156,11 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
       tools: { enabled: false },
       memory: { enabled: false },
       channels: { enabled: false, browserAuthority: 'none' },
+      automations: {
+        enabled: false,
+        authority: 'observability-only',
+        executionAuthority: false,
+      },
       executionAuthority: false,
     });
 
@@ -173,6 +181,11 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
       tools: { enabled: false },
       memory: { enabled: false },
       channels: { enabled: false, browserAuthority: 'none' },
+      automations: {
+        enabled: false,
+        authority: 'observability-only',
+        executionAuthority: false,
+      },
       executionAuthority: false,
     });
     expect(JSON.stringify(payload)).not.toMatch(/api[_-]?key|credential|token/i);
@@ -195,6 +208,11 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
       },
       memory: { enabled: false },
       channels: { enabled: false, browserAuthority: 'none' },
+      automations: {
+        enabled: false,
+        authority: 'observability-only',
+        executionAuthority: false,
+      },
       executionAuthority: false,
     });
     const serialized = JSON.stringify(payload);
@@ -214,6 +232,11 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
       tools: { enabled: false },
       memory: { enabled: true },
       channels: { enabled: false, browserAuthority: 'none' },
+      automations: {
+        enabled: false,
+        authority: 'observability-only',
+        executionAuthority: false,
+      },
       executionAuthority: false,
     });
     const serialized = JSON.stringify(payload);
@@ -236,10 +259,43 @@ describe('Fury Gateway local WebChat HTTP surface', () => {
         enabled: true,
         browserAuthority: 'none',
       },
+      automations: {
+        enabled: false,
+        authority: 'observability-only',
+        executionAuthority: false,
+      },
       executionAuthority: false,
     });
     const serialized = JSON.stringify(payload);
     expect(serialized).not.toMatch(/adapterId|destination|message|credential|authorization|bearer|api[_-]?key/i);
+  });
+
+  it('exposes only boolean automation observability availability and non-authority', async () => {
+    const enabled = await startWebChatServer({
+      automationObservabilityEnabled: true,
+    });
+    const response = await fetch(
+      enabled.origin + FURY_GATEWAY_WEBCHAT_CONFIG_PATH,
+    );
+    const payload = await response.json();
+
+    expect(payload).toEqual({
+      format: 'furypipe-gateway-webchat-config/v1',
+      modelBridge: { enabled: false },
+      tools: { enabled: false },
+      memory: { enabled: false },
+      channels: { enabled: false, browserAuthority: 'none' },
+      automations: {
+        enabled: true,
+        authority: 'observability-only',
+        executionAuthority: false,
+      },
+      executionAuthority: false,
+    });
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toMatch(
+      /automationId|workflowId|principal|reason|notificationPolicyKey|credential|authorization|bearer|api[_-]?key/i,
+    );
   });
 
   it('rejects contradictory or malformed tool metadata', () => {
