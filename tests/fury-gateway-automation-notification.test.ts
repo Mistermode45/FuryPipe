@@ -126,6 +126,7 @@ async function harness(options: {
   const notifications = createFuryGatewayNotificationCoordinator({
     deliveryCoordinator: deliveries,
     now: () => now,
+    deliveryPermitTtlMs: 5_000,
   });
   notifications.registerDestinationPolicy({
     format: FURY_GATEWAY_NOTIFICATION_POLICY_FORMAT,
