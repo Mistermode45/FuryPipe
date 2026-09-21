@@ -989,12 +989,72 @@ Evidence:
 The documentation-only Gate 9.1 closure commit itself requires the same
 exact-head 7/7 workflow and 9/9 CI proof before Gate 9.2 begins.
 
-### Gate 9.2 — node session/liveness + reconnect governance
+### Gate 9.2 — node session/liveness + reconnect governance — VALIDATED
 
-Bind paired identity to live node sessions, heartbeat/liveness and strict
-reconnect/restart semantics.
+Implementation surface:
 
-No stale authority restoration.
+- `src/gateway-node-session-node.ts` adds the bounded process-local Phase 9
+  node-session/liveness coordinator;
+- `tests/fury-gateway-node-session.test.ts` adds dedicated adversarial
+  session, heartbeat, reconnect and restart coverage.
+
+Contract:
+
+- the coordinator requires a genuine process-local node registry and pairing
+  coordinator; copied/lookalike coordinators fail closed;
+- opening a live session requires a current process-local node descriptor,
+  fresh process-local authenticated-device evidence and the exact current
+  pairing identity;
+- each session binds registration ID, device ID, public-key digest, pairing ID,
+  client/instance identity, a fresh session ID and a fresh liveness epoch;
+- session evidence remains
+  `authority:'node-session-evidence-only'`, `authorization:'none'`,
+  `executionAuthority:false` and `automaticReplayAllowed:false`;
+- heartbeats use an exact plain-data schema bound to the session ID and
+  liveness epoch, with bounded monotonically increasing sequence numbers;
+- heartbeat TTL expiry makes the session terminal for liveness; an old timed
+  out session cannot be revived by a later heartbeat;
+- explicit close disconnects without claiming rollback, replay safety or
+  restored authority;
+- reconnect creates a new session ID and liveness epoch and supersedes the
+  previous live session; the superseded session cannot heartbeat again;
+- same device key and same durable pairing do not imply the same live session
+  or restore ephemeral authority;
+- pairing revocation/change and node unregister invalidate future liveness use;
+- a fresh coordinator after Gateway restart does not recognize old
+  process-local session evidence;
+- capability advertisements that existed before a reconnect are not promoted
+  to current-for-session evidence; a strictly newer advertisement generation
+  is required after the new session baseline;
+- observations/snapshots expose bounded identity, liveness and capability
+  digest metadata only, never raw capability arrays or execution authority;
+- no shell, filesystem command, camera, microphone, speaker, notification,
+  media execution or other node-operation authority is introduced by Gate
+  9.2.
+
+Exact validated Gate 9.2 implementation HEAD:
+
+`d870d66e7f46e9f3be4b95a3b8482dd644219724`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 267 test files / 3,031 tests SUCCESS on observed Ubuntu/Node 26;
+- 20 dedicated Phase 9 node-session/liveness tests SUCCESS;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS, with Phase 6/7/8 packed-artifact smokes remaining
+  green;
+- Secret Scan and Benchmark Contract SUCCESS;
+- RC Preparation Evidence, Dashboard Browser QA, Web Studio Browser QA and
+  Cross-Browser QA SUCCESS;
+- no public Phase 9 runtime export or new dependency was introduced;
+- no node/device command or media execution path was introduced;
+- no merge, release, tag, npm publish or deploy occurred.
+
+The documentation-only Gate 9.2 closure commit itself requires the same
+exact-head 7/7 workflow and 9/9 CI proof before Gate 9.3 begins.
 
 ### Gate 9.3 — governed node-operation permits
 
