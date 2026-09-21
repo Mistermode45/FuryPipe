@@ -929,7 +929,7 @@ export function createFuryGatewayAutomationWebhookCoordinator(
         requestRecord.signature,
         64,
         'invalid-request',
-      ).toLowerCase();
+      );
       if (
         !SIGNATURE_RE.test(signature)
         || !verifySignature(
