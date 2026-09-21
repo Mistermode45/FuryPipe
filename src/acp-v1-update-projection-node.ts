@@ -212,15 +212,17 @@ function optionalText(
 }
 
 function textContent(text: string): acp.ToolCallContent[] {
-  const content: acp.ToolCallContent[] = [{
+  const block: acp.ContentBlock = {
+    type: 'text',
+    text,
+  };
+  Object.freeze(block);
+  const item: acp.ToolCallContent = {
     type: 'content',
-    content: {
-      type: 'text',
-      text,
-    },
-  }];
-  Object.freeze(content[0]!.content);
-  Object.freeze(content[0]!);
+    content: block,
+  };
+  Object.freeze(item);
+  const content: acp.ToolCallContent[] = [item];
   Object.freeze(content);
   return content;
 }
