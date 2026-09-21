@@ -69,6 +69,13 @@ export interface FuryGatewayAutomationTriggerOccurrence {
   readonly executionAuthority: false;
 }
 
+export interface FuryGatewayAutomationRunInspection {
+  readonly trigger: FuryGatewayAutomationTriggerOccurrence;
+  readonly status: FuryGatewayAutomationRunStatus;
+  readonly authority: 'observability-only';
+  readonly executionAuthority: false;
+}
+
 export interface FuryGatewayAutomationClaimEvidence {
   readonly format: 'furypipe-gateway-automation-claim-evidence/v1';
   readonly runIdSha256: string;
@@ -213,6 +220,10 @@ export interface FuryGatewayAutomationRunLedger {
   latestTrigger(
     automationId: string,
   ): Promise<FuryGatewayAutomationTriggerOccurrence | undefined>;
+  listRecent(
+    limit?: number,
+    now?: number,
+  ): Promise<readonly FuryGatewayAutomationRunInspection[]>;
   countRuns(): Promise<number>;
 }
 
@@ -1839,6 +1850,65 @@ export function createFuryGatewayAutomationRunLedger(
         }
       }
       return latest;
+    },
+
+    async listRecent(
+      limitInput = 64,
+      observedAtInput?: number,
+    ): Promise<readonly FuryGatewayAutomationRunInspection[]> {
+      const limit = boundedInteger(
+        limitInput,
+        64,
+        1,
+        256,
+        'listRecent limit',
+      );
+      const observedAt = observedAtInput === undefined
+        ? nowValue(now)
+        : safeTimestamp(observedAtInput);
+      const handles = await store.list({
+        metadata: {
+          system: SYSTEM,
+          recordType: 'trigger',
+        },
+        limit: maxRecords,
+      });
+      const triggers: TriggerRecord[] = [];
+      for (const handle of handles) {
+        const record = parseRecord(await store.get(handle));
+        if (
+          record.format !== FURY_GATEWAY_AUTOMATION_TRIGGER_RECORD_FORMAT
+          || handle.metadata?.automationId !== record.automationId
+          || handle.metadata?.runIdSha256 !== record.runIdSha256
+        ) {
+          throw new FuryGatewayAutomationRunLedgerError(
+            'run-state-corrupt',
+            record.runIdSha256,
+          );
+        }
+        triggers.push(record);
+      }
+      triggers.sort((left, right) =>
+        right.createdAt - left.createdAt
+        || right.scheduledFor - left.scheduledFor
+        || right.runIdSha256.localeCompare(left.runIdSha256));
+      const output: FuryGatewayAutomationRunInspection[] = [];
+      for (const trigger of triggers.slice(0, limit)) {
+        const loaded = await loadStatus(trigger.runIdSha256, observedAt);
+        if (!loaded.status) {
+          throw new FuryGatewayAutomationRunLedgerError(
+            'run-state-corrupt',
+            trigger.runIdSha256,
+          );
+        }
+        output.push(Object.freeze({
+          trigger,
+          status: loaded.status,
+          authority: 'observability-only' as const,
+          executionAuthority: false as const,
+        }));
+      }
+      return Object.freeze(output);
     },
 
     async countRuns(): Promise<number> {
