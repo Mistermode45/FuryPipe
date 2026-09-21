@@ -482,6 +482,27 @@ try {
   ], installDir);
   assert(gatewayAutomationWebhookExport.stderr === '', `Gateway automation webhook export wrote stderr: ${gatewayAutomationWebhookExport.stderr}`);
 
+  const gatewayAutomationObservabilityExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-observability-node'); if (typeof m.createFuryGatewayAutomationObservability !== 'function' || typeof m.isGeneratedFuryGatewayAutomationObservability !== 'function' || m.FURY_GATEWAY_AUTOMATION_OBSERVABILITY_FORMAT !== 'furypipe-gateway-automation-observability/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationObservabilityExport.stderr === '', `Gateway automation observability export wrote stderr: ${gatewayAutomationObservabilityExport.stderr}`);
+
+  const gatewayAutomationObservabilityCommandExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-observability-command-node'); if (!Array.isArray(m.FURY_GATEWAY_AUTOMATION_OBSERVABILITY_COMMAND_DEFINITIONS) || !Array.isArray(m.FURY_GATEWAY_AUTOMATION_OBSERVABILITY_STATE_COMMAND_NAMES)) process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationObservabilityCommandExport.stderr === '', `Gateway automation observability command export wrote stderr: ${gatewayAutomationObservabilityCommandExport.stderr}`);
+
+  const gatewayAutomationNotificationExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-notification-node'); if (typeof m.createFuryGatewayAutomationNotificationBridge !== 'function' || typeof m.isGeneratedFuryGatewayAutomationNotificationBridge !== 'function' || m.FURY_GATEWAY_AUTOMATION_NOTIFICATION_INTENT_FORMAT !== 'furypipe-gateway-automation-notification-intent/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationNotificationExport.stderr === '', `Gateway automation notification export wrote stderr: ${gatewayAutomationNotificationExport.stderr}`);
+
   const gatewayNotificationExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
