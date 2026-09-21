@@ -538,42 +538,67 @@ This version is a research checkpoint, not a permanent automatic-upgrade rule.
 
 This document.
 
-### Gate 8.1 — ACP v1 stdio server foundation
+### Gate 8.1 — ACP v1 stdio server foundation — VALIDATED
 
-- official SDK exact pin;
-- initialize/version negotiation;
-- session/new;
-- session/prompt;
-- session/cancel;
-- bounded session/update projection;
-- no client FS/terminal side effects yet.
-
-### Gate 8.1 — ACP v1 stdio server foundation
-
-Implementation contract:
+Implementation:
 
 - exact dependency pin: `@agentclientprotocol/sdk = 1.4.0`;
 - exact peer pin: `zod = 4.6.2`;
 - stable ACP v1 import only; no experimental v2 import;
 - one server instance represents one ACP connection boundary;
 - `initialize`, `session/new`, `session/prompt`, `session/cancel`;
-- `text` and `resource_link` prompt blocks only in this gate;
-- resource links are forwarded as untrusted metadata only and are never fetched;
-- MCP attachment is rejected until a later governed gate;
-- client FS/terminal/permission methods are never invoked;
-- sessions and live cancellation controllers are process-local;
+- `text` and `resource_link` prompt blocks only;
+- resource links remain untrusted data and are never fetched by this gate;
+- MCP attachment is rejected;
+- client FS/terminal/permission methods are not invoked;
+- sessions and cancellation controllers are process-local;
 - ACP session IDs are protocol handles only;
-- all prompt/update counts and UTF-8 byte sizes are bounded;
+- prompt/update/session budgets are bounded;
 - package export and packed-artifact smoke are mandatory.
 
-Exit evidence must be attached to the exact implementation SHA before Gate 8.2 begins.
+Exact validated SHA:
 
-### Gate 8.2 — Fury Kernel/Gateway session bridge
+`292315e8c9312b344b261fc203b4f8d98c11c575`
 
-- principal/session mapping;
-- current policy revalidation;
-- restart-safe metadata without authority persistence;
-- cancellation integration.
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- 256 test files / 2,924 tests SUCCESS on observed Ubuntu/Node 26;
+- Phase 8 ACP package smoke SUCCESS across the matrix.
+
+### Gate 8.2 — Fury Kernel/Gateway session bridge — IMPLEMENTED
+
+The bridge is deliberately not a second authentication or policy system.
+
+Contract:
+
+- the host supplies an already-generated process-local Gateway session lease;
+- copied/serialized Gateway leases are rejected;
+- `session/new` revalidates `conversation.open` against the current Gateway
+  session and command registry before binding;
+- each `session/prompt` revalidates
+  `conversation.message.submit` before the injected prompt handler runs;
+- an ACP session maps to a bounded Fury Kernel conversation state;
+- Gateway admission remains `executionAuthority:false`;
+- the bridge does not mint execution permits and does not execute providers,
+  tools, filesystem, terminal or network actions;
+- process-local ACP session snapshots are anti-forgery evidence;
+- copied ACP snapshots are rejected at the bridge boundary;
+- concurrent binding attempts for one ACP session converge on one Kernel
+  conversation and one durable evidence record;
+- cancellation remains authority-reducing and is never blocked merely because
+  Gateway authority was revoked after a prompt had already started;
+- durable RecoveryStore records contain digests only:
+  ACP session, Gateway session, principal, Kernel conversation and cwd;
+- live Gateway leases, raw principal IDs, raw cwd, raw conversation IDs and
+  process-local permits are never persisted;
+- durable evidence after restart is evidence only and does not reactivate a
+  process-local mapping or authority;
+- bridge evidence is bounded with RecoveryStore atomic capacity/uniqueness
+  constraints.
+
+Gate 8.2 must pass exact-head CI before Gate 8.3 begins.
 
 ### Gate 8.3 — tool/update projection
 

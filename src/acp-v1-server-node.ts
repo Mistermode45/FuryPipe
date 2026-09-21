@@ -45,8 +45,22 @@ export type FuryAcpV1PromptHandler = (
   context: FuryAcpV1PromptContext,
 ) => Promise<FuryAcpV1PromptResult>;
 
+export interface FuryAcpV1ServerSessionHooks {
+  readonly onCreated?: (
+    session: FuryAcpV1SessionSnapshot,
+  ) => void | Promise<void>;
+  readonly beforePrompt?: (
+    session: FuryAcpV1SessionSnapshot,
+    prompt: FuryAcpV1PromptInput,
+  ) => void | Promise<void>;
+  readonly onCancelled?: (
+    session: FuryAcpV1SessionSnapshot,
+  ) => void | Promise<void>;
+}
+
 export interface FuryAcpV1ServerOptions {
   readonly promptHandler: FuryAcpV1PromptHandler;
+  readonly sessionHooks?: FuryAcpV1ServerSessionHooks;
   readonly agentName?: string;
   readonly agentVersion?: string;
   readonly now?: () => number;
@@ -94,6 +108,7 @@ const MAX_RESOURCE_NAME_BYTES = 512;
 const MAX_MIME_BYTES = 256;
 const MAX_ADDITIONAL_DIRECTORIES = 32;
 const SESSION_ID_RE = /^facp_[A-Za-z0-9_-]{24}$/u;
+const SESSION_EVIDENCE = new WeakSet<object>();
 
 function boundedInteger(
   value: number | undefined,
@@ -153,7 +168,7 @@ function sessionId(): string {
 }
 
 function snapshot(session: MutableSession): FuryAcpV1SessionSnapshot {
-  return Object.freeze({
+  const evidence = Object.freeze({
     format: FURY_ACP_V1_SESSION_FORMAT,
     sessionId: session.sessionId,
     cwd: session.cwd,
@@ -164,6 +179,16 @@ function snapshot(session: MutableSession): FuryAcpV1SessionSnapshot {
     authority: 'protocol-session-only' as const,
     executionAuthority: false as const,
   });
+  SESSION_EVIDENCE.add(evidence);
+  return evidence;
+}
+
+export function isGeneratedFuryAcpV1SessionSnapshot(
+  value: unknown,
+): value is FuryAcpV1SessionSnapshot {
+  return typeof value === 'object'
+    && value !== null
+    && SESSION_EVIDENCE.has(value);
 }
 
 function normalizePrompt(
@@ -303,7 +328,7 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
         },
       };
     })
-    .onRequest(acp.methods.agent.session.new, (ctx) => {
+    .onRequest(acp.methods.agent.session.new, async (ctx) => {
       if (sessions.size >= maxSessions) {
         throw new acp.RequestError(-32010, 'ACP session limit reached');
       }
@@ -336,6 +361,16 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
         createdAt,
         updatedAt: createdAt,
       });
+      const createdSession = sessions.get(id);
+      if (!createdSession) {
+        throw new acp.RequestError(-32603, 'ACP session allocation failed');
+      }
+      try {
+        await options.sessionHooks?.onCreated?.(snapshot(createdSession));
+      } catch (error) {
+        sessions.delete(id);
+        throw error;
+      }
       return { sessionId: id };
     })
     .onRequest(acp.methods.agent.session.prompt, async (ctx) => {
@@ -345,6 +380,7 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
       }
 
       const prompt = normalizePrompt(ctx.params, session, maxPromptBlocks, maxPromptBytes);
+      await options.sessionHooks?.beforePrompt?.(snapshot(session), prompt);
       const localAbort = new AbortController();
       session.activePrompt = localAbort;
       session.updatedAt = finiteNow(now);
@@ -401,9 +437,12 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
         }
       }
     })
-    .onNotification(acp.methods.agent.session.cancel, (ctx) => {
+    .onNotification(acp.methods.agent.session.cancel, async (ctx) => {
       const session = sessions.get(ctx.params.sessionId);
       session?.activePrompt?.abort();
+      if (session) {
+        await options.sessionHooks?.onCancelled?.(snapshot(session));
+      }
     });
 
   return Object.freeze({
