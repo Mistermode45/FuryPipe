@@ -65,3 +65,11 @@
 26a9be93a765576ce338ed5b8d02bbff9f3f76fe:eval/gemini-profile/lost-in-middle-300k-results.json:generic-api-key:734
 26a9be93a765576ce338ed5b8d02bbff9f3f76fe:eval/gemini-profile/lost-in-middle-300k-results.json:generic-api-key:777
 26a9be93a765576ce338ed5b8d02bbff9f3f76fe:eval/gemini-profile/lost-in-middle-300k-results.json:generic-api-key:811
+
+# Phase 8 A2A documentation false positive
+#
+# This exact historical fingerprint is prose-only documentation from Gate 8.9.
+# The current wording has already been rewritten. Keep this as an exact
+# fingerprint; do not broaden it to a path, rule or global allowlist.
+
+9983720a5a0c0bbd82e5e05bc1f58ec083c04faa:docs/FURYPIPE_VNEXT_PHASE8_ACP_INTEROPERABILITY_2026.md:generic-api-key:984
