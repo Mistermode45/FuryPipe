@@ -793,7 +793,7 @@ Evidence:
 This documentation-only closure commit requires the same 7/7 workflow and 9/9
 CI matrix proof before Gate 8.7 begins.
 
-### Gate 8.7 — external ACP client foundation — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
+### Gate 8.7 — external ACP client foundation — VALIDATED
 
 Contract:
 
@@ -835,8 +835,29 @@ Gate 8.7 adds a real stdio subprocess fixture across the CI matrix, package
 export smoke, adversarial copied-evidence tests, current-policy revalidation,
 identity mismatch checks, process/session limits and disconnect semantics.
 
-Required exact-head proof is 7/7 workflows and 9/9 CI matrix before Gate 8.7 is
-marked validated.
+Exact validated Gate 8.7 implementation HEAD:
+
+`498af34e1b6a91b47776bc35b7f70c3871a189d9`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- 262 test files / 2,980 tests SUCCESS on observed Ubuntu/Node 26;
+- 10 dedicated external ACP client foundation tests SUCCESS;
+- real stdio subprocess initialize/session fixture SUCCESS;
+- copied descriptor/session evidence rejection SUCCESS;
+- current Phase 6 sandbox command revalidation SUCCESS;
+- agent identity mismatch and protocol-version mismatch fail closed;
+- bounded concurrent external-session limit SUCCESS;
+- unexpected process loss becomes `disconnected` with
+  `automaticReplayAllowed:false`;
+- Phase 8 packed-artifact smoke loads the external ACP client foundation from
+  the packaged tarball across the matrix;
+- Windows Node 22/24/26 SUCCESS.
+
+This documentation-only closure commit requires the same 7/7 workflow and 9/9
+CI matrix proof before Gate 8.8 begins.
 
 ### Gate 8.8 — governed delegation permits
 
