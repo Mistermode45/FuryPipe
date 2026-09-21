@@ -929,11 +929,64 @@ Evidence:
 This documentation-only closure commit requires the same 7/7 workflow and 9/9
 CI matrix proof before Gate 8.9 begins.
 
-### Gate 8.9 — remote A2A adapter contract
+### Gate 8.9 — remote A2A adapter contract — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
 
-- adapter-only;
-- no public Gateway exposure;
-- identity/auth/network/replay protections.
+Contract:
+
+- the reviewed remote-agent contract targets the released A2A protocol v1.0
+  data model only;
+- this gate is adapter-only: it does not add an outbound HTTP executor, public
+  Gateway route, listener, webhook, discovery crawler or automatic remote-agent
+  invocation;
+- only explicitly configured Agent Card snapshots are admitted;
+- Agent Card snapshots must include the required v1.0 identity, interface,
+  capabilities, media-mode and skills fields used by the adapter contract;
+- the selected `supportedInterfaces` entry must advertise protocol version
+  `1.0` and an explicitly allowed binding (`HTTP+JSON` or `JSONRPC`);
+- Agent Card and selected interface URLs must use credential-free HTTPS and an
+  exact configured origin allowlist;
+- obvious local/private destinations (localhost, local/internal hostnames,
+  loopback, RFC1918, link-local and IPv6 local ranges) fail closed before a
+  transport exists;
+- DNS/public-IP resolution must still be revalidated by any future network
+  executor; adapter descriptors therefore carry
+  `requiresPublicResolutionVerification:true`;
+- redirects are forbidden by contract (`redirectPolicy:'error'`);
+- remote identity evidence binds the Agent Card digest, configured name/version
+  expectations, selected interface, destination origin/hostname, security
+  requirements and scoped auth-profile digest;
+- an optional trusted Agent Card SHA-256 pin may further bind provisioning
+  evidence; a mismatched pin fails closed;
+- when the Agent Card declares authentication requirements, a scoped
+  `authProfileId` reference is mandatory, but raw credentials never enter
+  adapter descriptors or durable-style message plans;
+- prepared A2A v1.0 messages use `ROLE_USER`, member-discriminated text Parts,
+  unique sender-generated `messageId` values and the selected interface
+  `tenant` when present;
+- each prepared message carries a fresh process-local replay nonce, bounded
+  expiry window and unique message ID evidence;
+- raw task text, destination URLs, tenant values, auth profile IDs, message IDs
+  and replay nonces are kept process-local; public plans expose only digests and
+  bounded policy metadata;
+- copied descriptors, copied plans and cross-adapter plan reuse fail closed;
+- request timeout, request size, response size and replay-window bounds are
+  fixed before any future network transport may run;
+- registry creation and message preparation perform zero network I/O;
+- adapter and plan evidence remain
+  `authenticated:false`,
+  `networkAuthority:false`,
+  `executionAuthority:false` and
+  `delegationAuthority:false`;
+- every message plan carries `automaticReplayAllowed:false`;
+- no Phase 8 change in this gate exposes FuryPipe Gateway publicly.
+
+Gate 8.9 adds adversarial tests for protocol downgrade, Agent Card identity/pin
+mismatch, missing scoped authentication evidence, unsafe/private destinations,
+origin mismatch, payload/time/replay bounds, copied evidence, replay uniqueness
+and malformed v1.0 cards.
+
+Required exact-head proof is 7/7 workflows and 9/9 CI matrix before Gate 8.9 is
+marked validated.
 
 ### Gate 8.10 — final interoperability evidence
 

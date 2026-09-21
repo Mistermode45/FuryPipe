@@ -80,6 +80,10 @@ try {
     'ACP delegation runtime export is missing from package.json',
   );
   assert(
+    installedPackage.exports?.['./a2a-remote-adapter-node'],
+    'A2A remote adapter export is missing from package.json',
+  );
+  assert(
     installedPackage.dependencies?.['@agentclientprotocol/sdk'] === '1.4.0',
     'ACP SDK is not exact-pinned to 1.4.0',
   );
@@ -117,13 +121,17 @@ try {
       "const d = await import('furypipe/acp-delegation-runtime-node');",
       "if (d.FURY_ACP_DELEGATION_PERMIT_FORMAT !== 'furypipe-acp-delegation-permit/v1') process.exit(1);",
       "if (d.FURY_ACP_DELEGATION_RECEIPT_FORMAT !== 'furypipe-acp-delegation-receipt/v1') process.exit(1);",
+      "const a2a = await import('furypipe/a2a-remote-adapter-node');",
+      "if (a2a.FURY_A2A_REMOTE_AGENT_DESCRIPTOR_FORMAT !== 'furypipe-a2a-remote-agent-descriptor/v1') process.exit(1);",
+      "if (a2a.FURY_A2A_REMOTE_MESSAGE_PLAN_FORMAT !== 'furypipe-a2a-remote-message-plan/v1') process.exit(1);",
+      "if (typeof a2a.createFuryA2aRemoteAdapter !== 'function') process.exit(1);",
       "if (typeof d.prepareFuryAcpDelegationRequest !== 'function') process.exit(1);",
       "if (typeof d.createFuryAcpDelegationGate !== 'function') process.exit(1);",
       "if (typeof d.createFuryAcpDelegationRuntime !== 'function') process.exit(1);",
     ].join(' '),
   ], installDir);
   assert(result.stderr === '', `ACP v1 package export wrote stderr: ${result.stderr}`);
-  console.log('phase8 ACP package smoke passed: packed ACP lifecycle, server, Gateway bridge, display projection, permission bridge, governed client capabilities, external client foundation and governed delegation runtime load with exact SDK dependency');
+  console.log('phase8 ACP package smoke passed: packed ACP lifecycle, server, Gateway bridge, display projection, permission bridge, governed client capabilities, external client foundation, governed delegation runtime and remote A2A adapter contract load with exact SDK dependency');
 } finally {
   if (installDir) await rm(installDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   if (tarball) await rm(tarball, { force: true });

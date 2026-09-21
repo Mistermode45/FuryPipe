@@ -584,6 +584,10 @@
     "./acp-delegation-runtime-node": {
       "types": "./dist/acp-delegation-runtime-node.d.ts",
       "import": "./dist/acp-delegation-runtime-node.js"
+    },
+    "./a2a-remote-adapter-node": {
+      "types": "./dist/a2a-remote-adapter-node.d.ts",
+      "import": "./dist/a2a-remote-adapter-node.js"
     }
   },
   "files": [
