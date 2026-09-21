@@ -567,7 +567,7 @@ Evidence:
 - 256 test files / 2,924 tests SUCCESS on observed Ubuntu/Node 26;
 - Phase 8 ACP package smoke SUCCESS across the matrix.
 
-### Gate 8.2 — Fury Kernel/Gateway session bridge — IMPLEMENTED
+### Gate 8.2 — Fury Kernel/Gateway session bridge — VALIDATED
 
 The bridge is deliberately not a second authentication or policy system.
 
@@ -611,7 +611,7 @@ Evidence:
 - 8 dedicated Gateway session bridge tests;
 - Phase 8 ACP package smoke SUCCESS across the complete matrix.
 
-### Gate 8.3 — tool/update projection — IMPLEMENTED
+### Gate 8.3 — tool/update projection — VALIDATED
 
 The projection boundary is display-only and does not create or transport
 execution authority.
@@ -648,7 +648,7 @@ Evidence:
 - 7 dedicated ACP display/update projection tests;
 - Phase 8 ACP package smoke SUCCESS across the complete matrix.
 
-### Gate 8.4 — governed permission bridge — IMPLEMENTED
+### Gate 8.4 — governed permission bridge — VALIDATED
 
 Contract:
 
@@ -680,8 +680,21 @@ Contract:
 - only the live process-local permit carries `executionAuthority:true`;
 - Gate 8.4 still performs no filesystem/terminal side effect itself.
 
-Gate 8.4 requires fresh exact-head 7/7 workflow and 9/9 CI proof before
-Gate 8.5 begins.
+Exact validated Gate 8.4 HEAD:
+
+`3261a4f19416807aa93a8c1520dcbddcc844bfd7`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- 259 test files / 2,948 tests SUCCESS on observed Ubuntu/Node 22;
+- dedicated ACP permission-bridge tests SUCCESS;
+- Phase 8 ACP package smoke SUCCESS with server, Gateway bridge, display
+  projection and permission-bridge exports loading with the exact SDK
+  dependency across the matrix.
+
+Gate 8.5 began only after this exact-head proof was green.
 
 ### Gate 8.5 — governed client FS/terminal capabilities — VALIDATED
 
@@ -1019,7 +1032,7 @@ Evidence:
 This documentation-only closure commit requires the same 7/7 workflow and 9/9
 CI matrix proof before Gate 8.10 begins.
 
-### Gate 8.10 — final interoperability evidence — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
+### Gate 8.10 — final interoperability evidence — VALIDATED
 
 Gate 8.10 adds no new authority, transport, listener, network executor or
 delegation capability. It is the Phase 8 evidence aggregation gate.
@@ -1079,8 +1092,39 @@ Final verification contract:
   - package smoke SUCCESS;
   - no merge, release, tag, npm publish or deploy.
 
-Required exact-head proof is 7/7 workflows and 9/9 CI matrix before Gate 8.10
-and Phase 8 are marked validated.
+Exact validated Gate 8.10 implementation HEAD:
+
+`09e869d152e7246c00b7b7344a6765a1d18dffc0`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 265 test files / 3,000 tests SUCCESS on observed Ubuntu/Node 26;
+- 2 dedicated Phase 8 final-verification tests SUCCESS;
+- stable ACP v1 protocol/editor conformance remains green;
+- Gateway-session restart/non-reactivation evidence remains green;
+- allow-once permission, exact-operation and expiry evidence remains green;
+- client filesystem/terminal uncertainty and no-blind-replay evidence remains
+  green;
+- external ACP identity/process/restart/disconnect evidence remains green;
+- governed delegation exact-binding/verification/unknown-outcome evidence
+  remains green;
+- A2A v1.0 identity/network/replay contract evidence remains green;
+- packed Phase 8 artifact smoke SUCCESS;
+- Secret Scan SUCCESS with only the documented exact historical false-positive
+  fingerprint suppression from Gate 8.9;
+- Benchmark Contract, RC Preparation Evidence, Dashboard Browser QA, Web Studio
+  Browser QA and Cross-Browser QA SUCCESS;
+- no merge, release, tag, npm publish or deploy occurred.
+
+Phase 8 ACP interoperability is therefore validated at its implementation HEAD.
+This status does not merge PR #221, mark it ready, publish a package, expose the
+Gateway publicly, or grant any additional execution/delegation/network
+authority.
+
+The documentation-only closure commit itself requires the same 7/7 workflow and
+9/9 CI matrix proof before the Phase 8 track is considered closed.
 
 ## 19. Required adversarial tests
 
