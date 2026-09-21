@@ -209,6 +209,18 @@
       "types": "./dist/gateway-automation-webhook-node.d.ts",
       "import": "./dist/gateway-automation-webhook-node.js"
     },
+    "./gateway-automation-observability-command-node": {
+      "types": "./dist/gateway-automation-observability-command-node.d.ts",
+      "import": "./dist/gateway-automation-observability-command-node.js"
+    },
+    "./gateway-automation-observability-node": {
+      "types": "./dist/gateway-automation-observability-node.d.ts",
+      "import": "./dist/gateway-automation-observability-node.js"
+    },
+    "./gateway-automation-notification-node": {
+      "types": "./dist/gateway-automation-notification-node.d.ts",
+      "import": "./dist/gateway-automation-notification-node.js"
+    },
     "./gateway-notification-node": {
       "types": "./dist/gateway-notification-node.d.ts",
       "import": "./dist/gateway-notification-node.js"
