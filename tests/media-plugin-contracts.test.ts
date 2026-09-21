@@ -28,8 +28,6 @@ function bundle(overrides: Partial<FuryMediaPluginBundleInput> = {}): FuryMediaP
     profiles: [{
       format: FURY_MEDIA_PLUGIN_PROFILE_FORMAT,
       id: 'stt-default',
-      bundleId: 'speech-lab',
-      bundleVersion: '1.2.3',
       family: 'stt-provider',
       permissions: ['media-read', 'voice-stt'],
       supportedMediaTypes: ['audio/wav', 'audio/mpeg'],
@@ -63,6 +61,8 @@ describe('FuryPipe Phase 9 media/voice plugin contracts', () => {
     expect(validated.permissions).toEqual(['device-speaker', 'media-read', 'voice-stt', 'voice-tts']);
     expect(validated.profiles[0]).toMatchObject({
       id: 'stt-default',
+      bundleId: 'speech-lab',
+      bundleVersion: '1.2.3',
       family: 'stt-provider',
       authority: 'profile-observation-only',
       executionAuthority: false,
