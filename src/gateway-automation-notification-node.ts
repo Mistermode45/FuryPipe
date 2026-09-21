@@ -532,7 +532,13 @@ export function createFuryGatewayAutomationNotificationBridge(
         );
       }
       const terminalFingerprintSha256 = eligibleFingerprint(status);
-      if (!terminalFingerprintSha256) {
+      if (
+        !terminalFingerprintSha256
+        || (
+          status.state !== 'terminal'
+          && status.state !== 'outcome-unknown'
+        )
+      ) {
         return planResult(status, 'not-eligible');
       }
 
