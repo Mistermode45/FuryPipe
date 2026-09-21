@@ -739,7 +739,7 @@ Evidence:
   packed-artifact smoke;
 - the temporary path-safe diagnostic was removed before this exact-head proof.
 
-### Gate 8.6 — ACP conformance + editor compatibility — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
+### Gate 8.6 — ACP conformance + editor compatibility — VALIDATED
 
 Contract:
 
@@ -772,8 +772,26 @@ Contract:
 - no reconnect/restart path converts evidence into live execution authority;
 - existing Phase 8 packed-artifact smoke remains mandatory.
 
-Required exact-head proof is 7/7 workflows and 9/9 CI matrix before Gate 8.6
-is marked validated.
+Exact validated Gate 8.6 implementation HEAD:
+
+`6130922dee6cfdaefdc653cd8c9b41d051366e7a`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- 261 test files / 2,970 tests SUCCESS on observed Ubuntu/Node 26;
+- 11 dedicated Gate 8.6 conformance/editor compatibility tests SUCCESS;
+- packed ACP lifecycle smoke SUCCESS across the matrix;
+- Windows Node 22/24/26 SUCCESS;
+- ACP v1 single-connection boundary, initialize-before-session, duplicate
+  initialize rejection, capability mismatch, cross-session concurrency,
+  same-session prompt exclusion, cooperative cancellation, unknown methods,
+  non-authoritative metadata, malformed NDJSON, stable-v1 batch rejection and
+  reconnect/restart authority invalidation are covered by exact-head tests.
+
+This documentation-only closure commit requires the same 7/7 workflow and 9/9
+CI matrix proof before Gate 8.7 begins.
 
 ### Gate 8.7 — external ACP client foundation
 
