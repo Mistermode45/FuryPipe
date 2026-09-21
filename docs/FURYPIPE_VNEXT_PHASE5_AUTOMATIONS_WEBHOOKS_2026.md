@@ -328,7 +328,7 @@ Evidence:
 - stable trigger identity deduplicates one occurrence across definition revisions;
 - scheduler races converge to one durable run/claim.
 
-### Gate 5.4 — governed run admission — IMPLEMENTED / VALIDATION PENDING
+### Gate 5.4 — governed run admission — IMPLEMENTED
 
 Revalidate current policy/capabilities and mint fresh bounded execution authority per run.
 
@@ -347,29 +347,118 @@ Implemented boundaries:
 - consumed permits are one-shot;
 - session/principal revocation, definition drift or run-state transition makes an unconsumed permit stale.
 
-### Gate 5.5 — authenticated webhook ingress
+Dedicated admission tests prove principal mismatch, missing current capability scope,
+definition drift, disabled definitions, bounded permit lifetime, permit one-shot use,
+copy/forgery rejection, session revocation and stale-run rejection.
 
-Bounded request surface, authentication, replay protection and trigger mapping.
+### Gate 5.5 — authenticated webhook ingress — VALIDATED
 
-### Gate 5.6 — cron scheduler
+Bounded request surface, HMAC-SHA256 authentication, durable replay protection and
+trigger mapping are implemented.
 
-IANA timezone-aware cron semantics with explicit DST/misfire behavior.
+Exact validated Gate 5.5 SHA:
 
-### Gate 5.7 — observability + notification integration
+`f19e1f82446dcb0cc09c5d1687736837d87b4141`
 
-Redacted status, run history summaries and Phase 4 notification routing.
+Evidence:
 
-### Gate 5.8 — final durability/restart evidence
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- 15 dedicated webhook tests;
+- 16 run-admission tests;
+- 13 scheduler tests;
+- 246 test files / 2,862 tests SUCCESS on the observed Linux CI job;
+- package smoke SUCCESS across Windows/macOS/Linux and Node 22/24/26;
+- raw body, raw event ID, webhook signature and webhook secret are not persisted
+  by the webhook journal;
+- exact authenticated replay maps to one logical run;
+- conflicting reuse of an event ID fails closed.
 
-Crash/restart tests before and after side-effect attempt, multi-process claim race tests, exact-head CI evidence.
+### Gate 5.6 — cron scheduler — IMPLEMENTED
 
-## 13.1 Current validation note
+IANA timezone-aware five-field cron scheduling is implemented without adding a
+third-party cron/timezone runtime.
 
-Gate 5.4 implementation HEAD before this documentation update was:
+Implemented semantics:
 
-`c7f852f56f87962db68dfc07fba2011334f14349`
+- supported fields: minute, hour, day-of-month, month and day-of-week;
+- supported syntax: wildcard, lists, ranges and bounded steps;
+- named IANA timezone is mandatory and normalized through the platform
+  `Intl.DateTimeFormat` timezone database;
+- persisted execution timestamps remain UTC epoch milliseconds;
+- no implicit server-local timezone;
+- `run-once` coalesces downtime to one latest due cron occurrence;
+- `skip` obeys the existing bounded misfire grace;
+- definition creation/start bounds prevent pre-definition backfill;
+- explicit `endAt` is honored;
+- spring-forward nonexistent local minutes are skipped;
+- fall-back repeated local minutes map to two distinct UTC occurrences;
+- Vixie/POSIX OR semantics are used when both day-of-month and day-of-week are
+  restricted;
+- durable trigger watermark prevents clock rollback from recreating an older
+  logical occurrence.
 
-GitHub had not materialized workflow runs for that SHA after the implementation commits. This documentation update intentionally creates a fresh synchronization SHA. Gate 5.4 must be considered validated only if the resulting exact HEAD independently passes the full workflow and CI matrix; prior Gate 5.3 evidence must not be reused as Gate 5.4 evidence.
+Dedicated cron tests include DST spring/fall behavior, non-leap-century search,
+misfire handling, end bounds and server-local-time independence.
+
+### Gate 5.7 — observability + notification integration — IMPLEMENTED
+
+Automation observability and downstream Phase 4 notification planning are
+implemented as data-only surfaces.
+
+Observability:
+
+- `automations.status` is inspect-only;
+- definition IDs are represented by digests in summaries;
+- output is bounded and reports truncation explicitly;
+- run summaries preserve `outcome-unknown` and
+  `automaticReplayAllowed:false`;
+- observability is always `authority:'observability-only'` with
+  `executionAuthority:false`;
+- credentials, webhook bodies and delivery payload bodies are not exposed.
+
+Notification integration:
+
+- pending/claimed runs are not notification-eligible;
+- known terminal outcomes may create one downstream notification plan;
+- `outcome-unknown` creates reconciliation-oriented warning intent and does not
+  authorize replay;
+- durable notification intent is reserved before downstream notification
+  creation;
+- concurrent bridges converge on one durable notification intent;
+- after restart an existing durable intent requires reconciliation instead of
+  silently recreating delivery;
+- notification delivery success/failure never rewrites the automation run's
+  execution outcome.
+
+### Gate 5.8 — final durability/restart evidence — IMPLEMENTED
+
+The final evidence gate adds cross-component tests for the Phase 5 invariants:
+
+- a crash after durable side-effect arming recovers as `outcome-unknown`;
+- recovered `outcome-unknown` cannot be automatically reclaimed/replayed;
+- two cron schedulers racing on one occurrence converge on one durable run and
+  one claim;
+- authenticated webhook payload content cannot self-grant requested scopes or
+  plugin permissions;
+- automation observability does not expose webhook payload, raw event ID,
+  principal ID or webhook source ID;
+- exact webhook replay after coordinator restart remains one durable event and
+  one logical run.
+
+The pre-documentation Gate 5.8 code SHA
+`7a7bd06ac2c3b88d87aababb2dc50e6c8adfa9a6` showed:
+
+- typecheck SUCCESS on observed CI runners;
+- 250 test files / 2,893 tests SUCCESS on Ubuntu 24.04 / Node 22;
+- package smoke SUCCESS on that runner;
+- Secret Scan, Benchmark Contract, RC Preparation Evidence, Dashboard Browser
+  QA, Web Studio Browser QA and Cross-Browser QA SUCCESS.
+
+This documentation commit creates a new final candidate SHA. Phase 5 is considered
+fully validated only when that exact final SHA independently passes the complete
+7-workflow set and all 9 CI matrix jobs. Evidence from an older SHA is not reused
+as final exact-head proof.
 
 ## 14. Explicit non-goals for Phase 5
 
@@ -386,17 +475,22 @@ Do not add:
 
 ## 15. Final Phase 5 gate
 
-Phase 5 is not complete until the exact final SHA proves:
+The implementation is closed at Gates 5.0 through 5.8.
+
+The final exact-head validation must prove all of the following together:
 
 - definitions and runs survive restart;
 - duplicate trigger occurrence does not duplicate a logical run;
 - concurrent claim race has one winner;
-- expired claim recovery does not replay outcome-unknown side effects;
+- armed-without-terminal recovery remains outcome-unknown and non-replayable;
 - schedule authority is revalidated at execution time;
-- unauthenticated/replayed webhook does not create an executable run;
+- unauthenticated/replayed webhook does not create executable authority;
 - webhook payload cannot self-grant scopes/capabilities;
+- cron is deterministic across IANA timezone/DST transitions;
 - observability contains no credentials or payload bodies;
+- notification delivery remains distinct from run execution success;
 - package exports pass smoke tests on supported Node/OS matrix;
-- Secret Scan, CI and browser QA remain green.
+- Secret Scan, Benchmark Contract, RC Preparation Evidence, Dashboard Browser
+  QA, Web Studio Browser QA, Cross-Browser QA and CI all remain green.
 
 No merge, release, tag, npm publish or deploy is authorized by this track.
