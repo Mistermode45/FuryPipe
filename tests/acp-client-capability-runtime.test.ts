@@ -180,57 +180,9 @@ async function runPrompt<T>(
     now: () => h.now,
     sessionHooks: h.bridge.sessionHooks,
     promptHandler: async (context) => {
-      try {
-        const result = await promptHandler(context);
-        value = result.value;
-        return { stopReason: result.stopReason };
-      } catch (error) {
-        const candidate = error as {
-          readonly name?: unknown;
-          readonly code?: unknown;
-          readonly message?: unknown;
-        };
-        const relation = path.relative(h.sandbox.rootPath, h.root);
-        let sandboxDot: string = 'ok';
-        try {
-          await h.sandbox.resolveReadPath('.');
-        } catch (sandboxError) {
-          const sandboxCandidate = sandboxError as {
-            readonly name?: unknown;
-            readonly code?: unknown;
-          };
-          sandboxDot = typeof sandboxCandidate.code === 'string'
-            ? sandboxCandidate.code
-            : typeof sandboxCandidate.name === 'string'
-              ? sandboxCandidate.name
-              : 'error';
-        }
-        console.error('Gate 8.5 prompt diagnostic', {
-          name: typeof candidate?.name === 'string'
-            ? candidate.name
-            : 'unknown',
-          code: typeof candidate?.code === 'string'
-            ? candidate.code
-            : 'unknown',
-          message: typeof candidate?.message === 'string'
-            ? candidate.message
-            : 'unknown',
-          platform: process.platform,
-          rootAbsolute: path.isAbsolute(h.root),
-          sandboxRootAbsolute: path.isAbsolute(h.sandbox.rootPath),
-          rootStartsDevice: /^\\\\\?\\/u.test(h.root),
-          sandboxRootStartsDevice: /^\\\\\?\\/u.test(h.sandbox.rootPath),
-          rootStartsUnc: h.root.startsWith('\\\\'),
-          sandboxRootStartsUnc: h.sandbox.rootPath.startsWith('\\\\'),
-          rootsEqual: h.root === h.sandbox.rootPath,
-          relationEmpty: relation.length === 0,
-          relationAbsolute: path.isAbsolute(relation),
-          relationEscapes: relation === '..'
-            || relation.startsWith('..' + path.sep),
-          sandboxDot,
-        });
-        throw error;
-      }
+      const result = await promptHandler(context);
+      value = result.value;
+      return { stopReason: result.stopReason };
     },
   });
 
