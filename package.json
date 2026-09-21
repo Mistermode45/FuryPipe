@@ -197,6 +197,10 @@
       "types": "./dist/gateway-automation-scheduler-node.d.ts",
       "import": "./dist/gateway-automation-scheduler-node.js"
     },
+    "./gateway-automation-cron-node": {
+      "types": "./dist/gateway-automation-cron-node.d.ts",
+      "import": "./dist/gateway-automation-cron-node.js"
+    },
     "./gateway-automation-run-admission-node": {
       "types": "./dist/gateway-automation-run-admission-node.d.ts",
       "import": "./dist/gateway-automation-run-admission-node.js"
