@@ -560,6 +560,14 @@
     "./acp-v1-server-node": {
       "types": "./dist/acp-v1-server-node.d.ts",
       "import": "./dist/acp-v1-server-node.js"
+    },
+    "./acp-gateway-session-bridge-node": {
+      "types": "./dist/acp-gateway-session-bridge-node.d.ts",
+      "import": "./dist/acp-gateway-session-bridge-node.js"
+    },
+    "./acp-v1-update-projection-node": {
+      "types": "./dist/acp-v1-update-projection-node.d.ts",
+      "import": "./dist/acp-v1-update-projection-node.js"
     }
   },
   "files": [

@@ -4,6 +4,11 @@ import { Readable, Writable } from 'node:stream';
 
 import * as acp from '@agentclientprotocol/sdk';
 
+import {
+  projectFuryAcpV1DisplayUpdate,
+  type FuryAcpV1DisplayUpdateInput,
+} from './acp-v1-update-projection-node.js';
+
 export const FURY_ACP_V1_SERVER_FORMAT = 'furypipe-acp-v1-server/v1' as const;
 export const FURY_ACP_V1_SESSION_FORMAT = 'furypipe-acp-v1-session/v1' as const;
 export const FURY_ACP_V1_PROTOCOL_VERSION = acp.PROTOCOL_VERSION;
@@ -35,6 +40,7 @@ export interface FuryAcpV1PromptContext {
   readonly prompt: FuryAcpV1PromptInput;
   readonly signal: AbortSignal;
   emitText(text: string): Promise<void>;
+  emitUpdate(update: FuryAcpV1DisplayUpdateInput): Promise<void>;
 }
 
 export interface FuryAcpV1PromptResult {
@@ -389,35 +395,36 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
       let emittedBytes = 0;
       const messageId = `fam_${randomBytes(18).toString('base64url')}`;
 
+      const emitUpdate = async (
+        value: FuryAcpV1DisplayUpdateInput,
+      ): Promise<void> => {
+        if (signal.aborted) {
+          const error = new Error('ACP prompt was cancelled');
+          error.name = 'AbortError';
+          throw error;
+        }
+        const projected = projectFuryAcpV1DisplayUpdate(value, {
+          messageId,
+          maxPayloadBytes: maxUpdateBytes,
+        });
+        updateCount += 1;
+        emittedBytes += projected.payloadBytes;
+        if (updateCount > maxUpdatesPerPrompt || emittedBytes > maxPromptBytes) {
+          throw new acp.RequestError(-32012, 'ACP prompt update budget exceeded');
+        }
+        await ctx.client.notify(acp.methods.client.session.update, {
+          sessionId: session.sessionId,
+          update: projected.update,
+        });
+      };
+
       try {
         const result = await options.promptHandler(Object.freeze({
           prompt,
           signal,
-          emitText: async (value: string): Promise<void> => {
-            if (signal.aborted) {
-              const error = new Error('ACP prompt was cancelled');
-              error.name = 'AbortError';
-              throw error;
-            }
-            const text = boundedText(value, maxUpdateBytes, 'agent update');
-            const bytes = Buffer.byteLength(text, 'utf8');
-            updateCount += 1;
-            emittedBytes += bytes;
-            if (updateCount > maxUpdatesPerPrompt || emittedBytes > maxPromptBytes) {
-              throw new acp.RequestError(-32012, 'ACP prompt update budget exceeded');
-            }
-            await ctx.client.notify(acp.methods.client.session.update, {
-              sessionId: session.sessionId,
-              update: {
-                sessionUpdate: 'agent_message_chunk',
-                messageId,
-                content: {
-                  type: 'text',
-                  text,
-                },
-              },
-            });
-          },
+          emitText: (value: string): Promise<void> =>
+            emitUpdate({ type: 'message', text: value }),
+          emitUpdate,
         }));
 
         if (signal.aborted) return { stopReason: 'cancelled' as const };

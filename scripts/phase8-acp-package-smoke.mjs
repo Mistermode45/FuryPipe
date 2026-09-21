@@ -56,6 +56,14 @@ try {
   const installedPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
   assert(installedPackage.exports?.['./acp-v1-server-node'], 'ACP v1 server export is missing from package.json');
   assert(
+    installedPackage.exports?.['./acp-gateway-session-bridge-node'],
+    'ACP Gateway session bridge export is missing from package.json',
+  );
+  assert(
+    installedPackage.exports?.['./acp-v1-update-projection-node'],
+    'ACP display projection export is missing from package.json',
+  );
+  assert(
     installedPackage.dependencies?.['@agentclientprotocol/sdk'] === '1.4.0',
     'ACP SDK is not exact-pinned to 1.4.0',
   );
@@ -69,10 +77,15 @@ try {
       "if (m.FURY_ACP_V1_SERVER_FORMAT !== 'furypipe-acp-v1-server/v1') process.exit(1);",
       "if (typeof m.createFuryAcpV1Server !== 'function') process.exit(1);",
       "if (typeof m.connectFuryAcpV1Stdio !== 'function') process.exit(1);",
+      "const b = await import('furypipe/acp-gateway-session-bridge-node');",
+      "if (typeof b.createFuryAcpGatewaySessionBridge !== 'function') process.exit(1);",
+      "const p = await import('furypipe/acp-v1-update-projection-node');",
+      "if (p.FURY_ACP_V1_DISPLAY_UPDATE_FORMAT !== 'furypipe-acp-v1-display-update/v1') process.exit(1);",
+      "if (typeof p.projectFuryAcpV1DisplayUpdate !== 'function') process.exit(1);",
     ].join(' '),
   ], installDir);
   assert(result.stderr === '', `ACP v1 package export wrote stderr: ${result.stderr}`);
-  console.log('phase8 ACP package smoke passed: stable v1 server export loads with exact SDK dependency');
+  console.log('phase8 ACP package smoke passed: server, Gateway bridge and display projection exports load with exact SDK dependency');
 } finally {
   if (installDir) await rm(installDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   if (tarball) await rm(tarball, { force: true });

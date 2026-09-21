@@ -598,14 +598,46 @@ Contract:
 - bridge evidence is bounded with RecoveryStore atomic capacity/uniqueness
   constraints.
 
-Gate 8.2 must pass exact-head CI before Gate 8.3 begins.
+Exact validated Gate 8.2 HEAD:
 
-### Gate 8.3 — tool/update projection
+`27a8d188e4b866f66cf90cb8298c5d5d97961ecd`
 
-- plans/messages/tool calls;
-- bounded updates;
-- strict content projection;
-- no authority through display state.
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- 257 test files / 2,932 tests SUCCESS on observed Ubuntu/Node 22;
+- 7 dedicated ACP server tests;
+- 8 dedicated Gateway session bridge tests;
+- Phase 8 ACP package smoke SUCCESS across the complete matrix.
+
+### Gate 8.3 — tool/update projection — IMPLEMENTED
+
+The projection boundary is display-only and does not create or transport
+execution authority.
+
+Contract:
+
+- stable ACP v1 update forms only: `agent_message_chunk`, `plan`,
+  `tool_call`, `tool_call_update`;
+- FuryPipe-owned exact input schema with unknown-field rejection;
+- text, title, IDs, plan entry counts, semantic payload bytes and serialized
+  wire bytes are bounded;
+- plans project only content/priority/status;
+- tool calls project only ID/title/kind/status and optional bounded text;
+- `rawInput`, `rawOutput`, file locations, terminal handles, diffs and
+  arbitrary `_meta` are not accepted by the Gate 8.3 projector;
+- projection receipts are `authority:'display-only'` and
+  `executionAuthority:false`;
+- only the protocol `SessionUpdate` is emitted on the ACP wire;
+- `emitText()` is preserved and now delegates through the same projector;
+- `emitUpdate()` shares the existing per-prompt update-count/payload budgets
+  and cancellation signal;
+- Gate 8.2 bridge and Gate 8.3 projector are exported and verified from the
+  packed npm artifact.
+
+Gate 8.3 requires fresh exact-head 7/7 workflow and 9/9 CI proof before
+Gate 8.4 begins.
 
 ### Gate 8.4 — governed permission bridge
 
