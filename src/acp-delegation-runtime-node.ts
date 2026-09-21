@@ -690,7 +690,6 @@ function consumePermit(
     );
   }
   if (now >= permit.expiresAt) {
-    state.consumed = true;
     throw new FuryAcpDelegationError(
       'permit-expired',
       'delegation permit has expired',

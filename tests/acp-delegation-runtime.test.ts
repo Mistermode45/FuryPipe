@@ -260,7 +260,7 @@ describe('FuryPipe ACP Gate 8.8 governed delegation permits', () => {
     }
   });
 
-  it('expires permits and consumes expired authority', async () => {
+  it('keeps expired permits expired and unusable', async () => {
     const { external, session } = await openFixture();
     try {
       let now = 1_000;
@@ -279,7 +279,7 @@ describe('FuryPipe ACP Gate 8.8 governed delegation permits', () => {
         code: 'permit-expired',
       });
       await expect(runtime.execute(request, permit)).rejects.toMatchObject({
-        code: 'permit-consumed',
+        code: 'permit-expired',
       });
     } finally {
       await external.closeSession(session);
