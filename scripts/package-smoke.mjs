@@ -468,6 +468,13 @@ try {
   ], installDir);
   assert(gatewayAutomationRunAdmissionExport.stderr === '', `Gateway automation run admission export wrote stderr: ${gatewayAutomationRunAdmissionExport.stderr}`);
 
+  const gatewayAutomationWebhookExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-webhook-node'); if (typeof m.createFuryGatewayAutomationWebhookCoordinator !== 'function' || typeof m.signFuryGatewayAutomationWebhookRequest !== 'function' || typeof m.isGeneratedFuryGatewayAutomationWebhookCoordinator !== 'function' || m.FURY_GATEWAY_AUTOMATION_WEBHOOK_EVENT_FORMAT !== 'furypipe-gateway-automation-webhook-event/v1' || m.FURY_GATEWAY_AUTOMATION_WEBHOOK_RECEIPT_FORMAT !== 'furypipe-gateway-automation-webhook-receipt/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationWebhookExport.stderr === '', `Gateway automation webhook export wrote stderr: ${gatewayAutomationWebhookExport.stderr}`);
+
   const gatewayNotificationExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
