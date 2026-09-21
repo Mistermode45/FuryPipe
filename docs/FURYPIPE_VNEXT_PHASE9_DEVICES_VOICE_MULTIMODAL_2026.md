@@ -1056,11 +1056,58 @@ Evidence:
 The documentation-only Gate 9.2 closure commit itself requires the same
 exact-head 7/7 workflow and 9/9 CI proof before Gate 9.3 begins.
 
-### Gate 9.3 — governed node-operation permits
+### Gate 9.3 — governed node-operation permits — VALIDATED
 
-Introduce exact, one-shot bounded permits for node actions.
+Implementation surface:
 
-No ambient remote-control authority.
+- `src/gateway-node-operation-node.ts` adds process-local, short-lived,
+  one-shot node-operation permits and dispatch-boundary consumption evidence;
+- `tests/fury-gateway-node-operation.test.ts` adds dedicated adversarial
+  permit, reconnect, expiry, policy and anti-replay coverage.
+
+Contract:
+
+- issue requires current Gateway operator admission with `nodes.manage`,
+  a genuine live Phase 9 node session and the exact current capability
+  advertisement;
+- permits are bound to the exact normalized operation digest, principal,
+  Gateway session, node session/liveness epoch, registration, device, pairing,
+  capability generation and capability digest;
+- permits are process-local, copied permits fail closed, expire within a
+  bounded TTL and are consumed exactly once;
+- Gateway/session policy, node liveness and current advertisement generation
+  are revalidated immediately before dispatch-boundary consumption;
+- reconnect, session close, capability re-advertisement, Gateway-session
+  revocation and coordinator restart invalidate old authority;
+- the consume receipt records only `consumed-for-dispatch`; it never claims
+  that a remote side effect succeeded;
+- side-effecting operations explicitly require reconciliation when a later
+  dispatch outcome is unknown;
+- `retrySafe:false` and `automaticReplayAllowed:false` prevent blind retry
+  or replay after a possible side effect;
+- Gate 9.3 introduces no shell, filesystem, camera, microphone, speaker,
+  notification or other node transport/executor.
+
+Exact validated Gate 9.3 implementation HEAD:
+
+`008c1802fe877e70a8c4714abb9730e73fbc301e`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- CI 9/9 SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 268 test files / 3,047 tests SUCCESS on observed Ubuntu/Node 26;
+- 16 dedicated Phase 9 governed node-operation tests SUCCESS;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS, including Phase 6/7/8 packed-artifact smokes;
+- Secret Scan, Benchmark Contract, RC Preparation Evidence, Dashboard Browser
+  QA, Web Studio Browser QA and Cross-Browser QA SUCCESS;
+- no public Phase 9 runtime export or new dependency was introduced;
+- no merge, release, tag, npm publish or deploy occurred.
+
+The documentation-only Gate 9.3 closure commit itself requires the same
+exact-head 7/7 workflow and 9/9 CI proof before Gate 9.4 begins.
 
 ### Gate 9.4 — media/voice plugin contracts
 
