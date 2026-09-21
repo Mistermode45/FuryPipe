@@ -207,3 +207,30 @@ sélectionner silencieusement un gagnant.
 
 Le statut d’une gate ne sera déclaré `PASS` qu’après tests locaux, build,
 package smoke, Secret Scan et CI sur le SHA exact de la PR Phase 7.
+
+## 9. Preuve exact-head de l’implémentation
+
+La première preuve hébergée de cette implementation commit est attachée à la
+Draft PR #218 :
+
+```text
+base: 51839182066a4520fed29cf396856495d8400fc3
+head implementation: 0fd246b9b5afe5de90dccb0556a4c7470eeab807
+PR: https://github.com/Mistermode45/FuryPipe/pull/218
+state: OPEN + DRAFT
+merge state: CLEAN
+```
+
+Sur ce SHA :
+
+- matrice 9/9 Ubuntu 24.04, macOS 14 et Windows 2025 × Node 22.23.2,
+  24.21.0 et 26.8.2 : `PASS` ;
+- `gitleaks`, `contract`, `prepare`, deux jobs Chromium et
+  `browser-engines` : `PASS` ;
+- Cross-Browser QA : `PASS`, avec Dashboard, Web Studio et Gateway WebChat ;
+- aucune preuve hébergée n’est extrapolée à un provider réel, une source
+  externe ou un déploiement.
+
+Le commit documentaire suivant est soumis à une nouvelle vérification exact-
+HEAD ; la preuve ci-dessus reste rattachée à son SHA source et n’est pas
+présentée comme une preuve automatique d’un commit ultérieur.

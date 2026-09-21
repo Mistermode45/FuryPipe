@@ -612,3 +612,10 @@
 - `pnpm run package:smoke` : PASS, package smoke complet incluant `scripts/phase7-package-smoke.mjs`; export `furypipe/memory-vnext` et documentation chargés depuis le tarball installé.
 - `git diff --check` : PASS. La preuve CI exact-head reste à obtenir après push ; aucun résultat hébergé n’est déduit des tests locaux.
 - Limites : les copies dans une source externe, backups hors namespace ou systèmes non contrôlés ne sont pas supprimées ; aucun provider/OAuth/LLM réel, embedding, vector DB, déploiement ou runtime production n’est exécuté.
+
+## 2026-09-21 — FuryPipe VNext Phase 7 — exact-head implementation closure
+
+- Draft PR #218 ouverte vers `vnext-phase6-browser-coding-runtime`, base exacte `51839182066a4520fed29cf396856495d8400fc3`, head implementation exact `0fd246b9b5afe5de90dccb0556a4c7470eeab807`, PR `OPEN + DRAFT`, merge state `CLEAN`.
+- CI exact head implementation : 15/15 contrôles `PASS` ; matrice 9/9 Ubuntu 24.04, macOS 14 et Windows 2025 × Node 22.23.2, 24.21.0 et 26.8.2 ; `gitleaks`, `contract`, `prepare`, deux Chromium et `browser-engines` PASS.
+- Cross-Browser QA exact head : PASS sur Dashboard, Web Studio et Gateway WebChat ; aucune modification de code n’a été faite pour obtenir ce résultat.
+- La documentation et cette clôture sont ensuite mises à jour dans un commit séparé ; ce nouveau HEAD doit repasser la même matrice avant d’être présenté comme le HEAD final validé.
