@@ -556,6 +556,10 @@
     "./memory-vnext": {
       "types": "./dist/memory-vnext.d.ts",
       "import": "./dist/memory-vnext.js"
+    },
+    "./acp-v1-server-node": {
+      "types": "./dist/acp-v1-server-node.d.ts",
+      "import": "./dist/acp-v1-server-node.js"
     }
   },
   "files": [
@@ -634,7 +638,8 @@
     "docs/PROVIDER_TRANSPORT_HEALTH.md",
     "docs/OPUS5_RUNTIME_ELIGIBILITY_INCIDENT.md",
     "docs/FURYPIPE_VNEXT_PHASE6_BROWSER_CODING_RUNTIME_2026.md",
-    "docs/FURYPIPE_VNEXT_PHASE7_MEMORY_VNEXT_2026.md"
+    "docs/FURYPIPE_VNEXT_PHASE7_MEMORY_VNEXT_2026.md",
+    "docs/FURYPIPE_VNEXT_PHASE8_ACP_INTEROPERABILITY_2026.md"
   ],
   "scripts": {
     "audit": "pnpm audit --prod --audit-level high",
@@ -651,7 +656,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.hosted-mcp.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package:smoke": "node scripts/package-smoke.mjs && node scripts/phase6-package-smoke.mjs && node scripts/phase7-package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
+    "package:smoke": "node scripts/package-smoke.mjs && node scripts/phase6-package-smoke.mjs && node scripts/phase7-package-smoke.mjs && node scripts/phase8-acp-package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
     "vendor:ui": "node scripts/vendor-ui.mjs",
     "browser:webchat:qa": "tsx scripts/gateway-webchat-browser-qa.ts"
@@ -696,7 +701,9 @@
     "@modelcontextprotocol/server": "2.0.0",
     "gpt-tokenizer": "^4.0.0",
     "json5": "^2.2.3",
-    "ws": "8.21.3"
+    "ws": "8.21.3",
+    "@agentclientprotocol/sdk": "1.4.0",
+    "zod": "4.6.2"
   },
   "repository": {
     "type": "git",

@@ -548,6 +548,26 @@ This document.
 - bounded session/update projection;
 - no client FS/terminal side effects yet.
 
+### Gate 8.1 — ACP v1 stdio server foundation
+
+Implementation contract:
+
+- exact dependency pin: `@agentclientprotocol/sdk = 1.4.0`;
+- exact peer pin: `zod = 4.6.2`;
+- stable ACP v1 import only; no experimental v2 import;
+- one server instance represents one ACP connection boundary;
+- `initialize`, `session/new`, `session/prompt`, `session/cancel`;
+- `text` and `resource_link` prompt blocks only in this gate;
+- resource links are forwarded as untrusted metadata only and are never fetched;
+- MCP attachment is rejected until a later governed gate;
+- client FS/terminal/permission methods are never invoked;
+- sessions and live cancellation controllers are process-local;
+- ACP session IDs are protocol handles only;
+- all prompt/update counts and UTF-8 byte sizes are bounded;
+- package export and packed-artifact smoke are mandatory.
+
+Exit evidence must be attached to the exact implementation SHA before Gate 8.2 begins.
+
 ### Gate 8.2 — Fury Kernel/Gateway session bridge
 
 - principal/session mapping;
