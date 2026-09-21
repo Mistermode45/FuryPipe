@@ -624,7 +624,7 @@ export function createFuryAcpGatewaySessionBridge(
   };
 
   const sessionHooks: FuryAcpV1ServerSessionHooks = Object.freeze({
-    async onCreated(session): Promise<void> {
+    async onCreated(session: FuryAcpV1SessionSnapshot): Promise<void> {
       try {
         await bind(session);
       } catch (error) {
@@ -641,7 +641,7 @@ export function createFuryAcpGatewaySessionBridge(
         throw bridgeAcpError(error);
       }
     },
-    async onCancelled(session): Promise<void> {
+    async onCancelled(session: FuryAcpV1SessionSnapshot): Promise<void> {
       try {
         observeCancellation(session);
       } catch (error) {
