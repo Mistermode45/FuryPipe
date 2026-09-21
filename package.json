@@ -572,6 +572,10 @@
     "./acp-permission-bridge-node": {
       "types": "./dist/acp-permission-bridge-node.d.ts",
       "import": "./dist/acp-permission-bridge-node.js"
+    },
+    "./acp-client-capability-runtime-node": {
+      "types": "./dist/acp-client-capability-runtime-node.d.ts",
+      "import": "./dist/acp-client-capability-runtime-node.js"
     }
   },
   "files": [

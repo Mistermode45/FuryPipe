@@ -53,6 +53,13 @@ export interface FuryAcpPermissionOperation {
   readonly riskClass: FuryGatewayCommandRiskClass;
   readonly requiredScopes: readonly FuryGatewayScope[];
   readonly requiredPluginPermissions: readonly FuryPluginPermission[];
+  /**
+   * Optional digest of the concrete bounded side-effect request.
+   *
+   * Gate 8.5 requires this for client FS/terminal operations so an allow-once
+   * decision cannot be replayed against different path/content/command data.
+   */
+  readonly targetDigestSha256?: string;
 }
 
 export type FuryAcpPermissionDecisionReason =
@@ -204,6 +211,7 @@ const PLUGIN_PERMISSIONS = new Set<FuryPluginPermission>(
 const DEFAULT_PERMIT_TTL_MS = 30_000;
 const MAX_PERMIT_TTL_MS = 5 * 60_000;
 const MAX_TITLE_BYTES = 2 * 1024;
+const TARGET_DIGEST_RE = /^[0-9a-f]{64}$/u;
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -287,6 +295,7 @@ function normalizeOperation(
       'riskClass',
       'requiredScopes',
       'requiredPluginPermissions',
+      'targetDigestSha256',
     ],
     [
       'format',
@@ -313,6 +322,13 @@ function normalizeOperation(
       .includes(record.riskClass)
     || !Array.isArray(record.requiredScopes)
     || !Array.isArray(record.requiredPluginPermissions)
+    || (
+      record.targetDigestSha256 !== undefined
+      && (
+        typeof record.targetDigestSha256 !== 'string'
+        || !TARGET_DIGEST_RE.test(record.targetDigestSha256)
+      )
+    )
   ) {
     throw new FuryAcpPermissionBridgeError('invalid-operation');
   }
@@ -348,6 +364,9 @@ function normalizeOperation(
     riskClass: record.riskClass as FuryGatewayCommandRiskClass,
     requiredScopes: Object.freeze([...scopes].sort()),
     requiredPluginPermissions: Object.freeze([...permissions].sort()),
+    ...(record.targetDigestSha256 === undefined
+      ? {}
+      : { targetDigestSha256: record.targetDigestSha256 as string }),
   });
 }
 

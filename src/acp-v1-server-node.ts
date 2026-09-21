@@ -8,6 +8,12 @@ import {
   projectFuryAcpV1DisplayUpdate,
   type FuryAcpV1DisplayUpdateInput,
 } from './acp-v1-update-projection-node.js';
+import {
+  createFuryAcpV1ClientTransport,
+  deactivateFuryAcpV1ClientTransport,
+  snapshotFuryAcpV1ClientCapabilities,
+  type FuryAcpV1ClientTransport,
+} from './acp-client-transport-node.js';
 
 export const FURY_ACP_V1_SERVER_FORMAT = 'furypipe-acp-v1-server/v1' as const;
 export const FURY_ACP_V1_SESSION_FORMAT = 'furypipe-acp-v1-session/v1' as const;
@@ -72,6 +78,11 @@ export interface FuryAcpV1PromptContext {
   readonly prompt: FuryAcpV1PromptInput;
   readonly session: FuryAcpV1SessionSnapshot;
   readonly permissionRequester: FuryAcpV1PermissionRequester;
+  /**
+   * Opaque process-local view of ACP client capabilities for the active prompt.
+   * Capability advertisement is not execution authority.
+   */
+  readonly clientTransport: FuryAcpV1ClientTransport;
   readonly signal: AbortSignal;
   emitText(text: string): Promise<void>;
   emitUpdate(update: FuryAcpV1DisplayUpdateInput): Promise<void>;
@@ -557,6 +568,7 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
   const agentName = boundedText(options.agentName ?? 'furypipe', 128, 'agentName');
   const agentVersion = boundedText(options.agentVersion ?? '0.15.0', 64, 'agentVersion');
   const sessions = new Map<string, MutableSession>();
+  let clientCapabilities = snapshotFuryAcpV1ClientCapabilities(undefined);
 
   const requireSession = (id: unknown): MutableSession => {
     if (typeof id !== 'string' || !SESSION_ID_RE.test(id)) {
@@ -572,6 +584,9 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
   const app = acp
     .agent({ name: agentName })
     .onRequest(acp.methods.agent.initialize, (ctx) => {
+      clientCapabilities = snapshotFuryAcpV1ClientCapabilities(
+        ctx.params.clientCapabilities,
+      );
       // ACP v1 is the only production protocol enabled in this gate.
       // Returning v1 for another requested version follows ACP negotiation:
       // the client must disconnect when it cannot support the returned version.
@@ -654,6 +669,16 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
           params,
         ),
       );
+      const clientTransport = createFuryAcpV1ClientTransport(
+        clientCapabilities,
+        (method, params, cancellationSignal) => ctx.client.request(
+          method,
+          params,
+          cancellationSignal === undefined
+            ? undefined
+            : { cancellationSignal },
+        ),
+      );
       let updateCount = 0;
       let emittedBytes = 0;
       const messageId = `fam_${randomBytes(18).toString('base64url')}`;
@@ -686,6 +711,7 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
           prompt,
           session: promptSession,
           permissionRequester,
+          clientTransport,
           signal,
           emitText: (value: string): Promise<void> =>
             emitUpdate({ type: 'message', text: value }),
@@ -703,6 +729,7 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
         }
         throw error;
       } finally {
+        deactivateFuryAcpV1ClientTransport(clientTransport);
         PERMISSION_REQUESTERS.delete(permissionRequester);
         if (session.activePrompt === localAbort) {
           session.activePrompt = undefined;

@@ -683,11 +683,50 @@ Contract:
 Gate 8.4 requires fresh exact-head 7/7 workflow and 9/9 CI proof before
 Gate 8.5 begins.
 
-### Gate 8.5 — governed client FS/terminal capabilities
+### Gate 8.5 — governed client FS/terminal capabilities — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
 
-- Phase 6 root/sandbox/process controls reused;
-- client capability != authority;
-- uncertainty handling.
+Contract:
+
+- Phase 6 root/sandbox/process controls are reused; no second sandbox or process
+  policy engine is introduced;
+- ACP client capabilities are snapshotted from `initialize` as
+  non-authoritative connection evidence;
+- client capability != path/command authorization != side effect success;
+- prompt-scoped client transports are opaque, process-local and deactivated when
+  the prompt finishes, so reconnect/restart cannot revive capability state;
+- filesystem operations require native absolute paths and are remapped through
+  the current Phase 6 sandbox root before any permission request;
+- lexical parent traversal, outside-root paths, UNC/device paths, ADS-like
+  components, symlink/junction escapes and policy-root mismatches fail closed;
+- read/write byte limits are bounded by the Phase 6 sandbox file budget;
+- terminal command, args, cwd, environment, timeout and output limits are
+  validated through the Phase 6 coding process runtime before ACP invocation;
+- only explicitly requested, allowlisted environment values cross the ACP
+  boundary; inherited host environment is not forwarded;
+- each Gate 8.5 plan contains only digests and non-authoritative metadata;
+  paths, file contents, commands, args and environment values are not placed in
+  plan/receipt observability;
+- Gate 8.4 operations may carry `targetDigestSha256`; Gate 8.5 requires it and
+  binds each allow-once permit to the concrete normalized path/content/command
+  request digest;
+- path/process state and advertised capability are revalidated immediately
+  before Gate 8.4 permit consumption;
+- the Gate 8.4 permit is consumed before the first ACP client side effect;
+- copied plans/transports/permits and wrong-session/wrong-request digests fail
+  closed;
+- client filesystem write failure after invocation is `outcome:'unknown'`;
+  blind automatic replay is forbidden;
+- terminal/create lost response, timeout/cancellation after possible process
+  start, or uncertain terminal cleanup is `outcome:'unknown'`;
+- terminal cancellation is cooperative and is never represented as rollback;
+- terminal output is bounded and explicit environment values are redacted from
+  returned output/evidence;
+- evidence receipts are `executionAuthority:false` and
+  `automaticReplayAllowed:false`;
+- package export smoke covers the governed client capability runtime.
+
+Required exact-head proof remains 7/7 workflows and 9/9 CI matrix before Gate
+8.5 is marked validated.
 
 ### Gate 8.6 — ACP conformance + editor compatibility
 
