@@ -35,9 +35,15 @@ export interface FuryGatewayAutomationIntervalTrigger {
   readonly misfirePolicy: FuryGatewayAutomationMisfirePolicy;
 }
 
+export interface FuryGatewayAutomationWebhookTrigger {
+  readonly kind: 'webhook';
+  readonly sourceId: string;
+}
+
 export type FuryGatewayAutomationTrigger =
   | FuryGatewayAutomationOneShotTrigger
-  | FuryGatewayAutomationIntervalTrigger;
+  | FuryGatewayAutomationIntervalTrigger
+  | FuryGatewayAutomationWebhookTrigger;
 
 export interface FuryGatewayAutomationBudgets {
   readonly maxWallTimeMs: number;
@@ -342,10 +348,29 @@ function timestamp(value: unknown): number {
 function trigger(value: unknown): FuryGatewayAutomationTrigger {
   const record = exactDataRecord(
     value,
-    ['kind', 'at', 'everyMs', 'startAt', 'endAt', 'misfirePolicy'],
-    ['kind', 'misfirePolicy'],
+    ['kind', 'at', 'everyMs', 'startAt', 'endAt', 'misfirePolicy', 'sourceId'],
+    ['kind'],
     'automation trigger',
   );
+  if (record.kind === 'webhook') {
+    if (
+      !Object.prototype.hasOwnProperty.call(record, 'sourceId')
+      || Object.prototype.hasOwnProperty.call(record, 'misfirePolicy')
+      || Object.prototype.hasOwnProperty.call(record, 'at')
+      || Object.prototype.hasOwnProperty.call(record, 'everyMs')
+      || Object.prototype.hasOwnProperty.call(record, 'startAt')
+      || Object.prototype.hasOwnProperty.call(record, 'endAt')
+    ) {
+      throw new FuryGatewayAutomationDefinitionError('invalid-input');
+    }
+    return Object.freeze({
+      kind: 'webhook' as const,
+      sourceId: id(record.sourceId, ID_RE),
+    });
+  }
+  if (!Object.prototype.hasOwnProperty.call(record, 'misfirePolicy')) {
+    throw new FuryGatewayAutomationDefinitionError('invalid-input');
+  }
   const policy = misfirePolicy(record.misfirePolicy);
   if (record.kind === 'one-shot') {
     if (!Object.prototype.hasOwnProperty.call(record, 'at')) {
