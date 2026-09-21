@@ -337,7 +337,7 @@ describe('FuryPipe ACP Gate 8.5 governed client capabilities', () => {
     fs.writeFileSync(second, 'second', 'utf8');
 
     const sideEffects: string[] = [];
-    await expect(runPrompt(
+    await runPrompt(
       h,
       {
         read: (params) => {
@@ -357,10 +357,14 @@ describe('FuryPipe ACP Gate 8.5 governed client capabilities', () => {
           { path: second },
         );
         const firstPermit = await admit(h, context, firstPlan);
-        await h.runtime.execute(secondPlan, firstPermit, context.session);
-        return { stopReason: 'end_turn' as const, value: undefined };
+        await expect(h.runtime.execute(
+          secondPlan,
+          firstPermit,
+          context.session,
+        )).rejects.toBeInstanceOf(FuryAcpPermissionBridgeError);
+        return { stopReason: 'end_turn' as const, value: true };
       },
-    )).rejects.toBeInstanceOf(FuryAcpPermissionBridgeError);
+    );
     expect(sideEffects).toEqual([]);
   });
 
@@ -423,7 +427,7 @@ describe('FuryPipe ACP Gate 8.5 governed client capabilities', () => {
     const h = await harness();
     const file = path.join(h.root, 'read.txt');
     fs.writeFileSync(file, 'data', 'utf8');
-    await expect(runPrompt(
+    await runPrompt(
       h,
       {
         capabilities: {
@@ -432,21 +436,21 @@ describe('FuryPipe ACP Gate 8.5 governed client capabilities', () => {
         },
       },
       async (context) => {
-        await h.runtime.prepareFsRead(
+        await expect(h.runtime.prepareFsRead(
           context.clientTransport,
           context.session,
           { path: file },
-        );
+        )).rejects.toBeInstanceOf(FuryAcpV1ClientTransportError);
         return { stopReason: 'end_turn' as const, value: true };
       },
-    )).rejects.toBeInstanceOf(FuryAcpV1ClientTransportError);
+    );
   });
 
   it('rejects an oversized write before any permission or client side effect', async () => {
     const h = await harness();
     const target = path.join(h.root, 'too-large.txt');
     let writes = 0;
-    await expect(runPrompt(
+    await runPrompt(
       h,
       {
         write: () => {
@@ -455,17 +459,17 @@ describe('FuryPipe ACP Gate 8.5 governed client capabilities', () => {
         },
       },
       async (context) => {
-        await h.runtime.prepareFsWrite(
+        await expect(h.runtime.prepareFsWrite(
           context.clientTransport,
           context.session,
           {
             path: target,
             content: 'x'.repeat(h.sandbox.limits.maxFileBytes + 1),
           },
-        );
+        )).rejects.toBeInstanceOf(FuryAcpClientCapabilityError);
         return { stopReason: 'end_turn' as const, value: true };
       },
-    )).rejects.toBeInstanceOf(FuryAcpClientCapabilityError);
+    );
     expect(writes).toBe(0);
   });
 
