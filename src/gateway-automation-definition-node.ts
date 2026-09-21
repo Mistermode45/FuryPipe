@@ -8,6 +8,10 @@ import {
   type FuryGatewayScope,
 } from './gateway-session-node.js';
 import type { FuryPluginPermission } from './plugin-bundles.js';
+import {
+  FuryGatewayAutomationCronError,
+  normalizeFuryGatewayCronSchedule,
+} from './gateway-automation-cron-node.js';
 
 export const FURY_GATEWAY_AUTOMATION_DEFINITION_FORMAT =
   'furypipe-gateway-automation-definition/v1' as const;
@@ -40,10 +44,20 @@ export interface FuryGatewayAutomationWebhookTrigger {
   readonly sourceId: string;
 }
 
+export interface FuryGatewayAutomationCronTrigger {
+  readonly kind: 'cron';
+  readonly expression: string;
+  readonly timeZone: string;
+  readonly startAt?: number;
+  readonly endAt?: number;
+  readonly misfirePolicy: FuryGatewayAutomationMisfirePolicy;
+}
+
 export type FuryGatewayAutomationTrigger =
   | FuryGatewayAutomationOneShotTrigger
   | FuryGatewayAutomationIntervalTrigger
-  | FuryGatewayAutomationWebhookTrigger;
+  | FuryGatewayAutomationWebhookTrigger
+  | FuryGatewayAutomationCronTrigger;
 
 export interface FuryGatewayAutomationBudgets {
   readonly maxWallTimeMs: number;
@@ -348,7 +362,17 @@ function timestamp(value: unknown): number {
 function trigger(value: unknown): FuryGatewayAutomationTrigger {
   const record = exactDataRecord(
     value,
-    ['kind', 'at', 'everyMs', 'startAt', 'endAt', 'misfirePolicy', 'sourceId'],
+    [
+      'kind',
+      'at',
+      'everyMs',
+      'startAt',
+      'endAt',
+      'misfirePolicy',
+      'sourceId',
+      'expression',
+      'timeZone',
+    ],
     ['kind'],
     'automation trigger',
   );
@@ -360,12 +384,59 @@ function trigger(value: unknown): FuryGatewayAutomationTrigger {
       || Object.prototype.hasOwnProperty.call(record, 'everyMs')
       || Object.prototype.hasOwnProperty.call(record, 'startAt')
       || Object.prototype.hasOwnProperty.call(record, 'endAt')
+      || Object.prototype.hasOwnProperty.call(record, 'expression')
+      || Object.prototype.hasOwnProperty.call(record, 'timeZone')
     ) {
       throw new FuryGatewayAutomationDefinitionError('invalid-input');
     }
     return Object.freeze({
       kind: 'webhook' as const,
       sourceId: id(record.sourceId, ID_RE),
+    });
+  }
+  if (record.kind === 'cron') {
+    if (
+      !Object.prototype.hasOwnProperty.call(record, 'expression')
+      || !Object.prototype.hasOwnProperty.call(record, 'timeZone')
+      || !Object.prototype.hasOwnProperty.call(record, 'misfirePolicy')
+      || Object.prototype.hasOwnProperty.call(record, 'at')
+      || Object.prototype.hasOwnProperty.call(record, 'everyMs')
+      || Object.prototype.hasOwnProperty.call(record, 'sourceId')
+    ) {
+      throw new FuryGatewayAutomationDefinitionError('invalid-input');
+    }
+    let schedule;
+    try {
+      schedule = normalizeFuryGatewayCronSchedule(
+        record.expression,
+        record.timeZone,
+      );
+    } catch (error) {
+      if (error instanceof FuryGatewayAutomationCronError) {
+        throw new FuryGatewayAutomationDefinitionError('invalid-input');
+      }
+      throw error;
+    }
+    const startAt = record.startAt === undefined
+      ? undefined
+      : timestamp(record.startAt);
+    const endAt = record.endAt === undefined
+      ? undefined
+      : timestamp(record.endAt);
+    if (
+      startAt !== undefined
+      && endAt !== undefined
+      && endAt <= startAt
+    ) {
+      throw new FuryGatewayAutomationDefinitionError('invalid-input');
+    }
+    return Object.freeze({
+      kind: 'cron' as const,
+      expression: schedule.expression,
+      timeZone: schedule.timeZone,
+      ...(startAt === undefined ? {} : { startAt }),
+      ...(endAt === undefined ? {} : { endAt }),
+      misfirePolicy: misfirePolicy(record.misfirePolicy),
     });
   }
   if (!Object.prototype.hasOwnProperty.call(record, 'misfirePolicy')) {
@@ -376,7 +447,14 @@ function trigger(value: unknown): FuryGatewayAutomationTrigger {
     if (!Object.prototype.hasOwnProperty.call(record, 'at')) {
       throw new FuryGatewayAutomationDefinitionError('invalid-input');
     }
-    for (const key of ['everyMs', 'startAt', 'endAt']) {
+    for (const key of [
+      'everyMs',
+      'startAt',
+      'endAt',
+      'sourceId',
+      'expression',
+      'timeZone',
+    ]) {
       if (Object.prototype.hasOwnProperty.call(record, key)) {
         throw new FuryGatewayAutomationDefinitionError('invalid-input');
       }
@@ -392,6 +470,9 @@ function trigger(value: unknown): FuryGatewayAutomationTrigger {
       !Object.prototype.hasOwnProperty.call(record, 'everyMs')
       || !Object.prototype.hasOwnProperty.call(record, 'startAt')
       || Object.prototype.hasOwnProperty.call(record, 'at')
+      || Object.prototype.hasOwnProperty.call(record, 'sourceId')
+      || Object.prototype.hasOwnProperty.call(record, 'expression')
+      || Object.prototype.hasOwnProperty.call(record, 'timeZone')
     ) {
       throw new FuryGatewayAutomationDefinitionError('invalid-input');
     }
