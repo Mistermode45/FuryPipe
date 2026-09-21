@@ -139,6 +139,7 @@ export interface FuryGatewayAutomationDefinitionStore {
   history(
     automationId: string,
   ): Promise<readonly FuryGatewayAutomationDefinitionInspection[]>;
+  listCurrent(): Promise<readonly FuryGatewayAutomationDefinitionInspection[]>;
   countRecords(): Promise<number>;
 }
 
@@ -1137,6 +1138,41 @@ export function createFuryGatewayAutomationDefinitionStore(
       return Object.freeze(
         history.map((loaded) => inspection(loaded.handle, loaded.definition)),
       );
+    },
+
+    async listCurrent(): Promise<readonly FuryGatewayAutomationDefinitionInspection[]> {
+      const handles = await store.list({
+        metadata: {
+          system: SYSTEM,
+          recordType: 'definition',
+        },
+        limit: maxDefinitionRecords,
+      });
+      const automationIds = new Set<string>();
+      for (const handle of handles) {
+        const candidate = handle.metadata?.automationId;
+        if (typeof candidate !== 'string') {
+          throw new FuryGatewayAutomationDefinitionError('definition-corrupt');
+        }
+        automationIds.add(id(candidate, AUTOMATION_ID_RE));
+      }
+      const output: FuryGatewayAutomationDefinitionInspection[] = [];
+      for (const automationId of [...automationIds].sort()) {
+        const history = await loadAutomation(
+          store,
+          automationId,
+          maxRevisionsPerAutomation,
+        );
+        const latest = history[history.length - 1];
+        if (!latest) {
+          throw new FuryGatewayAutomationDefinitionError(
+            'definition-corrupt',
+            automationId,
+          );
+        }
+        output.push(inspection(latest.handle, latest.definition));
+      }
+      return Object.freeze(output);
     },
 
     async countRecords(): Promise<number> {
