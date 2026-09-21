@@ -1,6 +1,6 @@
 # FuryPipe VNext — Phase 9 Devices + Voice/Multimodal (2026)
 
-> Status: Gate 9.0 architecture + threat model.
+> Status: Gate 9.0 architecture + threat model — VALIDATED at implementation HEAD.
 >
 > Stack base: validated Phase 8 exact HEAD `46f7ded2edc1b399dcd65d53cc4490be8c1ac5bd`.
 >
@@ -902,11 +902,29 @@ Later implementation gates must cover:
 
 ## 28. Phase 9 gate plan
 
-### Gate 9.0 — architecture + threat model
+### Gate 9.0 — architecture + threat model — VALIDATED
 
-Freeze this document and validate it on an exact clean HEAD.
+Exact validated implementation HEAD:
 
-No Phase 9 runtime dependency or execution capability is introduced here.
+`f7e2bf872882279bba22963d51d3cd0fd58c2440`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 265 test files / 3,000 tests SUCCESS on observed Ubuntu/Node 26;
+- package smoke SUCCESS;
+- Phase 6, Phase 7 and Phase 8 package smokes remain SUCCESS;
+- only `docs/FURYPIPE_VNEXT_PHASE9_DEVICES_VOICE_MULTIMODAL_2026.md`
+  changed against validated Phase 8;
+- no Phase 9 runtime dependency was introduced;
+- no device/media execution path was introduced;
+- PR #222 remained OPEN + DRAFT;
+- no merge, release, tag, npm publish or deploy occurred.
+
+Gate 9.0 freezes the Phase 9 architecture and threat model. The
+documentation-only closure commit itself must receive the same exact-head 7/7
+workflow and 9/9 CI proof before Gate 9.1 begins.
 
 ### Gate 9.1 — node registry + capability advertisements
 
