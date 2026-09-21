@@ -340,6 +340,12 @@ function normalizeAllowedContentTypes(
   ) {
     throw new FuryGatewayAutomationWebhookError('invalid-source');
   }
+  const own = Object.getOwnPropertyNames(input);
+  if (own.some((name) =>
+    name !== 'length' && !/^(?:0|[1-9][0-9]*)$/u.test(name)
+  )) {
+    throw new FuryGatewayAutomationWebhookError('invalid-source');
+  }
   const seen = new Set<string>();
   const normalized: string[] = [];
   for (let index = 0; index < input.length; index += 1) {
