@@ -980,10 +980,10 @@ Contract:
 - every message plan carries `automaticReplayAllowed:false`;
 - no Phase 8 change in this gate exposes FuryPipe Gateway publicly.
 
-Gate 8.9 adds adversarial tests for protocol downgrade, Agent Card identity/pin
-mismatch, missing scoped authentication evidence, unsafe/private destinations,
-origin mismatch, payload/time/replay bounds, copied evidence, replay uniqueness
-and malformed v1.0 cards.
+Gate 8.9 adds adversarial tests for protocol downgrade and Agent Card
+identity/pin mismatch. It also covers absent credential-profile configuration,
+private or unsafe destination rejection, origin mismatch, payload/time/replay
+bounds, copied evidence, replay uniqueness and malformed v1.0 cards.
 
 Required exact-head proof is 7/7 workflows and 9/9 CI matrix before Gate 8.9 is
 marked validated.
