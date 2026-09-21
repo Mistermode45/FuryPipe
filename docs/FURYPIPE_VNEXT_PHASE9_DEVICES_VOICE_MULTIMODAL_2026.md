@@ -926,12 +926,47 @@ Gate 9.0 freezes the Phase 9 architecture and threat model. The
 documentation-only closure commit itself must receive the same exact-head 7/7
 workflow and 9/9 CI proof before Gate 9.1 begins.
 
-### Gate 9.1 — node registry + capability advertisements
+### Gate 9.1 — node registry + capability advertisements — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
 
-Implement bounded, process-local/durable-aware node descriptors and
-advertisement generations on top of existing auth/pairing.
+Implementation surface:
 
-No node command execution yet.
+- `src/gateway-pairing-node.ts` now marks genuine pairing coordinators with
+  process-local anti-forgery evidence so copied/lookalike coordinators cannot
+  feed Phase 9 registry state;
+- `src/gateway-node-registry-node.ts` adds the bounded Phase 9 node registry;
+- `tests/fury-gateway-node-registry.test.ts` adds dedicated adversarial
+  registry/advertisement coverage.
+
+Contract:
+
+- only fresh process-local authenticated-device evidence with Gateway role
+  `node` may register;
+- registration reuses the existing pairing coordinator and requires a currently
+  paired identity;
+- the registry itself, node descriptors and capability advertisements are
+  process-local generated evidence;
+- copied descriptors and copied coordinators fail closed;
+- node descriptors bind device ID, public-key digest, client/instance identity
+  and pairing ID;
+- descriptors remain
+  `authority:'registry-evidence-only'` and `executionAuthority:false`;
+- advertisements use an exact input schema and monotonic generation;
+- capability names are canonical, duplicate-free and bounded by item/byte
+  limits;
+- advertisements are atomically replaced only by a newer generation;
+- each advertisement carries a SHA-256 capability digest,
+  `authority:'advertisement-only'`, `executionAuthority:false` and
+  `automaticReplayAllowed:false`;
+- pairing is revalidated before every new advertisement, so explicit revocation
+  blocks newer capability evidence;
+- registry snapshots expose bounded observation metadata and capability digests,
+  not pairing principals or execution authority;
+- explicit unregister invalidates the descriptor for that registry;
+- no node command, filesystem, shell, camera, microphone, speaker, notification
+  or media execution path exists in Gate 9.1.
+
+Gate 9.1 must receive fresh exact-head 7/7 workflow and 9/9 CI proof before
+Gate 9.2 begins.
 
 ### Gate 9.2 — node session/liveness + reconnect governance
 
