@@ -670,6 +670,9 @@ Contract:
 - only then is a short-lived process-local FuryPipe permit minted;
 - the permit is exact-operation, ACP-session, Gateway-session and
   principal-bound;
+- permit consumption requires the executor to present the exact normalized
+  operation again; a digest mismatch fails closed and consumes the permit;
+- permit expiry is exclusive at `expiresAt` and fails closed;
 - the permit is one-shot and TTL-bounded by the current Gateway session expiry;
 - copied requesters and copied/forged permits fail closed;
 - an expired/stale/revoked permit fails closed before side-effect execution;

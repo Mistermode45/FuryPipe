@@ -133,6 +133,7 @@ export interface FuryAcpPermissionBridge {
   consume(
     permit: FuryAcpPermissionPermit,
     session: FuryAcpV1SessionSnapshot,
+    expectedOperation: FuryAcpPermissionOperation,
     observedAt?: number,
   ): FuryAcpPermissionConsumeReceipt;
 }
@@ -666,6 +667,7 @@ export function createFuryAcpPermissionBridge(
     consume(
       permit: FuryAcpPermissionPermit,
       session: FuryAcpV1SessionSnapshot,
+      expectedOperationInput: FuryAcpPermissionOperation,
       observedAtInput?: number,
     ): FuryAcpPermissionConsumeReceipt {
       const state = PERMITS.get(permit);
@@ -679,14 +681,24 @@ export function createFuryAcpPermissionBridge(
         !isGeneratedFuryAcpV1SessionSnapshot(session)
         || state.sessionId !== session.sessionId
       ) {
+        CONSUMED_PERMITS.add(permit);
+        throw new FuryAcpPermissionBridgeError('permit-stale');
+      }
+
+      const expectedOperation = normalizeOperation(expectedOperationInput);
+      const expectedOperationDigestSha256 = operationDigest(expectedOperation);
+      CONSUMED_PERMITS.add(permit);
+      if (
+        expectedOperationDigestSha256 !== permit.operationDigestSha256
+        || expectedOperationDigestSha256 !== operationDigest(state.operation)
+      ) {
         throw new FuryAcpPermissionBridgeError('permit-stale');
       }
 
       const observedAt = observedAtInput === undefined
         ? safeNow(now())
         : safeNow(observedAtInput);
-      CONSUMED_PERMITS.add(permit);
-      if (observedAt > permit.expiresAt) {
+      if (observedAt >= permit.expiresAt) {
         throw new FuryAcpPermissionBridgeError('permit-expired');
       }
       const gateway = currentAdmission(session, state.operation);

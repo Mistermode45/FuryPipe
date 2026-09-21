@@ -199,10 +199,12 @@ describe('FuryPipe ACP governed permission bridge', () => {
         receipt = h.permissions.consume(
           admission.permit!,
           context.session,
+          processOperation(),
         );
         expect(() => h.permissions.consume(
           admission!.permit!,
           context.session,
+          processOperation(),
         )).toThrowError(FuryAcpPermissionBridgeError);
         return { stopReason: 'end_turn' };
       },
@@ -372,6 +374,7 @@ describe('FuryPipe ACP governed permission bridge', () => {
         expect(() => h.permissions.consume(
           { ...admission.permit! } as never,
           context.session,
+          processOperation(),
         )).toThrowError(FuryAcpPermissionBridgeError);
         copiedPermitRejected = true;
         return { stopReason: 'end_turn' };
@@ -379,6 +382,59 @@ describe('FuryPipe ACP governed permission bridge', () => {
     );
     expect(copiedRequesterRejected).toBe(true);
     expect(copiedPermitRejected).toBe(true);
+  });
+
+  it('consumes and rejects a permit when the executor presents a different operation', async () => {
+    const h = harness();
+    let staleCode: string | undefined;
+    let secondCode: string | undefined;
+    await runPrompt(
+      h,
+      (params) => {
+        const allow = params.options.find(
+          (option) => option.kind === 'allow_once',
+        );
+        if (!allow) throw new Error('allow_once missing');
+        return {
+          outcome: {
+            outcome: 'selected',
+            optionId: allow.optionId,
+          },
+        };
+      },
+      async (context) => {
+        const admission = await h.permissions.admit(
+          context.session,
+          context.permissionRequester,
+          processOperation(),
+        );
+        const mismatched = {
+          ...processOperation(),
+          operationId: 'terminal.execute.other',
+        };
+        try {
+          h.permissions.consume(
+            admission.permit!,
+            context.session,
+            mismatched,
+          );
+        } catch (error) {
+          staleCode = (error as FuryAcpPermissionBridgeError).code;
+        }
+        try {
+          h.permissions.consume(
+            admission.permit!,
+            context.session,
+            processOperation(),
+          );
+        } catch (error) {
+          secondCode = (error as FuryAcpPermissionBridgeError).code;
+        }
+        return { stopReason: 'end_turn' };
+      },
+    );
+    expect(staleCode).toBe('permit-stale');
+    expect(secondCode).toBe('permit-consumed');
   });
 
   it('fails closed on an expired permit before any side-effect execution', async () => {
@@ -406,7 +462,11 @@ describe('FuryPipe ACP governed permission bridge', () => {
         );
         h.now += 1_001;
         try {
-          h.permissions.consume(admission.permit!, context.session);
+          h.permissions.consume(
+            admission.permit!,
+            context.session,
+            processOperation(),
+          );
         } catch (error) {
           observedCode = (error as FuryAcpPermissionBridgeError).code;
         }
