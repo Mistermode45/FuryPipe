@@ -368,12 +368,19 @@ function decision(input: {
   const operationDigestSha256 = operationDigest(input.operation);
   const acpSessionIdSha256 = digest(
     'acp-session',
-    (input as { acpSessionId?: string }).acpSessionId ?? '',
+    input.acpSessionId,
   );
   const payload = {
     operationDigestSha256,
-    gatewaySessionIdSha256: sha256(input.session.sessionId),
-    principalIdSha256: sha256(input.session.principalId),
+    acpSessionIdSha256,
+    gatewaySessionIdSha256: digest(
+      'gateway-session',
+      input.session.sessionId,
+    ),
+    principalIdSha256: digest(
+      'principal',
+      input.session.principalId,
+    ),
     permissionRequestIdSha256: input.permissionRequestIdSha256,
     preGatewayDecisionIdSha256: input.preGateway?.decisionIdSha256,
     postGatewayDecisionIdSha256: input.postGateway?.decisionIdSha256,
@@ -512,7 +519,6 @@ export function createFuryAcpPermissionBridge(
         const denied = decision({
           operation,
           session: options.gatewaySession,
-        acpSessionId: session.sessionId,
           acpSessionId: session.sessionId,
           ...(preGateway === undefined ? {} : { preGateway }),
           outcome: 'deny',
@@ -550,7 +556,6 @@ export function createFuryAcpPermissionBridge(
         const denied = decision({
           operation,
           session: options.gatewaySession,
-        acpSessionId: session.sessionId,
           acpSessionId: session.sessionId,
           permissionRequestIdSha256,
           preGateway,
@@ -564,7 +569,6 @@ export function createFuryAcpPermissionBridge(
         const denied = decision({
           operation,
           session: options.gatewaySession,
-        acpSessionId: session.sessionId,
           acpSessionId: session.sessionId,
           permissionRequestIdSha256,
           preGateway,
@@ -583,7 +587,6 @@ export function createFuryAcpPermissionBridge(
         const denied = decision({
           operation,
           session: options.gatewaySession,
-        acpSessionId: session.sessionId,
           acpSessionId: session.sessionId,
           permissionRequestIdSha256,
           preGateway,
@@ -604,7 +607,6 @@ export function createFuryAcpPermissionBridge(
         const denied = decision({
           operation,
           session: options.gatewaySession,
-        acpSessionId: session.sessionId,
           acpSessionId: session.sessionId,
           permissionRequestIdSha256,
           preGateway,
