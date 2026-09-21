@@ -576,6 +576,10 @@
     "./acp-client-capability-runtime-node": {
       "types": "./dist/acp-client-capability-runtime-node.d.ts",
       "import": "./dist/acp-client-capability-runtime-node.js"
+    },
+    "./acp-external-client-runtime-node": {
+      "types": "./dist/acp-external-client-runtime-node.d.ts",
+      "import": "./dist/acp-external-client-runtime-node.js"
     }
   },
   "files": [

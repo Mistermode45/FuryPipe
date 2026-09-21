@@ -793,13 +793,50 @@ Evidence:
 This documentation-only closure commit requires the same 7/7 workflow and 9/9
 CI matrix proof before Gate 8.7 begins.
 
-### Gate 8.7 — external ACP client foundation
+### Gate 8.7 — external ACP client foundation — IMPLEMENTED / REQUIRES EXACT-HEAD PROOF
 
-- configured agent registry;
-- spawn/connect;
-- initialize;
-- bounded external session;
-- no autonomous delegation by default.
+Contract:
+
+- only explicitly configured local agent entries exist in the runtime registry;
+- registry presence remains evidence only:
+  `configured != trusted != executable != delegated`;
+- configured command, args, cwd and environment remain process-local and are
+  never exposed through registry descriptors;
+- registry descriptors expose only bounded IDs and digests and carry
+  `executionAuthority:false` and `delegationAuthority:false`;
+- registry construction never spawns or connects an external process;
+- opening an external session is an explicit host call; there is no automatic
+  selection, package installation, discovery-to-execution path or background
+  delegation;
+- the current Phase 6 CodingSandbox remains authoritative for command allowlist,
+  cwd resolution, environment allowlist, output bounds, process/session count
+  and startup timeout bounds;
+- external ACP processes are spawned shell-free with stdio only;
+- FuryPipe acts as an ACP v1 client with empty client capabilities and
+  `mcpServers: []`;
+- only `initialize` and `session/new` are performed in this gate;
+- the public runtime exposes no prompt/delegate operation, so an established
+  external session is not delegation authority;
+- configured expected agent name is compatibility evidence only and is checked
+  fail-closed when present; peer-reported identity never becomes authority;
+- external ACP session handles are opaque process-local evidence; copied handles
+  or descriptors are rejected;
+- raw external ACP session IDs, command arguments and environment values are not
+  exposed in session snapshots;
+- protocol/stderr output is bounded; startup timeout and process loss fail
+  closed;
+- unexpected process loss becomes `state:'disconnected'`, never success;
+- external session snapshots set `automaticReplayAllowed:false`;
+- a fresh runtime cannot revive a previous process-local external session;
+- Gate 8.8 remains responsible for task-bound one-shot delegation permits and
+  sending actual delegated prompts.
+
+Gate 8.7 adds a real stdio subprocess fixture across the CI matrix, package
+export smoke, adversarial copied-evidence tests, current-policy revalidation,
+identity mismatch checks, process/session limits and disconnect semantics.
+
+Required exact-head proof is 7/7 workflows and 9/9 CI matrix before Gate 8.7 is
+marked validated.
 
 ### Gate 8.8 — governed delegation permits
 
