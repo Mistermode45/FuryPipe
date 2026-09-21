@@ -461,6 +461,13 @@ try {
   ], installDir);
   assert(gatewayAutomationSchedulerExport.stderr === '', `Gateway automation scheduler export wrote stderr: ${gatewayAutomationSchedulerExport.stderr}`);
 
+  const gatewayAutomationCronExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/gateway-automation-cron-node'); if (typeof m.normalizeFuryGatewayCronSchedule !== 'function' || typeof m.findFuryGatewayCronOccurrenceAtOrBefore !== 'function' || typeof m.findNextFuryGatewayCronOccurrence !== 'function' || m.FURY_GATEWAY_CRON_FORMAT !== 'furypipe-gateway-cron/v1') process.exit(1);",
+  ], installDir);
+  assert(gatewayAutomationCronExport.stderr === '', `Gateway automation cron export wrote stderr: ${gatewayAutomationCronExport.stderr}`);
+
   const gatewayAutomationRunAdmissionExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
