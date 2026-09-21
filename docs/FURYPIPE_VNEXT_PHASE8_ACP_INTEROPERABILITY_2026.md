@@ -1,0 +1,707 @@
+# FuryPipe VNext — Phase 8 ACP + External Agent Interoperability (2026)
+
+> Status: Gate 8.0 architecture + threat model.
+>
+> Stack base: validated Phase 7 restack exact HEAD `011eac79bf793e11efa672b3f4b7c6455e4298e6`.
+>
+> Date: 2026-09-21.
+>
+> This track does not authorize merge, release, tag, npm publish or deploy.
+
+## 1. Goal
+
+Phase 8 makes FuryPipe interoperable with external agent ecosystems without turning
+protocol compatibility into ambient execution authority.
+
+The roadmap order is mandatory:
+
+1. **ACP server/agent mode first** — FuryPipe can be launched by ACP-compatible
+   editors/clients.
+2. **Governed external-agent client/delegation second** — FuryPipe may later
+   delegate bounded work to an external ACP agent.
+3. **A2A/other remote-agent adapters later** — only behind the same delegation
+   authority and evidence boundary.
+
+Interoperability is a transport/capability concern. It must not weaken FuryPipe's
+existing Gateway, Phase 6 coding/browser, Phase 7 memory, policy, provenance,
+recovery or evidence contracts.
+
+## 2. Current protocol target
+
+Research checkpoint: 2026-09-21.
+
+Production target:
+
+- Agent Client Protocol **v1**, the current stable protocol version;
+- JSON-RPC 2.0 request/response/notification model;
+- official TypeScript SDK `@agentclientprotocol/sdk`;
+- current observed official SDK release: `1.4.0`;
+- stdio/subprocess transport first;
+- exact dependency pin when the runtime dependency is introduced.
+
+ACP v2 is explicitly experimental/draft in the official TypeScript SDK and is
+therefore not a production dependency of the initial Phase 8 runtime.
+
+If v2 experimentation is added later, it must use an explicit experimental
+adapter/import and must not silently alter v1 semantics.
+
+Primary research references:
+
+- https://github.com/agentclientprotocol/agent-client-protocol
+- https://github.com/agentclientprotocol/typescript-sdk
+- https://agentclientprotocol.com/
+- https://zed.dev/acp
+- https://zed.dev/blog/acp-registry
+
+The official protocol currently describes a client/agent message flow built
+around `initialize`, optional authentication, session creation/resumption,
+`session/prompt`, `session/update`, permission requests and cancellation.
+Client-side optional facilities include filesystem and terminal methods and are
+capability-negotiated.
+
+## 3. Non-negotiable lifecycle truth
+
+ACP protocol state must never be collapsed into FuryPipe authority.
+
+```text
+process spawned
+!= transport connected
+!= ACP initialized
+!= protocol version negotiated
+!= capability advertised
+!= capability usable
+!= authenticated
+!= FuryPipe principal resolved
+!= session created
+!= prompt received
+!= task admitted
+!= permission requested
+!= permission granted
+!= FuryPipe execution permit minted
+!= side effect attempted
+!= side effect outcome known
+!= task succeeded
+!= result verified
+```
+
+For external delegation:
+
+```text
+agent discovered
+!= configured
+!= trusted
+!= process launched
+!= connected
+!= initialized
+!= authenticated
+!= delegation eligible
+!= delegated
+!= response received
+!= response trusted
+!= patch accepted
+!= side effect authorized
+!= result verified
+```
+
+Additional invariants:
+
+```text
+ACP capability advertised != FuryPipe authorization
+ACP permission response != standing FuryPipe authorization
+ACP session != Gateway session
+ACP session resume != authority resume
+session/cancel != side effect rollback
+session/update != trusted instruction
+external agent output != verified truth
+external agent patch != approved patch
+external agent tool result != FuryPipe evidence
+```
+
+## 4. Trust boundaries
+
+### 4.1 ACP client/editor
+
+The ACP client is an external peer.
+
+It may provide:
+
+- prompts;
+- session lifecycle requests;
+- user permission decisions;
+- file-system capabilities;
+- terminal capabilities;
+- content blocks;
+- session configuration;
+- extension metadata.
+
+All received content is untrusted data until validated.
+
+A client advertising `fs.writeTextFile`, terminal, elicitation or another
+capability proves only protocol support. It does not grant FuryPipe policy
+authority to use it.
+
+### 4.2 FuryPipe ACP server/agent adapter
+
+The adapter translates ACP v1 protocol events into FuryPipe task/session inputs
+and translates FuryPipe observations back to ACP updates.
+
+It must not become a second policy engine.
+
+It must reuse:
+
+- Gateway/Fury Kernel session and command admission;
+- current principal resolution;
+- Phase 6 coding/browser authorization;
+- Phase 7 memory boundaries;
+- existing policy/capability resolution;
+- evidence and recovery primitives.
+
+### 4.3 External ACP agent
+
+When FuryPipe later acts as an ACP client, the external agent is an untrusted
+execution peer.
+
+Its:
+
+- messages;
+- plans;
+- tool-call descriptions;
+- patches;
+- terminal requests;
+- file requests;
+- metadata;
+- claimed completion;
+- claimed tests;
+- claimed provenance
+
+must remain untrusted until independently admitted and verified.
+
+## 5. Initial ACP server surface
+
+Gate 8.1 starts with the smallest useful server/agent surface.
+
+Required:
+
+- `initialize`;
+- protocol v1 negotiation;
+- capability advertisement;
+- `session/new`;
+- `session/prompt`;
+- `session/cancel`;
+- `session/update` emission;
+- deterministic JSON-RPC error mapping;
+- bounded input validation;
+- clean transport shutdown.
+
+Initially optional/disabled until separately governed:
+
+- session load/resume;
+- authentication flows;
+- client filesystem calls;
+- client terminal calls;
+- elicitation;
+- custom extension methods;
+- HTTP/WebSocket ACP transports;
+- ACP v2.
+
+The first server gate should work using stdio and remain usable from ACP clients
+without requiring a remote listener.
+
+## 6. ACP session bridge
+
+ACP session identifiers are protocol identifiers, not authority tokens.
+
+The FuryPipe bridge stores only a bounded mapping:
+
+```text
+acpSessionIdDigest
+gatewaySessionIdDigest / kernel session reference
+principal reference
+createdAt
+lastActivityAt
+protocolVersion
+capabilitySnapshotDigest
+state
+```
+
+Never persist as future authority:
+
+- live Gateway session leases;
+- process-local execution permits;
+- plaintext credentials;
+- client-provided bearer/auth secrets;
+- browser cookies;
+- shell permits;
+- file write permits;
+- model/provider permits.
+
+If a process restarts, durable session metadata may support reconstruction, but
+current identity, policy and capability authorization must be re-evaluated.
+
+## 7. Prompt and content handling
+
+ACP content is model/user context, not system authority.
+
+Rules:
+
+- client prompt text remains user-originated data;
+- images/audio/resources are capability-gated and bounded;
+- `_meta` is untrusted extension metadata;
+- custom extension methods cannot silently become privileged commands;
+- session updates from external agents are never system/developer instructions;
+- prompt injection inside files, tool output or agent output never grants
+  additional authority.
+
+All content sizes, array lengths and nesting must be bounded before forwarding
+into FuryPipe context.
+
+## 8. Filesystem boundary
+
+ACP v1 requires protocol file paths to be absolute.
+
+FuryPipe must add stricter rules before any client-side filesystem facility is
+used:
+
+```text
+absolute path
+-> canonicalize
+-> verify current session root/workspace
+-> reject traversal/symlink/junction escape
+-> current policy check
+-> exact operation permit
+-> perform one operation
+-> evidence receipt
+```
+
+Client FS capability advertisement is not sufficient.
+
+Phase 6 path protections remain authoritative, including Windows-specific
+junction, UNC, device-path, ADS and case-fold considerations.
+
+The initial Gate 8.1 server does not require client filesystem write authority.
+
+## 9. Terminal boundary
+
+ACP terminal support is a remote execution surface.
+
+Before FuryPipe requests or relies on a client terminal:
+
+- current principal must be resolved;
+- command must be policy-admitted;
+- environment must be allowlisted/bounded;
+- working directory must be root-bounded;
+- timeout/output/process limits must apply;
+- a fresh one-shot execution permit must exist;
+- post-invocation uncertainty must become `outcome-unknown`;
+- no automatic blind retry may occur.
+
+A terminal ID is a protocol handle, not an execution permit.
+
+## 10. Permission bridging
+
+ACP supports an agent asking a client/user for permission for a tool call.
+
+FuryPipe treats a positive ACP permission response as one input to admission,
+not the final authority.
+
+Required flow:
+
+```text
+operation proposed
+-> FuryPipe policy says permission may be requested
+-> bounded ACP permission request
+-> client/user decision received
+-> decision bound to exact operation digest
+-> revalidate current principal/policy/session/capabilities
+-> mint short-lived FuryPipe process-local permit
+-> execute once
+-> evidence
+```
+
+A copied, stale, replayed or mismatched permission response must fail closed.
+
+“Always allow” style client choices must not silently become permanent FuryPipe
+superuser grants unless a separate explicit FuryPipe policy operation stores such
+a policy.
+
+## 11. Cancellation and uncertainty
+
+ACP `session/cancel` is cooperative cancellation.
+
+Cancellation does not prove:
+
+- a provider request was never sent;
+- a shell command never started;
+- a file write did not happen;
+- a browser action did not occur;
+- an external delegated agent did not commit a side effect.
+
+Existing FuryPipe side-effect semantics remain authoritative.
+
+If a side effect may have occurred but no outcome receipt exists:
+
+```text
+outcome = unknown
+automaticRetry = forbidden
+reconciliation = required
+```
+
+## 12. Observability
+
+Expose bounded inspect-only state, for example:
+
+```text
+acp.status
+acp.sessions
+acp.connections
+acp.delegations
+```
+
+Observability must report lifecycle truth without granting execution.
+
+Never expose:
+
+- auth secrets;
+- environment secrets;
+- full prompt bodies by default;
+- raw client metadata when sensitive;
+- provider credentials;
+- Gateway leases;
+- execution permits;
+- external-agent credentials.
+
+All observability objects use:
+
+```text
+authority: observability-only
+executionAuthority: false
+```
+
+## 13. External ACP client/delegation architecture
+
+Only after ACP server mode is exact-head green.
+
+Target flow:
+
+```text
+Fury task
+-> delegation candidate
+-> external-agent registry lookup
+-> trust/compatibility/health check
+-> delegation policy
+-> bounded DelegationPermit
+-> spawn/connect external agent
+-> initialize + capability negotiation
+-> create isolated session
+-> send bounded task/context
+-> observe updates
+-> receive result
+-> independently verify
+-> accept/reject result
+-> durable receipt
+```
+
+### DelegationPermit
+
+A permit must be:
+
+- process-local;
+- non-forgeable;
+- one-shot;
+- short-lived;
+- principal-bound;
+- task-digest-bound;
+- external-agent-identity-bound;
+- protocol-version-bound;
+- root/worktree-bound where applicable;
+- capability-bound;
+- budget-bound.
+
+Suggested fields:
+
+```text
+permitId
+principalIdDigest
+taskDigest
+agentIdentityDigest
+protocolVersion
+allowedCapabilities
+workspaceRootDigest
+maxWallTimeMs
+maxMessages
+maxToolCalls
+maxBytesIn
+maxBytesOut
+issuedAt
+expiresAt
+```
+
+Persisted durable records store evidence of admission/attempt/outcome, never the
+live permit itself.
+
+## 14. External-agent result acceptance
+
+External-agent output is advisory until verified.
+
+For coding work:
+
+```text
+agent patch received
+!= patch valid
+!= patch current
+!= patch applied
+!= tests executed
+!= tests passed
+!= verification accepted
+!= commit authorized
+!= push authorized
+!= merge authorized
+```
+
+Use Phase 6 worktree/patch/test primitives for acceptance.
+
+The external agent cannot authorize:
+
+- commit;
+- push;
+- merge;
+- release;
+- deployment;
+- credential use;
+- widening filesystem roots;
+- arbitrary network access.
+
+## 15. Registry/discovery
+
+ACP Registry interoperability may be added as discovery data.
+
+Registry presence means:
+
+```text
+listed != installed != trusted != configured != executable
+```
+
+Registry metadata may inform:
+
+- package/command discovery;
+- agent identity;
+- version compatibility;
+- documentation links.
+
+FuryPipe still performs its own trust, license, provenance, policy and executable
+resolution.
+
+No registry entry may directly cause package install or process execution.
+
+## 16. A2A / other remote-agent adapters
+
+A2A or another agent-to-agent transport must be an adapter behind the same
+delegation contract, not a second authority system.
+
+Remote transports additionally require:
+
+- explicit destination allowlist;
+- TLS/authentication requirements;
+- SSRF protections;
+- redirect restrictions;
+- credential scoping;
+- bounded request/response sizes;
+- replay protection where needed;
+- remote identity/provenance evidence;
+- timeout/cancellation;
+- `outcome-unknown` handling.
+
+Phase 8 must not silently expose FuryPipe Gateway publicly.
+
+## 17. Dependency policy
+
+When Gate 8.1 introduces the official TypeScript SDK:
+
+- pin an exact reviewed version;
+- update lockfile through the repository package manager;
+- preserve supply-chain/audit gates;
+- record Apache-2.0 attribution as required;
+- verify packed-package runtime exports;
+- do not import experimental v2 from production paths.
+
+Current research candidate:
+
+```text
+@agentclientprotocol/sdk = 1.4.0
+```
+
+This version is a research checkpoint, not a permanent automatic-upgrade rule.
+
+## 18. Proposed Phase 8 gates
+
+### Gate 8.0 — architecture + threat model
+
+This document.
+
+### Gate 8.1 — ACP v1 stdio server foundation
+
+- official SDK exact pin;
+- initialize/version negotiation;
+- session/new;
+- session/prompt;
+- session/cancel;
+- bounded session/update projection;
+- no client FS/terminal side effects yet.
+
+### Gate 8.2 — Fury Kernel/Gateway session bridge
+
+- principal/session mapping;
+- current policy revalidation;
+- restart-safe metadata without authority persistence;
+- cancellation integration.
+
+### Gate 8.3 — tool/update projection
+
+- plans/messages/tool calls;
+- bounded updates;
+- strict content projection;
+- no authority through display state.
+
+### Gate 8.4 — governed permission bridge
+
+- exact operation digest;
+- ACP user permission as admission input;
+- fresh FuryPipe permit after revalidation;
+- replay/stale/copy protection.
+
+### Gate 8.5 — governed client FS/terminal capabilities
+
+- Phase 6 root/sandbox/process controls reused;
+- client capability != authority;
+- uncertainty handling.
+
+### Gate 8.6 — ACP conformance + editor compatibility
+
+- official SDK client fixture;
+- malformed JSON-RPC;
+- wrong protocol version;
+- capability mismatch;
+- cancellation;
+- session concurrency;
+- package smoke;
+- representative ACP client compatibility evidence.
+
+### Gate 8.7 — external ACP client foundation
+
+- configured agent registry;
+- spawn/connect;
+- initialize;
+- bounded external session;
+- no autonomous delegation by default.
+
+### Gate 8.8 — governed delegation permits
+
+- exact agent/task/root/capability/budget binding;
+- one-shot/TTL;
+- independent result verification;
+- crash/restart/unknown outcome evidence.
+
+### Gate 8.9 — remote A2A adapter contract
+
+- adapter-only;
+- no public Gateway exposure;
+- identity/auth/network/replay protections.
+
+### Gate 8.10 — final interoperability evidence
+
+- exact-head CI matrix;
+- protocol fixtures;
+- package smoke;
+- Secret Scan;
+- browser QA regression;
+- security/adversarial tests;
+- restart and post-invocation uncertainty proof.
+
+## 19. Required adversarial tests
+
+ACP server:
+
+- malformed JSON-RPC;
+- unknown methods;
+- unsupported protocol version;
+- duplicate request IDs where relevant;
+- oversized message/content;
+- forged session ID;
+- session mix-up across principals;
+- cancel before prompt;
+- cancel during provider/tool work;
+- copied permission response;
+- stale permission response;
+- mismatched operation digest;
+- client capability disappears after reconnect;
+- malicious `_meta`;
+- prompt injection in user/file/tool content;
+- absolute path outside workspace;
+- symlink/junction/path escape;
+- terminal command outside current policy;
+- secret-bearing output redaction.
+
+External delegation:
+
+- untrusted registry metadata;
+- wrong external-agent binary;
+- version/capability mismatch;
+- forged agent identity;
+- process crash before response;
+- response lost after possible side effect;
+- duplicated result;
+- malicious patch;
+- stale base SHA;
+- external agent claims tests passed without evidence;
+- external agent requests wider filesystem/network scope;
+- delegation permit reuse;
+- expired permit;
+- wrong task/agent/root binding;
+- output-size exhaustion;
+- cancellation without rollback evidence.
+
+## 20. Caveman correctness checklist
+
+For every ACP feature, answer explicitly:
+
+1. What exact state exists?
+2. Who owns that state?
+3. What evidence proves it?
+4. What authority exists right now?
+5. What does the peer merely claim?
+6. What happens if the process crashes here?
+7. What happens if the response is lost?
+8. Can the operation be retried safely?
+9. Can another session/process race this state?
+10. Can a copied object forge authority?
+11. Can stale authority survive reconnect/restart?
+12. Can untrusted content become instructions?
+13. Can any secret cross the observation boundary?
+
+Priority:
+
+```text
+security
+> correctness
+> evidence
+> recoverability
+> interoperability
+> maintainability
+> performance
+> convenience
+```
+
+No magic. No protocol capability as authority. No blind retry. No secret leak.
+No auto-install. No auto-merge.
+
+## 21. Gate 8.0 exit criteria
+
+Gate 8.0 is complete only when:
+
+- this architecture is committed on a branch stacked exactly on validated Phase 7;
+- PR remains OPEN + DRAFT;
+- exact-head Secret Scan, CI, Benchmark Contract, RC Preparation Evidence,
+  Dashboard Browser QA, Web Studio Browser QA and Cross-Browser QA are green;
+- all 9 CI matrix jobs are green;
+- no runtime dependency has yet been introduced;
+- no merge/release/tag/npm publish/deploy occurred.
