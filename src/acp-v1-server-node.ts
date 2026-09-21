@@ -12,6 +12,8 @@ import {
 export const FURY_ACP_V1_SERVER_FORMAT = 'furypipe-acp-v1-server/v1' as const;
 export const FURY_ACP_V1_SESSION_FORMAT = 'furypipe-acp-v1-session/v1' as const;
 export const FURY_ACP_V1_PROTOCOL_VERSION = acp.PROTOCOL_VERSION;
+export const FURY_ACP_V1_PERMISSION_REQUESTER_FORMAT =
+  'furypipe-acp-v1-permission-requester/v1' as const;
 
 export type FuryAcpV1PromptPart =
   | Readonly<{
@@ -36,8 +38,40 @@ export interface FuryAcpV1PromptInput {
   readonly executionAuthority: false;
 }
 
+export type FuryAcpV1PermissionOptionKind =
+  | 'allow_once'
+  | 'reject_once';
+
+export interface FuryAcpV1PermissionOptionInput {
+  readonly optionId: string;
+  readonly name: string;
+  readonly kind: FuryAcpV1PermissionOptionKind;
+}
+
+export interface FuryAcpV1PermissionRequestInput {
+  readonly toolCallId: string;
+  readonly title: string;
+  readonly toolKind?: acp.ToolKind;
+  readonly options: readonly FuryAcpV1PermissionOptionInput[];
+}
+
+export type FuryAcpV1PermissionResponse =
+  | Readonly<{ outcome: 'cancelled' }>
+  | Readonly<{ outcome: 'selected'; optionId: string }>;
+
+export interface FuryAcpV1PermissionRequester {
+  readonly format: typeof FURY_ACP_V1_PERMISSION_REQUESTER_FORMAT;
+  request(
+    input: FuryAcpV1PermissionRequestInput,
+  ): Promise<FuryAcpV1PermissionResponse>;
+  readonly authority: 'protocol-permission-request-only';
+  readonly executionAuthority: false;
+}
+
 export interface FuryAcpV1PromptContext {
   readonly prompt: FuryAcpV1PromptInput;
+  readonly session: FuryAcpV1SessionSnapshot;
+  readonly permissionRequester: FuryAcpV1PermissionRequester;
   readonly signal: AbortSignal;
   emitText(text: string): Promise<void>;
   emitUpdate(update: FuryAcpV1DisplayUpdateInput): Promise<void>;
@@ -115,6 +149,27 @@ const MAX_MIME_BYTES = 256;
 const MAX_ADDITIONAL_DIRECTORIES = 32;
 const SESSION_ID_RE = /^facp_[A-Za-z0-9_-]{24}$/u;
 const SESSION_EVIDENCE = new WeakSet<object>();
+const PERMISSION_REQUESTERS = new WeakMap<object, { readonly sessionId: string }>();
+const ACP_TOOL_KINDS = new Set<acp.ToolKind>([
+  'read',
+  'edit',
+  'delete',
+  'move',
+  'search',
+  'execute',
+  'think',
+  'fetch',
+  'switch_mode',
+  'other',
+]);
+const ACP_PERMISSION_OPTION_KINDS = new Set<FuryAcpV1PermissionOptionKind>([
+  'allow_once',
+  'reject_once',
+]);
+const ACP_PERMISSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
+const MAX_PERMISSION_TITLE_BYTES = 2 * 1024;
+const MAX_PERMISSION_OPTION_NAME_BYTES = 512;
+const MAX_PERMISSION_OPTIONS = 8;
 
 function boundedInteger(
   value: number | undefined,
@@ -195,6 +250,205 @@ export function isGeneratedFuryAcpV1SessionSnapshot(
   return typeof value === 'object'
     && value !== null
     && SESSION_EVIDENCE.has(value);
+}
+
+function exactPermissionRecord(
+  value: unknown,
+  allowedKeys: readonly string[],
+  requiredKeys: readonly string[],
+  label: string,
+): Readonly<Record<string, unknown>> {
+  if (
+    !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+    || Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    throw acp.RequestError.invalidParams(undefined, `${label} must be a plain data object`);
+  }
+  const record = value as Record<string, unknown>;
+  const allowed = new Set(allowedKeys);
+  for (const key of Object.getOwnPropertyNames(record)) {
+    const descriptor = Object.getOwnPropertyDescriptor(record, key);
+    if (
+      !descriptor
+      || !descriptor.enumerable
+      || !('value' in descriptor)
+      || !allowed.has(key)
+    ) {
+      throw acp.RequestError.invalidParams(undefined, `${label} contains unsupported fields`);
+    }
+  }
+  for (const key of requiredKeys) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) {
+      throw acp.RequestError.invalidParams(undefined, `${label} is missing required fields`);
+    }
+  }
+  return record;
+}
+
+function permissionId(value: unknown, label: string): string {
+  const id = boundedText(value, 128, label);
+  if (!ACP_PERMISSION_ID_RE.test(id)) {
+    throw acp.RequestError.invalidParams(undefined, `${label} is invalid`);
+  }
+  return id;
+}
+
+function createPermissionRequester(
+  session: FuryAcpV1SessionSnapshot,
+  signal: AbortSignal,
+  requestPermission: (
+    params: acp.RequestPermissionRequest,
+  ) => Promise<acp.RequestPermissionResponse>,
+): FuryAcpV1PermissionRequester {
+  let requester: FuryAcpV1PermissionRequester;
+  requester = Object.freeze({
+    format: FURY_ACP_V1_PERMISSION_REQUESTER_FORMAT,
+    async request(
+      input: FuryAcpV1PermissionRequestInput,
+    ): Promise<FuryAcpV1PermissionResponse> {
+      if (!PERMISSION_REQUESTERS.has(requester)) {
+        throw new acp.RequestError(-32014, 'ACP permission requester is no longer active');
+      }
+      if (signal.aborted) {
+        const error = new Error('ACP prompt was cancelled');
+        error.name = 'AbortError';
+        throw error;
+      }
+      const record = exactPermissionRecord(
+        input,
+        ['toolCallId', 'title', 'toolKind', 'options'],
+        ['toolCallId', 'title', 'options'],
+        'permission request',
+      );
+      const toolCallId = permissionId(record.toolCallId, 'toolCallId');
+      const title = boundedText(
+        record.title,
+        MAX_PERMISSION_TITLE_BYTES,
+        'permission title',
+      );
+      const toolKind = record.toolKind === undefined
+        ? undefined
+        : (
+            typeof record.toolKind === 'string'
+            && ACP_TOOL_KINDS.has(record.toolKind as acp.ToolKind)
+          )
+          ? record.toolKind as acp.ToolKind
+          : (() => {
+              throw acp.RequestError.invalidParams(
+                undefined,
+                'permission toolKind is invalid',
+              );
+            })();
+      if (
+        !Array.isArray(record.options)
+        || record.options.length < 1
+        || record.options.length > MAX_PERMISSION_OPTIONS
+      ) {
+        throw acp.RequestError.invalidParams(
+          undefined,
+          'permission options are invalid',
+        );
+      }
+      const optionIds = new Set<string>();
+      const options: acp.PermissionOption[] = record.options.map(
+        (value, index) => {
+          const option = exactPermissionRecord(
+            value,
+            ['optionId', 'name', 'kind'],
+            ['optionId', 'name', 'kind'],
+            `permission option[${index}]`,
+          );
+          const optionId = permissionId(
+            option.optionId,
+            `permission option[${index}].optionId`,
+          );
+          if (optionIds.has(optionId)) {
+            throw acp.RequestError.invalidParams(
+              undefined,
+              'permission option IDs must be unique',
+            );
+          }
+          optionIds.add(optionId);
+          const name = boundedText(
+            option.name,
+            MAX_PERMISSION_OPTION_NAME_BYTES,
+            `permission option[${index}].name`,
+          );
+          if (
+            typeof option.kind !== 'string'
+            || !ACP_PERMISSION_OPTION_KINDS.has(
+              option.kind as FuryAcpV1PermissionOptionKind,
+            )
+          ) {
+            throw acp.RequestError.invalidParams(
+              undefined,
+              'only allow_once/reject_once permission options are enabled',
+            );
+          }
+          return Object.freeze({
+            optionId,
+            name,
+            kind: option.kind as FuryAcpV1PermissionOptionKind,
+          });
+        },
+      );
+      Object.freeze(options);
+
+      const response = await requestPermission({
+        sessionId: session.sessionId,
+        toolCall: {
+          toolCallId,
+          title,
+          ...(toolKind === undefined ? {} : { kind: toolKind }),
+          status: 'pending',
+        },
+        options,
+      });
+      if (signal.aborted) {
+        const error = new Error('ACP prompt was cancelled');
+        error.name = 'AbortError';
+        throw error;
+      }
+      if (response.outcome.outcome === 'cancelled') {
+        return Object.freeze({ outcome: 'cancelled' as const });
+      }
+      if (
+        response.outcome.outcome !== 'selected'
+        || !optionIds.has(response.outcome.optionId)
+      ) {
+        throw new acp.RequestError(
+          -32013,
+          'ACP permission response selected an option that was not offered',
+        );
+      }
+      return Object.freeze({
+        outcome: 'selected' as const,
+        optionId: response.outcome.optionId,
+      });
+    },
+    authority: 'protocol-permission-request-only' as const,
+    executionAuthority: false as const,
+  });
+  PERMISSION_REQUESTERS.set(requester, { sessionId: session.sessionId });
+  return requester;
+}
+
+export function isGeneratedFuryAcpV1PermissionRequesterForSession(
+  value: unknown,
+  session: FuryAcpV1SessionSnapshot,
+): value is FuryAcpV1PermissionRequester {
+  if (
+    typeof value !== 'object'
+    || value === null
+    || !isGeneratedFuryAcpV1SessionSnapshot(session)
+  ) {
+    return false;
+  }
+  const state = PERMISSION_REQUESTERS.get(value);
+  return state?.sessionId === session.sessionId;
 }
 
 function normalizePrompt(
@@ -391,6 +645,15 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
       session.activePrompt = localAbort;
       session.updatedAt = finiteNow(now);
       const signal = AbortSignal.any([ctx.signal, localAbort.signal]);
+      const promptSession = snapshot(session);
+      const permissionRequester = createPermissionRequester(
+        promptSession,
+        signal,
+        (params) => ctx.client.request(
+          acp.methods.client.session.requestPermission,
+          params,
+        ),
+      );
       let updateCount = 0;
       let emittedBytes = 0;
       const messageId = `fam_${randomBytes(18).toString('base64url')}`;
@@ -421,6 +684,8 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
       try {
         const result = await options.promptHandler(Object.freeze({
           prompt,
+          session: promptSession,
+          permissionRequester,
           signal,
           emitText: (value: string): Promise<void> =>
             emitUpdate({ type: 'message', text: value }),
@@ -438,6 +703,7 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
         }
         throw error;
       } finally {
+        PERMISSION_REQUESTERS.delete(permissionRequester);
         if (session.activePrompt === localAbort) {
           session.activePrompt = undefined;
           session.updatedAt = finiteNow(now);

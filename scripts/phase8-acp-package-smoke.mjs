@@ -64,6 +64,10 @@ try {
     'ACP display projection export is missing from package.json',
   );
   assert(
+    installedPackage.exports?.['./acp-permission-bridge-node'],
+    'ACP permission bridge export is missing from package.json',
+  );
+  assert(
     installedPackage.dependencies?.['@agentclientprotocol/sdk'] === '1.4.0',
     'ACP SDK is not exact-pinned to 1.4.0',
   );
@@ -82,10 +86,14 @@ try {
       "const p = await import('furypipe/acp-v1-update-projection-node');",
       "if (p.FURY_ACP_V1_DISPLAY_UPDATE_FORMAT !== 'furypipe-acp-v1-display-update/v1') process.exit(1);",
       "if (typeof p.projectFuryAcpV1DisplayUpdate !== 'function') process.exit(1);",
+      "const g = await import('furypipe/acp-permission-bridge-node');",
+      "if (g.FURY_ACP_PERMISSION_PERMIT_FORMAT !== 'furypipe-acp-permission-permit/v1') process.exit(1);",
+      "if (typeof g.createFuryAcpPermissionBridge !== 'function') process.exit(1);",
+      "if (typeof g.isGeneratedFuryAcpPermissionPermit !== 'function') process.exit(1);",
     ].join(' '),
   ], installDir);
   assert(result.stderr === '', `ACP v1 package export wrote stderr: ${result.stderr}`);
-  console.log('phase8 ACP package smoke passed: server, Gateway bridge and display projection exports load with exact SDK dependency');
+  console.log('phase8 ACP package smoke passed: server, Gateway bridge, display projection and permission bridge exports load with exact SDK dependency');
 } finally {
   if (installDir) await rm(installDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   if (tarball) await rm(tarball, { force: true });

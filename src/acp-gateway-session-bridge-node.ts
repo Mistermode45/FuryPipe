@@ -109,6 +109,10 @@ export interface FuryAcpGatewaySessionBridge {
   inspectBinding(
     session: FuryAcpV1SessionSnapshot,
   ): FuryAcpGatewayBindingInspection | undefined;
+  matchesGatewayAuthority(
+    session: FuryAcpV1SessionSnapshot,
+    candidate: FuryGatewaySessionLease,
+  ): boolean;
   listEvidence(): Promise<readonly FuryAcpGatewayBindingEvidence[]>;
   activeBindingCount(): number;
   readonly sessionHooks: FuryAcpV1ServerSessionHooks;
@@ -163,6 +167,7 @@ interface ActiveBindingState {
   lastCancellationAt?: number;
 }
 
+const GENERATED_BRIDGES = new WeakSet<object>();
 const SYSTEM = 'acp-gateway-session-bridge';
 const RECORD_KIND = 'binding';
 const SHA256_RE = /^[0-9a-f]{64}$/u;
@@ -296,6 +301,14 @@ function bridgeAcpError(error: unknown): unknown {
     'FuryPipe ACP Gateway bridge rejected the operation',
     { code: error.code },
   );
+}
+
+export function isGeneratedFuryAcpGatewaySessionBridge(
+  value: unknown,
+): value is FuryAcpGatewaySessionBridge {
+  return typeof value === 'object'
+    && value !== null
+    && GENERATED_BRIDGES.has(value);
 }
 
 export function createFuryAcpGatewaySessionBridge(
@@ -650,7 +663,7 @@ export function createFuryAcpGatewaySessionBridge(
     },
   });
 
-  return Object.freeze({
+  const bridge: FuryAcpGatewaySessionBridge = Object.freeze({
     bind,
     revalidatePrompt,
     observeCancellation,
@@ -671,10 +684,30 @@ export function createFuryAcpGatewaySessionBridge(
       }
       return bindingInspection(state);
     },
+    matchesGatewayAuthority(
+      sessionInput: FuryAcpV1SessionSnapshot,
+      candidate: FuryGatewaySessionLease,
+    ): boolean {
+      if (
+        !isGeneratedFuryGatewaySessionLease(candidate)
+        || candidate !== gatewaySession
+      ) {
+        return false;
+      }
+      const state = requireState(sessionInput);
+      return (
+        state.base.gatewaySessionIdSha256
+          === digest('gateway-session', candidate.sessionId)
+        && state.base.principalIdSha256
+          === digest('principal', candidate.principalId)
+      );
+    },
     listEvidence,
     activeBindingCount(): number {
       return states.size;
     },
     sessionHooks,
   });
+  GENERATED_BRIDGES.add(bridge);
+  return bridge;
 }

@@ -636,15 +636,49 @@ Contract:
 - Gate 8.2 bridge and Gate 8.3 projector are exported and verified from the
   packed npm artifact.
 
-Gate 8.3 requires fresh exact-head 7/7 workflow and 9/9 CI proof before
-Gate 8.4 begins.
+Exact validated Gate 8.3 HEAD:
 
-### Gate 8.4 — governed permission bridge
+`d5d73c3bb09e25fea03b1b770a23f1e671955cb5`
 
-- exact operation digest;
-- ACP user permission as admission input;
-- fresh FuryPipe permit after revalidation;
-- replay/stale/copy protection.
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- 9/9 CI matrix SUCCESS;
+- 258 test files / 2,939 tests SUCCESS on observed Ubuntu/Node 22;
+- 7 dedicated ACP display/update projection tests;
+- Phase 8 ACP package smoke SUCCESS across the complete matrix.
+
+### Gate 8.4 — governed permission bridge — IMPLEMENTED
+
+Contract:
+
+- ACP permission is an input to authorization, never standing authority;
+- the protocol requester is process-local and bound to the active ACP session;
+- only `allow_once` and `reject_once` are offered by FuryPipe;
+- `allow_always` / `reject_always` are not interpreted as FuryPipe policy;
+- permission tool-call display contains bounded ID/title/kind/status only;
+- raw input/output, terminal handles, diffs, credentials and arbitrary metadata
+  are not sent in the permission request;
+- operation schema is exact and includes tool kind, risk class, current Gateway
+  scopes and plugin permissions;
+- plugin permissions automatically require their corresponding capability
+  scopes;
+- current Gateway/Kernal session binding is revalidated before the permission
+  request;
+- current Gateway authority is revalidated again after the user chooses
+  `allow_once`;
+- only then is a short-lived process-local FuryPipe permit minted;
+- the permit is exact-operation, ACP-session, Gateway-session and
+  principal-bound;
+- the permit is one-shot and TTL-bounded by the current Gateway session expiry;
+- copied requesters and copied/forged permits fail closed;
+- an expired/stale/revoked permit fails closed before side-effect execution;
+- permission decisions/receipts remain `executionAuthority:false`;
+- only the live process-local permit carries `executionAuthority:true`;
+- Gate 8.4 still performs no filesystem/terminal side effect itself.
+
+Gate 8.4 requires fresh exact-head 7/7 workflow and 9/9 CI proof before
+Gate 8.5 begins.
 
 ### Gate 8.5 — governed client FS/terminal capabilities
 
