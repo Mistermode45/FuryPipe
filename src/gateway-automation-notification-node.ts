@@ -617,6 +617,15 @@ export function createFuryGatewayAutomationNotificationBridge(
               },
               maxMatches: 1,
             }],
+            matchConstraints: [{
+              metadata: {
+                system: SYSTEM,
+                recordType: 'intent',
+                runIdSha256,
+                terminalFingerprintSha256,
+              },
+              maxMatches: 0,
+            }],
           },
         );
       } catch {
