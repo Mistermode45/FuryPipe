@@ -179,9 +179,29 @@ async function runPrompt<T>(
     now: () => h.now,
     sessionHooks: h.bridge.sessionHooks,
     promptHandler: async (context) => {
-      const result = await promptHandler(context);
-      value = result.value;
-      return { stopReason: result.stopReason };
+      try {
+        const result = await promptHandler(context);
+        value = result.value;
+        return { stopReason: result.stopReason };
+      } catch (error) {
+        const candidate = error as {
+          readonly name?: unknown;
+          readonly code?: unknown;
+          readonly message?: unknown;
+        };
+        console.error('Gate 8.5 prompt diagnostic', {
+          name: typeof candidate?.name === 'string'
+            ? candidate.name
+            : 'unknown',
+          code: typeof candidate?.code === 'string'
+            ? candidate.code
+            : 'unknown',
+          message: typeof candidate?.message === 'string'
+            ? candidate.message
+            : 'unknown',
+        });
+        throw error;
+      }
     },
   });
 
