@@ -309,6 +309,18 @@ function rejectPortableDeviceOrUnc(value: string): void {
   }
 }
 
+/**
+ * Node may expose a local Windows realpath with the extended-length \\?\
+ * prefix. That prefix is trusted sandbox-internal representation, not ACP
+ * input authority. Strip it only from the already-generated Phase 6 root for
+ * lexical comparison; untrusted ACP device/UNC paths are still rejected above.
+ */
+function comparableTrustedSandboxRoot(value: string): string {
+  return /^\\\\\?\\[A-Za-z]:\\/u.test(value)
+    ? value.slice(4)
+    : value;
+}
+
 async function mapAbsolutePath(
   sandbox: CodingSandbox,
   value: unknown,
@@ -323,7 +335,10 @@ async function mapAbsolutePath(
   if (!isAbsolute(pathValue) || rawParentTraversal(pathValue)) {
     throw new FuryAcpClientCapabilityError('path-denied');
   }
-  const relativePath = relative(sandbox.rootPath, pathValue);
+  const relativePath = relative(
+    comparableTrustedSandboxRoot(sandbox.rootPath),
+    pathValue,
+  );
   if (
     (!allowRoot && relativePath.length === 0)
     || relativePath === '..'

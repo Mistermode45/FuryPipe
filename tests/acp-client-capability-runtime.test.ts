@@ -411,6 +411,12 @@ describe('FuryPipe ACP Gate 8.5 governed client capabilities', () => {
         { path: '\\\\server\\share\\secret.txt' },
       )).rejects.toBeInstanceOf(FuryAcpClientCapabilityError);
 
+      await expect(h.runtime.prepareFsRead(
+        context.clientTransport,
+        context.session,
+        { path: '\\\\?\\C:\\workspace\\device-path.txt' },
+      )).rejects.toBeInstanceOf(FuryAcpClientCapabilityError);
+
       const ads = path.join(h.root, 'file.txt:stream');
       await expect(h.runtime.prepareFsWrite(
         context.clientTransport,
