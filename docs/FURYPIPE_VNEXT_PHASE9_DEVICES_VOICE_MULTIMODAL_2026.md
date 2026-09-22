@@ -1347,10 +1347,68 @@ Evidence:
 The documentation-only Gate 9.7 closure commit itself requires the same
 exact-head 7/7 workflow and 9/9 CI proof before Gate 9.8 begins.
 
-### Gate 9.8 — camera/microphone/device media capture
+### Gate 9.8 — camera/microphone/device media capture — VALIDATED
 
-Add privacy-sensitive capture with explicit consent/user-presence semantics and
-strict source/session binding.
+Implementation surface:
+
+- `src/media-device-capture.ts` adds governed one-shot camera/microphone
+  capture composed with the existing node-operation permit and media-ingestion
+  boundaries;
+- `tests/media-device-capture.test.ts` adds 26 dedicated privacy, consent,
+  reconnect, anti-forgery, replay and unknown-outcome tests.
+
+Contract:
+
+- pairing, capability advertisement and plugin availability never imply capture
+  consent;
+- each capture request binds the exact Gateway session/principal, live node
+  session/liveness epoch, registration/device/pairing identity, current
+  capability generation/digest, plugin bundle/version/profile and media bounds;
+- camera requires `device-camera + media-write`; microphone requires
+  `device-microphone + media-write`, with fresh profile health and exact
+  supported MIME declarations;
+- consent is process-local, one-shot, short-lived and bound to the exact request,
+  principal/session/device/pairing plus fresh user-presence evidence, explicit
+  local-confirmation digest and consent-text digest;
+- one consent can reserve only one capture permit;
+- the capture permit composes the existing governed node-operation permit;
+  it does not create a second dispatch authority;
+- `consumeForDispatch` occurs before the adapter callback and revalidates the
+  current node/session/capability authority;
+- captured bytes are admitted only through governed media ingestion as
+  `node-capture` content and remain untrusted media;
+- capture buffers are zeroed on success and on every terminal post-dispatch
+  rejection/error path;
+- adapter exceptions, unknown/malformed results, MIME/budget failures and
+  post-dispatch authority uncertainty remain non-retryable `unknown`; no blind
+  replay or rollback is claimed;
+- receipts are digest-only and expose no raw camera/microphone content;
+- copied/foreign requests, consents and permits fail closed;
+- reconnect or a fresh coordinator cannot resurrect consent or capture
+  authority;
+- Gate 9.8 introduces no biometric authentication, face recognition,
+  surveillance behavior or speaker/playback authority.
+
+Exact validated Gate 9.8 implementation HEAD:
+
+`013ef23ee1ed3b825ae1888c1e762ebc294e6947`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- CI 9/9 SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 276 test files / 3,154 tests SUCCESS on observed Ubuntu/Node 26;
+- 26 dedicated governed device-capture tests SUCCESS;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS, including Phase 6/7/8 packed-artifact smokes;
+- Secret Scan, Benchmark Contract, RC Preparation Evidence, Dashboard Browser
+  QA, Web Studio Browser QA and Cross-Browser QA SUCCESS;
+- no new public Phase 9 package export or dependency was introduced;
+- no merge, release, tag, npm publish or deploy occurred.
+
+The documentation-only Gate 9.8 closure commit itself requires the same
+exact-head 7/7 workflow and 9/9 CI proof before Gate 9.9 begins.
 
 ### Gate 9.9 — Capability Autopilot + Devices evidence surface
 
