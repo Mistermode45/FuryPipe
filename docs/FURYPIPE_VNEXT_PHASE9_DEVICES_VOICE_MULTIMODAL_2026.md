@@ -1483,7 +1483,7 @@ Evidence:
 The documentation-only Gate 9.9 closure commit itself requires the same
 exact-head 7/7 workflow and 9/9 CI proof before Gate 9.10 begins.
 
-### Gate 9.10 — final Phase 9 evidence — CANDIDATE
+### Gate 9.10 — final Phase 9 evidence — VALIDATED
 
 Gate 9.10 adds no runtime surface. It is the final evidence/audit gate for the
 Phase 9 Devices + Voice + Multimodal stack.
@@ -1571,18 +1571,41 @@ Final test/evidence inventory:
   `98bf4489af25044e8a49853d5002fc0b561815d1` is the accepted implementation
   evidence.
 
-Gate 9.10 exit requirement:
+Exact validated Gate 9.10 implementation/final-evidence HEAD:
 
-- this documentation-only final evidence candidate must itself receive
-  exact-head Secret Scan, Benchmark Contract, RC Preparation Evidence,
-  Dashboard Browser QA, Web Studio Browser QA and Cross-Browser QA SUCCESS;
-- its CI matrix must be 9/9 SUCCESS across Ubuntu/macOS/Windows and
-  Node 22/24/26;
-- PR #222 must remain OPEN + DRAFT and unmerged;
-- no merge, release, tag, npm publish or deploy may occur.
+`1dfec8556a4fd4de131843e8de605742832bb763`
 
-Only after those exact-head gates are green may this candidate be recorded as
-the validated Gate 9.10 implementation evidence and Phase 9 be closed.
+Exact-head validation of that candidate:
+
+- 7/7 workflows SUCCESS;
+- CI 9/9 SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 277 test files / 3,172 tests SUCCESS on observed Ubuntu/Node 26;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS;
+- Phase 6 package smoke SUCCESS;
+- Phase 7 package smoke SUCCESS;
+- Phase 8 ACP package smoke SUCCESS;
+- benchmark-claim package smoke SUCCESS;
+- provider-attempt package smoke SUCCESS;
+- governed-provider package smoke SUCCESS;
+- Secret Scan SUCCESS;
+- Benchmark Contract SUCCESS;
+- RC Preparation Evidence SUCCESS;
+- Dashboard Browser QA SUCCESS;
+- Web Studio Browser QA SUCCESS;
+- Cross-Browser QA SUCCESS;
+- no new public Phase 9 runtime export or dependency was introduced;
+- PR #222 remained OPEN + DRAFT and unmerged;
+- no merge, release, tag, npm publish or deploy occurred.
+
+Phase 9 closure rule:
+
+- this documentation-only closure commit must itself receive exact-head
+  7/7 workflow SUCCESS and CI 9/9 SUCCESS;
+- until that proof is green, Phase 10 must not begin;
+- once it is green, Phase 9 Devices + Voice + Multimodal is CLOSED with no
+  further runtime changes required by this architecture.
 
 ## 29. Non-goals
 
