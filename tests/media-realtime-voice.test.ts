@@ -330,7 +330,7 @@ describe('FuryPipe Phase 9 realtime voice streaming leases', () => {
     )).rejects.toMatchObject({ code: 'media-type-not-supported' });
 
     const perFrameHarness = harness();
-    const perFrameReq = request(perFrameHarness, { maxBytes: 8192, maxFrames: 3 });
+    const perFrameReq = request(perFrameHarness, { maxBytes: 4096, maxFrames: 3 });
     const perFrameLease = perFrameHarness.coordinator.authorize(perFrameReq, policy(perFrameReq));
     await expect(perFrameHarness.coordinator.sendFrame(
       perFrameLease,
