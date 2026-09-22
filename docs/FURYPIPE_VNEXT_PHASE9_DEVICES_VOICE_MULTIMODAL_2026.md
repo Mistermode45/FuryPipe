@@ -1483,21 +1483,106 @@ Evidence:
 The documentation-only Gate 9.9 closure commit itself requires the same
 exact-head 7/7 workflow and 9/9 CI proof before Gate 9.10 begins.
 
-### Gate 9.10 — final Phase 9 evidence
+### Gate 9.10 — final Phase 9 evidence — CANDIDATE
 
-Require:
+Gate 9.10 adds no runtime surface. It is the final evidence/audit gate for the
+Phase 9 Devices + Voice + Multimodal stack.
 
-- exact-head Secret Scan;
-- CI 9/9 across Ubuntu/macOS/Windows and Node 22/24/26;
-- Benchmark Contract;
-- RC Preparation Evidence;
-- Dashboard Browser QA;
-- Web Studio Browser QA;
-- Cross-Browser QA;
-- package smoke for every new public Phase 9 runtime export;
-- adversarial device/media tests;
-- restart/reconnect proof;
-- unknown-outcome/no-blind-replay proof.
+Validated implementation/closure chain:
+
+| Gate | Exact validated implementation HEAD | Exact documentation closure HEAD |
+| --- | --- | --- |
+| 9.0 architecture + threat model | `f7e2bf872882279bba22963d51d3cd0fd58c2440` | `12578356de8335d3df413fd030026271b2b952a7` |
+| 9.1 node registry + advertisements | `f096425df693d996a8e67a8670a81941dd7f138d` | `4017c3fb2b8315771a92d30795c6da822850ec7d` |
+| 9.2 node session/liveness | `d870d66e7f46e9f3be4b95a3b8482dd644219724` | `f46506ae31e9234192fc308336026026d9748ce5` |
+| 9.3 governed node-operation permits | `008c1802fe877e70a8c4714abb9730e73fbc301e` | `9bafe31452a23c7ef276c876c759d82372318de9` |
+| 9.4 media/voice plugin contracts | `3a10d8ad3f26ddf15395b941c3a6d97f48e053a4` | `2c0792ec6d592e3f118d0e4d73bdd66eadbbff28` |
+| 9.5 governed multimodal ingestion | `ed79e5be2d039ec618a92de3d803550c65e87265` | `44005e7f9c90a817a76850ad90da6ea800ebef88` |
+| 9.6 governed STT/TTS | `0a6f8dfe812c05bfc4da348b6b5c8e9fd998c7f3` | `1bce7d3eda30e9e68a081b412827e3142ec89c5f` |
+| 9.7 realtime voice sessions | `1172716bd7c82582358a6ba4102ff4dcfc7870d3` | `d3980f2079515fa72d159872f990003da1f5eae2` |
+| 9.8 camera/microphone capture | `013ef23ee1ed3b825ae1888c1e762ebc294e6947` | `f6cb9b0882b40e3dc23e128f48aa8ae0499d8d53` |
+| 9.9 Capability Autopilot + Devices evidence | `98bf4489af25044e8a49853d5002fc0b561815d1` | `025696239966361fc82815e284455c45aa00fd24` |
+
+The branch is stacked linearly on validated Phase 8 closure
+`46f7ded2edc1b399dcd65d53cc4490be8c1ac5bd`.
+
+Final security/recovery evidence:
+
+- pairing is identity/binding evidence only; it never becomes operation
+  permission;
+- `paired != connected != live != authorized` remains enforced across node
+  registry, liveness, permits and media/device operations;
+- reconnect creates fresh node-session/liveness evidence and makes
+  pre-reconnect capability advertisements stale until a newer generation is
+  advertised;
+- a fresh coordinator after Gateway restart does not recognize prior
+  process-local node sessions, operation permits, realtime voice leases,
+  capture consents or capture permits;
+- node-operation permits are exact, short-lived, process-local, one-shot and
+  consumed at the dispatch boundary;
+- current Gateway authority, node liveness and capability generation are
+  revalidated immediately before side-effect dispatch;
+- provider/device outcomes that may have happened but cannot be confirmed are
+  explicit `unknown`, `retrySafe:false` and
+  `automaticReplayAllowed:false`;
+- realtime voice interruption/cancel/revoke never claims rollback without an
+  acknowledged remote result;
+- camera/microphone capture requires current explicit consent, fresh
+  user-presence evidence, local-confirmation digest and the existing governed
+  node-operation permit; pairing/capability presence alone is insufficient;
+- capture and STT buffers are zeroed on terminal paths and raw media remains
+  behind bounded process-local handles;
+- media/document/transcript content is untrusted content, not instruction or
+  execution authority;
+- TTS generation does not imply speaker playback or device-operation
+  authorization;
+- Capability Autopilot remains `selection-only`; the Devices evidence surface
+  remains `dashboard-observation-only`;
+- copied/lookalike process-local authority objects fail closed across the Phase
+  9 runtime boundaries;
+- no biometric authentication, face recognition, surveillance behavior,
+  ambient shell from pairing, silent camera/microphone capture, blind retry or
+  persistent raw-media collection is authorized by Phase 9.
+
+Final test/evidence inventory:
+
+- Gate 9.1: 11 dedicated node-registry tests;
+- Gate 9.2: 20 dedicated node-session/liveness tests;
+- Gate 9.3: 16 dedicated node-operation permit tests;
+- Gate 9.4: 14 dedicated media/voice plugin-contract tests;
+- Gate 9.5: 19 dedicated multimodal-ingestion tests;
+- Gate 9.6: 23 dedicated governed STT/TTS tests;
+- Gate 9.7: 25 dedicated realtime voice tests;
+- Gate 9.8: 26 dedicated device-capture tests;
+- Gate 9.9: 18 dedicated Devices/Autopilot evidence tests;
+- total targeted implementation-gate coverage: 172 dedicated tests;
+- latest validated Gate 9.9 implementation and closure both have exact-head
+  7/7 workflows and CI 9/9;
+- latest observed full suite at Gate 9.9 implementation:
+  277 test files / 3,172 tests SUCCESS;
+- strict TypeScript typecheck and build SUCCESS;
+- package smoke SUCCESS, including Phase 6, Phase 7, Phase 8 ACP, benchmark
+  claim, provider-attempt and governed-provider packed-artifact smokes;
+- `package.json` exposes no new public Phase 9 runtime export, so Gate 9.10
+  has no additional Phase 9 packed-export smoke obligation;
+- Gate 9.9's initial candidate
+  `b39e37b7cf44cdd7e3a7be56753439f0065e791f` was correctly rejected after CI
+  exposed duplicate Capability Index keywords; the fixed exact HEAD
+  `98bf4489af25044e8a49853d5002fc0b561815d1` is the accepted implementation
+  evidence.
+
+Gate 9.10 exit requirement:
+
+- this documentation-only final evidence candidate must itself receive
+  exact-head Secret Scan, Benchmark Contract, RC Preparation Evidence,
+  Dashboard Browser QA, Web Studio Browser QA and Cross-Browser QA SUCCESS;
+- its CI matrix must be 9/9 SUCCESS across Ubuntu/macOS/Windows and
+  Node 22/24/26;
+- PR #222 must remain OPEN + DRAFT and unmerged;
+- no merge, release, tag, npm publish or deploy may occur.
+
+Only after those exact-head gates are green may this candidate be recorded as
+the validated Gate 9.10 implementation evidence and Phase 9 be closed.
 
 ## 29. Non-goals
 
