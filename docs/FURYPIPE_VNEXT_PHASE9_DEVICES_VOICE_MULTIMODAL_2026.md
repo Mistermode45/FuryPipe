@@ -1410,10 +1410,78 @@ Evidence:
 The documentation-only Gate 9.8 closure commit itself requires the same
 exact-head 7/7 workflow and 9/9 CI proof before Gate 9.9 begins.
 
-### Gate 9.9 — Capability Autopilot + Devices evidence surface
+### Gate 9.9 — Capability Autopilot + Devices evidence surface — VALIDATED
 
-Index the new capabilities lazily and expose inspection/evidence without
-turning the dashboard or selection layer into authority.
+Implementation surface:
+
+- `src/phase9-devices-evidence.ts` projects current live Phase 9 node
+  capabilities into the existing Capability Index as observation/routing
+  metadata only and builds a digest-only Devices evidence snapshot;
+- `tests/phase9-devices-evidence.test.ts` adds 18 dedicated projection,
+  reconnect, anti-forgery, unknown-outcome, authority-separation and bounds
+  tests.
+
+Contract:
+
+- only current live node-session capability generations are projectable;
+- reconnect makes pre-reconnect advertisements stale until a newer generation
+  is advertised;
+- projected device capabilities reuse the existing Capability Index and remain
+  `executionAuthority:false`;
+- Capability Autopilot remains `selection-only`; projection does not grant
+  activation, connection, policy or execution authority;
+- camera, microphone, speaker, notification, media-input and voice surfaces
+  receive minimum capability-specific permission metadata;
+- projected records use host-origin routing metadata and never durable bearer
+  authority;
+- copied/lookalike node descriptors fail closed;
+- projection requires the complete current registry descriptor set and rolls
+  back partial index mutation on failure;
+- Devices snapshots hash registration/device/pairing/client/session/liveness
+  identifiers and do not expose raw process-local authority identifiers;
+- realtime voice, capture and STT/TTS activity may be displayed only from
+  process-local generated evidence objects;
+- explicit realtime `unknown` outcomes remain visible with
+  `retrySafe:false` and `automaticReplayAllowed:false`;
+- activity evidence bound to a node outside the current snapshot fails closed;
+- disconnected or revoked/stale authority is represented by loss of current
+  live capability/session evidence; no synthetic revocation boolean is
+  fabricated where the pairing coordinator does not expose durable revocation
+  inspection;
+- dashboard/inspection output remains `dashboard-observation-only` with
+  execution, activation, connection and policy authority all false;
+- Gate 9.9 adds no new public Phase 9 package export and no dependency.
+
+Initial Gate 9.9 candidate:
+
+`b39e37b7cf44cdd7e3a7be56753439f0065e791f`
+
+This candidate correctly failed CI because a capability without a dotted
+namespace (for example `camera`) produced duplicate Capability Index keywords.
+The failure was fixed by deterministic keyword deduplication before the gate was
+accepted.
+
+Exact validated Gate 9.9 implementation HEAD:
+
+`98bf4489af25044e8a49853d5002fc0b561815d1`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- CI 9/9 SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 277 test files / 3,172 tests SUCCESS on observed Ubuntu/Node 26;
+- 18 dedicated Phase 9 Devices/Capability Autopilot evidence tests SUCCESS;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS, including Phase 6/7/8 packed-artifact smokes,
+  benchmark claim, provider-attempt and governed-provider smokes;
+- Secret Scan, Benchmark Contract, RC Preparation Evidence, Dashboard Browser
+  QA, Web Studio Browser QA and Cross-Browser QA SUCCESS;
+- the failed pre-fix implementation HEAD was not accepted as Gate 9.9 evidence;
+- no merge, release, tag, npm publish or deploy occurred.
+
+The documentation-only Gate 9.9 closure commit itself requires the same
+exact-head 7/7 workflow and 9/9 CI proof before Gate 9.10 begins.
 
 ### Gate 9.10 — final Phase 9 evidence
 
