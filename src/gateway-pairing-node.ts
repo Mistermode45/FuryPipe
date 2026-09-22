@@ -86,6 +86,19 @@ const MAX_REQUEST_TTL_MS = 30 * 60_000;
 const DEFAULT_MAX_PENDING = 1_024;
 const DEFAULT_MAX_PAIRED = 8_192;
 const PRINCIPAL_RE = /^[A-Za-z0-9][A-Za-z0-9._:@-]*$/u;
+const GENERATED_PAIRING_COORDINATORS = new WeakSet<object>();
+
+/**
+ * Returns true only for a process-local coordinator created by
+ * createFuryGatewayPairingCoordinator(). Copied/lookalike objects fail.
+ */
+export function isGeneratedFuryGatewayPairingCoordinator(
+  value: unknown,
+): value is FuryGatewayPairingCoordinator {
+  return typeof value === 'object'
+    && value !== null
+    && GENERATED_PAIRING_COORDINATORS.has(value);
+}
 
 function boundedInteger(
   value: number | undefined,
@@ -186,7 +199,7 @@ export function createFuryGatewayPairingCoordinator(
     }
   };
 
-  return Object.freeze({
+  const coordinator: FuryGatewayPairingCoordinator = Object.freeze({
     requestPairing(device: FuryGatewayAuthenticatedDevice): FuryGatewayPairingRequest {
       assertAuthenticatedDevice(device);
       const requestedAt = finiteNow(now);
@@ -319,4 +332,7 @@ export function createFuryGatewayPairingCoordinator(
       return pairedByKey.size;
     },
   });
+
+  GENERATED_PAIRING_COORDINATORS.add(coordinator);
+  return coordinator;
 }
