@@ -6,13 +6,13 @@ import {
   FURY_MEDIA_PLUGIN_PROFILE_FORMAT,
   validateFuryMediaPluginBundle,
   type FuryMediaPluginBundleInput,
-} from './media-plugin-contracts.js';
+} from '../src/media-plugin-contracts.js';
 import {
   FURY_MEDIA_INGESTION_INPUT_FORMAT,
   FURY_MEDIA_INGESTION_SOURCE_FORMAT,
   createFuryMediaIngestionCoordinator,
   isGeneratedFuryMediaIngestionHandle,
-} from './media-ingestion.js';
+} from '../src/media-ingestion.js';
 import {
   FURY_VOICE_OPERATION_POLICY_FORMAT,
   FuryVoiceOperationError,
@@ -28,7 +28,7 @@ import {
   type FuryVoiceOperationPermit,
   type FuryVoiceOperationPolicy,
   type FuryVoiceOperationRequest,
-} from './media-voice-operations.js';
+} from '../src/media-voice-operations.js';
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
