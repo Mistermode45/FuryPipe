@@ -1229,11 +1229,60 @@ Evidence:
 The documentation-only Gate 9.5 closure commit itself requires the same
 exact-head 7/7 workflow and 9/9 CI proof before Gate 9.6 begins.
 
-### Gate 9.6 — governed STT/TTS
+### Gate 9.6 — governed STT/TTS — VALIDATED
 
-Implement separate governed synthesis/recognition operations and evidence.
+Implementation surface:
 
-TTS generation and device playback remain separate authorities.
+- `src/media-voice-operations.ts` adds governed one-shot STT and TTS request,
+  policy, permit, adapter and evidence contracts;
+- four dedicated `media-voice-operations-*.test.ts` suites cover authorization,
+  execution, recovery and adversarial boundaries.
+
+Contract:
+
+- STT and TTS are separate explicit operations bound to the exact validated
+  media-plugin bundle/version/profile and operation request digest;
+- execution requires a short-lived process-local one-shot permit whose exact
+  request/policy binding is revalidated before adapter dispatch;
+- copied requests/permits and permits from a fresh coordinator fail closed;
+- profile lifecycle, permissions, supported media types, bounds and fresh health
+  evidence are revalidated before use;
+- STT consumes governed media handles and keeps transcripts
+  `contentTrust:'untrusted-transcript'`, `instructionAuthority:false` and
+  `promptAdmissionRequired:true`;
+- STT adapter audio snapshots are zeroed after dispatch, including error paths;
+- TTS output is re-ingested as governed `provider-output` media and malformed,
+  undeclared or over-budget output fails closed;
+- successful TTS generation explicitly leaves
+  `speakerPlaybackAuthorized:false` and `deviceOperationAuthorized:false`;
+- provider request IDs, permit IDs and policy IDs are digest-only in emitted
+  evidence;
+- adapter throw, malformed result or otherwise uncertain post-dispatch outcome
+  is `unknown`, `retrySafe:false`, with no blind replay;
+- no camera/microphone capture, speaker playback, realtime voice session or
+  ambient device authority is introduced by Gate 9.6.
+
+Exact validated Gate 9.6 implementation HEAD:
+
+`0a6f8dfe812c05bfc4da348b6b5c8e9fd998c7f3`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- CI 9/9 SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 274 test files / 3,103 tests SUCCESS on observed Ubuntu/Node 26;
+- 23 dedicated governed STT/TTS tests SUCCESS;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS, including Phase 6/7/8 packed-artifact smokes;
+- Secret Scan, Benchmark Contract, RC Preparation Evidence, Dashboard Browser
+  QA, Web Studio Browser QA and Cross-Browser QA SUCCESS;
+- no new public Phase 9 package export or dependency was introduced;
+- no speaker/device playback path was introduced;
+- no merge, release, tag, npm publish or deploy occurred.
+
+The documentation-only Gate 9.6 closure commit itself requires the same
+exact-head 7/7 workflow and 9/9 CI proof before Gate 9.7 begins.
 
 ### Gate 9.7 — realtime voice sessions
 
