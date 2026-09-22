@@ -1284,10 +1284,68 @@ Evidence:
 The documentation-only Gate 9.6 closure commit itself requires the same
 exact-head 7/7 workflow and 9/9 CI proof before Gate 9.7 begins.
 
-### Gate 9.7 — realtime voice sessions
+### Gate 9.7 — realtime voice sessions — VALIDATED
 
-Implement bounded streaming leases, cancellation/revocation, interruption and
-unknown-outcome semantics.
+Implementation surface:
+
+- `src/media-realtime-voice.ts` adds bounded realtime voice stream leases tied
+  to current Gateway/node/session/capability evidence;
+- `tests/media-realtime-voice.test.ts` adds dedicated adversarial lease,
+  budget, replay, authority-change, cancellation and recovery coverage.
+
+Contract:
+
+- realtime voice is represented by a short-lived process-local stream lease,
+  never a timeless permit or provider session ID;
+- requests bind exact Gateway session/principal, node session/liveness epoch,
+  registration/device/pairing identity, capability generation/digest,
+  source/sink digests, direction and byte/frame/duration budgets;
+- authorization revalidates current Gateway authority, live node session,
+  current `voice.realtime` advertisement, profile lifecycle/permission/health
+  and exact policy scope before issuing a lease;
+- lease expiry is bounded by policy TTL, requested duration, Gateway-session
+  expiry, node liveness and profile-health freshness;
+- frame sequence is monotonic; direction, MIME, per-frame bytes, cumulative
+  bytes and frame count are revalidated before each dispatch;
+- current authority/capability generation is checked again immediately before
+  dispatch and after adapter completion;
+- an adapter exception, malformed/unknown adapter result or authority change
+  after possible dispatch moves the lease to explicit `unknown` and removes it
+  from the active set;
+- unknown outcomes are never replay-safe and never automatically replayed;
+- `interrupt`, `cancel` and `revoke` transition the lease terminally only
+  after an acknowledged adapter result; remote rollback is never assumed;
+- frame bytes are copied for dispatch and zeroed after use;
+- provider session IDs are digest-only transport metadata and never FuryPipe
+  authority;
+- frame and terminal receipts remain observation/evidence only with
+  `executionAuthority:false`, `retrySafe:false` and
+  `automaticReplayAllowed:false`;
+- realtime output does not imply speaker playback authority;
+- copied/foreign lease/request objects and stale authority fail closed;
+- restart/reconnect cannot resurrect process-local streaming authority.
+
+Exact validated Gate 9.7 implementation HEAD:
+
+`1172716bd7c82582358a6ba4102ff4dcfc7870d3`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- CI 9/9 SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 275 test files / 3,128 tests SUCCESS on observed Ubuntu/Node 26;
+- 25 dedicated realtime voice streaming-lease tests SUCCESS;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS, including Phase 6/7/8 packed-artifact smokes;
+- Secret Scan, Benchmark Contract, RC Preparation Evidence, Dashboard Browser
+  QA, Web Studio Browser QA and Cross-Browser QA SUCCESS;
+- Gate 9.6 documentation closure `1bce7d3eda30e9e68a081b412827e3142ec89c5f`
+  was independently exact-head validated 7/7 + CI 9/9 before Gate 9.7;
+- no merge, release, tag, npm publish or deploy occurred.
+
+The documentation-only Gate 9.7 closure commit itself requires the same
+exact-head 7/7 workflow and 9/9 CI proof before Gate 9.8 begins.
 
 ### Gate 9.8 — camera/microphone/device media capture
 
