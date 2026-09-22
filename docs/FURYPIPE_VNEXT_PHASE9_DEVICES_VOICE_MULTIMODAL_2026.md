@@ -1109,12 +1109,64 @@ Evidence:
 The documentation-only Gate 9.3 closure commit itself requires the same
 exact-head 7/7 workflow and 9/9 CI proof before Gate 9.4 begins.
 
-### Gate 9.4 — media/voice plugin contracts
+### Gate 9.4 — media/voice plugin contracts — VALIDATED
 
-Extend plugin/capability contracts for device/media/STT/TTS/realtime profiles,
-permissions, health and provenance.
+Implementation surface:
 
-No implicit provider execution.
+- `src/media-plugin-contracts.ts` adds bounded Phase 9 media/voice plugin and
+  profile contracts;
+- `tests/media-plugin-contracts.test.ts` adds dedicated adversarial contract,
+  provenance, permission, bounds and authority-separation coverage.
+
+Contract:
+
+- media/device permissions are explicit and least-privilege:
+  `device-discovery`, `device-notify`, `device-camera`,
+  `device-microphone`, `device-speaker`, `media-read`, `media-write`,
+  `voice-stt`, `voice-tts` and `voice-realtime`;
+- profiles support device adapters, STT, TTS, realtime voice, multimodal input
+  and bounded image/audio/video generation families without implying execution;
+- profile permissions must remain a subset of the parent bundle declaration;
+- source provenance is credential-free HTTPS and GitHub-backed sources require
+  an immutable pinned commit SHA;
+- secrets remain environment-variable references by name only;
+- MIME declarations are canonical explicit media types; wildcard or
+  extension-like declarations fail closed;
+- input/output bytes, item counts and optional durations are code-level bounded;
+- health, lifecycle and compatibility are observation data only and cannot
+  become selection or execution authority;
+- validated profiles are bound to the exact bundle ID/version by FuryPipe
+  rather than trusting caller-supplied profile identity;
+- inspection exposes bounded metadata and source digests without exposing source
+  URLs or secret values;
+- bundles remain `authority:'plugin-contract-only'`,
+  `executionAuthority:false` and `automaticExecutionAllowed:false`;
+- profiles remain `authority:'profile-observation-only'`,
+  `executionAuthority:false` and `selectionAuthority:false`;
+- Gate 9.4 introduces no provider invocation, device operation, capture,
+  playback or other media execution path.
+
+Exact validated Gate 9.4 implementation HEAD:
+
+`3a10d8ad3f26ddf15395b941c3a6d97f48e053a4`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- CI 9/9 SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 269 test files / 3,061 tests SUCCESS on observed Ubuntu/Node 26;
+- 14 dedicated Phase 9 media/voice plugin-contract tests SUCCESS;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS, including Phase 6/7/8 packed-artifact smokes;
+- Secret Scan, Benchmark Contract, RC Preparation Evidence, Dashboard Browser
+  QA, Web Studio Browser QA and Cross-Browser QA SUCCESS;
+- no public Phase 9 runtime export or new dependency was introduced;
+- no provider/device/media execution path was introduced;
+- no merge, release, tag, npm publish or deploy occurred.
+
+The documentation-only Gate 9.4 closure commit itself requires the same
+exact-head 7/7 workflow and 9/9 CI proof before Gate 9.5 begins.
 
 ### Gate 9.5 — governed multimodal ingestion
 
