@@ -1168,10 +1168,66 @@ Evidence:
 The documentation-only Gate 9.4 closure commit itself requires the same
 exact-head 7/7 workflow and 9/9 CI proof before Gate 9.5 begins.
 
-### Gate 9.5 — governed multimodal ingestion
+### Gate 9.5 — governed multimodal ingestion — VALIDATED
 
-Bound image/document/audio/video ingestion, MIME/type validation, provenance and
-prompt-injection-safe content handling.
+Implementation surface:
+
+- `src/media-ingestion.ts` adds bounded process-local multimodal ingestion for
+  image/document/audio/video bytes;
+- `tests/media-ingestion.test.ts` adds dedicated adversarial MIME, provenance,
+  bounds, anti-forgery and prompt-injection-safety coverage.
+
+Contract:
+
+- ingestion accepts bytes already supplied to FuryPipe; it never performs an
+  implicit remote fetch and exposes no fetch/send/execute authority;
+- only an explicit canonical MIME set is accepted and media kind must match the
+  declared MIME;
+- PNG/JPEG/GIF dimensions, WAV duration and MP4 `mvhd` duration are derived
+  from bytes rather than trusted extension metadata;
+- per-item, per-batch and active byte/item budgets are code-level bounded and
+  batch admission is atomic;
+- image dimensions/pixel count and audio/video duration are bounded before a
+  process-local handle is admitted;
+- remote-transfer provenance requires an explicit reference digest and URLs are
+  not accepted as fetch authority;
+- transformed media binds exact source-media and transformation digests;
+- raw bytes stay behind process-local anti-forgery handles, are copied on read,
+  and are zeroed/released when the handle is released;
+- copied handles and handles from another coordinator fail closed;
+- evidence contains media/provenance digests and bounded metadata, not raw media
+  or secret-like content;
+- media content remains
+  `contentTrust:'untrusted-media-content'`,
+  `instructionAuthority:false` and `executionAuthority:false`;
+- provider compatibility remains explicitly `not-evaluated`, so successful
+  ingestion is never confused with provider/model compatibility;
+- schema drift, accessors, duplicate item IDs, MIME spoofing, unsupported MIME
+  types, oversized media and malformed timing/dimension evidence fail closed;
+- Gate 9.5 introduces no provider inference, STT/TTS, device capture, playback
+  or other media execution path.
+
+Exact validated Gate 9.5 implementation HEAD:
+
+`ed79e5be2d039ec618a92de3d803550c65e87265`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- CI 9/9 SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 270 test files / 3,080 tests SUCCESS on observed Ubuntu/Node 26;
+- 19 dedicated governed multimodal-ingestion tests SUCCESS;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS, including Phase 6/7/8 packed-artifact smokes;
+- Secret Scan, Benchmark Contract, RC Preparation Evidence, Dashboard Browser
+  QA, Web Studio Browser QA and Cross-Browser QA SUCCESS;
+- no public Phase 9 runtime export or new dependency was introduced;
+- no provider/device/media execution path was introduced;
+- no merge, release, tag, npm publish or deploy occurred.
+
+The documentation-only Gate 9.5 closure commit itself requires the same
+exact-head 7/7 workflow and 9/9 CI proof before Gate 9.6 begins.
 
 ### Gate 9.6 — governed STT/TTS
 
