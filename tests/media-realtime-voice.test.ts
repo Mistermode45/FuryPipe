@@ -320,14 +320,36 @@ describe('FuryPipe Phase 9 realtime voice streaming leases', () => {
     expect(calls).toBe(1);
   });
 
-  it('enforces frame MIME, per-frame bytes, cumulative bytes and frame budgets', async () => {
-    const h = harness();
-    const req = request(h, { maxBytes: 8, maxFrames: 2 });
-    const liveLease = h.coordinator.authorize(req, policy(req));
-    await expect(h.coordinator.sendFrame(liveLease, frame(1, { mimeType: 'audio/mpeg' }))).rejects.toMatchObject({ code: 'media-type-not-supported' });
-    await h.coordinator.sendFrame(liveLease, frame(1));
-    await h.coordinator.sendFrame(liveLease, frame(2));
-    await expect(h.coordinator.sendFrame(liveLease, frame(3))).rejects.toMatchObject({ code: 'frame-limit' });
+  it('enforces frame MIME, per-frame bytes, cumulative bytes and frame budgets independently', async () => {
+    const mimeHarness = harness();
+    const mimeReq = request(mimeHarness, { maxBytes: 16, maxFrames: 3 });
+    const mimeLease = mimeHarness.coordinator.authorize(mimeReq, policy(mimeReq));
+    await expect(mimeHarness.coordinator.sendFrame(
+      mimeLease,
+      frame(1, { mimeType: 'audio/mpeg' }),
+    )).rejects.toMatchObject({ code: 'media-type-not-supported' });
+
+    const perFrameHarness = harness();
+    const perFrameReq = request(perFrameHarness, { maxBytes: 8192, maxFrames: 3 });
+    const perFrameLease = perFrameHarness.coordinator.authorize(perFrameReq, policy(perFrameReq));
+    await expect(perFrameHarness.coordinator.sendFrame(
+      perFrameLease,
+      frame(1, { bytes: new Uint8Array(4097) }),
+    )).rejects.toMatchObject({ code: 'byte-limit' });
+
+    const byteHarness = harness();
+    const byteReq = request(byteHarness, { maxBytes: 8, maxFrames: 3 });
+    const byteLease = byteHarness.coordinator.authorize(byteReq, policy(byteReq));
+    await byteHarness.coordinator.sendFrame(byteLease, frame(1));
+    await byteHarness.coordinator.sendFrame(byteLease, frame(2));
+    await expect(byteHarness.coordinator.sendFrame(byteLease, frame(3))).rejects.toMatchObject({ code: 'byte-limit' });
+
+    const frameHarness = harness();
+    const frameReq = request(frameHarness, { maxBytes: 12, maxFrames: 2 });
+    const frameLease = frameHarness.coordinator.authorize(frameReq, policy(frameReq));
+    await frameHarness.coordinator.sendFrame(frameLease, frame(1));
+    await frameHarness.coordinator.sendFrame(frameLease, frame(2));
+    await expect(frameHarness.coordinator.sendFrame(frameLease, frame(3))).rejects.toMatchObject({ code: 'frame-limit' });
   });
 
   it('fails closed when voice.realtime is absent from the current node advertisement', () => {
