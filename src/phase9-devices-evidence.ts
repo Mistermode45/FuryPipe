@@ -257,7 +257,7 @@ function projectionEntry(node: FuryGatewayNodeDescriptor, capability: FuryPhase9
     description: `Current live Phase 9 device capability ${capability}; routing metadata only; authorization remains false.`,
     families: capabilityFamily(capability),
     tags: Object.freeze(['phase9', 'device', 'live', `generation-${generation}`]),
-    keywords: Object.freeze(['device', 'phase9', capability, ...capability.split('.')]),
+    keywords: Object.freeze([...new Set(['device', 'phase9', capability, ...capability.split('.')])]),
     trust: 'verified',
     license: 'not-applicable',
     health: 'ready',
