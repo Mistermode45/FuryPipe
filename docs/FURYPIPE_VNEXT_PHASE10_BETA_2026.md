@@ -1,6 +1,6 @@
 # FuryPipe VNext Phase 10 — Beta / Task-First Agent OS (2026)
 
-> Status: Gate 10.0 architecture candidate.
+> Status: Gate 10.0 architecture — VALIDATED.
 >
 > Branch: `vnext-phase10-vnext-beta`
 >
@@ -308,6 +308,35 @@ A beta opt-out must not:
 - erase automation state;
 - rewrite repositories;
 - revoke unrelated user credentials.
+
+## Gate 10.0 validation record
+
+Exact validated Gate 10.0 architecture HEAD:
+
+`7af174f009be1c9b85703a4c15c8e9dc510e6dbc`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- CI 9/9 SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 277 test files / 3,172 tests SUCCESS on observed Ubuntu/Node 26;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS, including existing Phase 6/7/8 and provider smokes;
+- Secret Scan SUCCESS;
+- Benchmark Contract SUCCESS;
+- RC Preparation Evidence SUCCESS;
+- Dashboard Browser QA SUCCESS;
+- Web Studio Browser QA SUCCESS;
+- Cross-Browser QA SUCCESS;
+- the only Gate 10.0 change is this Phase 10 architecture document;
+- no Phase 10 runtime dependency, migration, beta default or authority change was
+  introduced;
+- PR #223 remained OPEN + DRAFT and unmerged;
+- no merge, release, tag, npm publish or deploy occurred.
+
+The documentation-only Gate 10.0 closure commit itself must receive the same
+exact-head 7/7 workflow and CI 9/9 proof before Gate 10.1 begins.
 
 ## 17. Gate 10.1 — beta readiness model
 
