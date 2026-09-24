@@ -25,6 +25,8 @@ furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
 furypipe config migrate-beta [--json]
 furypipe config rollback-beta [--json]
+furypipe beta status|opt-in|opt-out|legacy [--json]
+furypipe task --plan <objective> [--json] [--task-first|--legacy|--expert]
 furypipe stats [--json] [--file <path>]
 furypipe export [...]
 furypipe gateway config [--json]
@@ -276,6 +278,49 @@ Human-readable output supports locale selection, including:
 
 The `--json` contract remains machine-oriented and is not localized.
 
+## Beta entry and task-first planning
+
+The Phase 10 beta entry is explicit and reversible. A fresh or legacy config
+is never rewritten just because `furypipe`, `doctor` or the dashboard was
+started.
+
+Inspect or choose the entry path:
+
+```bash
+furypipe beta status --json
+furypipe beta opt-in --json
+furypipe beta opt-out --json
+furypipe beta legacy --json
+```
+
+The default resolution is deliberately conservative:
+
+| Config state | Default entry | Meaning |
+| --- | --- | --- |
+| Missing | `task-first` / `recommended` | Fresh-install recommendation; no file write |
+| Legacy JSON | `legacy-expert` / `legacy` | Existing behavior remains reachable |
+| Explicit `recommended` | `task-first` | Operator selected the beta entry |
+| Explicit `opted-out` | `legacy-expert` / `opted-out` | Beta recommendation is declined |
+| Invalid/unsupported marker | `blocked` | Reconcile the file; no guessed repair |
+
+`furypipe task --plan` is the safe handoff boundary for this slice:
+
+```bash
+furypipe task --plan "inspect the installed package" --json
+furypipe task --plan --task-first "review the current readiness" --json
+furypipe task --plan --expert "inspect the legacy route" --json
+```
+
+The output contains an objective digest and length, not the objective text.
+It reports `selection: not-run`, `execution: not-authorized` and
+`authority: planning-only`. It does not select a capability, call a provider,
+install/connect a plugin or MCP server, grant permission, or execute a task.
+Governed runtime execution remains behind the existing Gateway/policy paths.
+
+The dashboard's `/api/beta.json` and `/fragments/beta` surfaces render the
+same observation-only projection. They contain no mutation control and cannot
+turn readiness, onboarding or a displayed status into authority.
+
 ## Beta configuration governance
 
 The beta marker is never written automatically during startup. Use the explicit
@@ -293,6 +338,10 @@ Rollback removes only FuryPipe's unchanged marker. A changed, malformed or
 future marker fails with `reconciliation-required`; the command never guesses
 how to repair user-owned configuration. Set `FURYPIPE_CONFIG` to target an
 explicit file. No provider credential values are emitted by these commands.
+
+For the complete operator runbook, including self-hosting, upgrade, recovery,
+security boundaries and known validation limits, see
+[FURYPIPE_VNEXT_PHASE10_OPERATOR.md](FURYPIPE_VNEXT_PHASE10_OPERATOR.md).
 
 ## Stats
 

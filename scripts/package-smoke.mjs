@@ -84,6 +84,8 @@ try {
   const formerPortForChecks = ['478', '21'].join('');
   assert(!packedFiles.has(`docs/${legacyEnvForChecks}GAP_ANALYSIS.md`), 'historical gap analysis leaked into the public package');
   assert(packedFiles.has('docs/CLI.md'), 'FuryPipe CLI documentation is missing from the public package');
+  assert(packedFiles.has('docs/FURYPIPE_VNEXT_PHASE10_BETA_2026.md'), 'Phase 10 beta architecture documentation is missing from the public package');
+  assert(packedFiles.has('docs/FURYPIPE_VNEXT_PHASE10_OPERATOR.md'), 'Phase 10 beta operator runbook is missing from the public package');
   assert(packedFiles.has('docs/VISUAL_ENGINE.md'), 'Visual Engine documentation is missing from the public package');
   assert(packedFiles.has('docs/MODEL_ADAPTERS.md'), 'Model Adapter documentation is missing from the public package');
   assert(packedFiles.has('docs/CAPABILITY_CATALOG.md'), 'Capability Catalog documentation is missing from the public package');
@@ -233,6 +235,43 @@ try {
   assert(report.betaReadiness?.authority === 'readiness-observation-only', 'doctor smoke exposed beta authority');
 
   const betaConfigEnv = { ...doctorEnv, FURYPIPE_CONFIG: setupConfig };
+  const betaStatus = await run(process.execPath, [cli, 'beta', 'status', '--json'], installDir, betaConfigEnv);
+  const betaStatusReport = JSON.parse(betaStatus.stdout);
+  assert(betaStatusReport.entry?.entryPath === 'legacy-expert', 'legacy setup did not retain the legacy/expert beta entry');
+  assert(betaStatusReport.entry?.executionAuthority === false, 'beta status exposed execution authority');
+  const betaOptIn = await run(process.execPath, [cli, 'beta', 'opt-in', '--json'], installDir, betaConfigEnv);
+  const betaOptInReport = JSON.parse(betaOptIn.stdout);
+  assert(betaOptInReport.result?.mode === 'recommended', 'beta opt-in did not write the recommended mode');
+  const planned = await run(
+    process.execPath,
+    [cli, 'task', '--plan', 'inspect installed package', '--json'],
+    installDir,
+    betaConfigEnv,
+  );
+  const plannedReport = JSON.parse(planned.stdout);
+  assert(plannedReport.selection === 'not-run', 'task plan performed capability selection');
+  assert(plannedReport.execution === 'not-authorized', 'task plan exposed execution authority');
+  assert(!Object.prototype.hasOwnProperty.call(plannedReport, 'objective'), 'task plan leaked the objective text');
+  let missingPlanError;
+  try {
+    await run(process.execPath, [cli, 'task', 'without-explicit-plan'], installDir, betaConfigEnv);
+  } catch (error) {
+    missingPlanError = error;
+  }
+  assert(missingPlanError, 'task command accepted an implicit execution/planning mode');
+  assert(String(missingPlanError.stderr ?? '').includes('explicit --plan'), 'task command did not explain the required planning boundary');
+  const betaOptOut = await run(process.execPath, [cli, 'beta', 'opt-out', '--json'], installDir, betaConfigEnv);
+  const betaOptOutReport = JSON.parse(betaOptOut.stdout);
+  assert(betaOptOutReport.result?.mode === 'opted-out', 'beta opt-out did not persist the opt-out mode');
+  const betaLegacy = await run(process.execPath, [cli, 'beta', 'legacy', '--json'], installDir, betaConfigEnv);
+  assert(JSON.parse(betaLegacy.stdout).observation?.mode === 'legacy', 'beta legacy path did not restore the reversible legacy mode');
+  const betaLegacyRollback = await run(
+    process.execPath,
+    [cli, 'config', 'rollback-beta', '--json'],
+    installDir,
+    betaConfigEnv,
+  );
+  assert(JSON.parse(betaLegacyRollback.stdout).result?.status === 'rolled-back', 'beta experience rollback did not remove only the owned marker');
   const migratedBeta = await run(
     process.execPath,
     [cli, 'config', 'migrate-beta', '--json'],

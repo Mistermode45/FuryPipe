@@ -30,6 +30,15 @@ export interface FuryBetaConfigMigrationResult {
   readonly rollback: FuryBetaConfigRollback;
 }
 
+export interface FuryBetaConfigModeResult {
+  readonly path: string;
+  readonly status: 'mode-updated' | 'already-mode';
+  readonly mode: FuryBetaConfigMode;
+  readonly migrationId: typeof FURY_BETA_CONFIG_MIGRATION_ID;
+  readonly digestSha256: string | null;
+  readonly rollback: FuryBetaConfigRollback;
+}
+
 interface LoadedConfig {
   readonly path: string;
   readonly value: Record<string, unknown> | undefined;
@@ -39,6 +48,7 @@ interface LoadedConfig {
 const BETA_KEYS = Object.freeze(['format', 'schemaVersion', 'mode', 'migrationId'] as const);
 const MODES = new Set<string>(['legacy', 'opted-out', 'recommended']);
 const MIGRATION_ID = /^[a-z0-9][a-z0-9.-]{0,95}$/u;
+const OBSERVATIONS = new WeakSet<object>();
 
 function freezeReasons(reasons: readonly string[]): readonly string[] {
   return Object.freeze([...new Set(reasons)].sort((a, b) => a.localeCompare(b)));
@@ -49,7 +59,7 @@ function observation(
   status: FuryBetaConfigStatus,
   fields: Partial<Omit<FuryBetaConfigObservation, 'format' | 'path' | 'status'>> = {},
 ): FuryBetaConfigObservation {
-  return Object.freeze({
+  const result = Object.freeze({
     format: FURY_BETA_CONFIG_FORMAT,
     path: filePath,
     status,
@@ -60,6 +70,14 @@ function observation(
     rollback: fields.rollback ?? 'manual-reconciliation',
     reasonCodes: freezeReasons(fields.reasonCodes ?? []),
   });
+  OBSERVATIONS.add(result);
+  return result;
+}
+
+export function isGeneratedFuryBetaConfigObservation(
+  value: unknown,
+): value is FuryBetaConfigObservation {
+  return typeof value === 'object' && value !== null && OBSERVATIONS.has(value);
 }
 
 function isPlainDataObject(value: unknown): value is Record<string, unknown> {
@@ -338,8 +356,7 @@ function mutationResult(
 export function migrateBetaConfigFile(filePath: string): FuryBetaConfigMigrationResult {
   const loaded = readLoadedConfig(filePath);
   if (loaded.observation.status === 'current'
-    && loaded.observation.migrationId === FURY_BETA_CONFIG_MIGRATION_ID
-    && loaded.observation.mode === 'legacy') {
+    && loaded.observation.migrationId === FURY_BETA_CONFIG_MIGRATION_ID) {
     return mutationResult(filePath, 'already-current');
   }
   if (loaded.observation.status !== 'missing' && loaded.observation.status !== 'legacy') {
@@ -366,4 +383,54 @@ export function rollbackBetaConfigFile(filePath: string): FuryBetaConfigMigratio
   delete next.beta;
   writeAtomicConfig(filePath, next);
   return mutationResult(filePath, 'rolled-back');
+}
+
+function modeMutationResult(
+  filePath: string,
+  status: FuryBetaConfigModeResult['status'],
+  mode: FuryBetaConfigMode,
+): FuryBetaConfigModeResult {
+  const current = inspectBetaConfigFile(filePath);
+  return Object.freeze({
+    path: filePath,
+    status,
+    mode,
+    migrationId: FURY_BETA_CONFIG_MIGRATION_ID,
+    digestSha256: current.digestSha256,
+    rollback: current.rollback,
+  });
+}
+
+/**
+ * Explicitly select the beta entry mode. This is the only mode mutation
+ * surface; startup and dashboard reads remain observation-only.
+ *
+ * A missing file or a legacy config receives only FuryPipe's bounded beta
+ * marker. Existing keys are copied byte-for-data and no credentials are
+ * inspected or duplicated. Unknown/invalid markers require reconciliation.
+ */
+export function setBetaConfigMode(
+  filePath: string,
+  mode: FuryBetaConfigMode,
+): FuryBetaConfigModeResult {
+  if (!MODES.has(mode)) throw new RangeError(`unsupported beta mode: ${mode}`);
+  const loaded = readLoadedConfig(filePath);
+  if (loaded.observation.status === 'current'
+    && loaded.observation.migrationId === FURY_BETA_CONFIG_MIGRATION_ID
+    && loaded.observation.mode === mode) {
+    return modeMutationResult(filePath, 'already-mode', mode);
+  }
+  if (loaded.observation.status !== 'missing'
+    && loaded.observation.status !== 'legacy'
+    && !(loaded.observation.status === 'current'
+      && loaded.observation.migrationId === FURY_BETA_CONFIG_MIGRATION_ID)) {
+    throw new Error(`beta mode update requires reconciliation-required state: ${loaded.observation.status}`);
+  }
+  const next = { ...(loaded.value ?? {}) };
+  next.beta = {
+    ...migrationMarker(),
+    mode,
+  };
+  writeAtomicConfig(filePath, next);
+  return modeMutationResult(filePath, 'mode-updated', mode);
 }

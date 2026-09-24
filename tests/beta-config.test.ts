@@ -9,6 +9,7 @@ import {
   inspectBetaConfigFile,
   migrateBetaConfigFile,
   rollbackBetaConfigFile,
+  setBetaConfigMode,
 } from '../src/beta-config.js';
 
 const tempRoots: string[] = [];
@@ -94,6 +95,26 @@ describe('Phase 10 beta configuration governance', () => {
     expect(result.status).toBe('rolled-back');
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ custom: 42 });
     expect(rollbackBetaConfigFile(file).status).toBe('already-rolled-back');
+  });
+
+  it('changes beta mode only through an explicit, idempotent mutation', () => {
+    const file = configFile(JSON.stringify({ models: ['keep-me'], custom: true }));
+
+    const optIn = setBetaConfigMode(file, 'recommended');
+    expect(optIn).toMatchObject({ status: 'mode-updated', mode: 'recommended' });
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({
+      models: ['keep-me'],
+      custom: true,
+      beta: {
+        mode: 'recommended',
+        migrationId: FURY_BETA_CONFIG_MIGRATION_ID,
+      },
+    });
+    expect(setBetaConfigMode(file, 'recommended')).toMatchObject({ status: 'already-mode' });
+
+    const optedOut = setBetaConfigMode(file, 'opted-out');
+    expect(optedOut).toMatchObject({ status: 'mode-updated', mode: 'opted-out' });
+    expect(inspectBetaConfigFile(file)).toMatchObject({ status: 'current', mode: 'opted-out' });
   });
 
   it('refuses rollback after the marker has been changed', () => {

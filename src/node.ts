@@ -43,7 +43,15 @@ import {
   inspectBetaConfigFile,
   migrateBetaConfigFile,
   rollbackBetaConfigFile,
+  setBetaConfigMode,
+  type FuryBetaConfigMode,
 } from './beta-config.js';
+import {
+  createFuryBetaTaskPlan,
+  resolveFuryBetaEntry,
+  type FuryBetaRequestedEntry,
+} from './beta-experience.js';
+import { createFuryBetaControlPlaneSnapshot } from './beta-control-plane.js';
 import { refreshRuntimeModelCatalog } from './model-catalog-node.js';
 import { normalizeModelScopeEntry, parseModelScopeList, resolvePersistedModelScope } from './model-config.js';
 import { FURYPIPE_DEFAULT_HOST, FURYPIPE_DEFAULT_PORT, parseFuryPipePort } from './runtime-defaults.js';
@@ -371,6 +379,12 @@ Usage:
   furypipe start         start the runtime and local Control Plane
   furypipe setup [options]
                         launch the interactive FuryPipe first-run setup
+  furypipe task --plan <objective> [--json] [--task-first|--legacy|--expert]
+                        show the governed task-first handoff without executing
+  furypipe beta status [--json]
+                        inspect the recommended/legacy beta entry
+  furypipe beta opt-in|opt-out|legacy [--json]
+                        explicitly change the reversible beta entry mode
   furypipe doctor [--json]
                         inspect the local runtime and available tools
   furypipe config migrate-beta [--json]
@@ -743,6 +757,9 @@ async function dispatchDashboard(
     case 'api-control-plane':
       if (method !== 'GET') return undefined;
       return dashboard.serveControlPlaneJson(port);
+    case 'api-beta':
+      if (method !== 'GET') return undefined;
+      return dashboard.serveBetaJson();
     case 'current-session':
       if (method !== 'GET') return undefined;
       return dashboard.serveCurrentSessionJson();
@@ -1321,6 +1338,146 @@ removes FuryPipe's own unchanged marker; changed or unknown state requires
 manual reconciliation.`);
 }
 
+function printBetaExperienceHelp(): void {
+  console.log(`Usage:
+  furypipe beta status [--json]
+  furypipe beta opt-in [--json]
+  furypipe beta opt-out [--json]
+  furypipe beta legacy [--json]
+
+Fresh installs recommend task-first without writing configuration. Existing
+legacy configuration remains on the legacy/expert path until opt-in. Opt-out
+and rollback are explicit, reversible operations; neither grants authority or
+installs/connects a capability.`);
+}
+
+function printTaskHelp(): void {
+  console.log(`Usage:
+  furypipe task --plan <objective> [--json]
+  furypipe task --plan --task-first <objective> [--json]
+  furypipe task --plan --legacy <objective> [--json]
+  furypipe task --plan --expert <objective> [--json]
+
+This command emits a bounded planning handoff only. It does not select from a
+runtime inventory, execute a capability, call a provider, install a plugin,
+connect MCP, or grant approval. Use the explicit Gateway/task runtime for
+governed execution after its normal policy checks.`);
+}
+
+function runBetaExperienceCommand(argv: string[]): void {
+  if (argv.length === 0 || argv.includes('-h') || argv.includes('--help')) {
+    printBetaExperienceHelp();
+    return;
+  }
+  const action = argv[0] ?? '';
+  const unexpected = argv.slice(1).filter((arg) => arg !== '--json');
+  const modes: Readonly<Record<string, FuryBetaConfigMode>> = {
+    'opt-in': 'recommended',
+    'opt-out': 'opted-out',
+    legacy: 'legacy',
+  };
+  if ((action !== 'status' && modes[action] === undefined) || unexpected.length > 0) {
+    console.error('[furypipe] beta accepts status, opt-in, opt-out, or legacy, with optional --json');
+    process.exitCode = 2;
+    return;
+  }
+  const file = process.env.FURYPIPE_CONFIG?.trim() || defaultConfigFile();
+  try {
+    const result = action === 'status' ? undefined : setBetaConfigMode(file, modes[action]!);
+    const observation = inspectBetaConfigFile(file);
+    const entry = resolveFuryBetaEntry(observation);
+    if (argv.includes('--json')) {
+      console.log(JSON.stringify({ result, observation, entry }, null, 2));
+    } else {
+      console.log(`beta entry: ${entry.entryPath}`);
+      console.log(`mode: ${entry.mode}`);
+      console.log(`config: ${observation.status}`);
+      console.log(`reversible: ${entry.reversible ? 'yes' : 'no'}`);
+      console.log(`authority: ${entry.executionAuthority ? 'execution' : 'observation-only'}`);
+      if (result) console.log(`change: ${result.status}`);
+    }
+    if (entry.mode === 'blocked') process.exitCode = 2;
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : 'beta command failed';
+    console.error(`[furypipe] beta: ${message}`);
+    process.exitCode = 2;
+  }
+}
+
+function runTaskPlanCommand(argv: string[]): void {
+  if (argv.length === 0 || argv.includes('-h') || argv.includes('--help')) {
+    printTaskHelp();
+    return;
+  }
+  let json = false;
+  let planFlag = false;
+  let requested: FuryBetaRequestedEntry = 'default';
+  const objectiveParts: string[] = [];
+  for (const arg of argv) {
+    if (arg === '--json') {
+      json = true;
+      continue;
+    }
+    if (arg === '--plan') {
+      planFlag = true;
+      continue;
+    }
+    if (arg === '--task-first') {
+      requested = 'task-first';
+      continue;
+    }
+    if (arg === '--legacy') {
+      requested = 'legacy';
+      continue;
+    }
+    if (arg === '--expert') {
+      requested = 'expert';
+      continue;
+    }
+    if (arg.startsWith('--objective=')) {
+      objectiveParts.push(arg.slice('--objective='.length));
+      continue;
+    }
+    if (arg.startsWith('-')) {
+      console.error(`[furypipe] task: unknown option ${arg}`);
+      process.exitCode = 2;
+      return;
+    }
+    objectiveParts.push(arg);
+  }
+  if (!planFlag) {
+    console.error('[furypipe] task: the explicit --plan boundary is required');
+    process.exitCode = 2;
+    return;
+  }
+  const objective = objectiveParts.join(' ').trim();
+  if (!objective) {
+    console.error('[furypipe] task: provide a non-empty objective after --plan');
+    process.exitCode = 2;
+    return;
+  }
+  try {
+    const file = process.env.FURYPIPE_CONFIG?.trim() || defaultConfigFile();
+    const observation = inspectBetaConfigFile(file);
+    const plan = createFuryBetaTaskPlan(objective, observation, requested);
+    if (json) {
+      console.log(JSON.stringify(plan, null, 2));
+    } else {
+      console.log(`task plan: ${plan.entry.entryPath}`);
+      console.log(`mode: ${plan.entry.mode}`);
+      console.log(`objective: ${plan.objectiveDigestSha256.slice(0, 12)} (${plan.objectiveLength} chars)`);
+      console.log(`selection: ${plan.selection}`);
+      console.log(`execution: ${plan.execution}`);
+      console.log('authority: planning-only');
+    }
+    if (plan.entry.mode === 'blocked') process.exitCode = 2;
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : 'task planning failed';
+    console.error(`[furypipe] task: ${message}`);
+    process.exitCode = 2;
+  }
+}
+
 function runBetaConfigCommand(argv: string[]): void {
   const action = argv[0];
   if (action === undefined || argv.includes('-h') || argv.includes('--help')) {
@@ -1383,6 +1540,14 @@ async function main(): Promise<void> {
   }
   if (argv[0] === 'config') {
     runBetaConfigCommand(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'beta') {
+    runBetaExperienceCommand(argv.slice(1));
+    return;
+  }
+  if (argv[0] === 'task') {
+    runTaskPlanCommand(argv.slice(1));
     return;
   }
   if (argv[0] === 'gateway') {
@@ -1643,6 +1808,30 @@ async function main(): Promise<void> {
     persistModelBasesToConfig,
     controlRoomRuntime === undefined ? undefined : () => controlRoomRuntime.snapshot(),
     persistVisualPolicyToConfig,
+    () => {
+      const generatedAt = Date.now();
+      const configFile = process.env.FURYPIPE_CONFIG?.trim() || defaultConfigFile();
+      const readiness = collectFuryBetaReadiness({
+        env: process.env,
+        configFile,
+        observedAt: generatedAt,
+        nodeVersion: process.versions.node,
+        // This is the historical proxy/dashboard host. It is not proof that
+        // the separate VNext Gateway daemon is running.
+        gatewayRunning: false,
+      });
+      return createFuryBetaControlPlaneSnapshot({
+        generatedAt,
+        config: inspectBetaConfigFile(configFile),
+        readiness: readiness.snapshot,
+        onboardingInput: {
+          env: process.env,
+          observedAt: generatedAt,
+          readiness: readiness.snapshot,
+          modelScopeMode: getFuryPipeModelScope().mode,
+        },
+      });
+    },
   );
   // Seed the "recent requests" table from the JSONL log so a process restart
   // doesn't reset what you can see in the UI. Best-effort; ignored on error.
