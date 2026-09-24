@@ -29,7 +29,9 @@ function parseArgs(argv) {
   let baseline;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === '--iterations') {
+    if (arg === '--') {
+      continue;
+    } else if (arg === '--iterations') {
       iterations = Number(argv[++index]);
     } else if (arg?.startsWith('--iterations=')) {
       iterations = Number(arg.slice('--iterations='.length));
