@@ -5,10 +5,10 @@
 ## Source identity
 
 - Version: 0.16.0
-- Code-freeze baseline before documentation-only preparation: f292ec23d69cfe6cff89cc083e0a872a987e2995
-- Final documentation head: record with git rev-parse HEAD after the documentation commit
-- Package SHA-256: 9b2627e0d7e521a152610712bb03104983956e00c140154e86a94ea69f835cbc
-- Package size: 5,577,127 bytes
+- Code hotfix head: 6ac1e62948a2ef8ccc189fe275671c223670b5f8
+- Final documentation/evidence head: record with git rev-parse HEAD after the documentation commit
+- Package SHA-256: 7d26a8edeb70610dfed3438dab8d8e49c24f94ab3de4ac876f342a4afa3e2b08
+- Package size: 5,406,281 bytes
 - Release status: READY_FOR_RELEASE_DECISION, not released
 
 ## Highlights
@@ -17,6 +17,12 @@
   surfaces without granting execution authority from dashboard display data.
 - The RC includes source-bound release evidence, clean-room package checks and
   explicit separation between local contracts and external live integrations.
+- The P1 installed-package Gateway regression is closed: the ESM build keeps
+  the CommonJS MCP stdio/WebSocket boundaries external, loads those runtimes
+  lazily, and resolves them from declared package dependencies.
+- The installed tarball regression passes Gateway readiness, loopback,
+  graceful shutdown, MCP stdio connect, tools/list and shutdown on Windows
+  Node 26.8.2 with no dynamic-require error.
 
 ## Task-first beta
 
@@ -65,6 +71,8 @@
 ## MCP
 
 - Local and hosted MCP contracts pass within their declared scope.
+- The installed-package MCP stdio fixture passes connect, tools/list and
+  shutdown without a provider or network call.
 - No third-party remote MCP tools/call execution is claimed or performed.
 
 ## Provider architecture
@@ -99,6 +107,8 @@
 - SPDX SBOM contains 235 packages and 18 direct dependencies.
 - The RC tarball contains 614 entries and no detected secret, temporary or
   private-workspace entry.
+- The package digest above is the post-hotfix candidate digest; the prior
+  pre-hotfix digest is obsolete and must not be used for acceptance.
 
 ## Breaking changes
 

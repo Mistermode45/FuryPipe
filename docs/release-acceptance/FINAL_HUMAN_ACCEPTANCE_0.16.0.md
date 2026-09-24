@@ -3,15 +3,30 @@
 Ce parcours est destiné à Mathis. Il prend environ 5 à 10 minutes et ne
 demande aucun provider, aucun credential et aucun appel externe payant.
 
-Le code produit est gelé. Le SHA du code avant ce commit documentaire était :
+Le code produit a reçu le correctif P1 du paquet installé. Le SHA exact du
+commit de code avant ce commit documentaire était :
 
 ~~~text
-f292ec23d69cfe6cff89cc083e0a872a987e2995
+6ac1e62948a2ef8ccc189fe275671c223670b5f8
 ~~~
 
 Après le commit documentaire, relever le SHA réellement utilisé par la session
 avec git -C <worktree> rev-parse HEAD. Ne jamais réutiliser un ancien SHA
 comme preuve du head final.
+
+Le tarball candidat documenté par cette session est :
+
+~~~text
+furypipe-0.16.0.tgz
+SHA-256 = 7d26a8edeb70610dfed3438dab8d8e49c24f94ab3de4ac876f342a4afa3e2b08
+Taille   = 5,406,281 octets
+~~~
+
+Le correctif ferme le défaut d’interopérabilité ESM/CommonJS qui faisait
+échouer `gateway start --json` dans le paquet installé avec
+`Dynamic require of "child_process" is not supported`. L’acceptance doit
+encore observer le Gateway et le WebChat dans un vrai navigateur; cette
+preuve humaine n’est pas remplacée par le smoke automatisé.
 
 ## 1. Installer exactement le package RC
 
