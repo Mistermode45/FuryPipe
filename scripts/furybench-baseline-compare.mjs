@@ -17,12 +17,12 @@ const OUTPUT_DIR = path.resolve(
 );
 const BASELINE_REF = process.env.FURYPIPE_BENCHMARK_BASELINE_REF?.trim()
   || '24a2f7030c9fb7340229140f67e653688d5d039a';
-// Five samples made p95 equal the single slowest process on Windows. Keep the
-// historical same-runner comparison, use bounded warmups/samples, and repeat
-// paired rounds with alternating order so one scheduler outlier cannot decide
-// the release gate.
-const ITERATIONS = 10;
-const WARMUP = 2;
+// A small sample made p95 equal the single slowest process on Windows. Keep
+// the historical same-runner comparison, use the bounded maximum supported by
+// the envelope, and repeat paired rounds with alternating order so one
+// scheduler outlier cannot decide the release gate.
+const ITERATIONS = 25;
+const WARMUP = 5;
 const COMPARISON_RUNS = 3;
 
 function fail(message) {
