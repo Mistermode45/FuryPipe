@@ -38,6 +38,12 @@ import {
 import { runStats } from './stats.js';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale } from './doctor.js';
 import { runSetupWizard } from './setup-tui.js';
+import { collectFuryBetaReadiness } from './beta-readiness-runtime.js';
+import {
+  inspectBetaConfigFile,
+  migrateBetaConfigFile,
+  rollbackBetaConfigFile,
+} from './beta-config.js';
 import { refreshRuntimeModelCatalog } from './model-catalog-node.js';
 import { normalizeModelScopeEntry, parseModelScopeList, resolvePersistedModelScope } from './model-config.js';
 import { FURYPIPE_DEFAULT_HOST, FURYPIPE_DEFAULT_PORT, parseFuryPipePort } from './runtime-defaults.js';
@@ -142,6 +148,11 @@ function applyConfigFileDefaults(): void {
   if (!fs.existsSync(file)) return;
   let parsed: unknown;
   try {
+    const stat = fs.lstatSync(file);
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.size > 1024 * 1024) {
+      console.warn('[furypipe] ignored invalid config file');
+      return;
+    }
     parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as unknown;
   } catch (e) {
     console.warn('[furypipe] ignored invalid config file');
@@ -362,6 +373,10 @@ Usage:
                         launch the interactive FuryPipe first-run setup
   furypipe doctor [--json]
                         inspect the local runtime and available tools
+  furypipe config migrate-beta [--json]
+                        explicitly add the Phase 10 beta marker
+  furypipe config rollback-beta [--json]
+                        remove only an unchanged FuryPipe beta marker
   furypipe gateway start [--json]
                         start the loopback-only VNext Gateway
   furypipe gateway config [--json]
@@ -1296,6 +1311,49 @@ async function runExport(argv: string[]): Promise<void> {
 
 // ---- main ----------------------------------------------------------------
 
+function printBetaConfigHelp(): void {
+  console.log(`Usage:
+  furypipe config migrate-beta [--json]
+  furypipe config rollback-beta [--json]
+
+The beta marker is opt-in and is never written during startup. Rollback only
+removes FuryPipe's own unchanged marker; changed or unknown state requires
+manual reconciliation.`);
+}
+
+function runBetaConfigCommand(argv: string[]): void {
+  const action = argv[0];
+  if (action === undefined || argv.includes('-h') || argv.includes('--help')) {
+    printBetaConfigHelp();
+    return;
+  }
+  const json = argv.includes('--json');
+  const unexpected = argv.slice(1).filter((arg) => arg !== '--json');
+  if ((action !== 'migrate-beta' && action !== 'rollback-beta') || unexpected.length > 0) {
+    console.error('[furypipe] config accepts migrate-beta or rollback-beta, with optional --json');
+    process.exitCode = 2;
+    return;
+  }
+  const file = process.env.FURYPIPE_CONFIG?.trim() || defaultConfigFile();
+  try {
+    const result = action === 'migrate-beta'
+      ? migrateBetaConfigFile(file)
+      : rollbackBetaConfigFile(file);
+    const observation = inspectBetaConfigFile(file);
+    if (json) {
+      console.log(JSON.stringify({ result, observation }, null, 2));
+    } else {
+      console.log(`beta config ${result.status}: ${result.path}`);
+      console.log(`status: ${observation.status}`);
+      console.log(`rollback: ${observation.rollback}`);
+    }
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : 'beta config command failed';
+    console.error(`[furypipe] config: ${message}`);
+    process.exitCode = 2;
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv[0] === 'setup') {
@@ -1314,11 +1372,17 @@ async function main(): Promise<void> {
       console.log('Usage: furypipe doctor [--json] [--locale=<BCP-47>]');
       return;
     }
+    const report = collectDoctorReport();
     console.log(renderDoctorReport(
-      collectDoctorReport(),
+      report,
       extra.includes('--json'),
       resolveDoctorLocale(localeArg?.slice('--locale='.length)),
     ));
+    if (report.betaReadiness.overallStatus === 'blocked') process.exitCode = 2;
+    return;
+  }
+  if (argv[0] === 'config') {
+    runBetaConfigCommand(argv.slice(1));
     return;
   }
   if (argv[0] === 'gateway') {
@@ -1376,6 +1440,24 @@ async function main(): Promise<void> {
   // Stats / sessions / cleanup tools live in the dashboard
   // (see http://127.0.0.1:${port}/).
   const opts = parseCli(cliArgv);
+  const startupReadiness = collectFuryBetaReadiness({
+    env: process.env,
+    configFile: process.env.FURYPIPE_CONFIG?.trim() || defaultConfigFile(),
+    nodeVersion: process.versions.node,
+    gatewayRunning: false,
+  });
+  if (!startupReadiness.snapshot.taskReady) {
+    const blockers = startupReadiness.snapshot.blockers
+      .map((issue) => `${issue.subsystemId}:${issue.status}`)
+      .join(', ');
+    console.error(`[furypipe] beta readiness blocked; startup refused (${blockers})`);
+    process.exitCode = 2;
+    return;
+  }
+  console.error(
+    `[furypipe] beta readiness: ${startupReadiness.snapshot.overallStatus} ` +
+      `(task-ready=${startupReadiness.snapshot.taskReady ? 'yes' : 'no'})`,
+  );
   const startupScope = getFuryPipeModelScope();
   const startupSource = configInjectedModelScope ? 'config' : startupScope.source;
   console.error(`[furypipe] model scope: ${startupScope.mode} (source=${startupSource})`);
@@ -1803,6 +1885,16 @@ async function main(): Promise<void> {
     }
     announce();
     console.log('[furypipe] dashboard available on loopback');
+    const liveReadiness = collectFuryBetaReadiness({
+      env: process.env,
+      configFile: process.env.FURYPIPE_CONFIG?.trim() || defaultConfigFile(),
+      nodeVersion: process.versions.node,
+      gatewayRunning: true,
+    });
+    console.log(
+      `[furypipe] beta readiness: ${liveReadiness.snapshot.overallStatus} ` +
+        `(task-ready=${liveReadiness.snapshot.taskReady ? 'yes' : 'no'})`,
+    );
 
     // Refresh configured provider catalogs outside the startup critical path.
     // Missing credentials perform no network request; failures are diagnostic

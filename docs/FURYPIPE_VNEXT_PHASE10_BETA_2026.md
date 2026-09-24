@@ -1,6 +1,6 @@
 # FuryPipe VNext Phase 10 — Beta / Task-First Agent OS (2026)
 
-> Status: Gate 10.0 architecture — VALIDATED.
+> Status: Gate 10.2 implementation — local proof in progress.
 >
 > Branch: `vnext-phase10-vnext-beta`
 >
@@ -417,6 +417,27 @@ Required:
 - rollback/reconciliation semantics;
 - adversarial migration tests.
 
+### Current implementation slice
+
+The first Gate 10.2 slice now provides:
+
+- `src/beta-config.ts`: bounded JSON observation plus an explicit,
+  versioned `phase10-beta-config-v1` marker;
+- `furypipe config migrate-beta [--json]`: opt-in, idempotent migration that
+  preserves unrelated configuration keys;
+- `furypipe config rollback-beta [--json]`: removal of only the unchanged
+  FuryPipe-owned marker, with fail-closed reconciliation for changed state;
+- `src/beta-readiness-runtime.ts`: configuration, runtime, Gateway and provider
+  observations with no network probe, no credential values and no authority;
+- `furypipe doctor --json`: machine-readable beta configuration/readiness
+  evidence, returning exit status 2 for required blockers;
+- normal startup preflight: required readiness blockers refuse server startup,
+  while optional unprobed dependencies remain degraded and task-ready;
+- package smoke coverage for migration, rollback and preservation of setup data.
+
+Local implementation proof is separate from the exact-head hosted CI and
+browser gates. No beta migration runs implicitly during startup.
+
 ## 19. Gate 10.3 — task-first recommended entry
 
 Make the VNext task-first experience the recommended beta entry path.
@@ -516,9 +537,10 @@ Final acceptance requires, on the exact beta closure HEAD:
 - PR remains OPEN + DRAFT;
 - no merge, release, tag, npm publish or deploy.
 
-## 27. Gate 10.0 exit criteria
+## 27. Gate 10.0 historical exit record
 
-Gate 10.0 is complete only when:
+The following records the Gate 10.0 closure conditions that were satisfied
+before Gate 10.1 began:
 
 - this architecture document is committed on a branch stacked exactly on
   validated Phase 9 closure
@@ -538,7 +560,8 @@ Gate 10.0 is complete only when:
 - exact-head Cross-Browser QA is green;
 - no merge/release/tag/npm publish/deploy occurred.
 
-Until all criteria are true, Gate 10.1 must not begin.
+Gate 10.1 and later Gate 10.2 work are subsequent stacked phases; this
+historical section is not a current gate blocker.
 
 ## 28. Caveman beta checklist
 

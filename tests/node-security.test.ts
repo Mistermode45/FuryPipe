@@ -182,6 +182,43 @@ describe('Node CLI evidence help', () => {
   });
 });
 
+describe('Node beta readiness startup gate', () => {
+  it('refuses an invalid required config before binding the runtime port', async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'furypipe-beta-startup-'));
+    const configFile = path.join(dir, 'config.json');
+    fs.writeFileSync(configFile, '[]', { encoding: 'utf8', mode: 0o600 });
+    const port = await freePort();
+    const output: string[] = [];
+    child = spawn(process.execPath, [tsxCli, 'src/node.ts'], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        FURYPIPE_CONFIG: configFile,
+        FURYPIPE_HOST: '127.0.0.1',
+        FURYPIPE_MODELS: 'claude-fable-5',
+        FURYPIPE_PORT: String(port),
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    child.stdout?.on('data', (chunk) => output.push(String(chunk)));
+    child.stderr?.on('data', (chunk) => output.push(String(chunk)));
+    const result = await new Promise<{ code: number | null; output: string }>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child?.kill('SIGTERM');
+        reject(new Error(`invalid-config startup did not terminate\n${output.join('')}`));
+      }, CHILD_START_TIMEOUT_MS);
+      child!.once('close', (code) => {
+        clearTimeout(timer);
+        resolve({ code, output: output.join('') });
+      });
+    });
+
+    expect(result.code).toBe(2);
+    expect(result.output).toContain('beta readiness blocked; startup refused');
+    expect(result.output).not.toContain('[furypipe] listening on');
+  });
+});
+
 describe('Node Control Room Security CI ingestion', () => {
   const sourceCommit = 'a'.repeat(40);
 

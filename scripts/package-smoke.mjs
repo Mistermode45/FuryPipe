@@ -223,10 +223,36 @@ try {
   const doctorEnv = { ...process.env };
   delete doctorEnv.FURYPIPE_PORT;
   delete doctorEnv.FURYPIPE_HOST;
+  doctorEnv.FURYPIPE_CONFIG = setupConfig;
   const doctor = await run(process.execPath, [cli, 'doctor', '--json'], installDir, doctorEnv);
   const report = JSON.parse(doctor.stdout);
   assert(report.runtime?.node, 'doctor smoke returned no Node runtime');
   assert(report.network?.port === 48721, `doctor reported unexpected default FuryPipe port: ${report.network?.port}`);
+  assert(report.betaConfig?.status, 'doctor smoke returned no beta config observation');
+  assert(report.betaReadiness?.taskReady === true, 'doctor smoke did not report task-ready local startup');
+  assert(report.betaReadiness?.authority === 'readiness-observation-only', 'doctor smoke exposed beta authority');
+
+  const betaConfigEnv = { ...doctorEnv, FURYPIPE_CONFIG: setupConfig };
+  const migratedBeta = await run(
+    process.execPath,
+    [cli, 'config', 'migrate-beta', '--json'],
+    installDir,
+    betaConfigEnv,
+  );
+  const migratedBetaReport = JSON.parse(migratedBeta.stdout);
+  assert(migratedBetaReport.result?.status === 'migrated', 'beta config migration did not report migrated');
+  assert(migratedBetaReport.observation?.status === 'current', 'beta config migration did not produce current marker');
+  const rolledBackBeta = await run(
+    process.execPath,
+    [cli, 'config', 'rollback-beta', '--json'],
+    installDir,
+    betaConfigEnv,
+  );
+  const rolledBackBetaReport = JSON.parse(rolledBackBeta.stdout);
+  assert(rolledBackBetaReport.result?.status === 'rolled-back', 'beta config rollback did not report rolled-back');
+  assert(rolledBackBetaReport.observation?.status === 'legacy', 'beta config rollback did not restore legacy state');
+  const rolledBackConfig = JSON.parse(await readFile(setupConfig, 'utf8'));
+  assert(rolledBackConfig.locale === 'fr' && rolledBackConfig.setup?.completed === true, 'beta rollback changed setup-owned state');
   const httpExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
