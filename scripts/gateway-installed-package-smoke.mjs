@@ -11,6 +11,8 @@ import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 const ROOT = process.cwd();
 const MAX_OUTPUT = 4 * 1024 * 1024;
+const COMMAND_TIMEOUT_MS = 120_000;
+const GATEWAY_STOP_TIMEOUT_MS = 10_000;
 const DYNAMIC_REQUIRE_ERROR = 'Dynamic require of "child_process" is not supported';
 
 function assert(condition, message) {
@@ -36,6 +38,8 @@ async function run(file, args, cwd, env = process.env) {
       env,
       encoding: 'utf8',
       maxBuffer: MAX_OUTPUT,
+      timeout: COMMAND_TIMEOUT_MS,
+      killSignal: 'SIGTERM',
       windowsHide: true,
       shell: false,
     });
@@ -43,7 +47,7 @@ async function run(file, args, cwd, env = process.env) {
   } catch (error) {
     const stdout = String(error.stdout ?? '');
     const stderr = String(error.stderr ?? '');
-    const detail = `${file} ${args.join(' ')} failed (exit=${String(error.code ?? 'unknown')}, stdoutSha256=${sha256(stdout)}, stderrSha256=${sha256(stderr)}, stderrTail=${stderr.slice(-2_000)})`;
+    const detail = `${file} ${args.join(' ')} failed (exit=${String(error.code ?? 'unknown')}, signal=${String(error.signal ?? 'none')}, timedOut=${String(error.killed === true)}, timeoutMs=${COMMAND_TIMEOUT_MS}, stdoutSha256=${sha256(stdout)}, stderrSha256=${sha256(stderr)}, stderrTail=${stderr.slice(-2_000)})`;
     throw new Error(detail);
   }
 }
@@ -126,9 +130,17 @@ async function stop(child) {
   const forceTimer = setTimeout(() => {
     if (child.exitCode === null) child.kill('SIGKILL');
   }, 5_000);
-  await closed;
-  clearTimeout(forceTimer);
-  return child.exitCode;
+  let deadlineTimer;
+  const stopDeadline = new Promise((_, reject) => {
+    deadlineTimer = setTimeout(() => reject(new Error(`Gateway child did not stop within ${GATEWAY_STOP_TIMEOUT_MS} ms`)), GATEWAY_STOP_TIMEOUT_MS);
+  });
+  try {
+    await Promise.race([closed, stopDeadline]);
+    return child.exitCode;
+  } finally {
+    clearTimeout(forceTimer);
+    clearTimeout(deadlineTimer);
+  }
 }
 
 async function waitForGatewayReady(child) {
