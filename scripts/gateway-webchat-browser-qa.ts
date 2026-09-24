@@ -688,11 +688,23 @@ async function runCase(
     }
 
     await page.locator('#logout').click();
-    await page.waitForFunction(() =>
-      (document.getElementById('bootstrap-panel') as HTMLElement | null)?.hidden === false
-      && (document.getElementById('chat-panel') as HTMLElement | null)?.hidden === true
-      && document.getElementById('connection-label')?.textContent === 'Not connected',
-    undefined, { timeout: 8_000 });
+    try {
+      await page.waitForFunction(() =>
+        (document.getElementById('bootstrap-panel') as HTMLElement | null)?.hidden === false
+        && (document.getElementById('chat-panel') as HTMLElement | null)?.hidden === true
+        && document.getElementById('connection-label')?.textContent === 'Not connected',
+      undefined, { timeout: 8_000 });
+    } catch (error) {
+      const logoutState = await page.evaluate(() => ({
+        bootstrapHidden: (document.getElementById('bootstrap-panel') as HTMLElement | null)?.hidden,
+        chatHidden: (document.getElementById('chat-panel') as HTMLElement | null)?.hidden,
+        connectionLabel: document.getElementById('connection-label')?.textContent ?? null,
+        bootstrapStatus: document.getElementById('bootstrap-status')?.textContent ?? null,
+        readyState: document.readyState,
+      }));
+      console.error(`${name}: logout state before timeout ${JSON.stringify(logoutState)}`);
+      throw error;
+    }
     const loggedOut = await page.locator('#bootstrap-panel').isVisible();
     assert(loggedOut, `${name}: logout did not restore bootstrap UI`);
 

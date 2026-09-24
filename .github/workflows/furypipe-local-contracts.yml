@@ -1,4 +1,4 @@
-name: RC Preparation Evidence
+name: FuryPipe Local Contracts
 
 on:
   pull_request:
@@ -8,21 +8,21 @@ permissions:
   contents: read
 
 concurrency:
-  group: rc-preparation-${{ github.ref }}
+  group: furypipe-local-contracts-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  prepare:
+  contracts:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       FURYPIPE_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      FURYPIPE_VALIDATION_OUTPUT_DIR: artifacts/final-validation
     steps:
-      - name: Checkout
+      - name: Checkout exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
           persist-credentials: false
 
       - name: Setup pnpm
@@ -40,17 +40,14 @@ jobs:
       - name: Build exact candidate
         run: pnpm run build
 
-      - name: Produce local versioned tarball upgrade and rollback evidence
-        run: pnpm run validation:upgrade-rollback
+      - name: Run local MCP, provider, Gateway, OpenClaw and durability contracts
+        run: pnpm run validation:local-contracts
 
-      - name: Produce non-destructive RC preparation evidence
-        run: node scripts/rc-preparation.mjs
-
-      - name: Upload exact RC preparation evidence
+      - name: Upload local contract evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: furypipe-rc-preparation-${{ github.event.pull_request.head.sha || github.sha }}
-          path: artifacts/rc-preparation/
+          name: furypipe-local-contracts-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/final-validation/
           if-no-files-found: warn
           retention-days: 30

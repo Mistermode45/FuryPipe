@@ -1,4 +1,4 @@
-name: RC Preparation Evidence
+name: FuryPipe FuryBench Baseline Comparison
 
 on:
   pull_request:
@@ -8,17 +8,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: rc-preparation-${{ github.ref }}
+  group: furypipe-furybench-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  prepare:
+  comparison:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
       FURYPIPE_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      FURYPIPE_VALIDATION_OUTPUT_DIR: artifacts/final-validation
+      FURYPIPE_BENCHMARK_BASELINE_REF: 24a2f7030c9fb7340229140f67e653688d5d039a
     steps:
-      - name: Checkout
+      - name: Checkout exact candidate and historical baseline
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -34,23 +36,20 @@ jobs:
           node-version: '24.21.0'
           cache: pnpm
 
-      - name: Install frozen dependency graph
+      - name: Install candidate dependency graph
         run: pnpm install --frozen-lockfile
 
-      - name: Build exact candidate
+      - name: Build candidate
         run: pnpm run build
 
-      - name: Produce local versioned tarball upgrade and rollback evidence
-        run: pnpm run validation:upgrade-rollback
+      - name: Compare same-runner compatible beta baseline with candidate
+        run: pnpm run validation:furybench
 
-      - name: Produce non-destructive RC preparation evidence
-        run: node scripts/rc-preparation.mjs
-
-      - name: Upload exact RC preparation evidence
+      - name: Upload FuryBench comparison
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: furypipe-rc-preparation-${{ github.event.pull_request.head.sha || github.sha }}
-          path: artifacts/rc-preparation/
+          name: furypipe-furybench-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/final-validation/
           if-no-files-found: warn
           retention-days: 30
