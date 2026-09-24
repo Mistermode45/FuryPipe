@@ -338,18 +338,70 @@ Evidence:
 The documentation-only Gate 10.0 closure commit itself must receive the same
 exact-head 7/7 workflow and CI 9/9 proof before Gate 10.1 begins.
 
-## 17. Gate 10.1 — beta readiness model
+## 17. Gate 10.1 — beta readiness model — VALIDATED
 
-Implement a single bounded readiness model that composes current health evidence
-without granting authority.
+Implementation surface:
 
-Expected outcomes:
+- `src/beta-readiness.ts` adds one bounded, deterministic beta-readiness
+  snapshot contract;
+- `tests/beta-readiness.test.ts` adds dedicated required/optional, stale,
+  degraded, blocked, schema-hardening, digest and anti-authority coverage.
 
-- task-first readiness summary;
-- required vs optional subsystem distinction;
-- deterministic degraded/blocking reasons;
-- machine-readable inspection;
-- no repair/execution authority.
+Contract:
+
+- readiness composes observation evidence only and never creates repair,
+  selection or execution authority;
+- subsystem dimensions remain separate for discovery, compatibility, health,
+  policy, authentication, connection and execution-authority readiness;
+- required and optional subsystems have different blocking semantics;
+- required `unconfigured`, `unavailable`, `blocked` or `unsupported`
+  states block task readiness;
+- required degraded/unknown evidence remains visible but task-ready;
+- optional failures degrade the beta view without globally blocking unrelated
+  tasks;
+- stale evidence becomes unavailable instead of being silently accepted;
+- future timestamps, impossible expiry ordering, duplicate IDs/reasons,
+  malformed digests, schema drift, accessors and sparse arrays fail closed;
+- subsystem order and reason codes are canonicalized for deterministic digest
+  evidence;
+- generated snapshot authenticity is process-local;
+- even an `executionAuthority:'ready'` readiness dimension never becomes
+  actual authority; the snapshot remains
+  `executionAuthority:false`, `repairAuthority:false` and
+  `selectionAuthority:false`;
+- Gate 10.1 adds no new public package export, dependency, migration or beta
+  default.
+
+Exact validated Gate 10.1 implementation HEAD:
+
+`b857d55de419d869a223961ca78424187e3ff0a6`
+
+Evidence:
+
+- 7/7 workflows SUCCESS;
+- CI 9/9 SUCCESS across Ubuntu/macOS/Windows and Node 22/24/26;
+- 278 test files / 3,196 tests SUCCESS on observed Windows/Node 22 rerun;
+- 24 effective beta-readiness test cases SUCCESS, including parameterized
+  required-blocking coverage;
+- strict TypeScript typecheck SUCCESS;
+- build SUCCESS;
+- package smoke SUCCESS;
+- Phase 6 package smoke SUCCESS;
+- Phase 7 package smoke SUCCESS;
+- Phase 8 ACP package smoke SUCCESS;
+- benchmark-claim package smoke SUCCESS;
+- provider-attempt package smoke SUCCESS;
+- governed-provider package smoke SUCCESS;
+- Secret Scan, Benchmark Contract, RC Preparation Evidence, Dashboard Browser
+  QA, Web Studio Browser QA and Cross-Browser QA SUCCESS;
+- the original Windows/Node 22 job was cancelled late in package smoke after
+  tests/build and early packed-artifact smokes had passed; only that exact job
+  was rerun, and the rerun completed SUCCESS;
+- PR #223 remained OPEN + DRAFT and unmerged;
+- no merge, release, tag, npm publish or deploy occurred.
+
+The documentation-only Gate 10.1 closure commit itself requires the same
+exact-head 7/7 workflow and CI 9/9 proof before Gate 10.2 begins.
 
 ## 18. Gate 10.2 — startup / doctor / migration governance
 
