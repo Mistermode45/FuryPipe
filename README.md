@@ -279,6 +279,8 @@ Common entry points:
 furypipe setup [--lang=fr|en] [--plain] [--no-color] [--yes]
 furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
+furypipe beta status|opt-in|opt-out|legacy [--json]
+furypipe task --plan <objective> [--json] [--task-first|--legacy|--expert]
 furypipe stats [--json] [--file <path>]
 furypipe export [...]
 furypipe link [--route PATTERN=TARGET]... [--] <agent> [args...]
@@ -675,6 +677,8 @@ Commandes principales :
 furypipe setup [--lang=fr|en] [--plain] [--no-color] [--yes]
 furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
+furypipe beta status|opt-in|opt-out|legacy [--json]
+furypipe task --plan <objective> [--json] [--task-first|--legacy|--expert]
 furypipe stats [--json] [--file <path>]
 furypipe export [...]
 furypipe link [--route PATTERN=TARGET]... [--] <agent> [args...]

@@ -619,3 +619,19 @@
 - CI exact head implementation : 15/15 contrôles `PASS` ; matrice 9/9 Ubuntu 24.04, macOS 14 et Windows 2025 × Node 22.23.2, 24.21.0 et 26.8.2 ; `gitleaks`, `contract`, `prepare`, deux Chromium et `browser-engines` PASS.
 - Cross-Browser QA exact head : PASS sur Dashboard, Web Studio et Gateway WebChat ; aucune modification de code n’a été faite pour obtenir ce résultat.
 - La documentation et cette clôture sont ensuite mises à jour dans un commit séparé ; ce nouveau HEAD doit repasser la même matrice avant d’être présenté comme le HEAD final validé.
+
+## 2026-09-24 — FuryPipe VNext Phase 10 Gate 10.2 — local completion slice
+
+- Source de vérité : `Mistermode45/FuryPipe`, parent PR #223 `OPEN + DRAFT`, base exacte Phase 9 `c3c3f5370c10ee414e685b9f422cd4fd8a022e55`, parent Phase 10 `4de5c3e75df4de720cb330dadda86515042e79c6`. Travail isolé dans `FuryPipe-Final-Completion`, PR #224 `OPEN + DRAFT`, base exacte `4de5c3e75df4de720cb330dadda86515042e79c6`, head livré `80cceadab1d60f5ce1130bae7f24aaac8dbd6dcc`, sans modification du worktree principal.
+- Cause racine : le contrat `src/beta-readiness.ts` existait mais restait orphelin ; ni `doctor`, ni le startup Node, ni la gouvernance de configuration ne le consommaient.
+- Correction minimale : `src/beta-config.ts` pour observation bornée/migration explicite/rollback réconciliable ; `src/beta-readiness-runtime.ts` pour la projection configuration/runtime/Gateway/provider sans probe réseau ni valeur secrète ; raccordement `doctor --json` et preflight startup ; commandes `config migrate-beta` / `rollback-beta` ; documentation et package smoke.
+- Sécurité : configuration invalide, future, surdimensionnée, non-fichier ou symlink refusée ; migration idempotente, atomique par fichier temporaire + `fsync` + rename, préserve les clés étrangères ; rollback retire uniquement le marqueur FuryPipe inchangé ; aucune valeur de credential dans snapshot, digest, logs ou smoke.
+- Tests ciblés : PASS, beta config + readiness runtime + doctor, 3 fichiers / 21 tests ; Node startup gate, `tests/node-security.test.ts`, 14 tests PASS.
+- `pnpm install --frozen-lockfile` : PASS sur le parent exact avant slice, lockfile inchangé.
+- `pnpm run typecheck` : PASS, TypeScript principal + hosted MCP.
+- `pnpm test` : PASS, 280 fichiers / 3 208 tests.
+- `pnpm run build` : PASS, dist bibliothèque/déclarations + `dist/node.js` + `dist/mcp.js`, version smoke `0.15.0`.
+- `pnpm run package:smoke` : PASS, package + Phase 6 + Phase 7 + Phase 8 ACP + benchmark-claim + provider-attempt + governed-provider ; migration/rollback installés depuis tarball et setup data préservée.
+- `pnpm run audit` : PASS, aucune vulnérabilité production connue ; `gitleaks` local indisponible ; `git diff --check` PASS.
+- Preuve hébergée exact-head : PR #224 `80cceadab1d60f5ce1130bae7f24aaac8dbd6dcc`, base `4de5c3e75df4de720cb330dadda86515042e79c6`, merge state `CLEAN`, 7 workflows PASS, CI 9/9 PASS sur Ubuntu 24.04/macOS 14/Windows 2025 et Node 22.23.2/24.21.0/26.8.2 ; Benchmark Contract `35993617851`, Secret Scan `35993617547`, RC Preparation `35993617553`, Dashboard Browser QA `35993617584`, Web Studio Browser QA `35993617772`, Cross-Browser QA `35993617660`, CI `35993617806`.
+- Limites : aucune validation client/browser fraîche sur ce diff local ; aucun provider réel, credential, migration de production, crash/restart hébergé, merge, release, tag, npm publish, deploy ou force push.

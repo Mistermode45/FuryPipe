@@ -1,11 +1,13 @@
 # FuryPipe VNext Phase 10 — Beta / Task-First Agent OS (2026)
 
-> Status: Gate 10.0 architecture — VALIDATED.
+> Status: Gates 10.2–10.9 implementation slices are documented; the exact-head
+> hosted candidate gates are revalidated on each pushed HEAD. External runtime,
+> provider, recovery-rehearsal and release-authorization gates remain separate.
 >
-> Branch: `vnext-phase10-vnext-beta`
+> Branch: `codex/furypipe-final-completion`
 >
 > Exact stacked base: validated Phase 9 closure
-> `c3c3f5370c10ee414e685b9f422cd4fd8a022e55`.
+> `4de5c3e75df4de720cb330dadda86515042e79c6`.
 >
 > Phase 10 does not merge Phase 9. PRs remain stacked, OPEN + DRAFT until
 > explicitly authorized.
@@ -417,6 +419,53 @@ Required:
 - rollback/reconciliation semantics;
 - adversarial migration tests.
 
+### Current implementation slice
+
+The first Gate 10.2 slice now provides:
+
+- `src/beta-config.ts`: bounded JSON observation plus an explicit,
+  versioned `phase10-beta-config-v1` marker;
+- `furypipe config migrate-beta [--json]`: opt-in, idempotent migration that
+  preserves unrelated configuration keys;
+- `furypipe config rollback-beta [--json]`: removal of only the unchanged
+  FuryPipe-owned marker, with fail-closed reconciliation for changed state;
+- `src/beta-readiness-runtime.ts`: configuration, runtime, Gateway and provider
+  observations with no network probe, no credential values and no authority;
+- `furypipe doctor --json`: machine-readable beta configuration/readiness
+  evidence, returning exit status 2 for required blockers;
+- normal startup preflight: required readiness blockers refuse server startup,
+  while optional unprobed dependencies remain degraded and task-ready;
+- package smoke coverage for migration, rollback and preservation of setup data.
+
+Local implementation proof is separate from the exact-head hosted CI and
+browser gates. No beta migration runs implicitly during startup.
+
+The current local continuation also hardens the boundary for the following
+gates without claiming that external runtime validation has already occurred:
+
+- `src/beta-experience.ts` resolves fresh-install, legacy, opt-in, opt-out and
+  explicit expert/task-first entry paths without granting execution authority;
+- `src/beta-config.ts` exposes only explicit mode mutation and preserves
+  unrelated configuration data through the same atomic write boundary;
+- `src/node.ts` exposes `beta status|opt-in|opt-out|legacy` and a bounded
+  `task --plan` handoff; task planning emits a digest, not the objective text;
+- `src/beta-onboarding.ts` keeps configured/available/authenticated/
+  authorized/selected/executed separate for all Phase 10 domains and reports
+  unknown when inventory or authentication evidence is absent;
+- `src/beta-control-plane.ts`, `src/dashboard.ts` and
+  `src/dashboard/fragments.ts` provide the read-only `/api/beta.json` and
+  `/fragments/beta` projection; dashboard evidence cannot authorize or mutate;
+- `bench/v5/beta-local.mjs` provides a bounded offline p95 envelope for
+  startup, doctor, task planning and beta status. It has an explicit 25%
+  p95 comparison threshold and does not execute a provider.
+
+Local proof for this continuation is recorded by the focused beta tests,
+`pnpm run typecheck`, `pnpm run build`, `pnpm run package:smoke` and
+`pnpm run benchmark:beta`. The package smoke exercises the installed CLI
+commands and asserts that planning remains `not-run`/`not-authorized`. Exact
+hosted workflow, browser and multi-platform evidence must be rebound to the
+final pushed HEAD before release-candidate claims.
+
 ## 19. Gate 10.3 — task-first recommended entry
 
 Make the VNext task-first experience the recommended beta entry path.
@@ -427,6 +476,19 @@ Required:
 - no authority widening;
 - existing explicit expert/legacy paths remain reachable;
 - capability selection remains explainable and selection-only.
+
+### Current status: LOCAL_IMPLEMENTED / HOSTED_GATE_PASS / EXTERNAL_RUNTIME_PENDING
+
+The explicit CLI contract is now present. Missing config resolves to the
+recommended task-first path without a write; legacy config remains on the
+legacy/expert path; `beta opt-in`, `beta opt-out` and `beta legacy` are
+explicit reversible changes. `task --plan` is intentionally planning-only
+until an existing governed runtime supplies the actual inventory and policy
+decision. It is therefore not evidence that a provider task executed.
+
+Focused tests cover fresh, legacy, opted-out, explicit override, invalid
+config, bounded objectives and the no-authority plan contract. Installed
+package smoke covers the same transitions from the packed artifact.
 
 ## 20. Gate 10.4 — beta capability onboarding
 
@@ -439,6 +501,16 @@ Required:
 - bounded diagnostics;
 - no automatic installation or credential grants.
 
+### Current status: LOCAL_IMPLEMENTED / HOSTED_GATE_PASS / INVENTORY_RUNTIME_PENDING
+
+`src/beta-onboarding.ts` emits all six state dimensions for models, providers,
+skills, plugins, MCP, channels, automations, browser, coding, devices, memory,
+Gateway, approvals, policy and recovery. It accepts only bounded host
+observations, never includes credential values, and refuses forged generated
+snapshots. Unwired inventories remain `unknown`; no plugin/MCP install,
+connection or grant is inferred. A real host inventory and authentication
+exercise remain required for affirmative availability claims.
+
 ## 21. Gate 10.5 — beta control-plane / dashboard evidence
 
 Present the beta readiness and execution evidence in existing control-plane
@@ -450,6 +522,16 @@ Required:
 - no dashboard object becomes bearer authority;
 - unknown outcomes/recovery work are visible;
 - sensitive identifiers/redaction rules remain enforced.
+
+### Current status: LOCAL_IMPLEMENTED / BROWSER_HOSTED_PASS / MANUAL_A11Y_PENDING
+
+The dashboard receives a host-owned control-plane provider and renders the same
+snapshot as `/api/beta.json`; an absent provider produces a visible 503/
+unavailable state. The projection carries explicit observation-only,
+non-mutation and no-execution fields. The focused dashboard tests cover JSON,
+French rendering, route matching and unavailable evidence. Browser and
+responsive/accessibility assertions still require the exact pushed-head browser
+workflows.
 
 ## 22. Gate 10.6 — resilience / restart / upgrade rehearsal
 
@@ -464,6 +546,14 @@ Exercise beta recovery across:
 
 No stale process-local authority may survive restart.
 
+### Current status: PARTIAL_LOCAL / EXTERNAL_REHEARSAL_REQUIRED
+
+The beta config write boundary is atomic, bounded and rollback-aware, and the
+repository's existing recovery/lease/replay tests remain in scope. The local
+continuation does not claim a completed brutal process-kill, live automation
+wake, provider reconnect or production migration-interruption rehearsal. Those
+results must be attached separately rather than inferred from a unit test.
+
 ## 23. Gate 10.7 — packaging / install / self-host beta proof
 
 Validate the actual installable packed artifact and documented self-host path.
@@ -472,12 +562,29 @@ If Phase 10 adds public runtime exports, add exact packed-artifact smokes.
 
 No npm publish/release/deploy is required or authorized by this gate.
 
+### Current status: LOCAL_PASS / HOSTED_MATRIX_PASS
+
+The packed-artifact smoke now checks the beta status, opt-in, opt-out, legacy,
+task-plan and rollback journey in addition to the existing package journeys.
+The package contains the Phase 10 architecture and operator docs. The full
+Ubuntu/macOS/Windows package journey remains a hosted exact-head obligation.
+
 ## 24. Gate 10.8 — FuryBench beta baseline
 
 Capture reproducible beta performance evidence and regression thresholds for
 the metrics that are stable enough to measure in CI.
 
 Do not optimize by weakening isolation, evidence or security gates.
+
+### Current status: LOCAL_ENVELOPE_CAPTURED / PROVIDER_BENCHMARK_NOT_EXECUTED
+
+`pnpm run benchmark:beta -- --iterations=5 --warmup=1` measures fresh-process
+startup, doctor, task planning and beta status on the built artifact. With a
+baseline file it fails when a p95 metric exceeds baseline by more than 25%;
+without one it reports `BASELINE_CAPTURED`. This is an offline process-boundary
+measurement, not provider latency, browser performance, Gateway throughput or
+cross-platform evidence. The canonical `bench/v5` provider comparison remains
+`BENCHMARK_NON_EXECUTED` until an authorized real-provider run exists.
 
 ## 25. Gate 10.9 — beta documentation / operator acceptance
 
@@ -494,6 +601,14 @@ Close the user/operator documentation gap:
 - known limitations.
 
 Documentation must match exact implemented behavior.
+
+### Current status: LOCAL_IMPLEMENTED / ACCEPTANCE_PENDING
+
+`docs/CLI.md` and `docs/FURYPIPE_VNEXT_PHASE10_OPERATOR.md` document the
+implemented commands, explicit migration/rollback, no-authority boundaries,
+self-host/upgrade path, recovery limits, secrets policy and benchmark limits
+in English with French quick-path instructions. They do not convert absent
+runtime/browser/provider evidence into a success claim.
 
 ## 26. Gate 10.10 — final VNext beta evidence
 
@@ -516,9 +631,18 @@ Final acceptance requires, on the exact beta closure HEAD:
 - PR remains OPEN + DRAFT;
 - no merge, release, tag, npm publish or deploy.
 
-## 27. Gate 10.0 exit criteria
+The exact-head candidate workflow set is now exercised on the pushed Phase 10
+HEAD: Secret Scan, the 9-job CI matrix, Benchmark Contract, RC Preparation
+Evidence, Dashboard Browser QA, Web Studio Browser QA and Cross-Browser QA all
+must be green together. The final execution report records the SHA and run
+identifiers used for that proof. This hosted set does not promote local
+migration/restart tests into a brutal process-kill rehearsal, a real provider or
+OAuth validation, a production rollback, or a release authorization.
 
-Gate 10.0 is complete only when:
+## 27. Gate 10.0 historical exit record
+
+The following records the Gate 10.0 closure conditions that were satisfied
+before Gate 10.1 began:
 
 - this architecture document is committed on a branch stacked exactly on
   validated Phase 9 closure
@@ -538,7 +662,8 @@ Gate 10.0 is complete only when:
 - exact-head Cross-Browser QA is green;
 - no merge/release/tag/npm publish/deploy occurred.
 
-Until all criteria are true, Gate 10.1 must not begin.
+Gate 10.1 and later Gate 10.2 work are subsequent stacked phases; this
+historical section is not a current gate blocker.
 
 ## 28. Caveman beta checklist
 

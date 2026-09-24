@@ -35,6 +35,7 @@ import type { ProxyEvent } from './core/proxy.js';
 import type { TrackEvent } from './core/tracker.js';
 import type { ControlRoomSnapshot } from './control-room/index.js';
 import { createControlPlaneSnapshot, type ControlPlaneSnapshot } from './control-plane.js';
+import type { FuryBetaControlPlaneSnapshot } from './beta-control-plane.js';
 import {
   computeActualInputEffWithCacheTier,
   computeBaselineInputEffWithCacheTier,
@@ -74,6 +75,7 @@ import {
   renderStatsTableFragment,
   renderControlRoomFragment,
   renderControlPlaneFragment,
+  renderBetaControlPlaneFragment,
   type ContextMapData,
 } from './dashboard/fragments.js';
 import {
@@ -109,6 +111,7 @@ const IMAGE_RING_CAP = 800;
 const IMAGE_RING_MAX_BYTES = 64 * 1024 * 1024;
 
 type ControlRoomProvider = () => ControlRoomSnapshot | null | Promise<ControlRoomSnapshot | null>;
+type BetaControlPlaneProvider = () => FuryBetaControlPlaneSnapshot | null | Promise<FuryBetaControlPlaneSnapshot | null>;
 
 /** One rendered image held in the in-memory ring. `id` is a monotonic
  *  counter (never reused) so a RecentRow can reference its image even after
@@ -600,6 +603,9 @@ export class DashboardState {
   /** Optional metadata-only Control Room provider. Runtime subsystems own the
    * evidence; the dashboard only renders a pre-built snapshot. */
   private readonly controlRoomProvider: ControlRoomProvider | undefined;
+  /** Optional beta projection provider. The dashboard only renders this
+   *  observation and never turns it into bearer authority. */
+  private readonly betaControlPlaneProvider: BetaControlPlaneProvider | undefined;
 
   constructor(
     paths?: SessionsPaths,
@@ -607,12 +613,14 @@ export class DashboardState {
     persistModelBases?: (bases: readonly string[] | null) => void,
     controlRoomProvider?: ControlRoomProvider,
     persistVisualPolicy?: (policy: FuryPipeVisualPolicy) => void,
+    betaControlPlaneProvider?: BetaControlPlaneProvider,
   ) {
     this.paths = paths;
     this.ccMapFn = ccMapFn ?? (() => claudeCodeMap());
     this.persistModelBases = persistModelBases;
     this.controlRoomProvider = controlRoomProvider;
     this.persistVisualPolicy = persistVisualPolicy;
+    this.betaControlPlaneProvider = betaControlPlaneProvider;
   }
 
   private totalsForModel(model: string | undefined): Totals {
@@ -1579,6 +1587,15 @@ export class DashboardState {
     }
   }
 
+  private async readBetaControlPlaneSnapshot(): Promise<FuryBetaControlPlaneSnapshot | null> {
+    if (!this.betaControlPlaneProvider) return null;
+    try {
+      return await this.betaControlPlaneProvider();
+    } catch {
+      return null;
+    }
+  }
+
   /** GET /api/control-plane.json — bounded, read-only V2 runtime projection.
    * It only combines counters already held by this dashboard with the injected
    * Control Room snapshot; it never scans, configures, or executes a capability. */
@@ -1683,6 +1700,13 @@ export class DashboardState {
     return jsonResponse(await this.readControlPlaneSnapshot(port));
   }
 
+  /** GET /api/beta.json — bounded task-first/readiness projection. */
+  async serveBetaJson(): Promise<Response> {
+    const snapshot = await this.readBetaControlPlaneSnapshot();
+    if (!snapshot) return jsonResponse({ status: 'NOT_AVAILABLE' }, 503);
+    return jsonResponse(snapshot);
+  }
+
   /** GET /fragments/<name> — server-rendered htmx fragments. Each one reuses
    *  the corresponding JSON endpoint's payload (via Response.json()) so the
    *  HTML and JSON surfaces can't drift apart. */
@@ -1771,6 +1795,11 @@ export class DashboardState {
           locale,
         ));
       }
+      case 'beta':
+        return htmlResponse(renderBetaControlPlaneFragment(
+          await this.readBetaControlPlaneSnapshot(),
+          locale,
+        ));
       case 'control-plane-overview':
       case 'control-plane-visual-engine':
       case 'control-plane-capabilities':
@@ -1933,6 +1962,7 @@ export type DashboardRoute =
   | { kind: 'api-models' } // /api/models.json
   | { kind: 'api-control-room' } // /api/control-room.json
   | { kind: 'api-control-plane' } // /api/control-plane.json
+  | { kind: 'api-beta' } // /api/beta.json
   | { kind: 'current-session' } // /api/current-session.json
   | { kind: 'api-compression' } // /api/compression (POST {enabled}) — runtime kill switch
   | { kind: 'api-image-source' } // /api/image-source[?id=N] — source text behind a rendered PNG
@@ -1949,6 +1979,7 @@ export function dashboardPath(pathname: string): DashboardRoute | null {
   if (pathname === '/api/models.json') return { kind: 'api-models' };
   if (pathname === '/api/control-room.json') return { kind: 'api-control-room' };
   if (pathname === '/api/control-plane.json') return { kind: 'api-control-plane' };
+  if (pathname === '/api/beta.json') return { kind: 'api-beta' };
   if (pathname === '/api/current-session.json') return { kind: 'current-session' };
   if (pathname === '/api/compression') return { kind: 'api-compression' };
   if (pathname === '/api/image-source') return { kind: 'api-image-source' };

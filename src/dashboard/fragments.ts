@@ -5,6 +5,7 @@ import { HTMX_JS, ALPINE_JS } from './vendor.js';
 import { CACHE_CREATE_RATE, CACHE_READ_RATE } from '../core/baseline.js';
 import type { ControlRoomSnapshot } from '../control-room/index.js';
 import type { ControlPlaneDomainId, ControlPlaneSnapshot } from '../control-plane.js';
+import type { FuryBetaControlPlaneSnapshot } from '../beta-control-plane.js';
 import type { ModelFabricEntry } from '../core/model-fabric.js';
 import type { FuryPipeModelScopeMode, FuryPipeVisualPolicy } from '../core/applicability.js';
 import { createI18n } from '../i18n/index.js';
@@ -1082,6 +1083,103 @@ export function renderControlPlaneFragment(
     : surfaces[surface];
 }
 
+// ---- Beta task-first projection -------------------------------------------
+
+/**
+ * Render the beta entry/readiness projection without exposing a mutation
+ * control. The same snapshot is served by /api/beta.json; the browser is only
+ * an observer and cannot turn any row into a permit or installation request.
+ */
+export function renderBetaControlPlaneFragment(
+  snapshot: FuryBetaControlPlaneSnapshot | null,
+  locale = 'en',
+): string {
+  const fr = resolveDashboardLocale(locale).canonical.startsWith('fr');
+  const copy = fr
+    ? {
+        title: 'Beta task-first',
+        subtitle: 'entrée recommandée · projection en lecture seule',
+        unavailable: 'Projection beta indisponible : aucune preuve runtime injectée.',
+        entry: 'Entrée effective',
+        mode: 'Mode',
+        config: 'Configuration',
+        reversible: 'Réversible',
+        authority: 'Autorité',
+        observation: 'observation uniquement',
+        taskFirst: 'task-first',
+        legacy: 'legacy / expert',
+        readiness: 'Readiness',
+        onboarding: 'Onboarding des capacités',
+        configured: 'configuré',
+        available: 'disponible',
+        authenticated: 'authentifié',
+        authorized: 'autorisé',
+        selected: 'sélectionné',
+        executed: 'exécuté',
+        domain: 'Domaine',
+        evidence: 'Preuve',
+        operations: 'Opérations',
+        notObserved: 'non observé',
+        noGrant: 'aucun grant / aucune installation automatique',
+      }
+    : {
+        title: 'Beta task-first',
+        subtitle: 'recommended entry · read-only projection',
+        unavailable: 'Beta projection unavailable: no runtime evidence provider is connected.',
+        entry: 'Effective entry',
+        mode: 'Mode',
+        config: 'Configuration',
+        reversible: 'Reversible',
+        authority: 'Authority',
+        observation: 'observation only',
+        taskFirst: 'task-first',
+        legacy: 'legacy / expert',
+        readiness: 'Readiness',
+        onboarding: 'Capability onboarding',
+        configured: 'configured',
+        available: 'available',
+        authenticated: 'authenticated',
+        authorized: 'authorized',
+        selected: 'selected',
+        executed: 'executed',
+        domain: 'Domain',
+        evidence: 'Evidence',
+        operations: 'Operations',
+        notObserved: 'not observed',
+        noGrant: 'no automatic grant / installation',
+      };
+  if (!snapshot) return `<div class="status">${escapeHtml(copy.unavailable)}</div>`;
+  const entryLabel = snapshot.entry.entryPath === 'task-first' ? copy.taskFirst : copy.legacy;
+  const readinessRows = snapshot.readiness.subsystems.map((subsystem) =>
+    `<tr><td><code>${escapeHtml(subsystem.id)}</code></td>` +
+    `<td><span class="cp-state cp-state-${escapeHtml(subsystem.status)}">${escapeHtml(subsystem.status)}</span></td>` +
+    `<td>${escapeHtml(subsystem.reasonCodes.join(', ') || copy.notObserved)}</td></tr>`).join('');
+  const onboardingRows = snapshot.onboarding.items.map((item) =>
+    `<tr><td>${escapeHtml(item.domain)}</td>` +
+    `<td>${escapeHtml(item.configured)}</td><td>${escapeHtml(item.available)}</td>` +
+    `<td>${escapeHtml(item.authenticated)}</td><td>${escapeHtml(item.authorized)}</td>` +
+    `<td>${escapeHtml(item.selected)}</td><td>${escapeHtml(item.executed)}</td>` +
+    `<td><code>${escapeHtml(item.reasonCodes.join(', ') || copy.notObserved)}</code></td></tr>`).join('');
+  const operations = snapshot.operations;
+  return (
+    `<section class="beta-observation instrument-section" aria-labelledby="beta-observation-title">` +
+    `<div class="instrument-section-head"><div><span class="eyebrow">FURYPIPE / BETA</span>` +
+    `<h2 id="beta-observation-title">${escapeHtml(copy.title)}</h2>` +
+    `<p>${escapeHtml(copy.subtitle)} · <code>${escapeHtml(entryLabel)}</code></p></div>` +
+    `<span class="cp-state cp-state-${snapshot.readiness.overallStatus}">${escapeHtml(snapshot.readiness.overallStatus)}</span></div>` +
+    `<div class="beta-facts"><span><strong>${escapeHtml(copy.entry)}:</strong> ${escapeHtml(entryLabel)}</span>` +
+    `<span><strong>${escapeHtml(copy.mode)}:</strong> ${escapeHtml(snapshot.entry.mode)}</span>` +
+    `<span><strong>${escapeHtml(copy.config)}:</strong> ${escapeHtml(snapshot.entry.configStatus)}</span>` +
+    `<span><strong>${escapeHtml(copy.reversible)}:</strong> ${snapshot.entry.reversible ? 'yes' : 'no'}</span>` +
+    `<span><strong>${escapeHtml(copy.authority)}:</strong> ${escapeHtml(copy.observation)}</span>` +
+    `<span class="muted">${escapeHtml(copy.noGrant)}</span></div>` +
+    `<div class="beta-grid"><div><h3>${escapeHtml(copy.readiness)}</h3><div class="table-wrap"><table class="dtable"><thead><tr><th>${escapeHtml(copy.domain)}</th><th>Status</th><th>${escapeHtml(copy.evidence)}</th></tr></thead><tbody>${readinessRows}</tbody></table></div></div>` +
+    `<div><h3>${escapeHtml(copy.onboarding)}</h3><div class="table-wrap"><table class="dtable"><thead><tr><th>${escapeHtml(copy.domain)}</th><th>${escapeHtml(copy.configured)}</th><th>${escapeHtml(copy.available)}</th><th>${escapeHtml(copy.authenticated)}</th><th>${escapeHtml(copy.authorized)}</th><th>${escapeHtml(copy.selected)}</th><th>${escapeHtml(copy.executed)}</th><th>${escapeHtml(copy.evidence)}</th></tr></thead><tbody>${onboardingRows}</tbody></table></div></div></div>` +
+    `<div class="status"><strong>${escapeHtml(copy.operations)}:</strong> approvals=${escapeHtml(operations.approvals)} · policy=${escapeHtml(operations.policy)} · recovery=${escapeHtml(operations.recovery)} · unknown-outcomes=${escapeHtml(operations.unknownOutcomes)} · <code>${escapeHtml(operations.reasonCodes.join(', '))}</code></div>` +
+    `</section>`
+  );
+}
+
 // ---- full-history stats table --------------------------------------------
 
 export function renderStatsTableFragment(p: FullStatsPayload, locale = 'en'): string {
@@ -1688,6 +1786,14 @@ const CSS = `
      it. Structural borders identify a navigation layer; content itself stays
      flat and evidence-led rather than becoming another card grid. */
   .cp-shell { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 0; margin-bottom: 48px; }
+  .beta-observation { margin: 0 0 18px; padding: 16px 0 20px; border-bottom: 1px solid var(--border-strong); }
+  .beta-facts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 13px 0 18px; font-size: 12px; }
+  .beta-facts span { overflow-wrap: anywhere; }
+  .beta-grid { display: grid; grid-template-columns: minmax(0, .75fr) minmax(0, 1.25fr); gap: 20px; }
+  .beta-grid h3 { margin: 0 0 8px; color: var(--ink); font-size: 14px; }
+  .beta-grid .table-wrap { overflow-x: auto; }
+  .beta-grid .dtable { min-width: 640px; }
+  .beta-grid .dtable td, .beta-grid .dtable th { white-space: nowrap; }
   .cp-shell-overview { min-width: 0; padding: 8px 0 30px; border-bottom: 2px solid var(--accent); scroll-margin-top: 112px; }
   .cp-shell-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, .55fr); gap: 10px 28px; align-items: end; margin: 4px 0 4px; }
   .cp-shell-heading .eyebrow { grid-column: 1 / -1; margin-bottom: 0; }
@@ -1714,7 +1820,7 @@ const CSS = `
   dialog#command-palette::backdrop { background: rgba(3,6,12,.56); }.command-palette-head { display: grid; gap: 8px; padding: 14px; border-bottom: 1px solid var(--border); }.command-palette-head label { color: var(--muted); font: 700 10px/1.2 var(--mono); text-transform: uppercase; }.command-palette-head input { min-height: 36px; border: 1px solid var(--border-strong); border-radius: 2px; background: transparent; color: var(--ink); padding: 7px 9px; font: 14px inherit; }.command-results { display: grid; padding: 8px; }.command-results a { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 9px; color: var(--ink); text-decoration: none; border-left: 2px solid transparent; }.command-results a:hover, .command-results a:focus-visible { background: var(--raised); border-left-color: var(--accent); outline: 0; }.command-results small { color: var(--muted); font: 10px/1.3 var(--mono); }.command-palette-foot { margin: 0; padding: 10px 14px; color: var(--muted); border-top: 1px solid var(--border); font-size: 11px; }
   .skip-link { position: absolute; left: 8px; top: -50px; z-index: 100; padding: 8px; background: var(--surface); color: var(--ink); border: 2px solid var(--accent); }.skip-link:focus { top: 8px; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  @media (max-width: 1000px) { .cp-runtime-lane { grid-template-columns: 68px minmax(0, 1fr); }.cp-metrics { grid-column: 1 / -1; border-left: 0; }.xray { grid-template-columns: 1fr; }.xray > .card + .card { border-left: 0; border-top: 1px solid var(--border); padding: 24px 0 0; }.cp-bindings { grid-template-columns: 1fr; } }
+  @media (max-width: 1000px) { .cp-runtime-lane { grid-template-columns: 68px minmax(0, 1fr); }.cp-metrics { grid-column: 1 / -1; border-left: 0; }.xray { grid-template-columns: 1fr; }.xray > .card + .card { border-left: 0; border-top: 1px solid var(--border); padding: 24px 0 0; }.cp-bindings { grid-template-columns: 1fr; }.beta-grid { grid-template-columns: 1fr; } }
   @media (max-width: 760px) { .cp-explorer { grid-template-columns: 1fr; }.cp-explorer > .instrument-section-head, .cp-explorer > .cp-tools, .cp-explorer > .cp-list, .cp-inspector { grid-column: 1; }.cp-inspector { grid-row: auto; position: static; } }
   @media (max-width: 640px) { .workspace { width: min(100% - 24px, 1440px); }.topbar { position: static; }.command-nav { top: 0; margin-inline: -12px; padding-inline: 12px; }.command-nav a { padding-inline: 9px; }.command-trigger { display: none; }.strip { grid-template-columns: repeat(2, 1fr); }.tile:nth-child(2) { border-right: 0; }.tile:nth-child(-n+2) { border-bottom: 1px solid var(--border); }.cp-runtime-lane { grid-template-columns: 50px minmax(0, 1fr); gap: 12px; }.fury-core { width: 44px; height: 44px; }.fury-core::before { inset: 7px; }.fury-core::after { inset: 15px; }.fury-core span { top: 5px; }.fury-core i { right: 5px; }.fury-core b { bottom: 5px; }.cp-metrics { grid-template-columns: 1fr; gap: 7px; }.cp-metrics div { padding: 0; border-right: 0; }.cp-decision-lens { grid-template-columns: 1fr; gap: 12px; }.instrument-section-head { align-items: start; flex-direction: column; }.cp-tools { grid-template-columns: 1fr; }.cp-row { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }.cp-row-source, .cp-row-life { grid-column: 1 / -1; }.cp-row-source { white-space: normal; }.cp-inspector { position: static; }.cp-inspector dl { grid-template-columns: 1fr; }.cp-bindings li { grid-template-columns: minmax(90px, .75fr) auto minmax(0, 1.25fr); }.cp-evidence tr { border-radius: 0 !important; background: transparent !important; }.cp-evidence td { grid-template-columns: minmax(105px, .8fr) minmax(0, 1.2fr) !important; }.hero { padding-left: 12px; }.cp-shell-heading { grid-template-columns: 1fr; gap: 8px; }.cp-shell-overview { padding-top: 0; }.cp-disclosure > summary { grid-template-columns: 24px minmax(0, 1fr) 20px; gap: 9px; min-height: 60px; padding-block: 14px; }.cp-disclosure > summary > small { grid-column: 2 / -1; }.cp-disclosure-body { padding-bottom: 22px; }.cp-disclosure:not([open]) { border-bottom-color: var(--border); } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; } }
@@ -2009,6 +2115,7 @@ npx furypipe</pre>
 <main id="instrument-panel" class="cp-shell">
   <section class="cp-shell-overview" id="overview" aria-labelledby="overview-title">
     <div class="cp-shell-heading"><span class="eyebrow">FURYPIPE / LIVE</span><h1 id="overview-title">${escapeHtml(t('dashboard.page.navOverview'))}</h1><p>${escapeHtml(t('dashboard.controlPlane.subtitle'))}</p></div>
+    <div id="frag-beta" hx-get="/fragments/beta" hx-trigger="load, every 5s" hx-swap="innerHTML"><div class="status">Beta readiness loading…</div></div>
     <div id="frag-cp-overview" hx-get="/fragments/control-plane-overview" hx-trigger="load, every 5s" hx-swap="innerHTML"><div class="status">${escapeHtml(t('dashboard.controlPlane.loading'))}</div></div>
     <div class="cp-efficiency" aria-label="${escapeHtml(t('dashboard.controlPlane.runtimeLane'))}">
       <div id="frag-header" hx-get="/fragments/header" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>

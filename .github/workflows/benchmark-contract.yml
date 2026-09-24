@@ -30,3 +30,14 @@ jobs:
           node -e "JSON.parse(require('node:fs').readFileSync('bench/v5/result.schema.json','utf8')); console.log('result schema JSON: PASS')"
       - name: Run benchmark contract self-test
         run: node bench/v5/self-test.mjs
+      - name: Install the exact dependency graph for the beta envelope
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+      - name: Setup Node for the beta envelope
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.21.0'
+          cache: pnpm
+      - name: Build the exact beta candidate
+        run: pnpm install --frozen-lockfile && pnpm run build
+      - name: Run bounded offline beta FuryBench envelope
+        run: pnpm run benchmark:beta -- --iterations=3 --warmup=1

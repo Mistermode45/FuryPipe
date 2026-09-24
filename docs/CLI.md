@@ -23,6 +23,10 @@ npx furypipe doctor
 furypipe setup [--lang=fr|en] [--plain] [--no-color] [--yes]
 furypipe start
 furypipe doctor [--json] [--locale=<BCP-47>]
+furypipe config migrate-beta [--json]
+furypipe config rollback-beta [--json]
+furypipe beta status|opt-in|opt-out|legacy [--json]
+furypipe task --plan <objective> [--json] [--task-first|--legacy|--expert]
 furypipe stats [--json] [--file <path>]
 furypipe export [...]
 furypipe gateway config [--json]
@@ -236,6 +240,12 @@ The browser can inspect sanitized source metadata, request a fresh inventory, cr
 
 `furypipe doctor` inspects runtime configuration without intentionally reading or printing provider credentials. It reports the effective model-scope mode/source and visual policy. In automatic mode the diagnostic leaves `effectiveModels` empty because Model Fabric discovery is dynamic rather than a static catalog.
 
+The report also contains `betaConfig` and `betaReadiness`. Beta readiness is an
+observation-only, bounded status: required configuration/runtime blockers make
+`taskReady` false; missing or unprobed optional provider/Gateway evidence is
+reported as degraded without granting execution, repair or selection authority.
+`doctor --json` exits with status 2 when a required blocker is present.
+
 Upstream URLs are normalized before display so userinfo, query strings and fragments are not exposed in the report.
 
 Missing tools are reported as unavailable. `doctor` does not automatically install third-party tooling.
@@ -267,6 +277,71 @@ Human-readable output supports locale selection, including:
 ```
 
 The `--json` contract remains machine-oriented and is not localized.
+
+## Beta entry and task-first planning
+
+The Phase 10 beta entry is explicit and reversible. A fresh or legacy config
+is never rewritten just because `furypipe`, `doctor` or the dashboard was
+started.
+
+Inspect or choose the entry path:
+
+```bash
+furypipe beta status --json
+furypipe beta opt-in --json
+furypipe beta opt-out --json
+furypipe beta legacy --json
+```
+
+The default resolution is deliberately conservative:
+
+| Config state | Default entry | Meaning |
+| --- | --- | --- |
+| Missing | `task-first` / `recommended` | Fresh-install recommendation; no file write |
+| Legacy JSON | `legacy-expert` / `legacy` | Existing behavior remains reachable |
+| Explicit `recommended` | `task-first` | Operator selected the beta entry |
+| Explicit `opted-out` | `legacy-expert` / `opted-out` | Beta recommendation is declined |
+| Invalid/unsupported marker | `blocked` | Reconcile the file; no guessed repair |
+
+`furypipe task --plan` is the safe handoff boundary for this slice:
+
+```bash
+furypipe task --plan "inspect the installed package" --json
+furypipe task --plan --task-first "review the current readiness" --json
+furypipe task --plan --expert "inspect the legacy route" --json
+```
+
+The output contains an objective digest and length, not the objective text.
+It reports `selection: not-run`, `execution: not-authorized` and
+`authority: planning-only`. It does not select a capability, call a provider,
+install/connect a plugin or MCP server, grant permission, or execute a task.
+Governed runtime execution remains behind the existing Gateway/policy paths.
+
+The dashboard's `/api/beta.json` and `/fragments/beta` surfaces render the
+same observation-only projection. They contain no mutation control and cannot
+turn readiness, onboarding or a displayed status into authority.
+
+## Beta configuration governance
+
+The beta marker is never written automatically during startup. Use the explicit
+commands below when an operator has chosen to record the Phase 10 beta marker:
+
+```bash
+furypipe config migrate-beta
+furypipe config migrate-beta --json
+furypipe config rollback-beta --json
+```
+
+Migration is bounded to the configured JSON file, preserves unrelated keys,
+is idempotent and writes through a temporary owner-only file before rename.
+Rollback removes only FuryPipe's unchanged marker. A changed, malformed or
+future marker fails with `reconciliation-required`; the command never guesses
+how to repair user-owned configuration. Set `FURYPIPE_CONFIG` to target an
+explicit file. No provider credential values are emitted by these commands.
+
+For the complete operator runbook, including self-hosting, upgrade, recovery,
+security boundaries and known validation limits, see
+[FURYPIPE_VNEXT_PHASE10_OPERATOR.md](FURYPIPE_VNEXT_PHASE10_OPERATOR.md).
 
 ## Stats
 
@@ -327,7 +402,7 @@ FURYPIPE_PORT=48721
 
 If the selected listener port is already occupied, `furypipe start` fails closed with a FuryPipe-owned diagnostic and instructs the operator to select a free `FURYPIPE_PORT`; it does not reuse or attach to the process that already owns the port.
 
-`furypipe setup`, `furypipe doctor`, `furypipe export` and `furypipe stats` are offline commands and do not bind the runtime port.
+`furypipe setup`, `furypipe doctor`, `furypipe config`, `furypipe export` and `furypipe stats` are offline commands and do not bind the runtime port.
 
 ## Distribution and release status
 

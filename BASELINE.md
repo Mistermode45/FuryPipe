@@ -287,6 +287,7 @@ Baseline d'intégration : `v5-production-hardening` / `bc92bef794df25b2a7c541846
 | Browser QA hébergée | PASS exact HEAD | Dashboard Browser QA et Web Studio Browser QA PASS ; Cross-Browser QA PASS après rerun du job hébergé, 117/117 cas cross-engine et 15/15 cas Gateway WebChat réels |
 | Provider/Git/junction/production runtime | RUNTIME_VALIDATION_REQUIRED | les harnesses browser hébergés ne prouvent pas un provider OAuth réel, un Git provider réel, le DNS pinning d’un host concret, les junction/reparse multi-OS ou un déploiement production |
 | Merge / release / tag / npm publish / deploy | NOT_EXECUTED | interdits par le périmètre de cette phase |
+
 | Phase 7 Memory VNext | READY_TO_START / NOT_STARTED | gates Phase 6 exact-head vertes ; Phase 7 n’a pas encore modifié ce track |
 
 ## FuryPipe VNext Phase 7 Memory VNext — 2026-09-21
@@ -309,3 +310,24 @@ Baseline d'intégration : `v5-production-hardening` / `bc92bef794df25b2a7c541846
 | Secret Scan / Browser QA | PASS exact head implementation | `gitleaks`, `contract`, `prepare`, deux Chromium et Cross-Browser QA PASS ; matrice 9/9 OS × Node PASS |
 | Copies externes / providers / runtime | NOT_EXECUTED | aucune source externe, provider, OAuth, déploiement ou suppression distante appelée |
 | Merge / release / tag / npm publish / deploy | NOT_EXECUTED | interdits par le périmètre |
+
+## FuryPipe VNext Phase 10 Gate 10.2 — 2026-09-24 — local completion slice
+
+| Vérification | Résultat | Mesure / preuve |
+|---|---|---|
+| Source de vérité / exact head | PASS exact | parent PR #223 `OPEN + DRAFT`, base Phase 9 `c3c3f5370c10ee414e685b9f422cd4fd8a022e55`, parent Phase 10 `4de5c3e75df4de720cb330dadda86515042e79c6`; PR #224 `OPEN + DRAFT`, base `4de5c3e75df4de720cb330dadda86515042e79c6`, head `80cceadab1d60f5ce1130bae7f24aaac8dbd6dcc`; worktree isolé |
+| Cause racine | CONFIRMÉE | `src/beta-readiness.ts` n’était consommé ni par `doctor`, ni par startup, ni par une migration/config governance |
+| Beta config governance | PASS local borné | observation <=1 MiB, symlink/non-file/future schema fail-closed, migration explicit/idempotent, atomic temp+fsync+rename, rollback own-marker only |
+| Startup / doctor | PASS local borné | `doctor` expose `betaConfig`/`betaReadiness`; exit 2 si required blocker; startup refuse config/runtime blocker; optional unprobed reste degraded/task-ready |
+| Secret boundary | PASS local borné | tests vérifient absence de credential values; snapshot contient uniquement états/reasons/digests; aucun provider probe |
+| Tests ciblés | PASS local | 3 fichiers / 21 tests beta+doctor ; `tests/node-security.test.ts` 14/14 |
+| `pnpm install --frozen-lockfile` | PASS | exécuté sur le parent exact avant modification; lockfile inchangé |
+| `pnpm run typecheck` | PASS | TypeScript principal + hosted MCP |
+| `pnpm test` | PASS | 280 fichiers ; 3 208 tests ; sortie 0 |
+| `pnpm run build` | PASS | dist bibliothèque/déclarations + Node/MCP ; version smoke `0.15.0` |
+| `pnpm run package:smoke` | PASS | package, Phase 6, Phase 7, Phase 8 ACP, benchmark-claim, provider-attempt, governed-provider; migration/rollback depuis tarball |
+| `pnpm run audit` | PASS | aucune vulnérabilité production connue |
+| Secret scan | PASS hébergé / PARTIAL local | `gitleaks` absent localement; hosted Secret Scan exact-head PR #224 `35993617547` PASS |
+| Browser QA | PASS hébergé exact-head | aucune surface visuelle modifiée; Dashboard `35993617584`, Web Studio `35993617772`, Cross-Browser `35993617660` PASS |
+| CI exact-head | PASS hébergé | Benchmark Contract `35993617851`, RC Preparation `35993617553`, CI `35993617806`, matrice 9/9 PASS |
+| Publication / mutation externe | NOT_EXECUTED | pas de merge, release, tag, npm publish, deploy, restart production, force push ou migration de données réelle |

@@ -3,6 +3,46 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { collectDoctorReport, renderDoctorReport, resolveDoctorLocale, type DoctorReport } from '../src/doctor.js';
+import type { FuryBetaConfigObservation } from '../src/beta-config.js';
+import type { FuryBetaReadinessSnapshot } from '../src/beta-readiness.js';
+
+const betaConfig: FuryBetaConfigObservation = {
+  format: 'furypipe-beta-config/v1',
+  path: 'C:\\Users\\test\\config.json',
+  status: 'legacy',
+  schemaVersion: null,
+  mode: null,
+  migrationId: null,
+  digestSha256: '0'.repeat(64),
+  rollback: 'not-required',
+  reasonCodes: ['legacy-config'],
+};
+
+const betaReadiness: FuryBetaReadinessSnapshot = {
+  format: 'furypipe-beta-readiness-snapshot/v1',
+  observedAt: 1,
+  overallStatus: 'degraded',
+  taskReady: true,
+  subsystemCount: 0,
+  requiredSubsystems: 0,
+  optionalSubsystems: 0,
+  statusCounts: {
+    ready: 0,
+    degraded: 0,
+    unconfigured: 0,
+    unavailable: 0,
+    blocked: 0,
+    unsupported: 0,
+  },
+  blockers: [],
+  degradations: [],
+  subsystems: [],
+  digestSha256: '0'.repeat(64),
+  authority: 'readiness-observation-only',
+  executionAuthority: false,
+  repairAuthority: false,
+  selectionAuthority: false,
+};
 
 const report: DoctorReport = {
   platform: { os: 'test 1', arch: 'x64', shell: 'powershell', cwd: 'C:\\work', executable: 'node' },
@@ -21,6 +61,8 @@ const report: DoctorReport = {
     codex: { status: 'available', value: 'codex 1' },
     openclaw: { status: 'unavailable' },
   },
+  betaConfig,
+  betaReadiness,
 };
 
 describe('furypipe doctor renderer', () => {
@@ -28,6 +70,7 @@ describe('furypipe doctor renderer', () => {
     const output = renderDoctorReport(report);
     expect(output).toContain('Node: 26.8.2');
     expect(output).toContain('OpenClaw: unavailable');
+    expect(output).toContain('Beta readiness: degraded (task-ready=yes)');
     expect(output).not.toContain('API_KEY');
     expect(output).not.toContain('token');
   });
