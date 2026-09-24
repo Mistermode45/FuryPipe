@@ -158,6 +158,7 @@ async function startChrome(chromeBin: string) {
     '--headless=new',
     '--no-sandbox',
     '--disable-dev-shm-usage',
+    '--disable-gpu',
     '--disable-background-networking',
     '--disable-component-update',
     '--disable-default-apps',
@@ -178,7 +179,7 @@ async function startChrome(chromeBin: string) {
     if (stderr.length > 80) stderr.splice(0, stderr.length - 80);
   });
 
-  const deadline = Date.now() + 15_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`Chromium exited early: ${stderr.join('\n')}`);
     try {
