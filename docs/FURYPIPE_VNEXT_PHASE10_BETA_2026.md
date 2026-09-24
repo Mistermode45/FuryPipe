@@ -1,7 +1,8 @@
 # FuryPipe VNext Phase 10 — Beta / Task-First Agent OS (2026)
 
-> Status: Gates 10.2–10.9 local implementation slices — exact-head hosted
-> closure pending.
+> Status: Gates 10.2–10.9 implementation slices are documented; the exact-head
+> hosted candidate gates are revalidated on each pushed HEAD. External runtime,
+> provider, recovery-rehearsal and release-authorization gates remain separate.
 >
 > Branch: `codex/furypipe-final-completion`
 >
@@ -476,7 +477,7 @@ Required:
 - existing explicit expert/legacy paths remain reachable;
 - capability selection remains explainable and selection-only.
 
-### Current status: LOCAL_IMPLEMENTED / HOSTED_PENDING
+### Current status: LOCAL_IMPLEMENTED / HOSTED_GATE_PASS / EXTERNAL_RUNTIME_PENDING
 
 The explicit CLI contract is now present. Missing config resolves to the
 recommended task-first path without a write; legacy config remains on the
@@ -500,7 +501,7 @@ Required:
 - bounded diagnostics;
 - no automatic installation or credential grants.
 
-### Current status: LOCAL_IMPLEMENTED / INVENTORY_RUNTIME_PENDING
+### Current status: LOCAL_IMPLEMENTED / HOSTED_GATE_PASS / INVENTORY_RUNTIME_PENDING
 
 `src/beta-onboarding.ts` emits all six state dimensions for models, providers,
 skills, plugins, MCP, channels, automations, browser, coding, devices, memory,
@@ -522,7 +523,7 @@ Required:
 - unknown outcomes/recovery work are visible;
 - sensitive identifiers/redaction rules remain enforced.
 
-### Current status: LOCAL_IMPLEMENTED / BROWSER_HOSTED_PENDING
+### Current status: LOCAL_IMPLEMENTED / BROWSER_HOSTED_PASS / MANUAL_A11Y_PENDING
 
 The dashboard receives a host-owned control-plane provider and renders the same
 snapshot as `/api/beta.json`; an absent provider produces a visible 503/
@@ -561,7 +562,7 @@ If Phase 10 adds public runtime exports, add exact packed-artifact smokes.
 
 No npm publish/release/deploy is required or authorized by this gate.
 
-### Current status: LOCAL_PASS / HOSTED_MATRIX_PENDING
+### Current status: LOCAL_PASS / HOSTED_MATRIX_PASS
 
 The packed-artifact smoke now checks the beta status, opt-in, opt-out, legacy,
 task-plan and rollback journey in addition to the existing package journeys.
@@ -629,6 +630,14 @@ Final acceptance requires, on the exact beta closure HEAD:
 - no unresolved critical security regression introduced by Phase 10;
 - PR remains OPEN + DRAFT;
 - no merge, release, tag, npm publish or deploy.
+
+The exact-head candidate workflow set is now exercised on the pushed Phase 10
+HEAD: Secret Scan, the 9-job CI matrix, Benchmark Contract, RC Preparation
+Evidence, Dashboard Browser QA, Web Studio Browser QA and Cross-Browser QA all
+must be green together. The final execution report records the SHA and run
+identifiers used for that proof. This hosted set does not promote local
+migration/restart tests into a brutal process-kill rehearsal, a real provider or
+OAuth validation, a production rollback, or a release authorization.
 
 ## 27. Gate 10.0 historical exit record
 
