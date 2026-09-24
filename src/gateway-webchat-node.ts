@@ -1692,7 +1692,9 @@ const JS = `(() => {
       clearTimeout(state.reconnectTimer);
       state.reconnectTimer = null;
     }
-    if (state.ws) state.ws.close(1000, 'logout');
+    const socket = state.ws;
+    state.ws = null;
+    if (socket) socket.close(1000, 'logout');
     await fetch('/gateway/local-logout/v1', {
       method: 'POST',
       credentials: 'same-origin',
