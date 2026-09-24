@@ -3,19 +3,19 @@
 ## Current public release
 
 ```text
-PACKAGE:          furypipe@0.14.0
-TAG:              v0.14.0
-SOURCE COMMIT:    f05af8b4291371706240853d0bd1a35ffda1cba6
+PACKAGE:          furypipe@0.15.0
+TAG:              v0.15.0
+SOURCE COMMIT:    ac64ea6dce6125557f6e51148b095065566aa53c
 GITHUB RELEASE:   RELEASED
 NPM PACKAGE:      PUBLISHED
 NPM PROVENANCE:   VERIFIED
-RELEASE WORKFLOW: 35013750389 / SUCCESS
+RELEASE WORKFLOW: 35096745697 / SUCCESS
 PROD DEPLOYMENT:  NOT_CLAIMED
 ```
 
-FuryPipe `v0.14.0` was publicly released on **2026-09-15**.
+FuryPipe `v0.15.0` was publicly released on **2026-09-16**.
 
-The tag targets the exact source commit above. The tag-triggered GitHub Actions release completed successfully, `furypipe@0.14.0` was published through npm Trusted Publishing with provenance, and GitHub Release `v0.14.0` exists as a non-draft, non-prerelease release.
+The tag targets the exact source commit above. The tag-triggered GitHub Actions release completed successfully, `furypipe@0.15.0` was published through npm Trusted Publishing with provenance, and GitHub Release `v0.15.0` exists as a non-draft, non-prerelease release.
 
 Publication still does **not** imply production deployment, OAuth verification, Figma verification or provider-performance verification.
 
