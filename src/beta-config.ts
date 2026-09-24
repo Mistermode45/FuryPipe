@@ -50,6 +50,57 @@ const MODES = new Set<string>(['legacy', 'opted-out', 'recommended']);
 const MIGRATION_ID = /^[a-z0-9][a-z0-9.-]{0,95}$/u;
 const OBSERVATIONS = new WeakSet<object>();
 
+type BetaConfigTestFault =
+  | 'after-temp-fsync'
+  | 'before-rename'
+  | 'after-rename'
+  | 'before-receipt';
+
+/**
+ * Deterministic fault injection for the isolated validation harness only.
+ * It is inert unless the caller explicitly opts into FURYPIPE_TEST_MODE=1;
+ * normal operators and production processes cannot activate it accidentally.
+ */
+function testFault(point: BetaConfigTestFault): void {
+  if (process.env.FURYPIPE_TEST_MODE !== '1'
+    || process.env.FURYPIPE_BETA_CONFIG_FAULT !== point) return;
+  if (process.env.FURYPIPE_BETA_CONFIG_FAULT_ACTION === 'kill') {
+    process.kill(process.pid, 'SIGKILL');
+  }
+  throw new Error(`beta config test fault injected at ${point}`);
+}
+
+function cleanupOrphanedConfigTemporaries(filePath: string): void {
+  const parent = path.dirname(filePath);
+  const prefix = `${path.basename(filePath)}.tmp-`;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(parent, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.startsWith(prefix)) continue;
+    const match = /^.+\.tmp-(\d+)-[0-9a-f-]+$/u.exec(entry.name);
+    if (!match?.[1]) continue;
+    const ownerPid = Number(match[1]);
+    if (!Number.isSafeInteger(ownerPid) || ownerPid === process.pid) continue;
+    try {
+      process.kill(ownerPid, 0);
+      continue;
+    } catch {
+      // The writer no longer exists: its fully private temp file is orphaned.
+    }
+    try {
+      const temporary = path.join(parent, entry.name);
+      const stat = fs.lstatSync(temporary);
+      if (stat.isFile() && !stat.isSymbolicLink()) fs.unlinkSync(temporary);
+    } catch {
+      // Cleanup is best effort; the canonical config remains untouched.
+    }
+  }
+}
+
 function freezeReasons(reasons: readonly string[]): readonly string[] {
   return Object.freeze([...new Set(reasons)].sort((a, b) => a.localeCompare(b)));
 }
@@ -231,6 +282,7 @@ export function inspectBetaConfigText(text: string, filePath: string): FuryBetaC
 }
 
 function readLoadedConfig(filePath: string): LoadedConfig {
+  cleanupOrphanedConfigTemporaries(filePath);
   try {
     const stat = fs.lstatSync(filePath);
     if (stat.isSymbolicLink()) {
@@ -318,7 +370,10 @@ function writeAtomicConfig(filePath: string, value: Record<string, unknown>): vo
     fs.fsyncSync(descriptor);
     fs.closeSync(descriptor);
     descriptor = undefined;
+    testFault('after-temp-fsync');
+    testFault('before-rename');
     fs.renameSync(temporary, filePath);
+    testFault('after-rename');
     fs.chmodSync(filePath, 0o600);
   } finally {
     if (descriptor !== undefined) fs.closeSync(descriptor);
@@ -343,6 +398,7 @@ function mutationResult(
   filePath: string,
   status: FuryBetaConfigMigrationResult['status'],
 ): FuryBetaConfigMigrationResult {
+  testFault('before-receipt');
   const current = inspectBetaConfigFile(filePath);
   return Object.freeze({
     path: filePath,

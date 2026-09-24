@@ -220,7 +220,7 @@ export function renderModelsFragment(
     (scopeChips || `<span class="hint">${escapeHtml(t('dashboard.models.unlisted'))}</span>`) +
     `</div>` +
     `<div class="models">` +
-    `<span class="models-label">FURYPIPE_MODELS</span>` +
+    `<label class="models-label" for="models-csv">FURYPIPE_MODELS</label>` +
     `<input class="models-csv" id="models-csv" type="text" name="list" ` +
     `value="${escapeHtml(active.join(','))}" spellcheck="false" autocomplete="off" ` +
     `hx-post="/fragments/models" hx-target="#frag-models" hx-trigger="change">` +
@@ -293,7 +293,7 @@ function mathRow(key: string, val: number | string | undefined, note = ''): stri
 }
 
 function mathBlock(title: string, body: string): string {
-  return `<section class="math-block"><h4>${title}</h4><div class="formula">${body}</div></section>`;
+  return `<section class="math-block"><h3>${title}</h3><div class="formula">${body}</div></section>`;
 }
 
 /** Stat tile; `tip` adds a hover "?" explainer. */
@@ -2092,8 +2092,8 @@ export function renderPage(port: number, hostLabel = '', locale = 'en'): string 
   <p class="command-palette-foot">${escapeHtml(t('dashboard.page.commandHint'))}</p>
 </dialog>
 
-<dialog id="routing-help" onclick="if (event.target === this) this.close()">
-  <h3>${escapeHtml(t('dashboard.page.routingTitle'))}</h3>
+<dialog id="routing-help" aria-labelledby="routing-help-title" onclick="if (event.target === this) this.close()">
+  <h3 id="routing-help-title">${escapeHtml(t('dashboard.page.routingTitle'))}</h3>
   <p>${escapeHtml(t('dashboard.page.routingIntro'))}</p>
   <ul>
     <li><code>OPENAI_MODELS</code> — ${escapeHtml(t('dashboard.page.routingOpenAI'))} (<code>OPENAI_UPSTREAM</code> + <code>OPENAI_API_KEY</code>)</li>

@@ -3,7 +3,8 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
+import { isPnpmCommand, resolvePnpmCommand } from './validation-command.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = process.cwd();
@@ -19,12 +20,23 @@ function assert(condition, message) {
 }
 
 async function run(binary, args, cwd = ROOT, options = {}) {
+  let executable = binary;
+  let finalArgs = args;
+  if (process.platform === 'win32' && /^(?:npm|npm\.cmd)$/iu.test(binary)) {
+    executable = process.execPath;
+    finalArgs = [join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'), ...args];
+  } else if (isPnpmCommand(binary)) {
+    const command = resolvePnpmCommand();
+    executable = command.executable;
+    finalArgs = [...command.prefixArgs, ...args];
+  }
   try {
-    return await execFileAsync(binary, args, {
+    return await execFileAsync(executable, finalArgs, {
       cwd,
       encoding: 'utf8',
       maxBuffer: 16 * 1024 * 1024,
       windowsHide: true,
+      shell: isPnpmCommand(binary) ? resolvePnpmCommand().shell : false,
       ...options,
     });
   } catch (error) {
@@ -219,6 +231,32 @@ async function findPreviousPublishedVersion(npm, name, currentVersion, expectedR
   };
 }
 
+async function readLocalUpgradeRollbackEvidence(sourceCommit, currentVersion) {
+  const evidencePath = join(ROOT, 'artifacts', 'final-validation', 'upgrade-rollback.json');
+  let evidence;
+  try {
+    evidence = JSON.parse(await readFile(evidencePath, 'utf8'));
+  } catch {
+    return undefined;
+  }
+  assert(evidence?.format === 'furypipe-final-upgrade-rollback/v1', 'local upgrade evidence format is invalid');
+  assert(evidence.status === 'PASS', 'local upgrade evidence is not PASS');
+  assert(evidence.sourceCommit === sourceCommit, 'local upgrade evidence is bound to a different source commit');
+  assert(evidence.candidate?.version === currentVersion, 'local upgrade evidence candidate version mismatch');
+  assert(evidence.contract?.packageUpgrade === 'PASS', 'local package upgrade evidence is incomplete');
+  assert(evidence.contract?.configMigration === 'PASS', 'local config migration evidence is incomplete');
+  assert(evidence.contract?.configRollback === 'PASS', 'local config rollback evidence is incomplete');
+  assert(evidence.contract?.binaryRollback === 'PASS', 'local binary rollback evidence is incomplete');
+  return {
+    upgradeSmoke: 'VERIFIED',
+    rollbackEvidence: 'VERIFIED',
+    previousVersion: evidence.previous?.version,
+    source: 'local-versioned-tarball-harness',
+    evidencePath: 'artifacts/final-validation/upgrade-rollback.json',
+    note: 'local package/config/binary upgrade and rollback contract; no production deployment rollback claimed',
+  };
+}
+
 async function upgradeRollbackSmoke(npm, tarball, name, currentVersion, previous) {
   if (previous.state !== 'VERIFIED' || !previous.version) {
     return {
@@ -274,7 +312,7 @@ async function verifyDocument(path, requiredPatterns) {
 async function generateSbom() {
   const treePath = join(OUT, 'dependency-tree.json');
   const sbomPath = join(OUT, 'sbom.spdx.json');
-  const list = await run(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ['list', '--json', '--depth', 'Infinity']);
+  const list = await run('pnpm', ['list', '--json', '--depth', 'Infinity']);
   await writeFile(treePath, list.stdout, 'utf8');
   await run(process.execPath, ['scripts/security/generate-sbom.mjs', treePath, sbomPath]);
   await run(process.execPath, ['scripts/security/verify-sbom.mjs', 'package.json', sbomPath]);
@@ -317,7 +355,9 @@ async function main() {
       ? { previousVersion: previous.version }
       : {}),
   };
-  const upgradeRollback = await upgradeRollbackSmoke(npm, tarball, pkg.name, pkg.version, previous);
+  const localUpgradeRollback = await readLocalUpgradeRollbackEvidence(SOURCE_COMMIT, pkg.version);
+  const upgradeRollback = localUpgradeRollback
+    ?? await upgradeRollbackSmoke(npm, tarball, pkg.name, pkg.version, previous);
   const sbom = await generateSbom();
 
   const documents = {
@@ -343,7 +383,7 @@ async function main() {
     '- fresh install from that tarball;',
     '- CLI version/help and core package exports;',
     '- public npm publication baseline: ' + publicationBaseline.state + ';',
-    '- upgrade smoke: ' + upgradeRollback.upgradeSmoke + (upgradeRollback.previousVersion ? ' from ' + upgradeRollback.previousVersion : '') + ';',
+    '- upgrade smoke: ' + upgradeRollback.upgradeSmoke + (upgradeRollback.previousVersion ? ' from ' + upgradeRollback.previousVersion : '') + ' (' + (upgradeRollback.source || 'public-registry') + ');',
     '- package-level rollback smoke: ' + upgradeRollback.rollbackEvidence + ';',
     '- SPDX 2.3 SBOM generated from the frozen dependency graph;',
     '- compatibility, migration and rollback documents present and hashed.',

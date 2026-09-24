@@ -53,6 +53,9 @@ bench/runs/
 artifacts/cross-browser-qa/
 artifacts/dashboard-browser-qa/
 artifacts/gateway-webchat-browser-qa/
+artifacts/web-studio-browser-qa/
+artifacts/final-validation/
+artifacts/rc-preparation/
 
 # eval run artifacts (outputs, not sources)
 eval/verbatim-15/out_*/

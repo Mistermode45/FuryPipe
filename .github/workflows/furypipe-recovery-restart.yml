@@ -1,4 +1,4 @@
-name: RC Preparation Evidence
+name: FuryPipe Recovery and Restart
 
 on:
   pull_request:
@@ -8,17 +8,24 @@ permissions:
   contents: read
 
 concurrency:
-  group: rc-preparation-${{ github.ref }}
+  group: furypipe-recovery-restart-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  prepare:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+  recovery:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2025]
+        node: ['24.21.0']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     env:
       FURYPIPE_SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      FURYPIPE_VALIDATION_OUTPUT_DIR: artifacts/final-validation
     steps:
-      - name: Checkout
+      - name: Checkout exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -30,7 +37,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '24.21.0'
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
       - name: Install frozen dependency graph
@@ -39,17 +46,17 @@ jobs:
       - name: Build exact candidate
         run: pnpm run build
 
-      - name: Produce local versioned tarball upgrade and rollback evidence
-        run: pnpm run validation:upgrade-rollback
+      - name: Execute crash, migration and unknown-outcome recovery
+        run: pnpm run validation:recovery
 
-      - name: Produce non-destructive RC preparation evidence
-        run: node scripts/rc-preparation.mjs
+      - name: Execute Gateway restart and reconnect contract
+        run: pnpm run validation:gateway
 
-      - name: Upload exact RC preparation evidence
+      - name: Upload recovery evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: furypipe-rc-preparation-${{ github.event.pull_request.head.sha || github.sha }}
-          path: artifacts/rc-preparation/
+          name: furypipe-recovery-restart-${{ matrix.os }}-${{ matrix.node }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: artifacts/final-validation/
           if-no-files-found: warn
           retention-days: 30
