@@ -315,7 +315,7 @@ Baseline d'intégration : `v5-production-hardening` / `bc92bef794df25b2a7c541846
 
 | Vérification | Résultat | Mesure / preuve |
 |---|---|---|
-| Source de vérité / parent | PASS exact local parent | PR #223 `OPEN + DRAFT`; base Phase 9 `c3c3f5370c10ee414e685b9f422cd4fd8a022e55`; parent Phase 10 `4de5c3e75df4de720cb330dadda86515042e79c6`; worktree isolé |
+| Source de vérité / exact head | PASS exact | parent PR #223 `OPEN + DRAFT`, base Phase 9 `c3c3f5370c10ee414e685b9f422cd4fd8a022e55`, parent Phase 10 `4de5c3e75df4de720cb330dadda86515042e79c6`; PR #224 `OPEN + DRAFT`, base `4de5c3e75df4de720cb330dadda86515042e79c6`, head `80cceadab1d60f5ce1130bae7f24aaac8dbd6dcc`; worktree isolé |
 | Cause racine | CONFIRMÉE | `src/beta-readiness.ts` n’était consommé ni par `doctor`, ni par startup, ni par une migration/config governance |
 | Beta config governance | PASS local borné | observation <=1 MiB, symlink/non-file/future schema fail-closed, migration explicit/idempotent, atomic temp+fsync+rename, rollback own-marker only |
 | Startup / doctor | PASS local borné | `doctor` expose `betaConfig`/`betaReadiness`; exit 2 si required blocker; startup refuse config/runtime blocker; optional unprobed reste degraded/task-ready |
@@ -327,6 +327,7 @@ Baseline d'intégration : `v5-production-hardening` / `bc92bef794df25b2a7c541846
 | `pnpm run build` | PASS | dist bibliothèque/déclarations + Node/MCP ; version smoke `0.15.0` |
 | `pnpm run package:smoke` | PASS | package, Phase 6, Phase 7, Phase 8 ACP, benchmark-claim, provider-attempt, governed-provider; migration/rollback depuis tarball |
 | `pnpm run audit` | PASS | aucune vulnérabilité production connue |
-| Secret scan local | PARTIAL | `gitleaks` absent localement; recherche bornée sans valeur secrète; hosted Secret Scan du parent #223 vert, nouveau diff à rescanner après push |
-| Browser QA | NOT_RERUN | aucune surface visuelle modifiée; hosted browser checks verts sur parent #223, pas preuve du nouveau HEAD |
+| Secret scan | PASS hébergé / PARTIAL local | `gitleaks` absent localement; hosted Secret Scan exact-head PR #224 `35993617547` PASS |
+| Browser QA | PASS hébergé exact-head | aucune surface visuelle modifiée; Dashboard `35993617584`, Web Studio `35993617772`, Cross-Browser `35993617660` PASS |
+| CI exact-head | PASS hébergé | Benchmark Contract `35993617851`, RC Preparation `35993617553`, CI `35993617806`, matrice 9/9 PASS |
 | Publication / mutation externe | NOT_EXECUTED | pas de merge, release, tag, npm publish, deploy, restart production, force push ou migration de données réelle |

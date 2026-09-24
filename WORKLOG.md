@@ -622,7 +622,7 @@
 
 ## 2026-09-24 — FuryPipe VNext Phase 10 Gate 10.2 — local completion slice
 
-- Source de vérité : `Mistermode45/FuryPipe`, PR #223 `OPEN + DRAFT`, base exacte Phase 9 `c3c3f5370c10ee414e685b9f422cd4fd8a022e55`, current Phase 10 head revalidé `4de5c3e75df4de720cb330dadda86515042e79c6`. Travail isolé dans `FuryPipe-Final-Completion`, parent exact #223, sans modification du worktree principal.
+- Source de vérité : `Mistermode45/FuryPipe`, parent PR #223 `OPEN + DRAFT`, base exacte Phase 9 `c3c3f5370c10ee414e685b9f422cd4fd8a022e55`, parent Phase 10 `4de5c3e75df4de720cb330dadda86515042e79c6`. Travail isolé dans `FuryPipe-Final-Completion`, PR #224 `OPEN + DRAFT`, base exacte `4de5c3e75df4de720cb330dadda86515042e79c6`, head livré `80cceadab1d60f5ce1130bae7f24aaac8dbd6dcc`, sans modification du worktree principal.
 - Cause racine : le contrat `src/beta-readiness.ts` existait mais restait orphelin ; ni `doctor`, ni le startup Node, ni la gouvernance de configuration ne le consommaient.
 - Correction minimale : `src/beta-config.ts` pour observation bornée/migration explicite/rollback réconciliable ; `src/beta-readiness-runtime.ts` pour la projection configuration/runtime/Gateway/provider sans probe réseau ni valeur secrète ; raccordement `doctor --json` et preflight startup ; commandes `config migrate-beta` / `rollback-beta` ; documentation et package smoke.
 - Sécurité : configuration invalide, future, surdimensionnée, non-fichier ou symlink refusée ; migration idempotente, atomique par fichier temporaire + `fsync` + rename, préserve les clés étrangères ; rollback retire uniquement le marqueur FuryPipe inchangé ; aucune valeur de credential dans snapshot, digest, logs ou smoke.
@@ -633,5 +633,5 @@
 - `pnpm run build` : PASS, dist bibliothèque/déclarations + `dist/node.js` + `dist/mcp.js`, version smoke `0.15.0`.
 - `pnpm run package:smoke` : PASS, package + Phase 6 + Phase 7 + Phase 8 ACP + benchmark-claim + provider-attempt + governed-provider ; migration/rollback installés depuis tarball et setup data préservée.
 - `pnpm run audit` : PASS, aucune vulnérabilité production connue ; `gitleaks` local indisponible ; `git diff --check` PASS.
-- Preuve hébergée : les 7 workflows et CI 9/9 du parent #223 `4de5...` sont verts ; ces résultats ne couvrent pas encore le nouveau diff local tant qu’un nouveau HEAD n’a pas été poussé.
+- Preuve hébergée exact-head : PR #224 `80cceadab1d60f5ce1130bae7f24aaac8dbd6dcc`, base `4de5c3e75df4de720cb330dadda86515042e79c6`, merge state `CLEAN`, 7 workflows PASS, CI 9/9 PASS sur Ubuntu 24.04/macOS 14/Windows 2025 et Node 22.23.2/24.21.0/26.8.2 ; Benchmark Contract `35993617851`, Secret Scan `35993617547`, RC Preparation `35993617553`, Dashboard Browser QA `35993617584`, Web Studio Browser QA `35993617772`, Cross-Browser QA `35993617660`, CI `35993617806`.
 - Limites : aucune validation client/browser fraîche sur ce diff local ; aucun provider réel, credential, migration de production, crash/restart hébergé, merge, release, tag, npm publish, deploy ou force push.
