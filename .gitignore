@@ -56,6 +56,7 @@ artifacts/gateway-webchat-browser-qa/
 artifacts/web-studio-browser-qa/
 artifacts/final-validation/
 artifacts/rc-preparation/
+artifacts/external-validation/
 
 # eval run artifacts (outputs, not sources)
 eval/verbatim-15/out_*/

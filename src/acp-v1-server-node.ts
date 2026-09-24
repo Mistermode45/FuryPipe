@@ -566,7 +566,7 @@ export function createFuryAcpV1Server(options: FuryAcpV1ServerOptions) {
     'maxUpdatesPerPrompt',
   );
   const agentName = boundedText(options.agentName ?? 'furypipe', 128, 'agentName');
-  const agentVersion = boundedText(options.agentVersion ?? '0.15.0', 64, 'agentVersion');
+  const agentVersion = boundedText(options.agentVersion ?? '0.16.0', 64, 'agentVersion');
   const sessions = new Map<string, MutableSession>();
   let connectionClaimed = false;
   let initialized = false;

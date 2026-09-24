@@ -1,6 +1,6 @@
 {
   "name": "furypipe",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "FuryPipe — context, agents, skills, MCP, memory, provider routing and capability orchestration for production AI workflows.",
   "type": "module",
   "bin": {
@@ -687,6 +687,9 @@
     "validation:local-contracts": "node scripts/local-contracts.mjs",
     "validation:accessibility": "node scripts/accessibility-automation.mjs",
     "validation:furybench": "node scripts/furybench-baseline-compare.mjs",
+    "validation:provider-live": "tsx scripts/provider-live-validation.ts",
+    "validation:oidc-live": "node scripts/oidc-live-validation.mjs",
+    "validation:mcp-remote": "node scripts/mcp-remote-validation.mjs",
     "openclaw:probe": "tsx scripts/openclaw-live-probe.ts",
     "hosted-mcp:fixture": "tsx scripts/hosted-mcp-fixture.ts",
     "hosted-mcp:conformance": "tsx scripts/hosted-mcp-conformance.ts",

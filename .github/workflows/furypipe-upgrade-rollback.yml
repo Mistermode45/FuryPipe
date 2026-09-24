@@ -43,7 +43,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git rev-parse --verify 'v0.14.0^{commit}'
+          git rev-parse --verify 'v0.15.0^{commit}'
           pnpm run build
 
       - name: Execute local package lifecycle contract

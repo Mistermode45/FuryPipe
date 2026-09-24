@@ -32,6 +32,18 @@ behavioral changes, patch = fixes).
   of Node's deprecated implicit `shell: true` mode.
 - Preserved public TLS trust in FuryLink child processes on Windows by falling back to Node's built-in public root certificates when the OS exposes no PEM bundle; replacement trust variables no longer receive a FuryLink-CA-only bundle.
 
+## 0.16.0 — Release candidate — 2026-09-24
+
+### Changed
+
+- Prepared the next FuryPipe package line with a real 0.15.0 → 0.16.0
+  tarball upgrade contract and a controlled package/config rollback to
+  0.15.0.
+- Added guarded provider, OIDC and remote-MCP validation entry points. They
+  remain authorization-gated and perform no external request by default.
+- Added release-acceptance checklists for screen-reader, visual and final
+  maintainer review.
+
 ## 0.15.0 — 2026-09-16
 
 ### Changed
