@@ -683,6 +683,7 @@
     "validation:upgrade-rollback": "node scripts/upgrade-rollback-smoke.mjs",
     "validation:recovery": "node scripts/recovery-resilience-smoke.mjs",
     "validation:gateway": "node scripts/gateway-restart-smoke.mjs",
+    "validation:gateway-installed-package": "node scripts/gateway-installed-package-smoke.mjs",
     "validation:clean-room": "node scripts/clean-room-package-smoke.mjs",
     "validation:local-contracts": "node scripts/local-contracts.mjs",
     "validation:accessibility": "node scripts/accessibility-automation.mjs",
@@ -697,7 +698,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.hosted-mcp.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package:smoke": "node scripts/package-smoke.mjs && node scripts/phase6-package-smoke.mjs && node scripts/phase7-package-smoke.mjs && node scripts/phase8-acp-package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
+    "package:smoke": "node scripts/package-smoke.mjs && node scripts/gateway-installed-package-smoke.mjs && node scripts/phase6-package-smoke.mjs && node scripts/phase7-package-smoke.mjs && node scripts/phase8-acp-package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
     "vendor:ui": "node scripts/vendor-ui.mjs",
     "browser:webchat:qa": "tsx scripts/gateway-webchat-browser-qa.ts"

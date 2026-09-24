@@ -1,5 +1,4 @@
-import { fromJsonSchema } from '@modelcontextprotocol/client';
-import { AjvJsonSchemaValidator } from '@modelcontextprotocol/client/validators/ajv';
+import type { fromJsonSchema } from '@modelcontextprotocol/client';
 
 import {
   withMcpDirectFreshInventory,
@@ -334,11 +333,11 @@ function cloneSchema(value: unknown, label: string): unknown {
   return JSON.parse(canonical) as unknown;
 }
 
-function buildFreshToolDefinition(tool: McpDirectSdkListTool): {
+async function buildFreshToolDefinition(tool: McpDirectSdkListTool): Promise<{
   readonly definition: Readonly<Record<string, unknown>>;
   readonly outputValidator?: ReturnType<typeof fromJsonSchema>;
   readonly outputSchemaSha256?: string;
-} {
+}> {
   if (!tool || typeof tool !== 'object' || typeof tool.name !== 'string') {
     throw new Error('MCP fresh selected tool definition is invalid');
   }
@@ -362,6 +361,10 @@ function buildFreshToolDefinition(tool: McpDirectSdkListTool): {
     });
     definition.outputSchema = outputSchema;
     try {
+      const [{ fromJsonSchema }, { AjvJsonSchemaValidator }] = await Promise.all([
+        import('@modelcontextprotocol/client'),
+        import('@modelcontextprotocol/client/validators/ajv'),
+      ]);
       outputValidator = fromJsonSchema(
         outputSchema as Parameters<typeof fromJsonSchema>[0],
         new AjvJsonSchemaValidator(),
@@ -514,9 +517,9 @@ export async function executeMcpDirectApprovedToolInternal(
         'MCP selected tool definition is missing from fresh inventory',
       );
     }
-    let prepared: ReturnType<typeof buildFreshToolDefinition>;
+    let prepared: Awaited<ReturnType<typeof buildFreshToolDefinition>>;
     try {
-      prepared = buildFreshToolDefinition(rawTool);
+      prepared = await buildFreshToolDefinition(rawTool);
     } catch {
       throw new McpDirectExecutionPreCallRejectedError(
         approvedLifecycle.source.sourceId,
