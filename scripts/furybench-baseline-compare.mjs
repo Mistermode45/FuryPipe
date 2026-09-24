@@ -17,8 +17,11 @@ const OUTPUT_DIR = path.resolve(
 );
 const BASELINE_REF = process.env.FURYPIPE_BENCHMARK_BASELINE_REF?.trim()
   || '24a2f7030c9fb7340229140f67e653688d5d039a';
-const ITERATIONS = 5;
-const WARMUP = 1;
+// Five samples made p95 equal the single slowest process on Windows. Keep the
+// historical same-runner comparison, but use a larger bounded sample and
+// warmup so one scheduler outlier cannot decide the release gate.
+const ITERATIONS = 10;
+const WARMUP = 2;
 
 function fail(message) {
   throw new Error(`[furypipe FuryBench comparison] ${message}`);
