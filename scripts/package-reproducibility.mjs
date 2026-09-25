@@ -11,7 +11,7 @@
 // furypipe@<version>` after an authorized publish), so the published content
 // can be compared with the RC contentDigest.
 //
-// The pack fails closed if any packed file contains a CR byte: the canonical
+// The pack fails closed if any packed file is not mode 644 or contains a CR byte: the canonical
 // package is LF-only, and a CR means a line-ending conversion leaked in.
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -127,6 +127,12 @@ async function main() {
     const withCarriageReturn = entries.filter((entry) => entry.bytes.includes(0x0d)).map((entry) => entry.path);
     if (withCarriageReturn.length > 0) {
       throw new Error(`packed files contain CR bytes (line-ending conversion leaked into the package): ${withCarriageReturn.slice(0, 20).join(', ')}${withCarriageReturn.length > 20 ? ` (+${withCarriageReturn.length - 20} more)` : ''}`);
+    }
+    // Windows checkouts carry no executable bit, so any other mode makes the
+    // pack OS-dependent. npm marks declared bins executable at install time.
+    const nonPortableModes = entries.filter((entry) => entry.mode !== 0o644).map((entry) => `${entry.path} (${entry.mode.toString(8)})`);
+    if (nonPortableModes.length > 0) {
+      throw new Error(`packed files must be mode 644 for an OS-neutral tarball: ${nonPortableModes.join(', ')}`);
     }
     const manifest = entries.map((entry) => `${entry.path}\t${entry.mode.toString(8)}\t${sha256(entry.bytes)}\n`).join('');
     const evidence = {
