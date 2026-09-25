@@ -44,6 +44,19 @@ behavioral changes, patch = fixes).
 - Added release-acceptance checklists for screen-reader, visual and final
   maintainer review.
 
+### Fixed
+
+- Installed package: `furypipe gateway start` no longer crashes with
+  `Dynamic require of "child_process" is not supported`; the CommonJS MCP
+  stdio and WebSocket runtimes stay external to the ESM bundle and load
+  lazily from declared dependencies. The package smoke now drives the
+  installed Gateway through an authenticated `tools.source.inspect.stdio`
+  against a real MCP stdio child.
+- The npm tarball is identical in content on Linux, macOS and Windows
+  (LF checkouts, mode 644 files, CI-enforced content digest).
+- Automation definition reasons reject control characters through an escaped
+  character class.
+
 ## 0.15.0 — 2026-09-16
 
 ### Changed

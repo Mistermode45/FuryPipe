@@ -3,54 +3,78 @@
 Ce parcours est destiné à Mathis. Il prend environ 5 à 10 minutes et ne
 demande aucun provider, aucun credential et aucun appel externe payant.
 
-Le code produit a reçu le correctif P1 du paquet installé. Le SHA exact du
-commit de code avant ce commit documentaire était :
+Cette acceptance remplace celle faite avec le paquet d’avant le correctif
+Gateway : elle doit être rejouée avec le tarball RC final ci-dessous.
+
+## 0. Identité du paquet
+
+Le seul artefact d’acceptance et de release candidate est le tarball produit
+par le job GitHub Actions **RC Preparation Evidence / prepare** sur le head
+exact de la PR #226 (ubuntu-24.04, Node 24.21.0, npm fourni avec Node).
 
 ~~~text
-6ac1e62948a2ef8ccc189fe275671c223670b5f8
+Source commit   f41aa957619a0d4b468f81a5d627b4980f783ac1
+Artefact        furypipe-rc-preparation-f41aa957619a0d4b468f81a5d627b4980f783ac1  (package/furypipe-0.16.0.tgz)
+SHA-256         99feb17fc8747e9b5de8a5cf23f58536a5a348d66242bfb62690703a7bbdf08a
+Taille          5,404,064 octets
+Content digest  30108a5fa50a23245d1e21b7d528311e0d2d624b30f68314a8724fe9a47af052
 ~~~
 
-Après le commit documentaire, relever le SHA réellement utilisé par la session
-avec git -C <worktree> rev-parse HEAD. Ne jamais réutiliser un ancien SHA
-comme preuve du head final.
+Un commit ultérieur purement documentaire ne modifie aucun fichier packagé :
+l’artefact RC Preparation du head final doit afficher exactement le même
+SHA-256. Les deux artefacts sont alors interchangeables.
 
-Le tarball candidat documenté par cette session est :
+Pourquoi un seul artefact canonique :
 
-~~~text
-furypipe-0.16.0.tgz
-SHA-256 = 7d26a8edeb70610dfed3438dab8d8e49c24f94ab3de4ac876f342a4afa3e2b08
-Taille   = 5,406,281 octets
-~~~
+- le contenu du paquet est désormais identique sur Linux, macOS et Windows
+  (`.gitattributes` force LF, tous les fichiers packagés sont en mode 644;
+  `validation:package-reproducibility` tourne sur les 9 jobs CI 3 OS × 3 Node
+  et refuse tout octet CR ou mode non portable; les 9 content digests sont
+  identiques);
+- le SHA-256 du tarball lui-même est identique sur les 9 jobs CI et le job
+  RC Preparation (npm 10.9.8, 11.19.0 et 11.19.1); une autre version de npm
+  pourrait changer l’enveloppe gzip/tar sans changer le contenu, d’où le
+  content digest;
+- l’ancien digest Windows `7d26a8…` venait d’un checkout CRLF, `9b2627…`
+  d’avant le correctif Gateway, `b6a651…` et `a60919…` de heads
+  intermédiaires : tous sont obsolètes.
 
-Le correctif ferme le défaut d’interopérabilité ESM/CommonJS qui faisait
-échouer `gateway start --json` dans le paquet installé avec
-`Dynamic require of "child_process" is not supported`. L’acceptance doit
-encore observer le Gateway et le WebChat dans un vrai navigateur; cette
-preuve humaine n’est pas remplacée par le smoke automatisé.
+Le digest npm final (`dist.integrity`) sera celui du paquet publié par le
+workflow de release; il est vérifié séparément après publication
+(POST_PUBLISH_VERIFICATION_0.16.0.md).
 
 ## 1. Installer exactement le package RC
 
-Dans PowerShell, depuis le worktree RC :
+Télécharger l’artefact `furypipe-rc-preparation-f41aa957619a0d4b468f81a5d627b4980f783ac1` depuis
+l’onglet Checks de la PR #226 (job RC Preparation Evidence), puis
+l’extraire. Utiliser npm/npx : le shim pnpm global de ce poste pointe sur
+lui-même et ne doit pas masquer le résultat FuryPipe. Ce choix concerne
+seulement ce parcours d’acceptance; le développement du dépôt reste sur pnpm.
 
 ~~~powershell
-$Root = 'C:\Users\loicd\Desktop\FuryPipe-Build\FuryPipe-v0.16.0-RC'
-$Tarball = Join-Path $Root 'artifacts\rc-preparation\package\furypipe-0.16.0.tgz'
-$Acceptance = Join-Path $env:TEMP 'furypipe-0.16.0-human-acceptance'
+$Tarball = 'C:\chemin\vers\furypipe-0.16.0.tgz'
+(Get-FileHash -Algorithm SHA256 $Tarball).Hash.ToLower()
+~~~
 
+Attendu : exactement le SHA-256 de la section 0. Sinon, arrêter.
+
+~~~powershell
+$Acceptance = Join-Path $env:TEMP 'furypipe-0.16.0-final-acceptance'
+Remove-Item -Recurse -Force $Acceptance -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Acceptance | Out-Null
 Set-Location $Acceptance
 npm init -y
-pnpm add --ignore-scripts $Tarball
+npm install --ignore-scripts $Tarball
 
 $env:FURYPIPE_CONFIG = Join-Path $Acceptance 'config.json'
 $env:FURYPIPE_LOG = Join-Path $Acceptance 'events.jsonl'
 $env:FURYPIPE_HOST = '127.0.0.1'
 $env:FURYPIPE_PORT = '48721'
-$env:FURYPIPE_SOURCE_COMMIT = (git -C $Root rev-parse HEAD).Trim()
+$env:FURYPIPE_SOURCE_COMMIT = 'f41aa957619a0d4b468f81a5d627b4980f783ac1'
 
-pnpm exec furypipe --version
-pnpm exec furypipe setup --lang=fr --yes --no-color
-pnpm exec furypipe doctor --json
+npx --no-install furypipe --version
+npx --no-install furypipe setup --lang=fr --yes --no-color
+npx --no-install furypipe doctor --json
 ~~~
 
 Attendu :
@@ -68,7 +92,7 @@ absent peut apparaître unknown, unavailable ou degraded; cela ne doit pas
 Dans le même terminal :
 
 ~~~powershell
-pnpm exec furypipe start
+npx --no-install furypipe start
 ~~~
 
 Ouvrir avec Chromium, Chrome ou Edge :
@@ -102,7 +126,7 @@ http://127.0.0.1:48721/api/control-plane.json
 Dans un second terminal, depuis le répertoire d’acceptance :
 
 ~~~powershell
-pnpm exec furypipe gateway start --json
+npx --no-install furypipe gateway start --json
 ~~~
 
 Utiliser exactement l’URL et le code bootstrap imprimés par la commande. Le

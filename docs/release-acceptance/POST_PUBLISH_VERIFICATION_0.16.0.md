@@ -29,6 +29,23 @@ The gitHead must be compared with the authorized release SHA, not with the
 old RC baseline. A missing provenance field is a failed post-publish check,
 not an implicit PASS.
 
+## 1b. Published content equals the RC content
+
+The published tarball is packed by the release workflow with its pinned npm
+client, so its gzip/tar SHA-256 is expected to differ from the RC Preparation
+tarball. Its file contents must not. From a checkout of the release commit:
+
+~~~powershell
+$Check = Join-Path $env:TEMP 'furypipe-0.16.0-published-content'
+New-Item -ItemType Directory -Force -Path $Check | Out-Null
+npm pack "furypipe@$Version" --pack-destination $Check
+node scripts/package-reproducibility.mjs --tarball (Join-Path $Check 'furypipe-0.16.0.tgz')
+~~~
+
+Expected: status PASS, no CR byte, and contentDigest equal to the RC content
+digest recorded in RELEASE_NOTES_0.16.0_RC.md. A different contentDigest is a
+failed post-publish check.
+
 ## 2. Fresh npm installation
 
 Use a new temporary directory and do not reuse the RC acceptance directory:
