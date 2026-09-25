@@ -40,13 +40,14 @@ import { createStudioCode, StudioCodeError } from './studio-code.js';
 import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy } from '../fury-mcp-hub.js';
 import { discoverFuryAiConnections, type FuryAiConnections } from '../fury-ai-connections.js';
 import { inspectHuggingFaceGguf, recommendHuggingFaceGguf } from '../fury-huggingface-models.js';
+import { installFuryLocalRuntime, type FuryRuntimeSetupId, type FuryRuntimeSetupRunner } from '../fury-runtime-setup.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
 const CACHE_MS = 10_000;
 
 export type StudioRoute =
-  | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
+  | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
   | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
@@ -62,6 +63,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/hardware.json': { route: 'hardware', method: 'GET' },
   '/api/studio/local-model/inspect': { route: 'local-model-inspect', method: 'POST' },
   '/api/studio/local-model/recommend': { route: 'local-model-recommend', method: 'POST' },
+  '/api/studio/setup/runtime': { route: 'runtime-setup', method: 'POST' },
   '/api/studio/bindings.json': { route: 'bindings', method: 'GET' },
   '/api/studio/graph.json': { route: 'graph', method: 'GET' },
   '/api/studio/blast-radius': { route: 'blast-radius', method: 'POST' },
@@ -115,6 +117,9 @@ export interface StudioApiOptions {
   readonly discoverConnections?: () => Promise<FuryAiConnections>;
   /** Public Hugging Face catalog fetch hook (tests); no credentials are attached. */
   readonly huggingFaceFetch?: typeof fetch;
+  /** Test hook for the fixed, explicit local-runtime package installer. */
+  readonly runtimeSetupRunner?: FuryRuntimeSetupRunner;
+  readonly runtimeSetupPlatform?: NodeJS.Platform;
   readonly loadGraph?: (root: string) => Promise<{ readonly graph: FuryGraph }>;
   readonly now?: () => number;
   /** Task executor for real runs; defaults to the structured-CLI harness runner. */
@@ -294,6 +299,17 @@ export function createStudioApi(options: StudioApiOptions) {
             const body = await readJson(request) as { profile?: unknown };
             const profile = body.profile === 'coding' || body.profile === 'reasoning' || body.profile === 'vision' ? body.profile : 'general';
             return json(await recommendHuggingFaceGguf(await hardware(), { profile, ...(options.huggingFaceFetch ? { fetch: options.huggingFaceFetch } : {}) }));
+          }
+          case 'runtime-setup': {
+            const body = await readJson(request) as { runtime?: unknown; confirm?: unknown };
+            if (body.confirm !== true) return problem(400, 'confirmation-required', 'installing local AI requires confirm: true');
+            if (body.runtime !== 'ollama' && body.runtime !== 'lmstudio') return problem(400, 'invalid-input', 'runtime must be ollama or lmstudio');
+            const result = await installFuryLocalRuntime(body.runtime as FuryRuntimeSetupId, {
+              ...(options.runtimeSetupRunner ? { runner: options.runtimeSetupRunner } : {}),
+              ...(options.runtimeSetupPlatform ? { platform: options.runtimeSetupPlatform } : {}),
+            });
+            cache.delete('local');
+            return json(result, result.status === 'installed' ? 201 : 409);
           }
           case 'local': {
             const [status, hw] = await Promise.all([local(), hardware()]);

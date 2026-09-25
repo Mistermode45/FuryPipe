@@ -208,9 +208,9 @@ main>section>.lead{color:var(--ink-2);max-width:760px;margin:0 0 26px;font-size:
 /* ---------- Chat ---------- */
 main>section.chat{max-width:none;margin:0;padding:0;height:100%;display:flex;flex-direction:column}
 .chat-scroll{flex:1;min-height:0;overflow:auto;padding:12px 24px 12px;scroll-behavior:smooth}
-.log{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:26px;padding-bottom:12px}
+.log{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:26px;padding-bottom:12px}
 .dock{flex:none;padding:0 24px 16px;position:relative}
-.dock-inner{max-width:820px;margin:0 auto;position:relative}
+.dock-inner{max-width:900px;margin:0 auto;position:relative}
 .stage-bg{display:none}
 .chat.is-empty{justify-content:center}
 .chat.is-empty .chat-scroll{display:none}
@@ -223,7 +223,7 @@ main>section.chat{max-width:none;margin:0;padding:0;height:100%;display:flex;fle
 .hero h2{font:650 clamp(30px,3.4vw,42px)/1.08 var(--display);letter-spacing:-.035em;margin:0;color:var(--ink);background:linear-gradient(180deg,#fff 0%,#e6dfd6 55%,#b5ab9f 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 html[data-theme="system"] .hero h2{-webkit-text-fill-color:currentColor;background:none}
 .hero p{color:var(--muted);margin:12px 0 0;font-size:15.5px}
-.hero-mark{--hero-rx:0deg;--hero-ry:0deg;position:relative;width:118px;height:118px;margin:0 auto 26px;perspective:720px;transform-style:preserve-3d;transform:rotateX(var(--hero-rx)) rotateY(var(--hero-ry));transition:transform .22s var(--ease-out);will-change:transform}
+.hero-mark{--hero-rx:0deg;--hero-ry:0deg;position:relative;width:148px;height:148px;margin:0 auto 26px;perspective:720px;transform-style:preserve-3d;transform:rotateX(var(--hero-rx)) rotateY(var(--hero-ry));transition:transform .22s var(--ease-out);will-change:transform}
 .hero-mark::before,.hero-mark::after{content:"";position:absolute;border-radius:50%;background:var(--o-hot);box-shadow:0 0 14px rgba(255,106,26,.75);transform:translateZ(28px)}
 .hero-mark::before{width:4px;height:4px;left:6px;top:28px}.hero-mark::after{width:3px;height:3px;right:12px;bottom:25px;background:#ffd0ac}
 .hero-glow{position:absolute;inset:-70px;border-radius:50%;background:radial-gradient(circle,rgba(255,106,26,.25) 0%,rgba(255,90,0,.07) 40%,transparent 68%);transform:translateZ(-18px);filter:saturate(1.12)}
@@ -247,7 +247,7 @@ body.paused .orbit,body.paused .flow{animation-play-state:paused}
 .setup{max-width:640px;margin:0 auto 18px;padding:18px 20px;border-radius:var(--r-lg);border:1px solid var(--line-2);background:linear-gradient(180deg,var(--b3),var(--b2));position:relative;z-index:1}
 .setup h3{margin:0 0 6px;font:600 16px/1.3 var(--display)}
 .setup p{margin:0 0 14px;color:var(--ink-2);font-size:14px}
-.setup .row{gap:8px}
+.setup .row{gap:8px}.setup-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}.setup-choice{min-width:0;display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.012));color:var(--ink);text-decoration:none;text-align:left;cursor:pointer;transition:border-color .18s,background .18s,transform .18s var(--ease-out),box-shadow .18s}.setup-choice:hover{border-color:rgba(255,122,40,.28);background:linear-gradient(180deg,rgba(255,106,26,.075),rgba(255,255,255,.018));transform:translateY(-1px);box-shadow:0 18px 34px -30px rgba(255,90,0,.65)}.setup-choice.primary{border-color:var(--o-line);background:linear-gradient(135deg,rgba(255,106,26,.17),rgba(255,106,26,.035))}.setup-choice .setup-icon{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex:none;background:rgba(255,106,26,.09);border:1px solid rgba(255,122,40,.14);color:var(--o-hot)}.setup-choice .setup-icon .i{width:18px;height:18px}.setup-choice>span:last-child{display:flex;min-width:0;flex-direction:column;gap:3px}.setup-choice b{font:620 13.5px/1.25 var(--font)}.setup-choice small{color:var(--muted);font:450 11.5px/1.35 var(--font)}.setup-choice[disabled]{opacity:.55;cursor:wait;transform:none}.setup #setup-status{margin:10px 0 0}
 
 /* Composer */
 .composer{position:relative;z-index:2;background:linear-gradient(180deg,rgba(31,31,38,.96) 0%,rgba(20,20,25,.985) 100%);border:1px solid var(--line-2);border-radius:var(--r-xl);box-shadow:0 1px 0 rgba(255,255,255,.065) inset,0 -1px 0 rgba(0,0,0,.4) inset,0 22px 60px -24px rgba(0,0,0,.9);transition:border-color .22s var(--ease),box-shadow .22s var(--ease),transform .22s var(--ease-out);overflow:visible}
@@ -501,7 +501,7 @@ details.adv>div{padding:0 18px 16px}
 
 /* ---------- Responsive ---------- */
 @media (max-width:1100px){.settings{grid-template-columns:1fr}.settings-nav{position:static;flex-direction:row;flex-wrap:wrap}}
-@media (max-width:520px){.tool span{display:none}.tool{padding:0;width:34px}}
+@media (max-width:520px){.tool span{display:none}.tool{padding:0;width:34px}.setup-actions{grid-template-columns:1fr}}
 @media (max-width:860px){
   .app{grid-template-columns:minmax(0,1fr)}
   .side{position:fixed;z-index:80;top:0;bottom:0;left:0;width:min(300px,86vw);transform:translateX(-102%);transition:transform .26s var(--ease-out);box-shadow:30px 0 80px rgba(0,0,0,.6)}
@@ -704,7 +704,18 @@ const SCRIPT = String.raw`
     'Cloud providers are managed in FuryPipe Connections. Studio will progressively unify local and cloud routing behind Fury Auto.': 'Les fournisseurs cloud sont gérés dans Connexions. Studio unifiera progressivement le routage local et cloud derrière Fury Auto.',
     'View connections': 'Voir les connexions', 'Manage models': 'Gérer les modèles',
     'Explicit permissions': 'Permissions explicites', 'Isolated worktrees': 'Worktrees isolés', 'Proof-gated result': 'Résultat validé par preuves',
-    'Live workers': 'Agents actifs', 'Bounded authority': 'Autorité limitée', 'Receipts + FuryJudge': 'Preuves + FuryJudge'
+    'Live workers': 'Agents actifs', 'Bounded authority': 'Autorité limitée', 'Receipts + FuryJudge': 'Preuves + FuryJudge',
+    'Get FuryPipe ready': 'Préparer FuryPipe',
+    'Install a local AI in one click, connect an existing AI account, or let FuryPipe find the best models for this PC.': 'Installez une IA locale en un clic, connectez un compte IA existant ou laissez FuryPipe trouver les meilleurs modèles pour ce PC.',
+    'Install Ollama': 'Installer Ollama',
+    'Recommended · local and automatic': 'Recommandé · local et automatique',
+    'Install LM Studio': 'Installer LM Studio',
+    'Local desktop + model server': 'Application locale + serveur de modèles',
+    'Connect an AI account': 'Connecter un compte IA',
+    'Find the best local AI': 'Trouver la meilleure IA locale',
+    'Matched to your GPU and RAM': 'Adaptée à votre GPU et votre RAM',
+    'Installing local AI…': 'Installation de l’IA locale…',
+    'Installation complete. FuryPipe is checking the runtime…': 'Installation terminée. FuryPipe vérifie le runtime…'
   });
   function detectedLanguage() {
     const langs = [SERVER_LANGUAGE, ...(Array.isArray(navigator.languages) ? navigator.languages : []), navigator.language, Intl.DateTimeFormat().resolvedOptions().locale].filter(Boolean);
@@ -765,6 +776,33 @@ const SCRIPT = String.raw`
     return body;
   }
   const post = (url, payload) => getJson(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+  async function installRuntime(runtime) {
+    const label = runtime === 'ollama' ? 'Ollama' : 'LM Studio';
+    const question = activeLanguage === 'fr'
+      ? 'Installer ' + label + ' directement sur ce PC avec Windows Package Manager ?'
+      : 'Install ' + label + ' directly on this PC using Windows Package Manager?';
+    if (!confirm(question)) return;
+    const status = $('#setup-status') || $('#models-status');
+    const controls = $('[data-install-runtime="' + runtime + '"]');
+    for (const control of controls) control.disabled = true;
+    if (status) status.textContent = translated('Installing local AI…');
+    try {
+      const result = await post('/api/studio/setup/runtime', { runtime, confirm: true });
+      if (status) status.textContent = result.next || translated('Installation complete. FuryPipe is checking the runtime…');
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+      await loadLocal();
+    } catch (error) {
+      if (status) status.textContent = (activeLanguage === 'fr' ? 'Échec de l’installation : ' : 'Installation failed: ') + error.message;
+    } finally {
+      for (const control of controls) control.disabled = false;
+    }
+  }
+  document.addEventListener('click', (event) => {
+    const control = event.target.closest && event.target.closest('[data-install-runtime]');
+    if (!control) return;
+    event.preventDefault();
+    installRuntime(control.dataset.installRuntime);
+  });
   function badge(text, cls) { return el('span', { class: 'badge ' + cls, text }); }
   const reduceMotion = () => document.documentElement.dataset.motion === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -1011,7 +1049,12 @@ const SCRIPT = String.raw`
       card.append(el('div', { class: 'backend-h' }, el('span', { class: 'dot' + (b.reachable ? ' on' : '') }), el('b', { text: name }), b.version ? el('span', { class: 'muted', text: 'v' + b.version }) : '', el('span', { class: 'state' }, b.reachable ? badge('Running', 'ok') : badge('Not running', 'muted'))));
       if (!b.reachable) {
         card.append(el('p', { text: 'Start ' + name + ' on this computer and FuryPipe will find it automatically.' }));
-        if (SETUP[b.kind]) card.append(el('div', {}, el('a', { class: 'btn', href: SETUP[b.kind], target: '_blank', rel: 'noopener noreferrer', text: 'Set up ' + name })));
+        if (SETUP[b.kind]) {
+          const control = (b.kind === 'ollama' || b.kind === 'lmstudio')
+            ? el('button', { type: 'button', class: 'btn', 'data-install-runtime': b.kind, text: 'Install ' + name })
+            : el('a', { class: 'btn', href: SETUP[b.kind], target: '_blank', rel: 'noopener noreferrer', text: 'Set up ' + name });
+          card.append(el('div', {}, control));
+        }
       } else if (!b.models.length) card.append(el('p', { text: 'Running, but no model is installed yet.' }));
       for (const m of b.models) { models++;
         const row = el('div', { class: 'model-row' }, el('span', { class: 'mn', text: m.id }), el('span', { class: 'ms', text: [m.parameterSize, m.quantization, m.modality === 'embeddings' ? 'embeddings' : ''].filter(Boolean).join(' · ') }), fitPill(m.fit));
@@ -1711,9 +1754,15 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
       <p>One workspace for every model, agent and tool, starting with the AI on this machine.</p>
     </div>
     <div id="chat-empty" class="setup" hidden>
-      <h3>Run AI privately on this PC</h3>
-      <p>No local model is running yet. Start one and FuryPipe finds it automatically, or use your cloud providers in the Gateway WebChat.</p>
-      <div class="row"><a class="btn primary" href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Set up Ollama</a><a class="btn" href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer">Get LM Studio</a><a class="btn" href="#/models">See what fits</a><a class="btn" href="#/connections">Use cloud AI</a></div>
+      <h3>Get FuryPipe ready</h3>
+      <p>Install a local AI in one click, connect an existing AI account, or let FuryPipe find the best models for this PC.</p>
+      <div class="setup-actions">
+        <button type="button" class="setup-choice primary" data-install-runtime="ollama"><span class="setup-icon">${icon('cpu')}</span><span><b>Install Ollama</b><small>Recommended · local and automatic</small></span></button>
+        <button type="button" class="setup-choice" data-install-runtime="lmstudio"><span class="setup-icon">${icon('models')}</span><span><b>Install LM Studio</b><small>Local desktop + model server</small></span></button>
+        <a class="setup-choice" href="#/connections"><span class="setup-icon">${icon('connections')}</span><span><b>Connect an AI account</b><small>Claude, ChatGPT/Codex, Gemini…</small></span></a>
+        <a class="setup-choice" href="#/models"><span class="setup-icon">${icon('sparkles')}</span><span><b>Find the best local AI</b><small>Matched to your GPU and RAM</small></span></a>
+      </div>
+      <p id="setup-status" class="status muted" role="status"></p>
     </div>
     <form id="chat-form" autocomplete="off">
       <div class="composer" id="composer">

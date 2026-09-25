@@ -63,6 +63,7 @@ describe('Studio API', () => {
   it('matches only the declared routes', () => {
     expect(studioApiRoute('/api/studio/local.json')).toEqual({ route: 'local', method: 'GET' });
     expect(studioApiRoute('/api/studio/chat')).toEqual({ route: 'chat', method: 'POST' });
+    expect(studioApiRoute('/api/studio/setup/runtime')).toEqual({ route: 'runtime-setup', method: 'POST' });
     expect(studioApiRoute('/api/studio/../control-room.json')).toBeNull();
   });
 
@@ -75,6 +76,25 @@ describe('Studio API', () => {
     expect(ids).toContain('claude-code:default');
     expect(ids.some((id) => id.includes('nomic-embed'))).toBe(false);
     expect(b.every((x) => Object.keys(x.scores).length === 0)).toBe(true);
+  });
+
+  it('requires confirmation for one-click local runtime installation and uses the fixed installer', async () => {
+    const calls: string[][] = [];
+    const studio = createStudioApi({
+      projectRoot: process.cwd(),
+      discoverHarnesses: async () => harnesses,
+      discoverLocal: async () => ({ backends: [] }),
+      discoverHardware: async () => ({ platform:'win32', arch:'x64', cpuModel:'t', cpuCount:8, totalMemoryBytes:32*1024**3, freeMemoryBytes:16*1024**3, unifiedMemory:false, gpus:[] }),
+      runtimeSetupPlatform: 'win32',
+      runtimeSetupRunner: async (executable, args) => {
+        calls.push([executable, ...args]);
+        return { exitCode:0, stdout:'ok', stderr:'' };
+      },
+    });
+    expect((await studio.handle('runtime-setup', post({ runtime:'ollama' }))).status).toBe(400);
+    const response = await studio.handle('runtime-setup', post({ runtime:'ollama', confirm:true }));
+    expect(response.status).toBe(201);
+    expect(calls[0]).toContain('Ollama.Ollama');
   });
 
   it('reports local models with hardware fit', async () => {
