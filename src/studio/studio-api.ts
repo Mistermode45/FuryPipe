@@ -41,6 +41,7 @@ import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy 
 import { discoverFuryAiConnections, type FuryAiConnections } from '../fury-ai-connections.js';
 import { inspectHuggingFaceGguf, recommendHuggingFaceGguf } from '../fury-huggingface-models.js';
 import { installFuryLocalRuntime, type FuryRuntimeSetupId, type FuryRuntimeSetupRunner } from '../fury-runtime-setup.js';
+import { launchFuryAccountLogin, type FuryAccountLoginLauncher, type FuryAccountProvider } from '../fury-account-connect.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
@@ -53,7 +54,7 @@ export type StudioRoute =
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
   | 'web'
   | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act'
-  | 'integrations' | 'connections'
+  | 'integrations' | 'connections' | 'connection-login'
   | 'chats' | 'chat-get' | 'chat-save' | 'chat-branch' | 'chat-delete'
   | 'code-tree' | 'code-file' | 'code-worktrees' | 'code-diff';
 
@@ -92,6 +93,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/memory/act': { route: 'memory-act', method: 'POST' },
   '/api/studio/integrations.json': { route: 'integrations', method: 'GET' },
   '/api/studio/connections.json': { route: 'connections', method: 'GET' },
+  '/api/studio/connections/login': { route: 'connection-login', method: 'POST' },
   '/api/studio/chats.json': { route: 'chats', method: 'GET' },
   '/api/studio/chats/get': { route: 'chat-get', method: 'POST' },
   '/api/studio/chats/save': { route: 'chat-save', method: 'POST' },
@@ -120,6 +122,9 @@ export interface StudioApiOptions {
   /** Test hook for the fixed, explicit local-runtime package installer. */
   readonly runtimeSetupRunner?: FuryRuntimeSetupRunner;
   readonly runtimeSetupPlatform?: NodeJS.Platform;
+  /** Test hook for explicit official CLI sign-in launch. */
+  readonly accountLoginLauncher?: FuryAccountLoginLauncher;
+  readonly accountLoginPlatform?: NodeJS.Platform;
   readonly loadGraph?: (root: string) => Promise<{ readonly graph: FuryGraph }>;
   readonly now?: () => number;
   /** Task executor for real runs; defaults to the structured-CLI harness runner. */
@@ -288,6 +293,16 @@ export function createStudioApi(options: StudioApiOptions) {
             return json(await harnesses());
           case 'connections':
             return json(await connections());
+          case 'connection-login': {
+            const body = await readJson(request) as { provider?: unknown; confirm?: unknown };
+            if (body.confirm !== true) return problem(400, 'confirmation-required', 'launching account sign-in requires confirm: true');
+            if (body.provider !== 'anthropic' && body.provider !== 'openai' && body.provider !== 'google') return problem(400, 'invalid-input', 'provider must be anthropic, openai or google');
+            const result = launchFuryAccountLogin(body.provider as FuryAccountProvider, await harnesses(), {
+              ...(options.accountLoginLauncher ? { launcher: options.accountLoginLauncher } : {}),
+              ...(options.accountLoginPlatform ? { platform: options.accountLoginPlatform } : {}),
+            });
+            return json(result, result.status === 'launched' ? 202 : 409);
+          }
           case 'hardware':
             return json(await hardware());
           case 'local-model-inspect': {

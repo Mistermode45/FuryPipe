@@ -481,7 +481,7 @@ details.adv>div{padding:0 18px 16px}
 .model-discovery{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr));gap:14px;margin-top:14px}.model-discovery .card{margin:0}.model-discovery h2{margin-top:0}.catalog-results{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:12px;margin-top:14px}.catalog-card{overflow:hidden;position:relative}.catalog-card h3{margin:0 0 7px;font:650 15px/1.25 var(--display);overflow-wrap:anywhere}.catalog-card .catalog-meta{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.variant-list{display:flex;flex-direction:column;gap:7px;margin-top:10px}.variant{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;padding:8px 10px;border:1px solid var(--line);background:var(--b1);border-radius:10px;font-size:12.5px}.variant .vname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.catalog-card .score{color:var(--o-hot);font-weight:650}.catalog-card>a{margin-top:12px}
 
 /* Connections */
-.connection-head{display:flex;align-items:center;justify-content:space-between;gap:20px}.connection-head h2,.privacy-note h2{margin:0 0 5px}.connection-head p,.privacy-note p{margin:0}.connection-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:14px 0}.connection-card{position:relative;overflow:hidden}.connection-card::after{content:"";position:absolute;inset:auto -35% -65% 20%;height:100px;background:radial-gradient(circle,rgba(255,106,26,.10),transparent 68%);pointer-events:none}.connection-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}.connection-top .i{color:var(--o-hot)}.connection-top b{font:600 15px/1.2 var(--display);margin-right:auto}.connection-meta{display:flex;flex-direction:column;gap:7px;color:var(--ink-2);font-size:13px}.connection-meta span{display:flex;align-items:flex-start;gap:7px}.connection-meta .i{width:15px;height:15px;margin-top:2px;color:var(--muted)}.privacy-note{margin-top:12px}
+.connection-head{display:flex;align-items:center;justify-content:space-between;gap:20px}.connection-head h2,.privacy-note h2{margin:0 0 5px}.connection-head p,.privacy-note p{margin:0}.connection-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:14px 0}.connection-card{position:relative;overflow:hidden}.connection-card::after{content:"";position:absolute;inset:auto -35% -65% 20%;height:100px;background:radial-gradient(circle,rgba(255,106,26,.10),transparent 68%);pointer-events:none}.connection-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}.connection-top .i{color:var(--o-hot)}.connection-top b{font:600 15px/1.2 var(--display);margin-right:auto}.connection-meta{display:flex;flex-direction:column;gap:7px;color:var(--ink-2);font-size:13px}.connection-meta span{display:flex;align-items:flex-start;gap:7px}.connection-meta .i{width:15px;height:15px;margin-top:2px;color:var(--muted)}.connection-actions{display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.privacy-note{margin-top:12px}
 @media (max-width:640px){.connection-head{align-items:flex-start;flex-direction:column}.connection-head .btn{width:100%;justify-content:center}}
 
 /* Settings */
@@ -611,6 +611,10 @@ const SCRIPT = String.raw`
     'Connections': 'Connexions',
     'FuryPipe automatically detects AI runtimes and safe credential hints on this machine. It never reads browser cookies, OAuth stores or secret values.': 'FuryPipe détecte automatiquement les runtimes IA et les indices de configuration sûrs sur cette machine. Il ne lit jamais les cookies du navigateur, les stockages OAuth ni les valeurs secrètes.',
     'AI accounts & providers': 'Comptes IA et fournisseurs',
+    "Connect through the provider's official local CLI. FuryPipe never copies browser sessions or provider tokens.": "Connectez-vous via le CLI local officiel du fournisseur. FuryPipe ne copie jamais les sessions du navigateur ni les tokens du fournisseur.",
+    'Refresh': 'Actualiser',
+    'Connect account': 'Connecter le compte',
+    'Reconnect / switch account': 'Reconnecter / changer de compte',
     'Detection is local and privacy-preserving. A detected runtime does not mean the account is authenticated.': 'La détection est locale et respecte la confidentialité. Un runtime détecté ne signifie pas que le compte est authentifié.',
     'Open cloud setup': 'Configurer le cloud',
     'Privacy boundary': 'Limite de confidentialité',
@@ -1386,11 +1390,44 @@ const SCRIPT = String.raw`
         if (c.runtimes.length) meta.append(el('span', {}, ic('cpu'), el('span', { text: 'Installed runtime: ' + c.runtimes.map(x => x.displayName + (x.version ? ' ' + x.version : '')).join(', ') })));
         if (!c.configuredVia.length && c.runtimes.length) meta.append(el('span', {}, ic('info'), el('span', { text: 'Sign-in state is not inspected' })));
         if (!c.configuredVia.length && !c.runtimes.length) meta.append(el('span', {}, ic('info'), el('span', { text: 'No runtime or credential source detected' })));
-        card.append(meta); grid.append(card);
+        card.append(meta);
+        if (['anthropic','openai','google'].includes(c.id)) {
+          const actions = el('div', { class: 'connection-actions' });
+          if (c.runtimes.length) {
+            const connect = el('button', { type: 'button', class: 'btn secondary', 'data-connect-provider': c.id, text: c.state === 'credential-configured' ? 'Reconnect / switch account' : 'Connect account' });
+            actions.append(connect);
+          } else {
+            actions.append(el('a', { class: 'btn secondary', href: '#/runtimes', text: 'Set up ' + (c.id === 'anthropic' ? 'Claude Code' : c.id === 'openai' ? 'Codex' : 'Gemini CLI') }));
+          }
+          card.append(actions);
+        }
+        grid.append(card);
       }
       status.textContent = 'Automatic detection completed. Secret values and browser sessions were not inspected.';
     } catch (e) { status.textContent = 'Connection detection failed: ' + e.message; }
   }
+  $('#connections-refresh').addEventListener('click', loadConnections);
+  document.addEventListener('click', async (event) => {
+    const button = event.target.closest && event.target.closest('[data-connect-provider]');
+    if (!button) return;
+    const provider = button.dataset.connectProvider;
+    const label = button.closest('.connection-card')?.querySelector('.connection-top b')?.textContent || provider;
+    const ok = confirm(activeLanguage === 'fr'
+      ? 'Ouvrir la connexion officielle ' + label + ' sur ce PC ?'
+      : 'Open the official ' + label + ' sign-in flow on this PC?');
+    if (!ok) return;
+    button.disabled = true;
+    const status = $('#connections-status');
+    status.textContent = activeLanguage === 'fr' ? 'Ouverture de la connexion officielle…' : 'Opening official sign-in…';
+    try {
+      const result = await post('/api/studio/connections/login', { provider, confirm: true });
+      status.textContent = result.next;
+    } catch (e) {
+      status.textContent = (activeLanguage === 'fr' ? 'Connexion impossible : ' : 'Could not start sign-in: ') + e.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
 
   async function loadHarnesses() {
     const body = $('#runtimes-body'); const status = $('#runtimes-status'); status.textContent = 'Discovering runtimes…';
@@ -1860,7 +1897,7 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
   <details class="adv"><summary>Advanced · endpoints</summary><div><table><thead><tr><th scope="col">Backend</th><th scope="col">Endpoint</th><th scope="col">State</th><th scope="col">Model</th><th scope="col">Fit</th></tr></thead><tbody id="models-body"></tbody></table></div></details>
   <p id="models-status" class="status muted" role="status"></p></section>
 <section data-view="connections" aria-labelledby="h-connections" hidden><h1 id="h-connections">Connections</h1><p class="lead">FuryPipe automatically detects AI runtimes and safe credential hints on this machine. It never reads browser cookies, OAuth stores or secret values.</p>
-  <div class="connection-head card"><div><h2>AI accounts &amp; providers</h2><p class="muted">Detection is local and privacy-preserving. A detected runtime does not mean the account is authenticated.</p></div><a class="btn" href="#/models">Manage models</a></div>
+  <div class="connection-head card"><div><h2>AI accounts &amp; providers</h2><p class="muted">Connect through the provider's official local CLI. FuryPipe never copies browser sessions or provider tokens.</p></div><div class="row"><button type="button" class="btn secondary" id="connections-refresh">Refresh</button><a class="btn" href="#/models">Manage models</a></div></div>
   <div id="connections-grid" class="connection-grid" aria-live="polite"></div>
   <div class="card privacy-note"><h2>Privacy boundary</h2><p>Browser sessions and other applications' credential stores are never inspected automatically. FuryPipe only reports installed runtimes and the presence of supported environment credential sources; secret contents never leave the process.</p></div>
   <p id="connections-status" class="status muted" role="status"></p></section>

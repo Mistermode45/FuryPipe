@@ -64,6 +64,7 @@ describe('Studio API', () => {
     expect(studioApiRoute('/api/studio/local.json')).toEqual({ route: 'local', method: 'GET' });
     expect(studioApiRoute('/api/studio/chat')).toEqual({ route: 'chat', method: 'POST' });
     expect(studioApiRoute('/api/studio/setup/runtime')).toEqual({ route: 'runtime-setup', method: 'POST' });
+    expect(studioApiRoute('/api/studio/connections/login')).toEqual({ route: 'connection-login', method: 'POST' });
     expect(studioApiRoute('/api/studio/../control-room.json')).toBeNull();
   });
 
@@ -95,6 +96,22 @@ describe('Studio API', () => {
     const response = await studio.handle('runtime-setup', post({ runtime:'ollama', confirm:true }));
     expect(response.status).toBe(201);
     expect(calls[0]).toContain('Ollama.Ollama');
+  });
+
+  it('launches account sign-in only with confirmation and a known installed provider runtime', async () => {
+    const calls: string[][] = [];
+    const studio = createStudioApi({
+      projectRoot: process.cwd(),
+      discoverHarnesses: async () => harnesses,
+      discoverLocal: async () => ({ backends: [] }),
+      discoverHardware: async () => ({ platform:'win32', arch:'x64', cpuModel:'t', cpuCount:8, totalMemoryBytes:32*1024**3, freeMemoryBytes:16*1024**3, unifiedMemory:false, gpus:[] }),
+      accountLoginPlatform: 'win32',
+      accountLoginLauncher: (executable, args) => calls.push([executable, ...args]),
+    });
+    expect((await studio.handle('connection-login', post({ provider:'anthropic' }))).status).toBe(400);
+    const response = await studio.handle('connection-login', post({ provider:'anthropic', confirm:true }));
+    expect(response.status).toBe(202);
+    expect(calls[0]?.slice(-2)).toEqual(['auth','login']);
   });
 
   it('reports local models with hardware fit', async () => {
