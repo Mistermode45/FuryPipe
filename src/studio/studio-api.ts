@@ -39,13 +39,14 @@ import { createStudioChats, StudioChatError, type StudioChats } from './studio-c
 import { createStudioCode, StudioCodeError } from './studio-code.js';
 import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy } from '../fury-mcp-hub.js';
 import { discoverFuryAiConnections, type FuryAiConnections } from '../fury-ai-connections.js';
+import { inspectHuggingFaceGguf, recommendHuggingFaceGguf } from '../fury-huggingface-models.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
 const CACHE_MS = 10_000;
 
 export type StudioRoute =
-  | 'harnesses' | 'local' | 'hardware' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
+  | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
   | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
@@ -59,6 +60,8 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
   '/api/studio/local.json': { route: 'local', method: 'GET' },
   '/api/studio/hardware.json': { route: 'hardware', method: 'GET' },
+  '/api/studio/local-model/inspect': { route: 'local-model-inspect', method: 'POST' },
+  '/api/studio/local-model/recommend': { route: 'local-model-recommend', method: 'POST' },
   '/api/studio/bindings.json': { route: 'bindings', method: 'GET' },
   '/api/studio/graph.json': { route: 'graph', method: 'GET' },
   '/api/studio/blast-radius': { route: 'blast-radius', method: 'POST' },
@@ -110,6 +113,8 @@ export interface StudioApiOptions {
   readonly discoverHardware?: () => Promise<FuryHardwareProfile>;
   /** Safe account/provider hints. Never returns credential values or browser-session data. */
   readonly discoverConnections?: () => Promise<FuryAiConnections>;
+  /** Public Hugging Face catalog fetch hook (tests); no credentials are attached. */
+  readonly huggingFaceFetch?: typeof fetch;
   readonly loadGraph?: (root: string) => Promise<{ readonly graph: FuryGraph }>;
   readonly now?: () => number;
   /** Task executor for real runs; defaults to the structured-CLI harness runner. */
@@ -280,6 +285,16 @@ export function createStudioApi(options: StudioApiOptions) {
             return json(await connections());
           case 'hardware':
             return json(await hardware());
+          case 'local-model-inspect': {
+            const body = await readJson(request) as { model?: unknown };
+            if (typeof body.model !== 'string' || !body.model.trim() || body.model.length > 512) return problem(400, 'invalid-input', 'model must be a Hugging Face owner/model or URL');
+            return json(await inspectHuggingFaceGguf(body.model, await hardware(), { ...(options.huggingFaceFetch ? { fetch: options.huggingFaceFetch } : {}) }));
+          }
+          case 'local-model-recommend': {
+            const body = await readJson(request) as { profile?: unknown };
+            const profile = body.profile === 'coding' || body.profile === 'reasoning' || body.profile === 'vision' ? body.profile : 'general';
+            return json(await recommendHuggingFaceGguf(await hardware(), { profile, ...(options.huggingFaceFetch ? { fetch: options.huggingFaceFetch } : {}) }));
+          }
           case 'local': {
             const [status, hw] = await Promise.all([local(), hardware()]);
             return json({

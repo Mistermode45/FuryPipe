@@ -429,6 +429,7 @@ details.adv>div{padding:0 18px 16px}
 .model-row .mn{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .model-row .ms{color:var(--muted);font-size:12px;white-space:nowrap}
 .model-row .fit{margin-left:auto}
+.model-discovery{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr));gap:14px;margin-top:14px}.model-discovery .card{margin:0}.model-discovery h2{margin-top:0}.catalog-results{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:12px;margin-top:14px}.catalog-card{overflow:hidden;position:relative}.catalog-card h3{margin:0 0 7px;font:650 15px/1.25 var(--display);overflow-wrap:anywhere}.catalog-card .catalog-meta{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0}.variant-list{display:flex;flex-direction:column;gap:7px;margin-top:10px}.variant{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;padding:8px 10px;border:1px solid var(--line);background:var(--b1);border-radius:10px;font-size:12.5px}.variant .vname{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.catalog-card .score{color:var(--o-hot);font-weight:650}.catalog-card>a{margin-top:12px}
 
 /* Connections */
 .connection-head{display:flex;align-items:center;justify-content:space-between;gap:20px}.connection-head h2,.privacy-note h2{margin:0 0 5px}.connection-head p,.privacy-note p{margin:0}.connection-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:14px 0}.connection-card{position:relative;overflow:hidden}.connection-card::after{content:"";position:absolute;inset:auto -35% -65% 20%;height:100px;background:radial-gradient(circle,rgba(255,106,26,.10),transparent 68%);pointer-events:none}.connection-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}.connection-top .i{color:var(--o-hot)}.connection-top b{font:600 15px/1.2 var(--display);margin-right:auto}.connection-meta{display:flex;flex-direction:column;gap:7px;color:var(--ink-2);font-size:13px}.connection-meta span{display:flex;align-items:flex-start;gap:7px}.connection-meta .i{width:15px;height:15px;margin-top:2px;color:var(--muted)}.privacy-note{margin-top:12px}
@@ -643,7 +644,17 @@ const SCRIPT = String.raw`
     'Local': 'Local',
     'Private': 'Privé',
     'Installed': 'Installé',
-    'Available': 'Disponible'
+    'Available': 'Disponible',
+    'Discover local AI': 'Découvrir des IA locales',
+    'Best models for this PC': 'Meilleurs modèles pour ce PC',
+    'Search public Hugging Face GGUF models and rank compatible options using your detected VRAM/RAM. Popularity and task tags are signals, not a quality benchmark.': 'Recherche des modèles GGUF publics sur Hugging Face et classe les options compatibles avec la VRAM/RAM détectée. La popularité et les tags sont des signaux, pas un benchmark de qualité.',
+    'Use case': 'Usage', 'General': 'Général', 'Coding': 'Code', 'Reasoning': 'Raisonnement', 'Vision': 'Vision',
+    'Find compatible models': 'Trouver des modèles compatibles',
+    'Inspect your own Hugging Face model': 'Analyser votre propre modèle Hugging Face',
+    'Paste any public Hugging Face GGUF repository. FuryPipe reads metadata only, groups split GGUF files and estimates whether each quant fits this machine.': 'Collez n’importe quel dépôt GGUF public Hugging Face. FuryPipe lit uniquement les métadonnées, regroupe les GGUF découpés et estime si chaque quantification convient à cette machine.',
+    'Hugging Face model': 'Modèle Hugging Face', 'Analyze compatibility': 'Analyser la compatibilité',
+    'Cloud providers are managed in FuryPipe Connections. Studio will progressively unify local and cloud routing behind Fury Auto.': 'Les fournisseurs cloud sont gérés dans Connexions. Studio unifiera progressivement le routage local et cloud derrière Fury Auto.',
+    'View connections': 'Voir les connexions', 'Manage models': 'Gérer les modèles'
   });
   function detectedLanguage() {
     const langs = Array.isArray(navigator.languages) && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
@@ -868,7 +879,7 @@ const SCRIPT = String.raw`
     } else if (!q) list.append(el('div', { class: 'pop-h', text: 'No local model running' }));
     if (!q || 'cloud'.includes(q)) {
       list.append(el('div', { class: 'pop-h', text: 'Cloud' }));
-      const a = el('a', { class: 'opt', href: '/gateway/webchat/', role: 'option', 'aria-selected': 'false' }, el('span', { class: 'fury-dot local' }), el('span', { class: 't' }, el('span', { class: 'n', text: 'Cloud models' }), el('span', { class: 'd', text: 'Claude, GPT, Gemini and others run in the governed Gateway WebChat with your providers' })), ic('chevron', 'i ck'));
+      const a = el('a', { class: 'opt', href: '/gateway/webchat/', role: 'option', 'aria-selected': 'false' }, el('span', { class: 'fury-dot local' }), el('span', { class: 't' }, el('span', { class: 'n', text: 'Cloud models' }), el('span', { class: 'd', text: 'Connect Claude, GPT, Gemini and others in FuryPipe Connections' })), ic('chevron', 'i ck'));
       list.append(a);
     }
   }
@@ -933,6 +944,29 @@ const SCRIPT = String.raw`
     }
     $('#models-status').textContent = models ? models + ' local model' + (models === 1 ? '' : 's') + ' available.' : 'No local model running yet.';
   }
+  const gb = (n) => n == null ? 'size unknown' : (n / 1073741824).toFixed(n >= 10 * 1073741824 ? 1 : 2) + ' GB';
+  function catalogCard(m, ranked) {
+    const card = el('div', { class: 'card catalog-card' });
+    const title = el('h3', { text: m.id }); const meta = el('div', { class: 'catalog-meta' });
+    if (ranked && typeof m.score === 'number') meta.append(el('span', { class: 'badge score', text: 'score ' + m.score }));
+    if (m.downloads != null) meta.append(badge(m.downloads.toLocaleString() + ' downloads', 'muted'));
+    if (m.license) meta.append(badge(m.license, 'muted'));
+    card.append(title, meta);
+    const list = el('div', { class: 'variant-list' });
+    for (const v of m.variants.slice(0, 8)) list.append(el('div', { class: 'variant' }, el('span', { class: 'vname', text: v.quantization || v.name, title: v.name }), el('span', { class: 'muted', text: gb(v.sizeBytes) }), fitPill(v.fit)));
+    card.append(list, el('a', { class: 'btn secondary', href: m.url, target: '_blank', rel: 'noopener noreferrer', text: 'Open on Hugging Face' }));
+    return card;
+  }
+  async function inspectCatalogModel(model) {
+    const status=$('#model-catalog-status'), out=$('#model-catalog-results'); status.textContent='Reading public Hugging Face metadata…'; out.replaceChildren();
+    try { const r=await post('/api/studio/local-model/inspect',{model}); out.append(catalogCard(r,false)); status.textContent='Compatibility estimated from GGUF size and detected hardware. No weights were downloaded.'; }
+    catch(e){ status.textContent='Could not inspect model: '+e.message; }
+  }
+  $('#model-inspect-form').addEventListener('submit',(ev)=>{ev.preventDefault();inspectCatalogModel($('#model-ref').value);});
+  $('#model-recommend-form').addEventListener('submit',async(ev)=>{ev.preventDefault();const status=$('#model-catalog-status'),out=$('#model-catalog-results');status.textContent='Searching public Hugging Face GGUF models…';out.replaceChildren();
+    try { const r=await post('/api/studio/local-model/recommend',{profile:$('#model-profile').value}); for(const m of r.models) out.append(catalogCard(m,true)); status.textContent=r.models.length?r.methodology:'No compatible model was found in this bounded search. Try another use case or inspect a model directly.'; }
+    catch(e){status.textContent='Model search failed: '+e.message;}
+  });
 
   /* ---------- Composer ---------- */
   const input = $('#chat-input');
@@ -1663,12 +1697,20 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
     <div class="card hw-card"><h2>Your machine</h2><p class="big" id="hw">—</p><div class="spec" id="hw-spec"></div><p class="muted" id="hw-rec"></p></div>
     <div class="card auto-card"><h2><span class="fury-dot" aria-hidden="true"></span>Fury Auto</h2><p>Picks a model per message from what is really running here: it prefers models that fit your hardware and coding models for code. Click the route under the composer to see why.</p></div>
   </div>
+  <h2 class="sec-h">Discover local AI</h2>
+  <div class="model-discovery">
+    <div class="card"><h2>Best models for this PC</h2><p class="muted">Search public Hugging Face GGUF models and rank compatible options using your detected VRAM/RAM. Popularity and task tags are signals, not a quality benchmark.</p>
+      <form id="model-recommend-form"><div class="row"><div><label for="model-profile">Use case</label><select id="model-profile"><option value="general">General</option><option value="coding">Coding</option><option value="reasoning">Reasoning</option><option value="vision">Vision</option></select></div><button type="submit">Find compatible models</button></div></form></div>
+    <div class="card"><h2>Inspect your own Hugging Face model</h2><p class="muted">Paste any public Hugging Face GGUF repository. FuryPipe reads metadata only, groups split GGUF files and estimates whether each quant fits this machine.</p>
+      <form id="model-inspect-form"><label for="model-ref">Hugging Face model</label><input id="model-ref" required autocomplete="off" placeholder="owner/model or https://huggingface.co/owner/model"><div class="row"><button type="submit">Analyze compatibility</button></div></form></div>
+  </div>
+  <div id="model-catalog-results" class="catalog-results" aria-live="polite"></div><p id="model-catalog-status" class="status muted" role="status"></p>
   <h2 class="sec-h">Local runtimes</h2><div id="backends" class="backend-grid"></div>
-  <h2 class="sec-h">Cloud</h2><div class="card"><p>Claude, GPT, Gemini and other cloud models run through the governed Gateway WebChat, using the providers and budgets you configured.</p><a class="btn" href="/gateway/webchat/">${icon('cloud')}Open Gateway WebChat</a></div>
+  <h2 class="sec-h">Cloud</h2><div class="card"><p>Cloud providers are managed in FuryPipe Connections. Studio will progressively unify local and cloud routing behind Fury Auto.</p><a class="btn" href="#/connections">${icon('connections')}View connections</a></div>
   <details class="adv"><summary>Advanced · endpoints</summary><div><table><thead><tr><th scope="col">Backend</th><th scope="col">Endpoint</th><th scope="col">State</th><th scope="col">Model</th><th scope="col">Fit</th></tr></thead><tbody id="models-body"></tbody></table></div></details>
   <p id="models-status" class="status muted" role="status"></p></section>
 <section data-view="connections" aria-labelledby="h-connections" hidden><h1 id="h-connections">Connections</h1><p class="lead">FuryPipe automatically detects AI runtimes and safe credential hints on this machine. It never reads browser cookies, OAuth stores or secret values.</p>
-  <div class="connection-head card"><div><h2>AI accounts &amp; providers</h2><p class="muted">Detection is local and privacy-preserving. A detected runtime does not mean the account is authenticated.</p></div><a class="btn" href="/gateway/webchat/">Open cloud setup</a></div>
+  <div class="connection-head card"><div><h2>AI accounts &amp; providers</h2><p class="muted">Detection is local and privacy-preserving. A detected runtime does not mean the account is authenticated.</p></div><a class="btn" href="#/models">Manage models</a></div>
   <div id="connections-grid" class="connection-grid" aria-live="polite"></div>
   <div class="card privacy-note"><h2>Privacy boundary</h2><p>Browser sessions and other applications' credential stores are never inspected automatically. FuryPipe only reports installed runtimes and the presence of supported environment credential sources; secret contents never leave the process.</p></div>
   <p id="connections-status" class="status muted" role="status"></p></section>
