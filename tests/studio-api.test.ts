@@ -102,7 +102,13 @@ describe('Studio API', () => {
     const calls: string[][] = [];
     const studio = createStudioApi({
       projectRoot: process.cwd(),
-      discoverHarnesses: async () => harnesses,
+      discoverHarnesses: async () => ({
+        ...harnesses,
+        platform: 'win32',
+        harnesses: harnesses.harnesses.map((h) => h.id === 'claude-code'
+          ? { ...h, installed: true, executable: 'C:\\Tools\\claude.exe', versionStatus: 'ok' as const }
+          : h),
+      }),
       discoverLocal: async () => ({ backends: [] }),
       discoverHardware: async () => ({ platform:'win32', arch:'x64', cpuModel:'t', cpuCount:8, totalMemoryBytes:32*1024**3, freeMemoryBytes:16*1024**3, unifiedMemory:false, gpus:[] }),
       accountLoginPlatform: 'win32',
