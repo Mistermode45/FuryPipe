@@ -65,6 +65,8 @@ import type { SecurityEvidence } from './control-room/index.js';
 import { getFuryPipeModelScope } from './core/applicability.js';
 import type { FuryPipeVisualPolicy } from './core/applicability.js';
 import { discoverAgentSkillsNode } from './agent-skills-node.js';
+import { createStudioApi, studioApiRoute } from './studio/studio-api.js';
+import { studioHtmlResponse } from './studio/studio-page.js';
 import { selectAgentSkillsForTask } from './agent-skill-selector.js';
 import { activateSelectedAgentSkillsNode } from './agent-skill-activation-node.js';
 import type { ProxyCapabilityPlanner } from './proxy-capability-runtime.js';
@@ -410,8 +412,10 @@ provider routing, MCP, memory and evidence-first telemetry. Eligible context
 is transformed only when the measured cost gate says the image path is useful.
 Dashboard controls can disable transformation live.
 
-Live sessions and cleanup tools live in the dashboard at
+FuryPipe Studio (Chat, Cowork, Code, Agents, Automations) is served at
   http://127.0.0.1:<port>/  (default port 48721)
+Live sessions and cleanup tools live in the Control Plane at
+  http://127.0.0.1:<port>/control-plane
 For after-the-fact analysis without the server running, use furypipe stats.
 
 Flags:
@@ -1999,6 +2003,7 @@ async function main(): Promise<void> {
     },
   };
   const handle = createProxy(config);
+  const studioApi = createStudioApi({ projectRoot: process.cwd() });
 
   const server = createServer((req, res) => {
     Promise.resolve()
@@ -2006,6 +2011,33 @@ async function main(): Promise<void> {
         // Local dashboard routes — handled BEFORE the proxy so they never hit
         // api.anthropic.com (which would 404 them).
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+        // FuryPipe Studio: product shell at / (and /studio), JSON API under
+        // /api/studio/. Same loopback-only and same-origin guards as the
+        // dashboard, which now lives at /control-plane.
+        const studioApiMatch = studioApiRoute(url.pathname);
+        const isStudioPage = url.pathname === '/' || url.pathname === '/studio' || url.pathname === '/studio/';
+        if (isStudioPage || studioApiMatch) {
+          if (!isLoopbackAddress(req.socket.remoteAddress) || !isLoopbackHostname(url.hostname)) {
+            await writeWebResponse(new Response('studio is loopback-only', { status: 403 }), res);
+            return;
+          }
+          if (isStudioPage) {
+            await writeWebResponse(req.method === 'GET' || req.method === 'HEAD'
+              ? studioHtmlResponse()
+              : new Response('method not allowed', { status: 405, headers: { allow: 'GET' } }), res);
+            return;
+          }
+          if (req.method !== studioApiMatch!.method) {
+            await writeWebResponse(new Response('method not allowed', { status: 405, headers: { allow: studioApiMatch!.method } }), res);
+            return;
+          }
+          if (studioApiMatch!.method === 'POST' && !isSameOriginDashboardRequest(req, url)) {
+            await writeWebResponse(new Response('cross-origin studio request denied', { status: 403 }), res);
+            return;
+          }
+          await writeWebResponse(await studioApi.handle(studioApiMatch!.route, toWebRequest(req)), res);
+          return;
+        }
         const route = dashboardPath(url.pathname);
         if (route) {
           if (!isLoopbackAddress(req.socket.remoteAddress) || !isLoopbackHostname(url.hostname)) {
@@ -2073,7 +2105,7 @@ async function main(): Promise<void> {
       console.warn('[furypipe] non-loopback bind enabled; proxy API is reachable off-host, dashboard routes remain loopback-only');
     }
     announce();
-    console.log('[furypipe] dashboard available on loopback');
+    console.log(`[furypipe] studio: http://${displayHost}:${opts.port}/ · control plane: http://${displayHost}:${opts.port}/control-plane (loopback only)`);
     const liveReadiness = collectFuryBetaReadiness({
       env: process.env,
       configFile: process.env.FURYPIPE_CONFIG?.trim() || defaultConfigFile(),

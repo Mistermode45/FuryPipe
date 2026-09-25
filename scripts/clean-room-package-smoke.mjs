@@ -172,6 +172,16 @@ async function main() {
 
     first = start(installDir, env);
     const firstBody = await waitReady(first, port);
+    // Installed FuryPipe Studio: product shell at /, Control Plane at
+    // /control-plane, Studio discovery API answering from the packaged bundle.
+    const studio = await fetch(`http://127.0.0.1:${port}/`);
+    const studioHtml = await studio.text();
+    assert(studio.status === 200 && studioHtml.includes('FuryPipe Studio') && /script-src 'nonce-/u.test(studio.headers.get('content-security-policy') ?? ''), 'installed Studio shell missing or unprotected');
+    const controlPlane = await fetch(`http://127.0.0.1:${port}/control-plane`);
+    assert(controlPlane.status === 200, `installed Control Plane returned HTTP ${controlPlane.status}`);
+    const studioHarnesses = await fetch(`http://127.0.0.1:${port}/api/studio/harnesses.json`);
+    const harnessBody = await studioHarnesses.json();
+    assert(studioHarnesses.status === 200 && harnessBody.harnesses.some((h) => h.id === 'furypipe-native' && h.installed), 'installed Studio harness discovery failed');
     const firstStop = await stop(first);
     let runtimeDown = false;
     try {

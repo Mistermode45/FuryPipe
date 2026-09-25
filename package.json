@@ -702,7 +702,8 @@
     "package:smoke": "node scripts/package-smoke.mjs && node scripts/gateway-installed-package-smoke.mjs && node scripts/phase6-package-smoke.mjs && node scripts/phase7-package-smoke.mjs && node scripts/phase8-acp-package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
     "vendor:ui": "node scripts/vendor-ui.mjs",
-    "browser:webchat:qa": "tsx scripts/gateway-webchat-browser-qa.ts"
+    "browser:webchat:qa": "tsx scripts/gateway-webchat-browser-qa.ts",
+    "browser:studio:qa": "tsx scripts/studio-browser-qa.ts"
   },
   "keywords": [
     "furypipe",

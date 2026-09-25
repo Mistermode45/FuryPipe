@@ -1970,7 +1970,9 @@ export type DashboardRoute =
 
 /** Match dashboard paths (handle query strings on /proxy-latest-png). */
 export function dashboardPath(pathname: string): DashboardRoute | null {
-  if (pathname === '/' || pathname === '/dashboard') return { kind: 'html' };
+  // The product root (/) is FuryPipe Studio; the dashboard is the
+  // Settings › Advanced › Control Plane surface.
+  if (pathname === '/control-plane' || pathname === '/dashboard') return { kind: 'html' };
   if (pathname === '/proxy-stats') return { kind: 'stats' };
   if (pathname === '/proxy-recent') return { kind: 'recent' };
   if (pathname === '/proxy-latest-png') return { kind: 'png' };
