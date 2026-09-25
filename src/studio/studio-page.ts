@@ -879,7 +879,7 @@ const SCRIPT = String.raw`
     } else if (!q) list.append(el('div', { class: 'pop-h', text: 'No local model running' }));
     if (!q || 'cloud'.includes(q)) {
       list.append(el('div', { class: 'pop-h', text: 'Cloud' }));
-      const a = el('a', { class: 'opt', href: '/gateway/webchat/', role: 'option', 'aria-selected': 'false' }, el('span', { class: 'fury-dot local' }), el('span', { class: 't' }, el('span', { class: 'n', text: 'Cloud models' }), el('span', { class: 'd', text: 'Connect Claude, GPT, Gemini and others in FuryPipe Connections' })), ic('chevron', 'i ck'));
+      const a = el('a', { class: 'opt', href: '#/connections', role: 'option', 'aria-selected': 'false' }, el('span', { class: 'fury-dot local' }), el('span', { class: 't' }, el('span', { class: 'n', text: 'Cloud models' }), el('span', { class: 'd', text: 'Connect Claude, GPT, Gemini and others in FuryPipe Connections' })), ic('chevron', 'i ck'));
       list.append(a);
     }
   }
@@ -1626,7 +1626,7 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
     <div id="chat-empty" class="setup" hidden>
       <h3>Run AI privately on this PC</h3>
       <p>No local model is running yet. Start one and FuryPipe finds it automatically, or use your cloud providers in the Gateway WebChat.</p>
-      <div class="row"><a class="btn primary" href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Set up Ollama</a><a class="btn" href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer">Get LM Studio</a><a class="btn" href="#/models">See what fits</a><a class="btn" href="/gateway/webchat/">Use cloud AI</a></div>
+      <div class="row"><a class="btn primary" href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">Set up Ollama</a><a class="btn" href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer">Get LM Studio</a><a class="btn" href="#/models">See what fits</a><a class="btn" href="#/connections">Use cloud AI</a></div>
     </div>
     <form id="chat-form" autocomplete="off">
       <div class="composer" id="composer">
