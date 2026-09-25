@@ -227,6 +227,21 @@ describe('Fury Gateway durable automation definition store', () => {
     expect(await store.countRecords()).toBe(0);
   });
 
+  it('rejects control characters in reasons, including NUL, US and DEL', async () => {
+    const store = createFuryGatewayAutomationDefinitionStore({
+      store: recovery(root()),
+      now: () => 200_000,
+    });
+    for (const bad of ['a\u0000b', 'tab\there', 'line\nbreak', 'unit\u001fsep', 'del\u007f']) {
+      await expect(store.create(definition({ reason: bad }) as never)).rejects.toMatchObject({
+        code: 'invalid-input',
+      });
+    }
+    await expect(store.create(definition({ reason: 'Plain reason — accents é and emoji ✓.' }) as never))
+      .resolves.toBeDefined();
+    expect(await store.countRecords()).toBe(1);
+  });
+
   it('validates initial trigger semantics and bounded budgets', async () => {
     const dir = root();
     const store = createFuryGatewayAutomationDefinitionStore({

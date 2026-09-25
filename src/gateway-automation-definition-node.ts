@@ -290,7 +290,7 @@ function reason(value: unknown): string | undefined {
     || value.length < 1
     || value.trim() !== value
     || Buffer.byteLength(value, 'utf8') > MAX_REASON_BYTES
-    || /[ -]/u.test(value)
+    || /[\u0000-\u001f\u007f]/u.test(value)
   ) {
     throw new FuryGatewayAutomationDefinitionError('invalid-input');
   }
