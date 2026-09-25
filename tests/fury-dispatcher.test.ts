@@ -170,3 +170,32 @@ describe('Writer pool (real git worktrees)', () => {
     await expect(pool.release('backend')).rejects.toThrow(/no writer lease/u);
   }, 60_000);
 });
+
+describe('Budget governance profiles (master §28)', () => {
+  const one = () => ir([t('solve', 'implementer', [], ['src/**'])]);
+  const pool: FuryRuntimeBinding[] = [
+    { id: 'premium', harnessId: 'claude-code', provider: 'anthropic', model: 'p', locality: 'cloud', available: true, scores: { coding: 0.95 }, estimatedCostUsdPerTask: 2, latencyMsP50: 9_000 },
+    { id: 'cheap', harnessId: 'codex', provider: 'openai', model: 'c', locality: 'cloud', available: true, scores: { coding: 0.7 }, estimatedCostUsdPerTask: 0.1, latencyMsP50: 4_000 },
+    { id: 'fast-local', harnessId: 'furypipe-native', provider: 'ollama', model: 'l', locality: 'local', available: true, scores: { coding: 0.5 }, estimatedCostUsdPerTask: 0, latencyMsP50: 1_000 },
+  ];
+  const pick = (profile: string, extra: Record<string, unknown> = {}) =>
+    planFuryDispatch({ ir: one(), candidates: pool, mode: 'SINGLE', profile: profile as never, ...extra }).assignments[0]?.bindingIds[0];
+
+  it('changes the selection deterministically per profile', () => {
+    expect(pick('QUALITY')).toBe('premium');
+    expect(pick('BUDGET')).toBe('fast-local');
+    expect(pick('FAST')).toBe('fast-local');
+    expect(pick('LOCAL_FIRST')).toBe('fast-local');
+    expect(pick('BALANCED')).toBe('cheap');
+    expect(pick('CUSTOM', { weights: { quality: 1, cost: 0, latency: 0, local: 0 } })).toBe('premium');
+  });
+
+  it('PRIVATE excludes cloud runtimes and CUSTOM requires bounded weights', () => {
+    const plan = planFuryDispatch({ ir: one(), candidates: pool, mode: 'AUTO', profile: 'PRIVATE' });
+    expect(plan.assignments[0]?.bindingIds).toEqual(['fast-local']);
+    expect(plan.reasons.join(' ')).toContain('PRIVATE profile');
+    expect(() => planFuryDispatch({ ir: one(), candidates: pool, mode: 'SINGLE', profile: 'CUSTOM' })).toThrow(/weights/u);
+    expect(() => planFuryDispatch({ ir: one(), candidates: pool, mode: 'SINGLE', profile: 'CUSTOM', weights: { quality: -1, cost: 0, latency: 0, local: 0 } })).toThrow(/weights/u);
+    expect(() => planFuryDispatch({ ir: one(), candidates: pool, mode: 'SINGLE', profile: 'NOPE' as never })).toThrow(/profile/u);
+  });
+});

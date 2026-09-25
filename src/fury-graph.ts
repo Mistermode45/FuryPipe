@@ -305,3 +305,51 @@ export function refreshGraphify(root: string, options: { readonly executable?: s
     }, (error) => (error ? reject(new FuryGraphError(`graphify update failed: ${error.message.slice(0, 200)}`)) : resolve()));
   });
 }
+
+export interface FuryImpactDelta {
+  readonly predictedChanged: readonly string[];
+  readonly actualChanged: readonly string[];
+  /** Files changed that were neither planned nor predicted to be affected. */
+  readonly unexpectedChanges: readonly string[];
+  /** Tests that depend on what actually changed. */
+  readonly requiredTests: readonly string[];
+  /** Required tests with no execution evidence yet. */
+  readonly untestedNeighbours: readonly string[];
+}
+
+/**
+ * Compare the blast radius predicted before a patch with the dependency
+ * region the patch actually touched (master §47.5). The Judge turns
+ * `untestedNeighbours` into TEST_RECEIPT requirements.
+ */
+export function furyImpactDelta(graph: FuryGraph, input: {
+  readonly plannedFiles: readonly string[];
+  readonly actualChangedFiles: readonly string[];
+  readonly executedTests?: readonly string[];
+  readonly depth?: number;
+}): FuryImpactDelta {
+  const depth = input.depth ?? 2;
+  const predicted = furyBlastRadius(graph, input.plannedFiles, depth);
+  const actual = furyBlastRadius(graph, input.actualChangedFiles, depth);
+  const expected = new Set([...predicted.changed, ...predicted.affected]);
+  const executed = new Set((input.executedTests ?? []).map((f) => relFile(f)).filter((f): f is string => Boolean(f)));
+  const isTest = (f: string) => /(^|\/)(tests?|__tests__)\//u.test(f) || /\.(test|spec)\.[cm]?[jt]sx?$/u.test(f);
+  const requiredTests = [...new Set([...actual.affectedTests, ...actual.changed.filter(isTest)])].sort();
+  return Object.freeze({
+    predictedChanged: predicted.changed,
+    actualChanged: actual.changed,
+    unexpectedChanges: Object.freeze(actual.changed.filter((f) => !expected.has(f))),
+    requiredTests: Object.freeze(requiredTests),
+    untestedNeighbours: Object.freeze(requiredTests.filter((f) => !executed.has(f))),
+  });
+}
+
+/** Requirements FuryJudge must see satisfied for the tests around the actual blast radius. */
+export function furyImpactRequirements(delta: FuryImpactDelta): readonly { readonly id: string; readonly level: 'MUST'; readonly description: string; readonly evidence: readonly { readonly kind: 'TEST_RECEIPT'; readonly subject: string }[] }[] {
+  return Object.freeze(delta.requiredTests.map((file, index) => Object.freeze({
+    id: `impact:test-${index + 1}`,
+    level: 'MUST' as const,
+    description: `test around the actual blast radius passes: ${file}`,
+    evidence: Object.freeze([Object.freeze({ kind: 'TEST_RECEIPT' as const, subject: `test:${file}`.slice(0, 256) })]),
+  })));
+}

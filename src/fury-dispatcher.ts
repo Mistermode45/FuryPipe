@@ -35,7 +35,33 @@ export interface FuryRuntimeBinding {
   /** 0..1 per skill, from FuryBench / routing history; missing = unknown (0). */
   readonly scores: Readonly<Partial<Record<FurySkill, number>>>;
   readonly estimatedCostUsdPerTask: number;
+  /** Measured median latency per task run, when known (FuryBench / history). */
+  readonly latencyMsP50?: number;
 }
+
+/** Budget governance profiles (master §28). */
+export const FURY_BUDGET_PROFILES = Object.freeze(['FAST', 'BALANCED', 'QUALITY', 'BUDGET', 'LOCAL_FIRST', 'PRIVATE', 'CUSTOM'] as const);
+export type FuryBudgetProfile = (typeof FURY_BUDGET_PROFILES)[number];
+
+export interface FuryRankingWeights {
+  /** Weight of the skill score (0..1 per binding). */
+  readonly quality: number;
+  /** Penalty per USD of estimated cost, normalised by the most expensive candidate. */
+  readonly cost: number;
+  /** Penalty per unit of normalised latency (unknown latency counts as the worst). */
+  readonly latency: number;
+  /** Bonus for local bindings. */
+  readonly local: number;
+}
+
+const PROFILE_WEIGHTS: Readonly<Record<Exclude<FuryBudgetProfile, 'CUSTOM'>, FuryRankingWeights>> = Object.freeze({
+  QUALITY: { quality: 1, cost: 0, latency: 0, local: 0 },
+  BALANCED: { quality: 1, cost: 0.5, latency: 0.25, local: 0 },
+  BUDGET: { quality: 0.25, cost: 1, latency: 0, local: 0 },
+  FAST: { quality: 0.25, cost: 0, latency: 1, local: 0 },
+  LOCAL_FIRST: { quality: 0.5, cost: 0, latency: 0, local: 1 },
+  PRIVATE: { quality: 1, cost: 0, latency: 0, local: 0 },
+});
 
 export interface FuryDispatchAssignment {
   readonly taskId: string;
@@ -51,6 +77,7 @@ export interface FuryDispatchPlan {
   readonly format: typeof FURY_DISPATCH_PLAN_FORMAT;
   readonly irDigest: string;
   readonly requestedMode: FuryDispatchMode;
+  readonly profile: FuryBudgetProfile;
   readonly mode: FuryDispatchMode;
   readonly status: 'PLANNED' | 'BLOCKED' | 'NO_DISPATCH';
   readonly dispatchBenefit: 'LOW' | 'MEDIUM' | 'HIGH';
@@ -82,9 +109,17 @@ function score(binding: FuryRuntimeBinding, skill: FurySkill): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0;
 }
 
-function rank(bindings: readonly FuryRuntimeBinding[], skill: FurySkill): FuryRuntimeBinding[] {
+function rank(bindings: readonly FuryRuntimeBinding[], skill: FurySkill, w: FuryRankingWeights): FuryRuntimeBinding[] {
+  const maxCost = Math.max(1e-9, ...bindings.map((b) => b.estimatedCostUsdPerTask));
+  const known = bindings.map((b) => b.latencyMsP50).filter((v): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0);
+  const maxLatency = Math.max(1e-9, ...known);
+  const value = (b: FuryRuntimeBinding) => {
+    const latency = typeof b.latencyMsP50 === 'number' && Number.isFinite(b.latencyMsP50) && b.latencyMsP50 >= 0 ? b.latencyMsP50 / maxLatency : 1;
+    return w.quality * score(b, skill) - w.cost * (b.estimatedCostUsdPerTask / maxCost) - w.latency * latency + w.local * (b.locality === 'local' ? 1 : 0);
+  };
   return [...bindings].sort((a, b) =>
-    score(b, skill) - score(a, skill)
+    value(b) - value(a)
+    || score(b, skill) - score(a, skill)
     || a.estimatedCostUsdPerTask - b.estimatedCostUsdPerTask
     || (a.locality === b.locality ? 0 : a.locality === 'local' ? -1 : 1)
     || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -161,6 +196,10 @@ export function planFuryDispatch(input: {
   readonly coupling?: FuryScopeCoupling;
   /** Writers whose scopes share at least this many edges never run in parallel (default 1). */
   readonly couplingThreshold?: number;
+  /** Budget governance profile (default QUALITY). PRIVATE implies local-only. */
+  readonly profile?: FuryBudgetProfile;
+  /** Required with profile CUSTOM. */
+  readonly weights?: FuryRankingWeights;
 }): FuryDispatchPlan {
   const { ir } = input;
   if (!(FURY_DISPATCH_MODES as readonly string[]).includes(input.mode)) throw new FuryDispatchError('dispatch mode is unsupported');
@@ -173,17 +212,28 @@ export function planFuryDispatch(input: {
     if (!Number.isFinite(c.estimatedCostUsdPerTask) || c.estimatedCostUsdPerTask < 0) throw new FuryDispatchError(`binding ${c.id} has an invalid cost estimate`);
   }
   const reasons: string[] = [];
-  const localOnly = input.mode === 'LOCAL_ONLY' || ir.privacy === 'local-only';
+  const profile = input.profile ?? 'QUALITY';
+  if (!(FURY_BUDGET_PROFILES as readonly string[]).includes(profile)) throw new FuryDispatchError('budget profile is unsupported');
+  if (profile === 'CUSTOM') {
+    const w = input.weights;
+    const ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 10;
+    if (!w || !ok(w.quality) || !ok(w.cost) || !ok(w.latency) || !ok(w.local)) throw new FuryDispatchError('CUSTOM profile requires weights quality, cost, latency, local in 0..10');
+  }
+  const weights: FuryRankingWeights = profile === 'CUSTOM'
+    ? Object.freeze({ quality: input.weights!.quality, cost: input.weights!.cost, latency: input.weights!.latency, local: input.weights!.local })
+    : PROFILE_WEIGHTS[profile];
+  const localOnly = input.mode === 'LOCAL_ONLY' || ir.privacy === 'local-only' || profile === 'PRIVATE';
   let pool = input.candidates.filter((c) => c.available);
   if (localOnly) {
     const before = pool.length;
     pool = pool.filter((c) => c.locality === 'local');
-    if (before !== pool.length) reasons.push('privacy boundary: cloud bindings excluded');
+    if (before !== pool.length) reasons.push(profile === 'PRIVATE' ? 'PRIVATE profile: cloud bindings excluded' : 'privacy boundary: cloud bindings excluded');
   }
   const base = {
     format: FURY_DISPATCH_PLAN_FORMAT,
     irDigest: ir.digest,
     requestedMode: input.mode,
+    profile,
   } as const;
   const blocked = (reason: string): FuryDispatchPlan => Object.freeze({
     ...base, mode: input.mode, status: 'BLOCKED', dispatchBenefit: 'LOW',
@@ -228,7 +278,7 @@ export function planFuryDispatch(input: {
   const groups = groupTasks(ir, sequential, coupled);
   reasons.push(...[...coupledReasons].sort());
   const width = Math.min(Math.max(input.width ?? 2, 2), 4);
-  const singleBest = rank(pool, 'coding')[0]!;
+  const singleBest = rank(pool, 'coding', weights)[0]!;
 
   const pick = (task: FuryIrTask, implementerHarness?: string): string[] => {
     const skill = ROLE_SKILL[task.role];
@@ -246,18 +296,18 @@ export function planFuryDispatch(input: {
       }
       case 'COUNCIL':
       case 'RACE':
-        return rank(pool, skill).slice(0, width).map((c) => c.id);
+        return rank(pool, skill, weights).slice(0, width).map((c) => c.id);
       case 'LOCAL_CLOUD_HYBRID': {
         const local = pool.filter((c) => c.locality === 'local');
         const cloud = pool.filter((c) => c.locality === 'cloud');
         const side = HYBRID_LOCAL_ROLES.has(task.role) ? (local.length ? local : cloud) : (cloud.length ? cloud : local);
-        return [rank(side, skill)[0]!.id];
+        return [rank(side, skill, weights)[0]!.id];
       }
       case 'REVIEW_CHAIN':
       case 'SPECIALISTS':
       case 'PARALLEL':
       default: {
-        let ranked = rank(pool, skill);
+        let ranked = rank(pool, skill, weights);
         if ((task.role === 'reviewer' || task.role === 'security' || task.role === 'judge') && implementerHarness) {
           const independent = ranked.filter((c) => c.harnessId !== implementerHarness);
           if (independent.length > 0) ranked = independent;

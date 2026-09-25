@@ -139,3 +139,25 @@ describe('Graph-aware dispatch and context capsule', () => {
     expect(() => compileFuryContextCapsule({ ir: ir(), taskId: 'nope', candidates: [], budgetBytes: 4000 })).toThrow(/not in the contract/u);
   });
 });
+
+describe('Predicted vs actual impact (master §47.5)', () => {
+  it('flags unexpected changes and requires tests around the actual blast radius', async () => {
+    const { furyImpactDelta, furyImpactRequirements } = await import('../src/fury-graph.js');
+    const { createFuryProofLedger } = await import('../src/fury-proof.js');
+    const { graph } = await loadFuryGraph(freshProject());
+    const delta = furyImpactDelta(graph, {
+      plannedFiles: ['src/ui/button.ts'],
+      actualChangedFiles: ['src/ui/button.ts', 'src/auth/session.ts'],
+      executedTests: [],
+    });
+    expect(delta.unexpectedChanges).toEqual(['src/auth/session.ts']);
+    expect(delta.requiredTests).toEqual(['tests/login.test.ts']);
+    expect(delta.untestedNeighbours).toEqual(['tests/login.test.ts']);
+    const requirements = furyImpactRequirements(delta);
+    const ledger = createFuryProofLedger();
+    expect(ledger.judge({ requirements, receipts: [] }).verdict).toBe('UNPROVEN');
+    const receipt = ledger.issue({ kind: 'TEST_RECEIPT', subject: 'test:tests/login.test.ts', outcome: 'pass', producer: 'host:vitest', evidenceDigest: 'a'.repeat(64) });
+    expect(ledger.judge({ requirements, receipts: [receipt] }).verdict).toBe('ACCEPT');
+    expect(furyImpactDelta(graph, { plannedFiles: ['src/auth/session.ts'], actualChangedFiles: ['src/auth/login.ts'], executedTests: ['tests/login.test.ts'] })).toMatchObject({ unexpectedChanges: [], untestedNeighbours: [] });
+  });
+});
