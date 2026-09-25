@@ -17,7 +17,7 @@ import type { FuryDispatchAssignment, FuryDispatchPlan } from './fury-dispatcher
 import { furyImpactDelta, furyImpactRequirements, type FuryGraph } from './fury-graph.js';
 import { integrateFuryBranches, type FuryIntegrationResult, type FuryIntegrationVerifier } from './fury-integrator.js';
 import { furyIrRequirements, type FuryIrDocument } from './fury-ir.js';
-import { createFuryMissionControl, type FuryMissionControl, type FuryReplayLog, type FuryWorkerBinding } from './fury-mission-control.js';
+import { createFuryMissionControl, furyReplayHead, type FuryMissionControl, type FuryReplayLog, type FuryWorkerBinding } from './fury-mission-control.js';
 import { sealFuryProofBundle, type FuryJudgement, type FuryProofBundle, type FuryProofLedger, type FuryReceipt } from './fury-proof.js';
 import { createFuryWriterPool } from './fury-writer-pool.js';
 
@@ -34,6 +34,8 @@ export interface FuryRunResult {
   readonly bundle: FuryProofBundle;
   readonly integration?: FuryIntegrationResult;
   readonly replay: FuryReplayLog;
+  /** Head of the replay when the run ended; verifyFuryReplay(log, head) detects a truncated log. */
+  readonly replayHead: { readonly seq: number; readonly hash: string };
   readonly pendingGates: readonly string[];
 }
 
@@ -157,7 +159,8 @@ export async function runFuryTask(input: {
     outputDigest: createHash('sha256').update(integration?.headSha ?? input.baseSha).digest('hex'),
   });
   const status = failures.length ? 'FAILED' : pendingGates.length ? 'AWAITING_APPROVAL' : 'COMPLETED';
-  return Object.freeze({ status, judgement, bundle, ...(integration ? { integration } : {}), replay: mc.replay(), pendingGates: Object.freeze(pendingGates) });
+  const replay = mc.replay();
+  return Object.freeze({ status, judgement, bundle, ...(integration ? { integration } : {}), replay, replayHead: furyReplayHead(replay), pendingGates: Object.freeze(pendingGates) });
 }
 
 function changedSince(cwd: string, base: string): Promise<string[]> {

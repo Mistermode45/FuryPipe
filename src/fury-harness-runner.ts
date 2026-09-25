@@ -112,6 +112,11 @@ export function buildFuryHarnessInvocation(req: FuryHarnessRunRequest, baseEnv: 
       if (req.local.kind !== 'ollama' && req.local.kind !== 'lmstudio' && req.local.kind !== 'anthropic-compatible') throw new FuryHarnessRunError('authority-unsupported', 'Claude Code needs an Anthropic-compatible local endpoint');
       env.ANTHROPIC_BASE_URL = url.href.replace(/\/$/u, '');
       env.ANTHROPIC_AUTH_TOKEN = 'furypipe-local'; // placeholder accepted by local servers; never a real key
+      // A local run must not phone home: Claude Code's documented switches for telemetry,
+      // error reporting and other non-essential traffic.
+      env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1';
+      env.DISABLE_TELEMETRY = '1';
+      env.DISABLE_ERROR_REPORTING = '1';
     }
     return Object.freeze({ file: req.executable, args: Object.freeze(args), env: Object.freeze(env), flagsEvidence: 'verified-cli-help', deniedByHeadless: Object.freeze(deniedByHeadless) });
   }

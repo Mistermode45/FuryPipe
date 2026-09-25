@@ -193,6 +193,9 @@ describe('Studio runs (Mission Control)', () => {
       expect(ask.status).toBe(409);
       expect(await ask.json()).toMatchObject({ approvalRequired: ['WRITE'] });
       expect((await studio.handle('run-start', post({ intent: 'Tidy', plannedFiles: [], confirm: true, capabilities: { EXTERNAL_ACTION: 'ALLOW' } }))).status).toBe(400);
+      // Malformed or partial approvals never count as approval.
+      expect((await studio.handle('run-start', post({ intent: 'Tidy', plannedFiles: [], confirm: true, capabilities: { WRITE: 'ASK' }, approvedCapabilities: 'WRITE' }))).status).toBe(409);
+      expect((await studio.handle('run-start', post({ intent: 'Tidy', plannedFiles: [], confirm: true, capabilities: { WRITE: 'ASK', EXECUTE: 'ASK' }, approvedCapabilities: ['WRITE'] }))).status).toBe(409);
       expect((await studio.handle('run-start', post({ intent: 'Tidy', plannedFiles: [], confirm: true, capabilities: { SUDO: 'ALLOW' } }))).status).toBe(400);
       authorities.length = 0;
       const denied = await studio.handle('run-start', post({ intent: 'Read only review', plannedFiles: ['src/auth/login.ts'], confirm: true, capabilities: { READ: 'ALLOW', WRITE: 'DENY', EXECUTE: 'DENY' } }));

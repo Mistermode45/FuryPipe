@@ -99,4 +99,26 @@ describe('FuryRun end to end (fake harness, real git)', () => {
     expect(failed.integration).toBeUndefined();
     expect(failed.bundle.uncertainty.join(' ')).toContain('impl-src-ui: compile error');
   }, 120_000);
+  it('STOP mid-run keeps the evidence, never integrates, never accepts and leaves main untouched', async () => {
+    const s = await setup();
+    const ledger = createFuryProofLedger();
+    let mission: import('../src/fury-mission-control.js').FuryMissionControl | undefined;
+    const execute: FuryTaskExecutor = async ({ assignment, worktree }) => {
+      if (assignment.taskId === 'impl-src-auth') {
+        writeFileSync(join(worktree, 'src', 'auth', 'login.ts'), 'export const secure = true;\n');
+        mission!.act('impl-src-auth', 'STOP', { reason: 'operator stop' });
+      }
+      return { ok: true, receipts: [ledger.issue({ kind: 'AGENT_RECEIPT', subject: `work:${assignment.taskId}`, outcome: 'pass', producer: 'host:test', evidenceDigest: 'b'.repeat(64) })] };
+    };
+    const result = await runFuryTask({ runId: 'r3', ir: s.plan.ir, plan: s.dispatch, bindings: s.workerBindings, repository: s.repository, repoRoot: s.repoRoot, baseSha: s.baseSha, manager: s.manager, writableRoot: join(s.root, 'wt'), integrationRoot: join(s.root, 'int'), ledger, execute, onMission: (m) => { mission = m; }, verify: async () => ({ outcome: 'pass', evidence: 'x', subject: 'test:r3' }) });
+    expect(result.status).toBe('FAILED');
+    expect(result.integration).toBeUndefined();
+    expect(result.judgement.verdict).not.toBe('ACCEPT');
+    expect(result.bundle.uncertainty.join(' ')).toMatch(/impl-src-auth: stopped/u);
+    expect(result.bundle.receipts.some((r) => r.subject === 'work:impl-src-auth')).toBe(true);
+    expect(mission!.worker('impl-src-auth').state).toBe('stopped');
+    expect(git(s.repoRoot, 'rev-parse', 'main')).toBe(s.baseSha);
+    expect(readFileSync(join(s.repoRoot, 'src', 'auth', 'login.ts'), 'utf8')).toBe('export const secure = false;\n');
+    expect(verifyFuryReplay(result.replay, result.replayHead).ok).toBe(true);
+  }, 120_000);
 });

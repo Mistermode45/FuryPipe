@@ -39,6 +39,7 @@ describe('Harness invocation (authority mapping)', () => {
     expect(inv.args.join(' ')).toContain('--disallowedTools Edit Write NotebookEdit');
     expect(inv.env.ANTHROPIC_BASE_URL).toBe('http://127.0.0.1:11434');
     expect(inv.env.ANTHROPIC_AUTH_TOKEN).toBe('furypipe-local');
+    expect(inv.env).toMatchObject({ CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_TELEMETRY: '1', DISABLE_ERROR_REPORTING: '1' });
     expect(() => buildFuryHarnessInvocation({ ...base, harnessId: 'claude-code', authority: authority({}), local: { kind: 'ollama', baseUrl: 'https://api.example.com' } })).toThrow();
   });
 

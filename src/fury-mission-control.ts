@@ -111,14 +111,25 @@ function entryHash(e: Omit<FuryReplayEntry, 'hash'>): string {
   return createHash('sha256').update(canonical({ seq: e.seq, at: e.at, type: e.type, workerId: e.workerId ?? null, data: e.data, prevHash: e.prevHash })).digest('hex');
 }
 
-/** Verify a replay log's hash chain and sequence. */
-export function verifyFuryReplay(log: FuryReplayLog): { readonly ok: boolean; readonly brokenAt?: number } {
+/** The last entry of a log: record it elsewhere (e.g. in the proof bundle) to detect truncation later. */
+export function furyReplayHead(log: FuryReplayLog): { readonly seq: number; readonly hash: string } {
+  const last = log.entries[log.entries.length - 1];
+  return Object.freeze({ seq: last?.seq ?? 0, hash: last?.hash ?? GENESIS });
+}
+
+/**
+ * Verify a replay log's hash chain and sequence. The chain alone detects edits,
+ * reordering and removals in the middle, but not a truncated tail: pass the
+ * head recorded when the run ended to detect that too.
+ */
+export function verifyFuryReplay(log: FuryReplayLog, head?: { readonly seq: number; readonly hash: string }): { readonly ok: boolean; readonly brokenAt?: number; readonly truncated?: boolean } {
   let prev = GENESIS;
   for (let i = 0; i < log.entries.length; i += 1) {
     const e = log.entries[i]!;
     if (e.seq !== i + 1 || e.prevHash !== prev || entryHash(e) !== e.hash) return { ok: false, brokenAt: i + 1 };
     prev = e.hash;
   }
+  if (head && (log.entries.length !== head.seq || prev !== head.hash)) return { ok: false, truncated: log.entries.length < head.seq, brokenAt: Math.min(log.entries.length, head.seq) + 1 };
   return { ok: true };
 }
 

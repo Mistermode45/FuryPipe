@@ -7,6 +7,7 @@ import {
   createFuryMissionControl,
   explainFuryReplay,
   forkFuryReplay,
+  furyReplayHead,
   verifyFuryReplay,
   type FuryWorkerBinding,
 } from '../src/fury-mission-control.js';
@@ -104,6 +105,12 @@ describe('FuryMissionControl', () => {
     expect(verifyFuryReplay(edited)).toEqual({ ok: false, brokenAt: 4 });
     const dropped = { ...log, entries: log.entries.filter((_, i) => i !== 2) };
     expect(verifyFuryReplay(dropped).ok).toBe(false);
+    // A truncated tail still chains; only the recorded head exposes it.
+    const head = furyReplayHead(log);
+    const truncated = { ...log, entries: log.entries.slice(0, -1) };
+    expect(verifyFuryReplay(truncated).ok).toBe(true);
+    expect(verifyFuryReplay(truncated, head)).toMatchObject({ ok: false, truncated: true });
+    expect(verifyFuryReplay(log, head)).toEqual({ ok: true });
     expect(explainFuryReplay(log, 'fix')).toMatchObject({ routing: { harnessId: 'claude-code' }, actions: ['START'], failedCommands: ['pnpm test exited 1'] });
   });
 
