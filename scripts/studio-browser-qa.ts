@@ -292,11 +292,17 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.goto(`${origins.error}/#/models`);
     await page.waitForFunction(() => /Local discovery failed/u.test(document.querySelector('#models-status')?.textContent ?? ''));
 
-    // Narrow viewport: no horizontal overflow.
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`${origins.normal}/#/agents`);
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    assert(overflow <= 1, `${name}: horizontal overflow ${overflow}px at 390px`);
+    // Responsive: desktop, narrow desktop, tablet and phone widths, every view, no horizontal page overflow.
+    await page.locator('#ui-mode').selectOption('expert');
+    for (const width of [1280, 1024, 768, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const view of ['chat', 'cowork', 'code', 'agents', 'mission', 'knowledge', 'web', 'memory', 'automations', 'models', 'runtimes', 'skills', 'mcp', 'integrations', 'settings']) {
+        await page.goto(`${origins.normal}/#/${view}`);
+        await page.locator(`section[data-view="${view}"] h1`).waitFor();
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        assert(overflow <= 1, `${name}: horizontal overflow ${overflow}px on ${view} at ${width}px`);
+      }
+    }
 
     // Expected: 503 discovery-failed (error-state server), 409 not-runnable / web search not configured, 403 web SSRF refusal.
     const unexpected = errors.filter((e) => !/Failed to load resource: the server responded with a status of (503|409|403|422)/u.test(e));

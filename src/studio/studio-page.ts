@@ -55,7 +55,7 @@ const CSS = `
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}
 a{color:inherit}:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 .skip{position:absolute;left:-999px;top:0;background:var(--panel);padding:8px 12px;z-index:10}.skip:focus{left:8px}
-.app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}.app>div{min-width:0}
 nav.side{border-right:1px solid var(--line);background:var(--panel);padding:16px 12px;display:flex;flex-direction:column;gap:18px}
 .brand{font-weight:700;font-size:17px;letter-spacing:.2px;padding:0 8px}.brand span{color:var(--accent)}
 nav.side h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 8px 6px}
@@ -68,8 +68,8 @@ header.top{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 2
 .chip.local b{color:var(--ok)}.chip.cloud b{color:var(--warn)}
 main{padding:24px;max-width:1180px}
 main h1{font-size:22px;margin:0 0 4px}.lead{color:var(--muted);margin:0 0 18px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px}
-.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px;min-width:0;overflow-x:auto}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr))}
 table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600;font-size:12px}
 .badge{display:inline-block;border-radius:6px;padding:0 7px;font-size:12px;font-weight:600;border:1px solid currentColor}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}.muted{color:var(--muted)}
@@ -93,7 +93,7 @@ svg.flow .node.critical rect{stroke-width:3}
 svg.flow text{fill:var(--ink);font-size:12px}svg.flow .zone{fill:var(--muted);font-size:10px;text-transform:uppercase}
 svg.flow line{stroke:var(--muted);stroke-width:1.5}svg.flow .when{fill:var(--accent);font-size:11px}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
-@media (max-width:760px){.app{grid-template-columns:1fr}nav.side{border-right:0;border-bottom:1px solid var(--line)}nav.side ul{grid-template-columns:repeat(3,1fr)}main{padding:16px}}
+@media (max-width:760px){.app{grid-template-columns:minmax(0,1fr)}nav.side{border-right:0;border-bottom:1px solid var(--line)}nav.side ul{grid-template-columns:repeat(3,1fr)}main{padding:16px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 `;
 
