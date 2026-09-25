@@ -23,6 +23,8 @@ function repo() {
   const dir = join(root, 'repo');
   mkdirSync(dir);
   git(dir, 'init', '-q', '-b', 'main');
+  // Byte-exact fixtures: do not let a runner's core.autocrlf rewrite checkouts.
+  git(dir, 'config', 'core.autocrlf', 'false');
   mkdirSync(join(dir, 'src'));
   writeFileSync(join(dir, 'src', 'auth.ts'), 'export const mode = "old";\n');
   writeFileSync(join(dir, 'README.md'), '# app\n');

@@ -26,6 +26,8 @@ async function setup() {
   mkdirSync(join(repoRoot, 'src', 'auth'), { recursive: true });
   mkdirSync(join(repoRoot, 'src', 'ui'), { recursive: true });
   git(repoRoot, 'init', '-q', '-b', 'main');
+  // Byte-exact fixtures: do not let a runner's core.autocrlf rewrite checkouts.
+  git(repoRoot, 'config', 'core.autocrlf', 'false');
   writeFileSync(join(repoRoot, 'src', 'auth', 'login.ts'), 'export const secure = false;\n');
   writeFileSync(join(repoRoot, 'src', 'ui', 'form.ts'), 'export const label = "Login";\n');
   git(repoRoot, 'add', '.');
