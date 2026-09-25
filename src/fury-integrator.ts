@@ -17,6 +17,7 @@ import { mkdir } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 
 import type { FuryProofLedger, FuryReceipt } from './fury-proof.js';
+import { withFuryRepositoryLock } from './fury-writer-pool.js';
 
 export type FuryIntegrationStatus = 'INTEGRATED' | 'CONFLICT' | 'VERIFY_FAILED' | 'REJECTED';
 
@@ -94,7 +95,7 @@ export async function integrateFuryBranches(input: {
   const branch = `fury-integration/${input.runId}`;
   const worktree = join(input.integrationRoot, `integration-${input.runId}`);
   await mkdir(input.integrationRoot, { recursive: true });
-  const added = await git(input.repoRoot, ['worktree', 'add', '-b', branch, worktree, input.baseSha]);
+  const added = await withFuryRepositoryLock(input.repoRoot, () => git(input.repoRoot, ['worktree', 'add', '-b', branch, worktree, input.baseSha]));
   if (added.code !== 0) throw new FuryIntegratorError(`could not create the integration worktree: ${added.stderr.trim().slice(0, 300)}`);
 
   const head = async () => (await git(worktree, ['rev-parse', 'HEAD'])).stdout.trim();
