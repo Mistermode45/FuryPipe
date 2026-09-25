@@ -14,6 +14,7 @@ import path from 'node:path';
 import { chromium, firefox, webkit, type BrowserType, type Page } from 'playwright';
 
 import { FURY_HARNESS_REGISTRY, type FuryHarnessDiscovery } from '../src/fury-harness-hub.js';
+import { discoverFuryAiConnections } from '../src/fury-ai-connections.js';
 import type { FuryLocalBackendStatus } from '../src/fury-local-fabric.js';
 import { createRecoveryStore } from '../src/core/recovery-store.js';
 import { createFuryMcpHub } from '../src/fury-mcp-hub.js';
@@ -101,6 +102,7 @@ async function startStudio(mode: 'normal' | 'empty' | 'error', backendUrl: strin
     mcpHub: createFuryMcpHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-mcp-hub', state) }),
     skillHub: createFurySkillHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-skill-hub', state), projectTrustedForInstructions: true }),
     discoverHarnesses: async () => harnesses,
+    discoverConnections: async () => discoverFuryAiConnections(harnesses, { ANTHROPIC_API_KEY: 'qa-secret-never-render', CODEX_ACCESS_TOKEN: 'qa-codex-secret-never-render' }),
     discoverLocal: async () => {
       if (mode === 'error') throw new Error('probe failed');
       return { backends: local() };
@@ -218,6 +220,10 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.waitForFunction(() => location.hash === '#/agents');
     assert((await page.locator('#dispatch-ir').inputValue()).includes('"NETWORK": "ASK"'), `${name}: cowork permissions not carried`);
 
+    await page.goto(`${origins.normal}/#/connections`);
+    await page.locator('#connections-grid .connection-card').filter({ hasText: 'Claude / Anthropic' }).filter({ hasText: 'Credential configured' }).waitFor();
+    assert(!(await page.locator('#connections-grid').textContent())?.includes('qa-secret-never-render'), `${name}: Anthropic secret leaked in Connections`);
+    assert(!(await page.locator('#connections-grid').textContent())?.includes('qa-codex-secret-never-render'), `${name}: Codex secret leaked in Connections`);
     await page.goto(`${origins.normal}/#/models`);
     await page.locator('#backends .model-row .fit.ok').filter({ hasText: 'FITS' }).first().waitFor();
     assert(await page.locator('#backends .backend.up').count() === 1, `${name}: running backend card`);
@@ -324,7 +330,7 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await setMode(page, 'expert');
     for (const width of [1280, 1024, 768, 390]) {
       await page.setViewportSize({ width, height: 844 });
-      for (const view of ['chat', 'cowork', 'code', 'agents', 'mission', 'knowledge', 'web', 'memory', 'automations', 'models', 'runtimes', 'skills', 'mcp', 'integrations', 'settings']) {
+      for (const view of ['chat', 'cowork', 'code', 'agents', 'mission', 'knowledge', 'web', 'memory', 'automations', 'models', 'connections', 'runtimes', 'skills', 'mcp', 'integrations', 'settings']) {
         await page.goto(`${origins.normal}/#/${view}`);
         await page.locator(`section[data-view="${view}"] h1`).waitFor();
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

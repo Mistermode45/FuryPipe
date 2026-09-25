@@ -78,6 +78,7 @@ const ICONS: Readonly<Record<string, string>> = Object.freeze({
   skills: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
   mcp: '<path d="M9 2v6M15 2v6"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v5"/>',
   integrations: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
+  connections: '<circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/><path d="M11 12h2M5 7.5a8 8 0 0 1 14 0M5 16.5a8 8 0 0 0 14 0"/>',
   settings: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
   panel: '<rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M9 3v18"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
@@ -429,6 +430,10 @@ details.adv>div{padding:0 18px 16px}
 .model-row .ms{color:var(--muted);font-size:12px;white-space:nowrap}
 .model-row .fit{margin-left:auto}
 
+/* Connections */
+.connection-head{display:flex;align-items:center;justify-content:space-between;gap:20px}.connection-head h2,.privacy-note h2{margin:0 0 5px}.connection-head p,.privacy-note p{margin:0}.connection-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin:14px 0}.connection-card{position:relative;overflow:hidden}.connection-card::after{content:"";position:absolute;inset:auto -35% -65% 20%;height:100px;background:radial-gradient(circle,rgba(255,106,26,.10),transparent 68%);pointer-events:none}.connection-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}.connection-top .i{color:var(--o-hot)}.connection-top b{font:600 15px/1.2 var(--display);margin-right:auto}.connection-meta{display:flex;flex-direction:column;gap:7px;color:var(--ink-2);font-size:13px}.connection-meta span{display:flex;align-items:flex-start;gap:7px}.connection-meta .i{width:15px;height:15px;margin-top:2px;color:var(--muted)}.privacy-note{margin-top:12px}
+@media (max-width:640px){.connection-head{align-items:flex-start;flex-direction:column}.connection-head .btn{width:100%;justify-content:center}}
+
 /* Settings */
 .settings{display:grid;grid-template-columns:200px minmax(0,1fr);gap:28px;align-items:start}
 .settings-nav{position:sticky;top:0;display:flex;flex-direction:column;gap:2px}
@@ -476,8 +481,8 @@ const SCRIPT = String.raw`
   const tpl = document.createElement('template');
   function ic(name, cls) { tpl.innerHTML = '<svg class="' + (cls || 'i') + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[name] || '') + '</svg>'; return tpl.content.firstChild; }
   const store = { get(k, d) { try { const v = localStorage.getItem('furypipe.studio.' + k); return v === null ? d : v; } catch { return d; } }, set(k, v) { try { localStorage.setItem('furypipe.studio.' + k, v); } catch {} } };
-  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','mcp','knowledge','web','memory','integrations','settings'];
-  const VIEW_TITLES = { chat: 'Chat', cowork: 'Cowork', code: 'Code', agents: 'Agents', mission: 'Mission Control', automations: 'Automations', models: 'Models', runtimes: 'Runtimes', skills: 'Skills', mcp: 'MCP servers', knowledge: 'Knowledge', web: 'Web', memory: 'Memory', integrations: 'Integrations', settings: 'Settings' };
+  const views = ['chat','cowork','code','agents','mission','automations','models','connections','runtimes','skills','mcp','knowledge','web','memory','integrations','settings'];
+  const VIEW_TITLES = { chat: 'Chat', cowork: 'Cowork', code: 'Code', agents: 'Agents', mission: 'Mission Control', automations: 'Automations', models: 'Models', connections: 'Connections', runtimes: 'Runtimes', skills: 'Skills', mcp: 'MCP servers', knowledge: 'Knowledge', web: 'Web', memory: 'Memory', integrations: 'Integrations', settings: 'Settings' };
   const PROVIDER = { ollama: 'Ollama', lmstudio: 'LM Studio', llamacpp: 'llama.cpp', vllm: 'vLLM', sglang: 'SGLang', localai: 'LocalAI', jan: 'Jan', 'openai-compatible': 'OpenAI-compatible', 'anthropic-compatible': 'Anthropic-compatible' };
   const SETUP = { ollama: 'https://ollama.com/download', lmstudio: 'https://lmstudio.ai', llamacpp: 'https://github.com/ggml-org/llama.cpp', vllm: 'https://docs.vllm.ai', sglang: 'https://docs.sglang.ai', localai: 'https://localai.io', jan: 'https://jan.ai' };
   const state = { local: null, hw: null, harnesses: null, conv: null, pick: 'auto', lastRoute: null, files: [], pastes: [], web: false, kb: false, busy: null, activity: new Map() };
@@ -548,6 +553,22 @@ const SCRIPT = String.raw`
     'State': 'État',
     'Model': 'Modèle',
     'Fit': 'Compatibilité',
+    'Settings': 'Paramètres',
+    'Connections': 'Connexions',
+    'FuryPipe automatically detects AI runtimes and safe credential hints on this machine. It never reads browser cookies, OAuth stores or secret values.': 'FuryPipe détecte automatiquement les runtimes IA et les indices de configuration sûrs sur cette machine. Il ne lit jamais les cookies du navigateur, les stockages OAuth ni les valeurs secrètes.',
+    'AI accounts & providers': 'Comptes IA et fournisseurs',
+    'Detection is local and privacy-preserving. A detected runtime does not mean the account is authenticated.': 'La détection est locale et respecte la confidentialité. Un runtime détecté ne signifie pas que le compte est authentifié.',
+    'Open cloud setup': 'Configurer le cloud',
+    'Privacy boundary': 'Limite de confidentialité',
+    'Browser sessions and other applications\' credential stores are never inspected automatically. FuryPipe only reports installed runtimes and the presence of supported environment credential sources; secret contents never leave the process.': 'Les sessions du navigateur et les stockages d’identifiants des autres applications ne sont jamais inspectés automatiquement. FuryPipe signale uniquement les runtimes installés et la présence de sources d’identifiants prises en charge dans l’environnement ; le contenu secret ne quitte jamais le processus.',
+    'Credential configured': 'Identifiant configuré',
+    'Runtime detected': 'Runtime détecté',
+    'Not detected': 'Non détecté',
+    'Credential source': 'Source d’identifiant',
+    'Installed runtime': 'Runtime installé',
+    'Sign-in state is not inspected': 'L’état de connexion n’est pas inspecté',
+    'No runtime or credential source detected': 'Aucun runtime ni source d’identifiant détecté',
+    'Automatic detection completed. Secret values and browser sessions were not inspected.': 'Détection automatique terminée. Les valeurs secrètes et les sessions du navigateur n’ont pas été inspectées.',
     'Settings': 'Paramètres',
     'Make FuryPipe yours. Preferences are stored in this browser.': 'Personnalisez FuryPipe. Les préférences sont stockées dans ce navigateur.',
     'General': 'Général',
@@ -775,6 +796,7 @@ const SCRIPT = String.raw`
     firstRoute = false;
     if (name === 'chat' || name === 'models') loadLocal();
     if (name === 'chat') autosize();
+    if (name === 'connections') loadConnections();
     if (name === 'runtimes') loadHarnesses();
     if (name === 'skills') loadSkills();
     if (name === 'mcp') loadMcp();
@@ -1185,6 +1207,27 @@ const SCRIPT = String.raw`
     else if (e.key === 'Escape' && app.dataset.drawer === 'open') setDrawer(false);
   });
 
+  async function loadConnections() {
+    const grid = $('#connections-grid'); const status = $('#connections-status');
+    status.textContent = 'Detecting AI connections…'; grid.replaceChildren();
+    try {
+      const r = await getJson('/api/studio/connections.json');
+      for (const c of r.connections) {
+        const card = el('div', { class: 'card connection-card' });
+        const stateLabel = c.state === 'credential-configured' ? 'Credential configured' : c.state === 'runtime-detected' ? 'Runtime detected' : 'Not detected';
+        const stateClass = c.state === 'credential-configured' ? 'ok' : c.state === 'runtime-detected' ? 'warn' : 'muted';
+        card.append(el('div', { class: 'connection-top' }, ic('connections'), el('b', { text: c.displayName }), badge(stateLabel, stateClass)));
+        const meta = el('div', { class: 'connection-meta' });
+        if (c.configuredVia.length) meta.append(el('span', {}, ic('shield'), el('span', { text: 'Credential source: ' + c.configuredVia.join(', ') })));
+        if (c.runtimes.length) meta.append(el('span', {}, ic('cpu'), el('span', { text: 'Installed runtime: ' + c.runtimes.map(x => x.displayName + (x.version ? ' ' + x.version : '')).join(', ') })));
+        if (!c.configuredVia.length && c.runtimes.length) meta.append(el('span', {}, ic('info'), el('span', { text: 'Sign-in state is not inspected' })));
+        if (!c.configuredVia.length && !c.runtimes.length) meta.append(el('span', {}, ic('info'), el('span', { text: 'No runtime or credential source detected' })));
+        card.append(meta); grid.append(card);
+      }
+      status.textContent = 'Automatic detection completed. Secret values and browser sessions were not inspected.';
+    } catch (e) { status.textContent = 'Connection detection failed: ' + e.message; }
+  }
+
   async function loadHarnesses() {
     const body = $('#runtimes-body'); const status = $('#runtimes-status'); status.textContent = 'Discovering runtimes…';
     try {
@@ -1517,7 +1560,7 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   <nav class="side-nav" aria-label="Workspace"><ul>
     ${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'expert', 'Mission Control')}${nav('automations', 'engineer', 'Automations')}
     ${nav('knowledge', 'power', 'Knowledge')}${nav('web', 'power', 'Web')}${nav('memory', 'power', 'Memory')}
-    ${nav('models', 'simple', 'Models')}${nav('runtimes', 'engineer', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'power', 'MCP')}${nav('integrations', 'engineer', 'Integrations')}
+    ${nav('models', 'simple', 'Models')}${nav('connections', 'simple', 'Connections')}${nav('runtimes', 'engineer', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'power', 'MCP')}${nav('integrations', 'engineer', 'Integrations')}
   </ul></nav>
   <div class="recent" aria-labelledby="recent-h"><h2 id="recent-h">Recent</h2><ul id="chat-list" aria-labelledby="recent-h"></ul></div>
   <div class="side-foot">
@@ -1621,6 +1664,11 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   <h2 class="sec-h">Cloud</h2><div class="card"><p>Claude, GPT, Gemini and other cloud models run through the governed Gateway WebChat, using the providers and budgets you configured.</p><a class="btn" href="/gateway/webchat/">${icon('cloud')}Open Gateway WebChat</a></div>
   <details class="adv"><summary>Advanced · endpoints</summary><div><table><thead><tr><th scope="col">Backend</th><th scope="col">Endpoint</th><th scope="col">State</th><th scope="col">Model</th><th scope="col">Fit</th></tr></thead><tbody id="models-body"></tbody></table></div></details>
   <p id="models-status" class="status muted" role="status"></p></section>
+<section data-view="connections" aria-labelledby="h-connections" hidden><h1 id="h-connections">Connections</h1><p class="lead">FuryPipe automatically detects AI runtimes and safe credential hints on this machine. It never reads browser cookies, OAuth stores or secret values.</p>
+  <div class="connection-head card"><div><h2>AI accounts &amp; providers</h2><p class="muted">Detection is local and privacy-preserving. A detected runtime does not mean the account is authenticated.</p></div><a class="btn" href="/gateway/webchat/">Open cloud setup</a></div>
+  <div id="connections-grid" class="connection-grid" aria-live="polite"></div>
+  <div class="card privacy-note"><h2>Privacy boundary</h2><p>Browser sessions and other applications' credential stores are never inspected automatically. FuryPipe only reports installed runtimes and the presence of supported environment credential sources; secret contents never leave the process.</p></div>
+  <p id="connections-status" class="status muted" role="status"></p></section>
 <section data-view="runtimes" aria-labelledby="h-runtimes" hidden><h1 id="h-runtimes">Runtimes</h1><p class="lead">Agent harnesses installed on this machine. Harness, provider and model are independent choices.</p>
   <div class="card"><table><thead><tr><th scope="col">Runtime</th><th scope="col">State</th><th scope="col">Version</th><th scope="col">Integration</th><th scope="col">Local models via</th><th scope="col">Evidence</th></tr></thead><tbody id="runtimes-body"></tbody></table><p id="runtimes-status" class="status muted" role="status"></p></div></section>
 <section data-view="skills" aria-labelledby="h-skills" hidden><h1 id="h-skills">Skills</h1><p class="lead">Agent Skills found in this project and your home folder (.furypipe, .agents, .claude, .opencode, .github). Pin a skill to block it automatically if its content changes.</p>

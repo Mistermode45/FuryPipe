@@ -38,6 +38,7 @@ import { buildFuryIntegrationRegistry } from '../fury-integrations.js';
 import { createStudioChats, StudioChatError, type StudioChats } from './studio-chats.js';
 import { createStudioCode, StudioCodeError } from './studio-code.js';
 import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy } from '../fury-mcp-hub.js';
+import { discoverFuryAiConnections, type FuryAiConnections } from '../fury-ai-connections.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
@@ -50,7 +51,7 @@ export type StudioRoute =
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
   | 'web'
   | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act'
-  | 'integrations'
+  | 'integrations' | 'connections'
   | 'chats' | 'chat-get' | 'chat-save' | 'chat-branch' | 'chat-delete'
   | 'code-tree' | 'code-file' | 'code-worktrees' | 'code-diff';
 
@@ -85,6 +86,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/memory/search': { route: 'memory-search', method: 'POST' },
   '/api/studio/memory/act': { route: 'memory-act', method: 'POST' },
   '/api/studio/integrations.json': { route: 'integrations', method: 'GET' },
+  '/api/studio/connections.json': { route: 'connections', method: 'GET' },
   '/api/studio/chats.json': { route: 'chats', method: 'GET' },
   '/api/studio/chats/get': { route: 'chat-get', method: 'POST' },
   '/api/studio/chats/save': { route: 'chat-save', method: 'POST' },
@@ -106,6 +108,8 @@ export interface StudioApiOptions {
   readonly discoverHarnesses?: () => Promise<FuryHarnessDiscovery>;
   readonly discoverLocal?: () => Promise<{ readonly backends: readonly FuryLocalBackendStatus[] }>;
   readonly discoverHardware?: () => Promise<FuryHardwareProfile>;
+  /** Safe account/provider hints. Never returns credential values or browser-session data. */
+  readonly discoverConnections?: () => Promise<FuryAiConnections>;
   readonly loadGraph?: (root: string) => Promise<{ readonly graph: FuryGraph }>;
   readonly now?: () => number;
   /** Task executor for real runs; defaults to the structured-CLI harness runner. */
@@ -224,6 +228,7 @@ export function createStudioApi(options: StudioApiOptions) {
   const harnesses = () => cached('harnesses', discovery(options.discoverHarnesses ?? (() => discoverFuryHarnesses())));
   const local = () => cached('local', discovery(options.discoverLocal ?? (() => discoverFuryLocalBackends())));
   const hardware = () => cached('hardware', discovery(options.discoverHardware ?? (() => discoverFuryHardware())));
+  const connections = () => cached('connections', discovery(options.discoverConnections ?? (async () => discoverFuryAiConnections(await harnesses()))));
   const graph = () => cached('graph', async () => (await (options.loadGraph ?? loadFuryGraph)(options.projectRoot)).graph);
 
   const projectKey = createHash('sha256').update(path.resolve(options.projectRoot)).digest('hex').slice(0, 16);
@@ -271,6 +276,8 @@ export function createStudioApi(options: StudioApiOptions) {
         switch (route) {
           case 'harnesses':
             return json(await harnesses());
+          case 'connections':
+            return json(await connections());
           case 'hardware':
             return json(await hardware());
           case 'local': {
