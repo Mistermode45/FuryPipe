@@ -1337,7 +1337,7 @@ const SCRIPT = String.raw`
     const max = LEVELS.indexOf(document.body.dataset.mode || 'simple'); const items = [];
     items.push({ icon: 'compose', label: 'New chat', hint: 'Ctrl Shift O', run: newChat });
     items.push({ icon: 'models', label: 'Change model', run: () => { location.hash = '#/chat'; setTimeout(() => $('#model-button').click(), 30); } });
-    for (const li of $('.side-nav li[data-level]')) {
+    for (const li of $$('.side-nav li[data-level]')) {
       if (LEVELS.indexOf(li.dataset.level) > max) continue;
       const a = li.querySelector('a[data-view]');
       if (!a) continue;
