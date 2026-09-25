@@ -122,6 +122,12 @@ async function startStudio(mode: 'normal' | 'empty' | 'error', backendUrl: strin
   return { server, origin };
 }
 
+async function setMode(page: Page, mode: string): Promise<void> {
+  await page.locator('#mode-button').click();
+  await page.locator(`#mode-menu [role=menuitemradio][data-mode="${mode}"]`).click();
+  await page.waitForFunction((m) => document.body.dataset.mode === m, mode);
+}
+
 async function visible(page: Page, selector: string): Promise<boolean> {
   return page.locator(selector).isVisible();
 }
@@ -142,35 +148,53 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.keyboard.press('Tab');
     assert(await page.evaluate(() => document.activeElement?.className) === 'skip', `${name}: skip link is not first tab stop`);
 
-    // Chat streams from the local backend and indicators show locality.
+    // Chat streams from the local backend; Fury Auto routes and the route chip shows locality.
     await page.locator('#chat-form').waitFor({ state: 'visible' });
+    assert(await page.locator('#chat').evaluate((n) => n.classList.contains('is-empty')), `${name}: new chat hero not shown`);
+    assert((await page.locator('#model-button').textContent())?.includes('Fury Auto'), `${name}: default model is not Fury Auto`);
     await page.locator('#chat-input').fill('Say hello');
     await page.locator('#chat-send').click();
     await page.locator('#chat-log .msg:not(.user)').filter({ hasText: 'Hello from a local model.' }).waitFor();
-    assert((await page.locator('#ind-locality b').textContent()) === 'local', `${name}: locality indicator`);
-    assert((await page.locator('#ind-model b').textContent()) === 'qwen2.5-coder:7b', `${name}: model indicator`);
-    // Conversations persist; retry with another model branches and records the model.
-    await page.locator('#chat-list button').filter({ hasText: 'Say hello' }).first().waitFor();
-    await page.locator('#chat-model').selectOption({ label: 'llama3.2:3b — ollama' });
-    await page.getByRole('button', { name: 'Retry with selected model' }).click();
+    assert(!(await page.locator('#chat').evaluate((n) => n.classList.contains('is-empty'))), `${name}: hero did not collapse into the conversation`);
+    // A general prompt is routed to the general model, not the coder model.
     await page.locator('#chat-log .msg .who').filter({ hasText: 'llama3.2:3b · ollama · local' }).waitFor();
-    await page.locator('#chat-list button').filter({ hasText: 'Say hello (branch)' }).first().waitFor();
-    await page.locator('#chat-list button').filter({ hasText: /^Say hello$/u }).first().click();
+    await page.locator('#route-chip').filter({ hasText: 'llama3.2:3b' }).filter({ hasText: 'Local' }).waitFor();
+    await page.locator('#route-chip').click();
+    await page.locator('#route-pop').filter({ hasText: 'Why this route?' }).filter({ hasText: 'Fury Auto (2 models considered)' }).waitFor();
+    await page.keyboard.press('Escape');
+    assert(await page.locator('#route-pop').isHidden(), `${name}: route inspector did not close on Escape`);
+    // Conversations persist; retry with another model branches and records the model.
+    await page.locator('#chat-list button.conv').filter({ hasText: 'Say hello' }).first().waitFor();
+    await page.locator('#model-button').click();
+    await page.locator('#model-search').fill('qwen');
+    await page.locator('#model-pop [role=option]').filter({ hasText: 'qwen2.5-coder:7b' }).click();
+    assert((await page.locator('#model-button').textContent())?.includes('qwen2.5-coder:7b'), `${name}: model picker did not select`);
+    await page.getByRole('button', { name: 'Retry with selected model' }).click();
     await page.locator('#chat-log .msg .who').filter({ hasText: 'qwen2.5-coder:7b · ollama · local' }).waitFor();
-    assert(await page.locator('#chat-log .msg .who').filter({ hasText: 'llama3.2:3b' }).count() === 0, `${name}: retry changed the original conversation`);
-    await page.locator('#chat-model').selectOption({ label: 'qwen2.5-coder:7b — ollama' });
+    await page.locator('#chat-list button.conv').filter({ hasText: 'Say hello (branch)' }).first().waitFor();
+    await page.locator('#chat-list button.conv').filter({ hasText: /^Say hello$/u }).first().click();
+    await page.locator('#chat-log .msg .who').filter({ hasText: 'llama3.2:3b · ollama · local' }).waitFor();
+    assert(await page.locator('#chat-log .msg .who').filter({ hasText: 'qwen2.5-coder:7b' }).count() === 0, `${name}: retry changed the original conversation`);
+    // Rename through the conversation menu (persisted by the chat store).
+    await page.locator('#chat-list .conv-item').filter({ hasText: 'Say hello (branch)' }).locator('.conv-more').click();
+    await page.locator('#conv-rename').click();
+    await page.locator('#chat-list input.conv-edit').fill(`QA ${name} branch`);
+    await page.locator('#chat-list input.conv-edit').press('Enter');
+    await page.locator('#chat-list button.conv').filter({ hasText: `QA ${name} branch` }).waitFor();
+    await page.locator('#model-button').click();
+    await page.locator('#model-pop [role=option]').filter({ hasText: 'Fury Auto' }).click();
 
     // Progressive UX: Simple hides engineer/expert surfaces; Expert shows all.
-    assert(await page.locator('#ui-mode').inputValue() === 'simple', `${name}: default mode is not Simple`);
-    assert(!(await page.locator('nav.side a[data-view="agents"]').isVisible()), `${name}: Agents visible in Simple mode`);
-    await page.locator('#ui-mode').selectOption('expert');
-    assert(await page.locator('nav.side a[data-view="automations"]').isVisible(), `${name}: Automations hidden in Expert mode`);
+    assert(await page.evaluate(() => document.body.dataset.mode) === 'simple', `${name}: default mode is not Simple`);
+    assert(!(await page.locator('.side-nav a[data-view="agents"]').isVisible()), `${name}: Agents visible in Simple mode`);
+    await setMode(page, 'expert');
+    assert(await page.locator('.side-nav a[data-view="automations"]').isVisible(), `${name}: Automations hidden in Expert mode`);
 
     // Navigation via the keyboard.
-    await page.locator('nav.side a[data-view="agents"]').focus();
+    await page.locator('.side-nav a[data-view="agents"]').focus();
     await page.keyboard.press('Enter');
     await page.waitForFunction(() => document.activeElement?.id === 'h-agents');
-    assert(await page.locator('nav.side a[data-view="agents"]').getAttribute('aria-current') === 'page', `${name}: aria-current`);
+    assert(await page.locator('.side-nav a[data-view="agents"]').getAttribute('aria-current') === 'page', `${name}: aria-current`);
     await page.locator('#dispatch-mode').selectOption('SPECIALISTS');
     await page.locator('#dispatch-form button[type=submit]').click();
     await page.locator('#dispatch-out table tbody tr').first().waitFor();
@@ -195,7 +219,8 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     assert((await page.locator('#dispatch-ir').inputValue()).includes('"NETWORK": "ASK"'), `${name}: cowork permissions not carried`);
 
     await page.goto(`${origins.normal}/#/models`);
-    await page.locator('#models-body tr .badge.ok').filter({ hasText: 'FITS' }).first().waitFor();
+    await page.locator('#backends .model-row .fit.ok').filter({ hasText: 'FITS' }).first().waitFor();
+    assert(await page.locator('#backends .backend.up').count() === 1, `${name}: running backend card`);
     await page.goto(`${origins.normal}/#/runtimes`);
     await page.locator('#runtimes-body tr').filter({ hasText: 'Claude Code' }).filter({ hasText: '2.1.282' }).waitFor();
     await page.goto(`${origins.normal}/#/skills`);
@@ -295,7 +320,8 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.waitForFunction(() => /Local discovery failed/u.test(document.querySelector('#models-status')?.textContent ?? ''));
 
     // Responsive: desktop, narrow desktop, tablet and phone widths, every view, no horizontal page overflow.
-    await page.locator('#ui-mode').selectOption('expert');
+    await page.goto(`${origins.normal}/#/chat`);
+    await setMode(page, 'expert');
     for (const width of [1280, 1024, 768, 390]) {
       await page.setViewportSize({ width, height: 844 });
       for (const view of ['chat', 'cowork', 'code', 'agents', 'mission', 'knowledge', 'web', 'memory', 'automations', 'models', 'runtimes', 'skills', 'mcp', 'integrations', 'settings']) {
@@ -313,6 +339,80 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
   } finally {
     await browser.close();
   }
+}
+
+// Visual evidence: the key surfaces at desktop, narrow desktop and phone widths.
+async function captureScreens(type: BrowserType, origins: Record<'normal' | 'empty' | 'error', string>): Promise<string[]> {
+  const dir = path.join(OUT, 'screens');
+  mkdirSync(dir, { recursive: true });
+  const browser = await type.launch();
+  const shots: string[] = [];
+  try {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    const shot = async (file: string): Promise<void> => {
+      await page.waitForTimeout(150);
+      await page.screenshot({ path: path.join(dir, file) });
+      shots.push(file);
+    };
+    await page.goto(`${origins.normal}/#/chat`);
+    await page.locator('#model-button').filter({ hasText: 'Fury Auto' }).waitFor();
+    await shot('01-new-chat-1440.png');
+    await page.locator('#model-button').click();
+    await page.locator('#model-pop [role=option]').first().waitFor();
+    await shot('02-model-picker.png');
+    await page.keyboard.press('Escape');
+    await page.locator('#attach-input').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Notes\nShip the Studio rework.\n') });
+    await page.locator('#chat-input').fill('Summarise these notes in one line');
+    await page.locator('#attach-tray .att').waitFor();
+    await shot('03-attachment.png');
+    await page.locator('#chat-send').click();
+    await page.locator('#chat-log .msg:not(.user)').filter({ hasText: 'Hello from a local model.' }).waitFor();
+    await shot('04-conversation.png');
+    await page.locator('#route-chip').click();
+    await page.locator('#route-pop').waitFor();
+    await shot('05-why-this-route.png');
+    await page.keyboard.press('Escape');
+    await page.goto(`${origins.normal}/#/models`);
+    await page.locator('#backends .model-row').first().waitFor();
+    await shot('06-models.png');
+    await page.goto(`${origins.normal}/#/settings`);
+    await shot('07-settings.png');
+    await setMode(page, 'expert');
+    await page.goto(`${origins.normal}/#/mission`);
+    await page.locator('section[data-view="mission"] h1').waitFor();
+    await shot('08-expert-mission-control.png');
+    await page.keyboard.press('Control+k');
+    await page.locator('#palette-list [role=option]').first().waitFor();
+    await shot('09-command-palette.png');
+    await page.keyboard.press('Escape');
+    await page.goto(`${origins.empty}/#/chat`);
+    await page.locator('#chat-empty').waitFor({ state: 'visible' });
+    await shot('10-no-local-model.png');
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto(`${origins.normal}/#/chat`);
+    await page.locator('#chat-list button.conv').first().waitFor();
+    await shot('11-chat-1024.png');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${origins.normal}/#/chat`);
+    await page.locator('#model-button').waitFor();
+    await shot('12-chat-390.png');
+    await page.locator('#side-open').click();
+    await shot('13-drawer-390.png');
+    await context.close();
+    const light = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: 'light', reducedMotion: 'reduce' });
+    const lp = await light.newPage();
+    await lp.goto(`${origins.normal}/#/settings`);
+    await lp.locator('input[name="pref-theme"][value="system"]').check({ force: true });
+    await lp.goto(`${origins.normal}/#/chat`);
+    await lp.locator('#model-button').filter({ hasText: 'Fury Auto' }).waitFor();
+    await lp.waitForTimeout(150);
+    await lp.screenshot({ path: path.join(dir, '14-new-chat-light-system.png') });
+    shots.push('14-new-chat-light-system.png');
+  } finally {
+    await browser.close();
+  }
+  return shots;
 }
 
 async function main(): Promise<void> {
@@ -342,6 +442,7 @@ async function main(): Promise<void> {
       const error = await startStudio('error', backend.baseUrl, project, run);
       servers.push(normal.server, empty.server, error.server);
       results.push(await runEngine(engine, type, { normal: normal.origin, empty: empty.origin, error: error.origin }));
+      if (engine === 'chromium' && process.env.FURYPIPE_STUDIO_QA_SCREENS !== '0') results[results.length - 1]!.screens = await captureScreens(type, { normal: normal.origin, empty: empty.origin, error: error.origin });
       console.log(`✓ studio ${engine}`);
     }
   } finally {

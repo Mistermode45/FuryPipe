@@ -31,6 +31,13 @@ describe('Studio conversations', () => {
     expect(updated.messages[0]!.id).toBe(c.messages[0]!.id);
   });
 
+  it('titles from the typed question, never from attached context, and honours an explicit rename', async () => {
+    const { chats } = store();
+    const c = await chats.save({ messages: [{ role: 'user', content: 'Summarise this\n\n<<furypipe-context>>\n[File: notes.md]\nsecret-ish body' }] });
+    expect(c.title).toBe('Summarise this');
+    expect((await chats.save({ id: c.id, title: '  Renamed  ', messages: c.messages })).title).toBe('Renamed');
+  });
+
   it('branches without touching the original and supports delete', async () => {
     const { chats } = store();
     const c = await chats.save({ messages: [{ role: 'user', content: 'q1' }, { role: 'assistant', content: 'a1' }, { role: 'user', content: 'q2' }, { role: 'assistant', content: 'a2' }] });

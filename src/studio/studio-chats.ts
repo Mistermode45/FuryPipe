@@ -79,7 +79,7 @@ export function createStudioChats(options: { readonly stateDir: string; readonly
     if (!c) throw new StudioChatError(404, 'conversation not found');
     return c;
   };
-  const titleOf = (messages: readonly StudioChatMessage[]) => (messages.find((m) => m.role === 'user')?.content ?? 'New chat').replace(/\s+/gu, ' ').trim().slice(0, 80) || 'New chat';
+  const titleOf = (messages: readonly StudioChatMessage[]) => (messages.find((m) => m.role === 'user')?.content ?? 'New chat').split('<<furypipe-context>>')[0]!.replace(/\s+/gu, ' ').trim().slice(0, 80) || 'New chat';
 
   return Object.freeze({
     async list() {
