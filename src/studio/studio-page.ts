@@ -99,7 +99,7 @@ const SCRIPT = String.raw`
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'text') n.textContent = v; else if (k === 'class') n.className = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; };
-  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','mcp','knowledge','settings'];
+  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','mcp','knowledge','web','settings'];
   const state = { local: null, harnesses: null, model: null, history: [] };
   async function getJson(url, init) {
     const res = await fetch(url, init);
@@ -354,6 +354,17 @@ const SCRIPT = String.raw`
       out.append(ol, ask);
     } catch (e) { out.append(el('p', { class: 'bad', text: e.message })); }
   });
+  $('#web-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault(); const out = $('#web-out'); const status = $('#web-status'); out.replaceChildren();
+    const action = $('#web-action').value; const input = $('#web-input').value.trim();
+    status.textContent = action === 'CRAWL' ? 'Crawling (same site, robots.txt honoured)…' : 'Working…';
+    try { const r = await mcpPost('/api/studio/web', action === 'SEARCH' ? { action, query: input } : { action, url: input });
+      if (action === 'SEARCH') { const ol = el('ol'); for (const x of r.results) ol.append(el('li', {}, el('b', { text: x.title || x.url }), el('div', { class: 'muted', text: x.url }), el('p', { text: x.snippet }))); out.append(ol); status.textContent = r.results.length + ' result(s) via ' + r.adapter + '.'; }
+      else if (action === 'FETCH') { out.append(el('h2', { text: r.title || r.url }), el('p', { class: 'muted', text: r.status + ' · ' + r.contentType + ' · ' + r.bytes + ' bytes · sha256 ' + r.sha256.slice(0, 12) + (r.redirects.length ? ' · redirected ' + r.redirects.length + '×' : '') }), el('pre', { text: r.text.slice(0, 4000) })); status.textContent = 'Fetched without a browser; receipt ' + (r.receiptId || 'n/a') + '.'; }
+      else if (action === 'MAP') { const ul = el('ul'); for (const l of r.sameOrigin) ul.append(el('li', { text: l.url + (l.text ? ' — ' + l.text : '') })); out.append(ul); status.textContent = r.sameOrigin.length + ' same-site link(s), ' + r.external.length + ' external.'; }
+      else { const ul = el('ul'); for (const p of r.pages) ul.append(el('li', { text: p.url + ' — ' + (p.title || 'untitled') })); out.append(ul); status.textContent = r.pages.length + ' page(s), ' + r.skipped.length + ' skipped' + (r.truncated ? ', stopped at the page limit' : '') + '.'; }
+    } catch (e) { status.textContent = 'Refused: ' + e.message; }
+  });
   const LEVELS = ['simple', 'power', 'engineer', 'expert'];
   function applyMode(mode) {
     if (!LEVELS.includes(mode)) mode = 'simple';
@@ -414,7 +425,7 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
 <div class="app">
 <nav class="side" aria-label="Studio">
   <div class="brand">Fury<span>Pipe</span> Studio</div>
-  <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'engineer', 'Mission Control')}${nav('knowledge', 'power', 'Knowledge')}${nav('automations', 'expert', 'Automations')}</ul></div>
+  <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'engineer', 'Mission Control')}${nav('knowledge', 'power', 'Knowledge')}${nav('web', 'power', 'Web')}${nav('automations', 'expert', 'Automations')}</ul></div>
   <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'simple', 'Models')}${nav('runtimes', 'power', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'engineer', 'MCP')}${nav('settings', 'simple', 'Settings')}</ul></div>
 </nav>
 <div>
@@ -475,6 +486,10 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   <div class="card"><form id="kb-ingest-form"><label for="kb-dir">Folder inside this project</label><input id="kb-dir" required value="docs" autocomplete="off"><div class="row"><button type="submit">Index folder</button></div></form><p id="kb-ingest-status" class="status" role="status"></p></div>
   <div class="card"><form id="kb-search-form"><label for="kb-query">Question</label><input id="kb-query" required autocomplete="off" placeholder="e.g. How does token refresh work?">
   <div class="row"><div><label for="kb-mode">Retrieval</label><select id="kb-mode"><option value="hybrid">Hybrid (keywords + meaning)</option><option value="lexical">Keywords</option><option value="semantic">Meaning only</option></select></div><button type="submit">Search</button></div></form><div id="kb-results" aria-live="polite"></div></div></section>
+<section data-view="web" aria-labelledby="h-web" hidden><h1 id="h-web">Web</h1><p class="lead">Search, read and map public web pages without opening a browser. Private and internal addresses are always refused.</p>
+  <div class="card"><form id="web-form"><div class="row"><div><label for="web-action">Action</label><select id="web-action"><option value="FETCH">Read a page</option><option value="MAP">List a page's links</option><option value="CRAWL">Crawl a site (10 pages)</option><option value="SEARCH">Search (local SearXNG)</option></select></div></div>
+  <label for="web-input">URL or search query</label><input id="web-input" required autocomplete="off" placeholder="https://example.com/docs"><div class="row"><button type="submit">Go</button></div></form>
+  <p id="web-status" class="status" role="status"></p><div id="web-out" aria-live="polite"></div></div></section>
 <section data-view="settings" aria-labelledby="h-settings" hidden><h1 id="h-settings">Settings</h1><p class="lead">Advanced surfaces for operators.</p>
   <div class="card"><h2>Advanced</h2><p><a href="/control-plane">Control Plane</a> — the technical dashboard: sessions, compression, readiness, provider and MCP evidence.</p></div></section>
 <section data-view="notfound" aria-labelledby="h-notfound" hidden><h1 id="h-notfound">Page not found</h1><p class="lead">This Studio view does not exist. <a href="#/chat">Go to Chat</a>.</p></section>

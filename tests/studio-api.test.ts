@@ -280,3 +280,28 @@ describe('Studio Knowledge', () => {
     }
   });
 });
+
+describe('Studio Web', () => {
+  it('fetches through the SSRF-safe path, refuses private targets and has no default search provider', async () => {
+    const server = createServer((_req, res) => res.writeHead(200, { 'content-type': 'text/html' }).end('<title>Hi</title><main><h1>Hello</h1><a href="/next">n</a></main>'));
+    servers.push(server);
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    const port = (server.address() as AddressInfo).port;
+    const studio = createStudioApi({
+      projectRoot: process.cwd(), discoverHarnesses: async () => harnesses, discoverLocal: async () => ({ backends: [] }),
+      webFetch: { resolveHostname: async () => ['93.184.216.34'], dial: () => ({ host: '127.0.0.1', port }) },
+    });
+    const page = await (await studio.handle('web', post({ action: 'FETCH', url: 'http://site.test/' }))).json() as { title: string; headings: string[]; receiptId: string; capability: string };
+    expect(page).toMatchObject({ capability: 'FETCH+EXTRACT', title: 'Hi', headings: ['Hello'] });
+    expect(page.receiptId).toBeTruthy();
+    expect((await studio.handle('web', post({ action: 'FETCH', url: 'http://127.0.0.1:1/' }))).status).toBe(403);
+    const prev = process.env.FURYPIPE_SEARXNG_URL;
+    delete process.env.FURYPIPE_SEARXNG_URL;
+    try {
+      expect((await studio.handle('web', post({ action: 'SEARCH', query: 'x' }))).status).toBe(409);
+    } finally {
+      if (prev !== undefined) process.env.FURYPIPE_SEARXNG_URL = prev;
+    }
+    expect((await studio.handle('web', post({ action: 'CLICK', url: 'http://site.test/' }))).status).toBe(400);
+  });
+});

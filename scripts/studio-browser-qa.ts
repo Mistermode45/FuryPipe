@@ -199,6 +199,14 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.locator('#kb-results li b').filter({ hasText: 'src/auth/session.ts:' }).first().waitFor();
     await page.getByRole('button', { name: 'Ask a local model with these sources' }).click();
     await page.waitForFunction(() => location.hash === '#/chat' && (document.querySelector('#chat-input') as HTMLTextAreaElement | null)?.value.includes('[1] src/auth/session.ts:'));
+    await page.goto(`${origins.normal}/#/web`);
+    await page.locator('#web-input').fill('http://127.0.0.1/admin');
+    await page.locator('#web-form button').click();
+    await page.waitForFunction(() => /Refused: .*private, loopback/u.test(document.querySelector('#web-status')?.textContent ?? ''));
+    await page.locator('#web-action').selectOption('SEARCH');
+    await page.locator('#web-input').fill('furypipe');
+    await page.locator('#web-form button').click();
+    await page.waitForFunction(() => /Refused: no search adapter configured/u.test(document.querySelector('#web-status')?.textContent ?? ''));
     await page.goto(`${origins.normal}/#/code`);
     await page.waitForFunction(() => document.querySelector('#graph-provider')?.textContent === 'graphify');
     await page.locator('#blast-files').fill('src/auth/session.ts');
@@ -240,8 +248,8 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert(overflow <= 1, `${name}: horizontal overflow ${overflow}px at 390px`);
 
-    // Expected: 503 discovery-failed (error-state server) and 409 not-runnable (Mission Control on a non-git project).
-    const unexpected = errors.filter((e) => !/Failed to load resource: the server responded with a status of (503|409)/u.test(e));
+    // Expected: 503 discovery-failed (error-state server), 409 not-runnable / web search not configured, 403 web SSRF refusal.
+    const unexpected = errors.filter((e) => !/Failed to load resource: the server responded with a status of (503|409|403)/u.test(e));
     assert(unexpected.length === 0, `${name}: console errors: ${unexpected.join(' | ')}`);
     return { engine: name, status: 'PASS', dispatchRows: rows, consoleErrors: 0 };
   } finally {

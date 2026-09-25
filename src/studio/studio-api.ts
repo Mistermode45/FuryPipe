@@ -32,6 +32,7 @@ import { runFuryTask, type FuryRunResult, type FuryTaskExecutor } from '../fury-
 import { createFurySkillHub, FurySkillHubError, FURY_SKILL_GOVERNANCE, type FurySkillGovernance, type FurySkillHub } from '../fury-skill-hub.js';
 import { createHash } from 'node:crypto';
 import { createFuryKnowledgeBase, FuryKnowledgeError, type FuryEmbedder, type FuryRetrievalMode } from '../fury-knowledge.js';
+import { createFurySearxngAdapter, furyWebCrawl, furyWebExtract, furyWebFetch, furyWebMap, furyWebSearch, FuryWebError, type FuryWebFetchOptions } from '../fury-web.js';
 import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy } from '../fury-mcp-hub.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
@@ -42,7 +43,8 @@ export type StudioRoute =
   | 'harnesses' | 'local' | 'hardware' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
   | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
-  | 'knowledge' | 'knowledge-ingest' | 'knowledge-search';
+  | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
+  | 'web';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
@@ -69,6 +71,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/knowledge.json': { route: 'knowledge', method: 'GET' },
   '/api/studio/knowledge/ingest': { route: 'knowledge-ingest', method: 'POST' },
   '/api/studio/knowledge/search': { route: 'knowledge-search', method: 'POST' },
+  '/api/studio/web': { route: 'web', method: 'POST' },
 });
 
 export function studioApiRoute(pathname: string): { route: StudioRoute; method: 'GET' | 'POST' } | null {
@@ -93,6 +96,10 @@ export interface StudioApiOptions {
   readonly mcpHub?: FuryMcpHub;
   /** Knowledge base state directory (default ~/.furypipe/studio/knowledge/<project>). */
   readonly knowledgeDir?: string;
+  /** Local SearXNG endpoint for web search (default: FURYPIPE_SEARXNG_URL, else search is not configured). */
+  readonly searxngUrl?: string;
+  /** Network hooks for tests (DNS override, dialer). */
+  readonly webFetch?: Pick<FuryWebFetchOptions, 'resolveHostname' | 'dial'>;
 }
 
 interface StudioRun {
@@ -412,6 +419,25 @@ export function createStudioApi(options: StudioApiOptions) {
             const { kb } = await knowledge();
             return json(await kb.search(String(body?.query ?? ''), { ...(mode ? { mode } : {}), ...(typeof body?.limit === 'number' ? { limit: body.limit } : {}) }));
           }
+          case 'web': {
+            const body = await readJson(request) as { action?: unknown; url?: unknown; query?: unknown; maxPages?: unknown };
+            const net: FuryWebFetchOptions = { ...(options.webFetch ?? {}), ledger };
+            const url = typeof body?.url === 'string' ? body.url : '';
+            switch (body?.action) {
+              case 'FETCH': {
+                const doc = await furyWebFetch(url, net);
+                const page = /html|xml/u.test(doc.contentType) ? furyWebExtract(doc.body, doc.url) : { title: '', description: '', headings: [], text: doc.body.slice(0, 200_000), links: [] };
+                return json({ capability: 'FETCH+EXTRACT', url: doc.url, status: doc.status, contentType: doc.contentType, bytes: doc.bytes, sha256: doc.sha256, redirects: doc.redirects, receiptId: doc.receipt?.receiptId, title: page.title, description: page.description, headings: page.headings, text: page.text.slice(0, 20_000), links: page.links.slice(0, 200) });
+              }
+              case 'MAP': return json({ capability: 'MAP', ...(await furyWebMap(url, net)) });
+              case 'CRAWL': return json({ capability: 'CRAWL', ...(await furyWebCrawl(url, { ...net, maxPages: typeof body.maxPages === 'number' ? Math.min(body.maxPages, 50) : 10 })) });
+              case 'SEARCH': {
+                const endpoint = options.searxngUrl ?? process.env.FURYPIPE_SEARXNG_URL;
+                return json({ capability: 'SEARCH', ...(await furyWebSearch(String(body.query ?? ''), endpoint ? createFurySearxngAdapter(endpoint) : undefined)) });
+              }
+              default: return problem(400, 'invalid-input', 'action must be FETCH, MAP, CRAWL or SEARCH (browser actions go through the governed browser runtime)');
+            }
+          }
           case 'chat': {
             const body = await readJson(request) as { kind?: unknown; baseUrl?: unknown; model?: unknown; messages?: unknown };
             if (typeof body?.baseUrl !== 'string' || typeof body.model !== 'string' || body.model.length > 256 || !Array.isArray(body.messages) || body.messages.length === 0 || body.messages.length > 64) {
@@ -444,6 +470,8 @@ export function createStudioApi(options: StudioApiOptions) {
         if (status) return problem(status, status === 503 ? 'discovery-failed' : status === 409 ? 'not-runnable' : 'invalid-request', (error as Error).message);
         if (error instanceof FuryIrError) return problem(422, 'invalid-ir', error.message);
         if (error instanceof FuryDispatchError) return problem(422, 'dispatch-rejected', error.message);
+        if (['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'ETIMEDOUT', 'EHOSTUNREACH', 'EPROTO'].includes((error as NodeJS.ErrnoException).code ?? '')) return problem(502, 'upstream-unreachable', `upstream unreachable (${(error as NodeJS.ErrnoException).code})`);
+        if (error instanceof FuryWebError) return problem(error.code === 'blocked' ? 403 : error.code === 'not-configured' ? 409 : 502, `web-${error.code}`, error.message);
         if (error instanceof FuryKnowledgeError) return problem(422, 'knowledge-rejected', error.message);
         if (error instanceof FuryMcpHubError) return problem(/^unknown MCP source/u.test(error.message) ? 404 : 422, 'mcp-rejected', error.message);
         if (error instanceof FurySkillHubError) return problem(/^unknown skill/u.test(error.message) ? 404 : 422, 'skill-rejected', error.message);
