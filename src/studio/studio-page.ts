@@ -99,7 +99,7 @@ const SCRIPT = String.raw`
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'text') n.textContent = v; else if (k === 'class') n.className = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; };
-  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','mcp','knowledge','web','settings'];
+  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','mcp','knowledge','web','memory','settings'];
   const state = { local: null, harnesses: null, model: null, history: [] };
   async function getJson(url, init) {
     const res = await fetch(url, init);
@@ -130,6 +130,7 @@ const SCRIPT = String.raw`
     if (name === 'skills') loadSkills();
     if (name === 'mcp') loadMcp();
     if (name === 'knowledge') loadKnowledge();
+    if (name === 'memory') loadMemory();
     if (name === 'code') loadGraph();
     if (name === 'mission') loadRuns();
     clearInterval(state.poll); if (name === 'mission') state.poll = setInterval(loadRuns, 2000);
@@ -365,6 +366,35 @@ const SCRIPT = String.raw`
       else { const ul = el('ul'); for (const p of r.pages) ul.append(el('li', { text: p.url + ' — ' + (p.title || 'untitled') })); out.append(ul); status.textContent = r.pages.length + ' page(s), ' + r.skipped.length + ' skipped' + (r.truncated ? ', stopped at the page limit' : '') + '.'; }
     } catch (e) { status.textContent = 'Refused: ' + e.message; }
   });
+  const age = (ms) => ms < 60000 ? 'just now' : ms < 3600000 ? Math.round(ms / 60000) + ' min ago' : ms < 86400000 ? Math.round(ms / 3600000) + ' h ago' : Math.round(ms / 86400000) + ' d ago';
+  async function loadMemory() {
+    const status = $('#mem-status'); const body = $('#mem-body');
+    try { const r = await getJson('/api/studio/memory.json'); body.replaceChildren();
+      $('#mem-forms').hidden = !r.enabled;
+      if (!r.enabled) { status.textContent = r.reason; return; }
+      for (const m of r.records) {
+        const toggle = el('button', { type: 'button', class: 'secondary', text: m.state === 'active' ? 'Disable' : 'Enable' }); toggle.setAttribute('aria-label', toggle.textContent + ' memory ' + m.memoryId.slice(0, 8));
+        toggle.addEventListener('click', () => memAct(m, m.state === 'active' ? 'DISABLE' : 'ACTIVATE'));
+        const forget = el('button', { type: 'button', class: 'secondary', text: 'Forget' }); forget.setAttribute('aria-label', 'Forget memory ' + m.memoryId.slice(0, 8));
+        forget.addEventListener('click', () => { if (confirm('Forget this memory permanently?')) memAct(m, 'FORGET'); });
+        body.append(el('tr', {}, el('td', { class: 'code', text: m.memoryId.slice(0, 8) }), el('td', { text: m.state }), el('td', { text: m.memoryClass }), el('td', { text: m.scope }), el('td', { text: m.source + ' · ' + m.evidence }), el('td', { text: String(m.confidence) }), el('td', { text: age(m.ageMs) }), el('td', {}, toggle, forget)));
+      }
+      status.textContent = r.records.length + ' memory item(s). Recalled memory is data for the model, never instructions.';
+    } catch (e) { status.textContent = 'Memory unavailable: ' + e.message; }
+  }
+  async function memAct(m, action) { try { await mcpPost('/api/studio/memory/act', { memoryId: m.memoryId, scope: m.scope === 'project' ? 'project' : 'user', action }); loadMemory(); } catch (e) { $('#mem-status').textContent = e.message; } }
+  $('#mem-add-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    try { await mcpPost('/api/studio/memory/remember', { text: $('#mem-text').value, scope: $('#mem-scope').value }); $('#mem-text').value = ''; loadMemory(); }
+    catch (e) { $('#mem-status').textContent = 'Not saved: ' + e.message; }
+  });
+  $('#mem-search-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault(); const out = $('#mem-results'); out.replaceChildren();
+    try { const r = await mcpPost('/api/studio/memory/search', { query: $('#mem-query').value });
+      if (!r.hits.length) { out.append(el('p', { class: 'empty', text: 'Nothing recalled for this question.' })); return; }
+      const ol = el('ol'); for (const h of r.hits) ol.append(el('li', {}, el('p', { text: h.text }), el('p', { class: 'muted', text: h.scope + ' · ' + age(h.ageMs) + ' · why: ' + h.why }))); out.append(ol);
+    } catch (e) { out.append(el('p', { class: 'bad', text: e.message })); }
+  });
   const LEVELS = ['simple', 'power', 'engineer', 'expert'];
   function applyMode(mode) {
     if (!LEVELS.includes(mode)) mode = 'simple';
@@ -425,7 +455,7 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
 <div class="app">
 <nav class="side" aria-label="Studio">
   <div class="brand">Fury<span>Pipe</span> Studio</div>
-  <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'engineer', 'Mission Control')}${nav('knowledge', 'power', 'Knowledge')}${nav('web', 'power', 'Web')}${nav('automations', 'expert', 'Automations')}</ul></div>
+  <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'engineer', 'Mission Control')}${nav('knowledge', 'power', 'Knowledge')}${nav('web', 'power', 'Web')}${nav('memory', 'power', 'Memory')}${nav('automations', 'expert', 'Automations')}</ul></div>
   <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'simple', 'Models')}${nav('runtimes', 'power', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'engineer', 'MCP')}${nav('settings', 'simple', 'Settings')}</ul></div>
 </nav>
 <div>
@@ -490,6 +520,12 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   <div class="card"><form id="web-form"><div class="row"><div><label for="web-action">Action</label><select id="web-action"><option value="FETCH">Read a page</option><option value="MAP">List a page's links</option><option value="CRAWL">Crawl a site (10 pages)</option><option value="SEARCH">Search (local SearXNG)</option></select></div></div>
   <label for="web-input">URL or search query</label><input id="web-input" required autocomplete="off" placeholder="https://example.com/docs"><div class="row"><button type="submit">Go</button></div></form>
   <p id="web-status" class="status" role="status"></p><div id="web-out" aria-live="polite"></div></div></section>
+<section data-view="memory" aria-labelledby="h-memory" hidden><h1 id="h-memory">Memory</h1><p class="lead">What FuryPipe remembers for this project and for you. Stored encrypted on this machine; you can disable or forget any item.</p>
+  <p id="mem-status" class="status muted" role="status"></p>
+  <div id="mem-forms" hidden><div class="card"><form id="mem-add-form"><label for="mem-text">Remember</label><textarea id="mem-text" required placeholder="e.g. We deploy on Tuesdays only"></textarea>
+  <div class="row"><div><label for="mem-scope">For</label><select id="mem-scope"><option value="project">This project</option><option value="user">Me, everywhere</option></select></div><button type="submit">Save</button></div></form></div>
+  <div class="card"><form id="mem-search-form"><label for="mem-query">Recall</label><input id="mem-query" required autocomplete="off"><div class="row"><button type="submit">Recall</button></div></form><div id="mem-results" aria-live="polite"></div></div>
+  <div class="card"><table><thead><tr><th scope="col">ID</th><th scope="col">State</th><th scope="col">Kind</th><th scope="col">Scope</th><th scope="col">Source</th><th scope="col">Confidence</th><th scope="col">Age</th><th scope="col">Actions</th></tr></thead><tbody id="mem-body"></tbody></table></div></div></section>
 <section data-view="settings" aria-labelledby="h-settings" hidden><h1 id="h-settings">Settings</h1><p class="lead">Advanced surfaces for operators.</p>
   <div class="card"><h2>Advanced</h2><p><a href="/control-plane">Control Plane</a> — the technical dashboard: sessions, compression, readiness, provider and MCP evidence.</p></div></section>
 <section data-view="notfound" aria-labelledby="h-notfound" hidden><h1 id="h-notfound">Page not found</h1><p class="lead">This Studio view does not exist. <a href="#/chat">Go to Chat</a>.</p></section>

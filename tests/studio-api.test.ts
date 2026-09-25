@@ -305,3 +305,36 @@ describe('Studio Web', () => {
     expect((await studio.handle('web', post({ action: 'CLICK', url: 'http://site.test/' }))).status).toBe(400);
   });
 });
+
+describe('Studio Memory', () => {
+  it('is off without an encrypted config and, when on, remembers, recalls with reasons and forgets', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { createRecoveryStore } = await import('../src/core/recovery-store.js');
+    const { createMemoryVNextStore } = await import('../src/memory-vnext.js');
+    const off = createStudioApi({ projectRoot: process.cwd(), memory: { enabled: false, reason: 'Memory is off.' }, discoverHarnesses: async () => harnesses, discoverLocal: async () => ({ backends: [] }) });
+    expect(await (await off.handle('memory', new Request('http://127.0.0.1/'))).json()).toEqual({ enabled: false, reason: 'Memory is off.', records: [] });
+    expect((await off.handle('memory-remember', post({ text: 'x', scope: 'user' }))).status).toBe(409);
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-studio-mem-'));
+    try {
+      let t = 10_000;
+      const store = createMemoryVNextStore({ recovery: createRecoveryStore(root, { namespace: 'studio-mem' }), authorize: () => true, now: () => t });
+      const studio = createStudioApi({ projectRoot: root, now: () => t, memory: { enabled: true, store }, discoverHarnesses: async () => harnesses, discoverLocal: async () => ({ backends: [] }) });
+      expect((await studio.handle('memory-remember', post({ text: 'We deploy on Tuesdays only', scope: 'team' }))).status).toBe(400);
+      const saved = await (await studio.handle('memory-remember', post({ text: 'We deploy on Tuesdays only', scope: 'project' }))).json() as { memoryId: string };
+      t += 3_600_000;
+      const recall = await (await studio.handle('memory-search', post({ query: 'when do we deploy?' }))).json() as { hits: { text: string; scope: string; ageMs: number; why: string }[]; authority: string };
+      expect(recall.authority).toBe('memory-data-only');
+      expect(recall.hits[0]).toMatchObject({ text: 'We deploy on Tuesdays only', scope: 'project', ageMs: 3_600_000 });
+      expect(recall.hits[0]!.why).toMatch(/user-declared from user-message/u);
+      const listed = await (await studio.handle('memory', new Request('http://127.0.0.1/'))).json() as { records: { memoryId: string; state: string }[] };
+      expect(listed.records).toMatchObject([{ memoryId: saved.memoryId, state: 'active' }]);
+      await studio.handle('memory-act', post({ memoryId: saved.memoryId, scope: 'project', action: 'DISABLE' }));
+      expect((await (await studio.handle('memory-search', post({ query: 'deploy' }))).json() as { hits: unknown[] }).hits).toEqual([]);
+      expect((await studio.handle('memory-act', post({ memoryId: saved.memoryId, scope: 'project', action: 'FORGET' }))).status).toBe(200);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

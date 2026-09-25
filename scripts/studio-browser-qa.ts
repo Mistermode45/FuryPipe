@@ -15,7 +15,9 @@ import { chromium, firefox, webkit, type BrowserType, type Page } from 'playwrig
 
 import { FURY_HARNESS_REGISTRY, type FuryHarnessDiscovery } from '../src/fury-harness-hub.js';
 import type { FuryLocalBackendStatus } from '../src/fury-local-fabric.js';
+import { createRecoveryStore } from '../src/core/recovery-store.js';
 import { createFuryMcpHub } from '../src/fury-mcp-hub.js';
+import { createMemoryVNextStore } from '../src/memory-vnext.js';
 import { createFurySkillHub } from '../src/fury-skill-hub.js';
 import { createStudioApi, studioApiRoute } from '../src/studio/studio-api.js';
 import { studioHtmlResponse } from '../src/studio/studio-page.js';
@@ -92,6 +94,7 @@ async function startStudio(mode: 'normal' | 'empty' | 'error', backendUrl: strin
     projectRoot,
     // Isolated hub state: QA never touches the operator's ~/.furypipe.
     knowledgeDir: path.join(projectRoot, '.qa-knowledge', mode),
+    memory: mode === 'empty' ? { enabled: false, reason: 'Memory is off. Set FURYPIPE_WEBCHAT_MEMORY_CONFIG to an encrypted memory config to turn it on.' } : { enabled: true, store: createMemoryVNextStore({ recovery: createRecoveryStore(path.join(projectRoot, '.qa-memory', mode), { namespace: 'studio-qa' }), authorize: () => true }) },
     mcpHub: createFuryMcpHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-mcp-hub', mode) }),
     skillHub: createFurySkillHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-skill-hub', mode), projectTrustedForInstructions: true }),
     discoverHarnesses: async () => harnesses,
@@ -207,6 +210,16 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.locator('#web-input').fill('furypipe');
     await page.locator('#web-form button').click();
     await page.waitForFunction(() => /Refused: no search adapter configured/u.test(document.querySelector('#web-status')?.textContent ?? ''));
+    await page.goto(`${origins.normal}/#/memory`);
+    await page.locator('#mem-text').fill(`QA ${name} deploys on Tuesdays only`);
+    await page.locator('#mem-add-form button').click();
+    await page.locator('#mem-body tr').filter({ hasText: 'active' }).first().waitFor();
+    await page.locator('#mem-query').fill(`when does QA ${name} deploy`);
+    await page.locator('#mem-search-form button').click();
+    await page.locator('#mem-results li').filter({ hasText: `QA ${name} deploys on Tuesdays only` }).filter({ hasText: 'why:' }).waitFor();
+    await page.goto(`${origins.empty}/#/memory`);
+    await page.waitForFunction(() => /Memory is off/u.test(document.querySelector('#mem-status')?.textContent ?? ''));
+    assert(await page.locator('#mem-forms').isHidden(), `${name}: memory forms visible while off`);
     await page.goto(`${origins.normal}/#/code`);
     await page.waitForFunction(() => document.querySelector('#graph-provider')?.textContent === 'graphify');
     await page.locator('#blast-files').fill('src/auth/session.ts');

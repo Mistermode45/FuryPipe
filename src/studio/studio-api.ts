@@ -33,6 +33,7 @@ import { createFurySkillHub, FurySkillHubError, FURY_SKILL_GOVERNANCE, type Fury
 import { createHash } from 'node:crypto';
 import { createFuryKnowledgeBase, FuryKnowledgeError, type FuryEmbedder, type FuryRetrievalMode } from '../fury-knowledge.js';
 import { createFurySearxngAdapter, furyWebCrawl, furyWebExtract, furyWebFetch, furyWebMap, furyWebSearch, FuryWebError, type FuryWebFetchOptions } from '../fury-web.js';
+import { studioMemoryFromEnv, studioMemoryList, studioMemoryRemember, studioMemoryScopes, studioMemorySearch, type StudioMemory } from './studio-memory.js';
 import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy } from '../fury-mcp-hub.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
@@ -44,7 +45,8 @@ export type StudioRoute =
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
   | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
-  | 'web';
+  | 'web'
+  | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
@@ -72,6 +74,10 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/knowledge/ingest': { route: 'knowledge-ingest', method: 'POST' },
   '/api/studio/knowledge/search': { route: 'knowledge-search', method: 'POST' },
   '/api/studio/web': { route: 'web', method: 'POST' },
+  '/api/studio/memory.json': { route: 'memory', method: 'GET' },
+  '/api/studio/memory/remember': { route: 'memory-remember', method: 'POST' },
+  '/api/studio/memory/search': { route: 'memory-search', method: 'POST' },
+  '/api/studio/memory/act': { route: 'memory-act', method: 'POST' },
 });
 
 export function studioApiRoute(pathname: string): { route: StudioRoute; method: 'GET' | 'POST' } | null {
@@ -100,6 +106,8 @@ export interface StudioApiOptions {
   readonly searxngUrl?: string;
   /** Network hooks for tests (DNS override, dialer). */
   readonly webFetch?: Pick<FuryWebFetchOptions, 'resolveHostname' | 'dial'>;
+  /** Memory store; defaults to the encrypted local memory config, else disabled. */
+  readonly memory?: StudioMemory;
 }
 
 interface StudioRun {
@@ -216,6 +224,14 @@ export function createStudioApi(options: StudioApiOptions) {
       return (body.data ?? []).map((d) => d.embedding ?? []);
     } : undefined;
     return { kb: createFuryKnowledgeBase({ stateDir: options.knowledgeDir ?? path.join(os.homedir(), '.furypipe', 'studio', 'knowledge', projectKey), ...(embed && model ? { embed, embeddingModel: `${model.backend}:${model.id}` } : {}) }), embeddingModel: model ? `${model.backend}:${model.id}` : null };
+  };
+
+  let memoryState: StudioMemory | undefined = options.memory;
+  const memory = () => (memoryState ??= studioMemoryFromEnv());
+  const memoryStore = () => {
+    const m = memory();
+    if (!m.enabled || !m.store) throw Object.assign(new Error(m.reason ?? 'memory is off'), { status: 409 });
+    return m.store;
   };
 
   const runs = new Map<string, StudioRun>();
@@ -438,6 +454,32 @@ export function createStudioApi(options: StudioApiOptions) {
               default: return problem(400, 'invalid-input', 'action must be FETCH, MAP, CRAWL or SEARCH (browser actions go through the governed browser runtime)');
             }
           }
+          case 'memory': {
+            const m = memory();
+            if (!m.enabled || !m.store) return json({ enabled: false, reason: m.reason, records: [] });
+            return json({ enabled: true, status: await m.store.status(now()), records: await studioMemoryList(m.store, options.projectRoot, now()) });
+          }
+          case 'memory-remember': {
+            const body = await readJson(request) as { text?: unknown; scope?: unknown; memoryClass?: unknown };
+            if (typeof body?.text !== 'string' || !body.text.trim() || body.text.length > 4_000) return problem(400, 'invalid-input', 'text is required (max 4000 characters)');
+            if (body.scope !== 'project' && body.scope !== 'user') return problem(400, 'invalid-input', 'scope must be project or user');
+            return json(await studioMemoryRemember(memoryStore(), options.projectRoot, { text: body.text.trim(), scope: body.scope, ...(typeof body.memoryClass === 'string' ? { memoryClass: body.memoryClass } : {}) }, now()), 201);
+          }
+          case 'memory-search': {
+            const body = await readJson(request) as { query?: unknown };
+            if (typeof body?.query !== 'string' || !body.query.trim() || body.query.length > 2_000) return problem(400, 'invalid-input', 'query is required');
+            return json({ hits: await studioMemorySearch(memoryStore(), options.projectRoot, body.query, now()), authority: 'memory-data-only' });
+          }
+          case 'memory-act': {
+            const body = await readJson(request) as { memoryId?: unknown; scope?: unknown; action?: unknown };
+            if (typeof body?.memoryId !== 'string' || (body.scope !== 'project' && body.scope !== 'user')) return problem(400, 'invalid-input', 'memoryId and scope are required');
+            const store = memoryStore();
+            const selector = { memoryId: body.memoryId, scope: studioMemoryScopes(options.projectRoot)[body.scope], now: now() };
+            if (body.action === 'DISABLE') return json(await store.disable(selector));
+            if (body.action === 'ACTIVATE') return json(await store.activate(selector));
+            if (body.action === 'FORGET') return json(await store.requestForget({ memoryId: body.memoryId, scope: selector.scope, hard: true, now: now() }));
+            return problem(400, 'invalid-input', 'action must be DISABLE, ACTIVATE or FORGET');
+          }
           case 'chat': {
             const body = await readJson(request) as { kind?: unknown; baseUrl?: unknown; model?: unknown; messages?: unknown };
             if (typeof body?.baseUrl !== 'string' || typeof body.model !== 'string' || body.model.length > 256 || !Array.isArray(body.messages) || body.messages.length === 0 || body.messages.length > 64) {
@@ -479,6 +521,7 @@ export function createStudioApi(options: StudioApiOptions) {
         if (error instanceof FuryFlowError) return problem(422, 'invalid-flow', error.message);
         if ((error as Error).name === 'FuryLocalFabricError') return problem(403, 'endpoint-denied', (error as Error).message);
         if ((error as Error).name === 'FuryGraphError') return problem(404, 'graph-unavailable', (error as Error).message);
+        if (route.startsWith('memory')) return problem(422, 'memory-rejected', (error as Error).message.slice(0, 300));
         return problem(500, 'internal', 'studio request failed');
       }
     },
