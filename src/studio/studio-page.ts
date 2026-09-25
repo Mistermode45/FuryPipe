@@ -81,6 +81,7 @@ textarea{width:100%;min-height:90px;resize:vertical}textarea.code{font-family:ui
 label{display:block;font-weight:600;font-size:13px;margin:0 0 4px}.row{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
 .log{display:grid;gap:10px;max-height:52vh;overflow:auto;padding:4px}
 .msg{padding:10px 12px;border-radius:10px;border:1px solid var(--line);white-space:pre-wrap}.msg.user{background:color-mix(in srgb,var(--accent) 8%,var(--panel))}
+.convs{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}.linkish{background:none;border:1px solid var(--line);color:inherit;padding:3px 8px;border-radius:6px;cursor:pointer}.linkish[aria-current=true]{border-color:var(--accent);font-weight:600}
 .msg .who{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:2px}
 .empty{border:1px dashed var(--line);border-radius:var(--radius);padding:18px;color:var(--muted)}
 .status{min-height:1.5em}ul.reasons{margin:6px 0 0;padding-left:18px}
@@ -126,6 +127,7 @@ const SCRIPT = String.raw`
     }
     firstRoute = false;
     if (name === 'chat' || name === 'models') loadLocal();
+    if (name === 'chat') loadConversations();
     if (name === 'runtimes') loadHarnesses();
     if (name === 'skills') loadSkills();
     if (name === 'mcp') loadMcp();
@@ -169,25 +171,70 @@ const SCRIPT = String.raw`
   }
   function pickModel() { const v = JSON.parse($('#chat-model').value); state.model = v; setIndicators('FuryPipe Native', v.kind, v.model, 'local'); }
   $('#chat-model').addEventListener('change', pickModel);
+  const post = (url, payload) => getJson(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+  state.conv = null;
+  function renderConversation() {
+    const log = $('#chat-log'); log.replaceChildren();
+    const msgs = state.conv ? state.conv.messages : [];
+    const lastAssistant = [...msgs].reverse().find(m => m.role === 'assistant');
+    for (const m of msgs) {
+      const who = m.role === 'user' ? 'You' : (m.model ? m.model.model + ' · ' + m.model.kind + ' · ' + m.model.locality : 'assistant');
+      const box = el('div', { class: 'msg' + (m.role === 'user' ? ' user' : '') }, el('span', { class: 'who', text: who }), el('span', { text: m.content }));
+      if (m.role === 'assistant') {
+        const tools = el('div', { class: 'row' });
+        const br = el('button', { type: 'button', class: 'secondary', text: 'Branch from here' }); br.addEventListener('click', () => branchAt(m.id)); tools.append(br);
+        if (m === lastAssistant) { const rt = el('button', { type: 'button', class: 'secondary', text: 'Retry with selected model' }); rt.addEventListener('click', retryLast); tools.append(rt); }
+        box.append(tools);
+      }
+      log.append(box);
+    }
+    log.scrollTop = log.scrollHeight;
+  }
+  async function loadConversations() {
+    try { const r = await getJson('/api/studio/chats.json'); const ul = $('#chat-list'); ul.replaceChildren();
+      for (const c of r.conversations) { const a = el('button', { type: 'button', class: 'linkish', text: c.title + (c.parentId ? ' ↳' : '') }); if (state.conv && state.conv.id === c.id) a.setAttribute('aria-current', 'true');
+        a.addEventListener('click', async () => { state.conv = await post('/api/studio/chats/get', { id: c.id }); renderConversation(); loadConversations(); });
+        ul.append(el('li', {}, a)); }
+    } catch (e) { $('#chat-status').textContent = 'Conversations unavailable: ' + e.message; }
+  }
+  async function persist() {
+    const saved = await post('/api/studio/chats/save', state.conv.id ? { id: state.conv.id, messages: state.conv.messages } : { messages: state.conv.messages });
+    state.conv = saved; loadConversations();
+  }
+  async function streamReply() {
+    const btn = $('#chat-send'); btn.disabled = true; $('#chat-status').textContent = 'Streaming from ' + state.model.kind + '…';
+    const reply = { role: 'assistant', content: '', model: { kind: state.model.kind, model: state.model.model, locality: 'local' } };
+    const history = state.conv.messages.map(m => ({ role: m.role, content: m.content }));
+    state.conv.messages.push(reply); renderConversation(); const out = $('#chat-log').lastElementChild.children[1];
+    try {
+      const res = await fetch('/api/studio/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...state.model, messages: history }) });
+      if (!res.ok || !res.body) { const b = await res.json().catch(() => ({})); throw new Error((b.error && b.error.message) || ('HTTP ' + res.status)); }
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+      for (;;) { const { done, value } = await reader.read(); if (done) break; buf += dec.decode(value, { stream: true }); let i;
+        while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line.startsWith('data:')) continue; const p = line.slice(5).trim(); if (p === '[DONE]') continue;
+          try { const d = JSON.parse(p).choices[0].delta.content; if (typeof d === 'string') { reply.content += d; out.textContent = reply.content; } } catch {} } }
+      await persist(); renderConversation(); $('#chat-status').textContent = 'Done. Saved.';
+    } catch (e) { state.conv.messages.pop(); renderConversation(); $('#chat-status').textContent = 'Request failed: ' + e.message; }
+    finally { btn.disabled = false; $('#chat-input').focus(); }
+  }
   $('#chat-form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const input = $('#chat-input'); const text = input.value.trim(); if (!text || !state.model) return;
-    input.value = ''; const log = $('#chat-log');
-    state.history.push({ role: 'user', content: text });
-    log.append(el('div', { class: 'msg user' }, el('span', { class: 'who', text: 'You' }), el('span', { text })));
-    const out = el('span', { text: '' }); log.append(el('div', { class: 'msg' }, el('span', { class: 'who', text: state.model.model + ' · local' }), out));
-    const btn = $('#chat-send'); btn.disabled = true; $('#chat-status').textContent = 'Streaming from ' + state.model.kind + '…';
-    try {
-      const res = await fetch('/api/studio/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...state.model, messages: state.history }) });
-      if (!res.ok || !res.body) { const b = await res.json().catch(() => ({})); throw new Error((b.error && b.error.message) || ('HTTP ' + res.status)); }
-      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = ''; let full = '';
-      for (;;) { const { done, value } = await reader.read(); if (done) break; buf += dec.decode(value, { stream: true }); let i;
-        while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line.startsWith('data:')) continue; const p = line.slice(5).trim(); if (p === '[DONE]') continue;
-          try { const d = JSON.parse(p).choices[0].delta.content; if (typeof d === 'string') { full += d; out.textContent = full; } } catch {} } }
-      state.history.push({ role: 'assistant', content: full }); $('#chat-status').textContent = 'Done.';
-    } catch (e) { out.textContent = ''; out.parentElement.classList.add('bad'); out.textContent = 'Error: ' + e.message; $('#chat-status').textContent = 'Request failed.'; }
-    finally { btn.disabled = false; input.focus(); log.scrollTop = log.scrollHeight; }
+    input.value = '';
+    if (!state.conv) state.conv = { messages: [] };
+    state.conv.messages.push({ role: 'user', content: text });
+    await streamReply();
   });
+  async function branchAt(messageId) {
+    try { state.conv = await post('/api/studio/chats/branch', { id: state.conv.id, atMessage: messageId }); renderConversation(); loadConversations(); $('#chat-status').textContent = 'Branched. The original conversation is unchanged.'; }
+    catch (e) { $('#chat-status').textContent = e.message; }
+  }
+  async function retryLast() {
+    const msgs = state.conv.messages; const lastUser = [...msgs].reverse().find(m => m.role === 'user'); if (!lastUser || !state.model) return;
+    try { state.conv = await post('/api/studio/chats/branch', { id: state.conv.id, atMessage: lastUser.id }); renderConversation(); await streamReply(); }
+    catch (e) { $('#chat-status').textContent = e.message; }
+  }
+  $('#chat-new').addEventListener('click', () => { state.conv = null; renderConversation(); loadConversations(); $('#chat-input').focus(); });
 
   async function loadHarnesses() {
     const body = $('#runtimes-body'); const status = $('#runtimes-status'); status.textContent = 'Discovering runtimes…';
@@ -482,6 +529,8 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   <div class="card">
     <div id="chat-empty" class="empty" hidden>No local model is reachable. Start Ollama, LM Studio, llama.cpp, vLLM or SGLang, then open <a href="#/models">Models</a> to refresh.</div>
     <form id="chat-form" hidden><div class="row"><div><label for="chat-model">Model</label><select id="chat-model"></select></div></div>
+      <div class="row"><button id="chat-new" type="button" class="secondary">New chat</button></div>
+      <nav aria-label="Conversations"><ul id="chat-list" class="convs"></ul></nav>
       <div id="chat-log" class="log" role="log" aria-live="polite" aria-label="Conversation"></div>
       <label for="chat-input">Message</label><textarea id="chat-input" required></textarea>
       <div class="row"><button id="chat-send" type="submit">Send</button><span id="chat-status" class="status muted" role="status"></span></div></form>

@@ -89,11 +89,12 @@ const harnesses: FuryHarnessDiscovery = {
 async function startStudio(mode: 'normal' | 'empty' | 'error', backendUrl: string, projectRoot: string): Promise<{ server: Server; origin: string }> {
   const local = (): FuryLocalBackendStatus[] => mode === 'empty'
     ? [{ kind: 'ollama', baseUrl: 'http://127.0.0.1:11434', reachable: false, protocols: [], models: [], error: 'unreachable' }]
-    : [{ kind: 'ollama', baseUrl: backendUrl, reachable: true, version: '0.14.2', protocols: ['native', 'openai-chat', 'anthropic-messages'], models: [{ backend: 'ollama', baseUrl: backendUrl, id: 'qwen2.5-coder:7b', sizeBytes: 4_700_000_000, parameterSize: '7.6B', quantization: 'Q4_K_M' }] }];
+    : [{ kind: 'ollama', baseUrl: backendUrl, reachable: true, version: '0.14.2', protocols: ['native', 'openai-chat', 'anthropic-messages'], models: [{ backend: 'ollama', baseUrl: backendUrl, id: 'qwen2.5-coder:7b', sizeBytes: 4_700_000_000, parameterSize: '7.6B', quantization: 'Q4_K_M' }, { backend: 'ollama', baseUrl: backendUrl, id: 'llama3.2:3b', sizeBytes: 2_000_000_000 }] }];
   const api = createStudioApi({
     projectRoot,
     // Isolated hub state: QA never touches the operator's ~/.furypipe.
     knowledgeDir: path.join(projectRoot, '.qa-knowledge', mode),
+    chatsDir: path.join(projectRoot, '.qa-chats', mode),
     memory: mode === 'empty' ? { enabled: false, reason: 'Memory is off. Set FURYPIPE_WEBCHAT_MEMORY_CONFIG to an encrypted memory config to turn it on.' } : { enabled: true, store: createMemoryVNextStore({ recovery: createRecoveryStore(path.join(projectRoot, '.qa-memory', mode), { namespace: 'studio-qa' }), authorize: () => true }) },
     mcpHub: createFuryMcpHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-mcp-hub', mode) }),
     skillHub: createFurySkillHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-skill-hub', mode), projectTrustedForInstructions: true }),
@@ -146,6 +147,16 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.locator('#chat-log .msg:not(.user)').filter({ hasText: 'Hello from a local model.' }).waitFor();
     assert((await page.locator('#ind-locality b').textContent()) === 'local', `${name}: locality indicator`);
     assert((await page.locator('#ind-model b').textContent()) === 'qwen2.5-coder:7b', `${name}: model indicator`);
+    // Conversations persist; retry with another model branches and records the model.
+    await page.locator('#chat-list button').filter({ hasText: 'Say hello' }).first().waitFor();
+    await page.locator('#chat-model').selectOption({ label: 'llama3.2:3b — ollama' });
+    await page.getByRole('button', { name: 'Retry with selected model' }).click();
+    await page.locator('#chat-log .msg .who').filter({ hasText: 'llama3.2:3b · ollama · local' }).waitFor();
+    await page.locator('#chat-list button').filter({ hasText: 'Say hello (branch)' }).first().waitFor();
+    await page.locator('#chat-list button').filter({ hasText: /^Say hello$/u }).first().click();
+    await page.locator('#chat-log .msg .who').filter({ hasText: 'qwen2.5-coder:7b · ollama · local' }).waitFor();
+    assert(await page.locator('#chat-log .msg .who').filter({ hasText: 'llama3.2:3b' }).count() === 0, `${name}: retry changed the original conversation`);
+    await page.locator('#chat-model').selectOption({ label: 'qwen2.5-coder:7b — ollama' });
 
     // Progressive UX: Simple hides engineer/expert surfaces; Expert shows all.
     assert(await page.locator('#ui-mode').inputValue() === 'simple', `${name}: default mode is not Simple`);
@@ -173,7 +184,7 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     assert((await page.locator('#dispatch-ir').inputValue()).includes('"NETWORK": "ASK"'), `${name}: cowork permissions not carried`);
 
     await page.goto(`${origins.normal}/#/models`);
-    await page.locator('#models-body tr .badge.ok').filter({ hasText: 'FITS' }).waitFor();
+    await page.locator('#models-body tr .badge.ok').filter({ hasText: 'FITS' }).first().waitFor();
     await page.goto(`${origins.normal}/#/runtimes`);
     await page.locator('#runtimes-body tr').filter({ hasText: 'Claude Code' }).filter({ hasText: '2.1.282' }).waitFor();
     await page.goto(`${origins.normal}/#/skills`);

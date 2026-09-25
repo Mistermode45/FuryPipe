@@ -35,6 +35,7 @@ import { createFuryKnowledgeBase, FuryKnowledgeError, type FuryEmbedder, type Fu
 import { createFurySearxngAdapter, furyWebCrawl, furyWebExtract, furyWebFetch, furyWebMap, furyWebSearch, FuryWebError, type FuryWebFetchOptions } from '../fury-web.js';
 import { studioMemoryFromEnv, studioMemoryList, studioMemoryRemember, studioMemoryScopes, studioMemorySearch, type StudioMemory } from './studio-memory.js';
 import { buildFuryIntegrationRegistry } from '../fury-integrations.js';
+import { createStudioChats, StudioChatError, type StudioChats } from './studio-chats.js';
 import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy } from '../fury-mcp-hub.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
@@ -48,7 +49,8 @@ export type StudioRoute =
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
   | 'web'
   | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act'
-  | 'integrations';
+  | 'integrations'
+  | 'chats' | 'chat-get' | 'chat-save' | 'chat-branch' | 'chat-delete';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
@@ -81,6 +83,11 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/memory/search': { route: 'memory-search', method: 'POST' },
   '/api/studio/memory/act': { route: 'memory-act', method: 'POST' },
   '/api/studio/integrations.json': { route: 'integrations', method: 'GET' },
+  '/api/studio/chats.json': { route: 'chats', method: 'GET' },
+  '/api/studio/chats/get': { route: 'chat-get', method: 'POST' },
+  '/api/studio/chats/save': { route: 'chat-save', method: 'POST' },
+  '/api/studio/chats/branch': { route: 'chat-branch', method: 'POST' },
+  '/api/studio/chats/delete': { route: 'chat-delete', method: 'POST' },
 });
 
 export function studioApiRoute(pathname: string): { route: StudioRoute; method: 'GET' | 'POST' } | null {
@@ -111,6 +118,8 @@ export interface StudioApiOptions {
   readonly webFetch?: Pick<FuryWebFetchOptions, 'resolveHostname' | 'dial'>;
   /** Memory store; defaults to the encrypted local memory config, else disabled. */
   readonly memory?: StudioMemory;
+  /** Conversation store directory (default ~/.furypipe/studio/chats/<project>). */
+  readonly chatsDir?: string;
 }
 
 interface StudioRun {
@@ -229,6 +238,7 @@ export function createStudioApi(options: StudioApiOptions) {
     return { kb: createFuryKnowledgeBase({ stateDir: options.knowledgeDir ?? path.join(os.homedir(), '.furypipe', 'studio', 'knowledge', projectKey), ...(embed && model ? { embed, embeddingModel: `${model.backend}:${model.id}` } : {}) }), embeddingModel: model ? `${model.backend}:${model.id}` : null };
   };
 
+  const chats: StudioChats = createStudioChats({ stateDir: options.chatsDir ?? path.join(os.homedir(), '.furypipe', 'studio', 'chats', projectKey), now });
   let memoryState: StudioMemory | undefined = options.memory;
   const memory = () => (memoryState ??= studioMemoryFromEnv());
   const memoryStore = () => {
@@ -457,6 +467,20 @@ export function createStudioApi(options: StudioApiOptions) {
               default: return problem(400, 'invalid-input', 'action must be FETCH, MAP, CRAWL or SEARCH (browser actions go through the governed browser runtime)');
             }
           }
+          case 'chats':
+            return json({ conversations: await chats.list() });
+          case 'chat-get':
+            return json(await chats.get(((await readJson(request)) as { id?: unknown })?.id));
+          case 'chat-save': {
+            const body = await readJson(request) as { id?: unknown; title?: unknown; messages?: unknown };
+            return json(await chats.save({ ...(body?.id !== undefined ? { id: body.id } : {}), ...(body?.title !== undefined ? { title: body.title } : {}), messages: body?.messages }));
+          }
+          case 'chat-branch': {
+            const body = await readJson(request) as { id?: unknown; atMessage?: unknown };
+            return json(await chats.branch(body?.id, body?.atMessage), 201);
+          }
+          case 'chat-delete':
+            return json(await chats.remove(((await readJson(request)) as { id?: unknown })?.id));
           case 'integrations': {
             const { sources } = await mcp.list();
             return json(await buildFuryIntegrationRegistry({ projectRoot: options.projectRoot, mcp: sources }));
@@ -520,6 +544,7 @@ export function createStudioApi(options: StudioApiOptions) {
         if (error instanceof FuryIrError) return problem(422, 'invalid-ir', error.message);
         if (error instanceof FuryDispatchError) return problem(422, 'dispatch-rejected', error.message);
         if (['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'ETIMEDOUT', 'EHOSTUNREACH', 'EPROTO'].includes((error as NodeJS.ErrnoException).code ?? '')) return problem(502, 'upstream-unreachable', `upstream unreachable (${(error as NodeJS.ErrnoException).code})`);
+        if (error instanceof StudioChatError) return problem(error.status, 'chat-rejected', error.message);
         if (error instanceof FuryWebError) return problem(error.code === 'blocked' ? 403 : error.code === 'not-configured' ? 409 : 502, `web-${error.code}`, error.message);
         if (error instanceof FuryKnowledgeError) return problem(422, 'knowledge-rejected', error.message);
         if (error instanceof FuryMcpHubError) return problem(/^unknown MCP source/u.test(error.message) ? 404 : 422, 'mcp-rejected', error.message);
