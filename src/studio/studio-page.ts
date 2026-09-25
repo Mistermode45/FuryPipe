@@ -481,6 +481,199 @@ const SCRIPT = String.raw`
   const PROVIDER = { ollama: 'Ollama', lmstudio: 'LM Studio', llamacpp: 'llama.cpp', vllm: 'vLLM', sglang: 'SGLang', localai: 'LocalAI', jan: 'Jan', 'openai-compatible': 'OpenAI-compatible', 'anthropic-compatible': 'Anthropic-compatible' };
   const SETUP = { ollama: 'https://ollama.com/download', lmstudio: 'https://lmstudio.ai', llamacpp: 'https://github.com/ggml-org/llama.cpp', vllm: 'https://docs.vllm.ai', sglang: 'https://docs.sglang.ai', localai: 'https://localai.io', jan: 'https://jan.ai' };
   const state = { local: null, hw: null, harnesses: null, conv: null, pick: 'auto', lastRoute: null, files: [], pastes: [], web: false, kb: false, busy: null, activity: new Map() };
+  /* ---------- Locale / i18n ---------- */
+  const SUPPORTED_LANGUAGES = Object.freeze(['en', 'fr']);
+  const FR = Object.freeze({
+    'New chat': 'Nouvelle discussion',
+    'Search': 'Rechercher',
+    'Chat': 'Discussion',
+    'Cowork': 'Travail',
+    'Code': 'Code',
+    'Agents': 'Agents',
+    'Mission Control': 'Centre de contrôle',
+    'Automations': 'Automatisations',
+    'Knowledge': 'Connaissances',
+    'Web': 'Web',
+    'Memory': 'Mémoire',
+    'Models': 'Modèles',
+    'Runtimes': 'Runtimes',
+    'Skills': 'Skills',
+    'MCP servers': 'Serveurs MCP',
+    'Integrations': 'Intégrations',
+    'Settings': 'Paramètres',
+    'Recent': 'RÉCENT',
+    'Your conversations appear here.': 'Vos conversations apparaîtront ici.',
+    'How can FuryPipe help?': 'Comment FuryPipe peut-il vous aider ?',
+    'One workspace for every model, agent and tool, starting with the AI on this machine.': 'Un seul espace pour tous vos modèles, agents et outils, en commençant par l’IA de cette machine.',
+    'Run AI privately on this PC': 'Exécuter une IA en privé sur ce PC',
+    'No local model is running yet. Start one and FuryPipe finds it automatically, or use your cloud providers in the Gateway WebChat.': 'Aucun modèle local n’est lancé. Démarrez-en un et FuryPipe le détectera automatiquement, ou utilisez vos fournisseurs cloud via le Gateway WebChat.',
+    'Set up Ollama': 'Configurer Ollama',
+    'Get LM Studio': 'Installer LM Studio',
+    'See what fits': 'Voir les modèles adaptés',
+    'Use cloud AI': 'Utiliser une IA cloud',
+    'Ask FuryPipe anything…': 'Demandez n’importe quoi à FuryPipe…',
+    'Message': 'Message',
+    'Attach text files': 'Joindre des fichiers texte',
+    'Read the web pages you link': 'Lire les pages web que vous partagez',
+    'Ground answers in your indexed project documents': 'Appuyer les réponses sur les documents indexés du projet',
+    'Choose a model': 'Choisir un modèle',
+    'Search models': 'Rechercher des modèles',
+    'Research': 'Rechercher',
+    'Create': 'Créer',
+    'Work': 'Travailler',
+    'AI can make mistakes. Check important information.': 'L’IA peut se tromper. Vérifiez les informations importantes.',
+    'Simple': 'Simple',
+    'Power': 'Avancé',
+    'Engineer': 'Ingénieur',
+    'Expert': 'Expert',
+    'mode': 'mode',
+    'Workspace mode': 'Mode de travail',
+    'Collapse sidebar': 'Réduire la barre latérale',
+    'Expand sidebar': 'Déployer la barre latérale',
+    'Open sidebar': 'Ouvrir la barre latérale',
+    'FuryPipe home': 'Accueil FuryPipe',
+    'Search and commands (Ctrl K)': 'Recherche et commandes (Ctrl K)',
+    'Private · on this PC': 'Privé · sur ce PC',
+    'This conversation runs on your computer. Nothing is sent to a cloud provider.': 'Cette conversation s’exécute sur votre ordinateur. Rien n’est envoyé à un fournisseur cloud.',
+    'Models': 'Modèles',
+    'Fury Auto routes each message to the best model available. Local models keep everything on this computer; probes stay on loopback.': 'Fury Auto route chaque message vers le meilleur modèle disponible. Les modèles locaux gardent tout sur cet ordinateur et les sondes restent en loopback.',
+    'Your machine': 'Votre machine',
+    'Local runtimes': 'Runtimes locaux',
+    'Cloud': 'Cloud',
+    'Claude, GPT, Gemini and other cloud models run through the governed Gateway WebChat, using the providers and budgets you configured.': 'Claude, GPT, Gemini et les autres modèles cloud passent par le Gateway WebChat gouverné avec les fournisseurs et budgets que vous avez configurés.',
+    'Open Gateway WebChat': 'Ouvrir le Gateway WebChat',
+    'Advanced · endpoints': 'Avancé · endpoints',
+    'Backend': 'Backend',
+    'Endpoint': 'Endpoint',
+    'State': 'État',
+    'Model': 'Modèle',
+    'Fit': 'Compatibilité',
+    'Settings': 'Paramètres',
+    'Make FuryPipe yours. Preferences are stored in this browser.': 'Personnalisez FuryPipe. Les préférences sont stockées dans ce navigateur.',
+    'General': 'Général',
+    'Appearance': 'Apparence',
+    'Privacy': 'Confidentialité',
+    'Advanced': 'Avancé',
+    'Language': 'Langue',
+    'Automatically follows your browser language. You can override it here.': 'Suit automatiquement la langue de votre navigateur. Vous pouvez la remplacer ici.',
+    'Auto': 'Auto',
+    'English': 'English',
+    'French': 'Français',
+    'Theme': 'Thème',
+    'Dark': 'Sombre',
+    'System': 'Système',
+    'Dark is the signature FuryPipe look. System follows your OS.': 'Le thème sombre est l’identité visuelle FuryPipe. Système suit le réglage de votre OS.',
+    'Motion': 'Animations',
+    'Reduce animation everywhere.': 'Réduire les animations dans toute l’interface.',
+    'Reduced': 'Réduites',
+    'Density': 'Densité',
+    'Spacing around pages.': 'Espacement général de l’interface.',
+    'Comfortable': 'Confortable',
+    'Compact': 'Compacte',
+    'How much of FuryPipe\\'s control plane you see. Power features are always one switch away.': 'Détermine la quantité de fonctions avancées FuryPipe affichées. Les fonctions puissantes restent accessibles en un clic.',
+    'Studio chat runs on local models only: messages stay on this computer. Studio listens on loopback, accepts same-origin requests only, and never reads other tools\\' credentials. Cloud providers run through the governed Gateway with explicit budgets.': 'Le chat Studio utilise uniquement les modèles locaux : les messages restent sur cet ordinateur. Studio écoute uniquement en loopback, n’accepte que les requêtes same-origin et ne lit jamais les identifiants des autres outils. Les fournisseurs cloud passent par le Gateway gouverné avec des budgets explicites.',
+    'Control Plane': 'Plan de contrôle',
+    'Page not found': 'Page introuvable',
+    'This Studio view does not exist.': 'Cette vue Studio n’existe pas.',
+    'Go to Chat': 'Retourner au chat',
+    'Rename': 'Renommer',
+    'Delete': 'Supprimer',
+    'Conversation options': 'Options de la conversation',
+    'Search and commands': 'Recherche et commandes',
+    'Search conversations, pages and commands…': 'Rechercher dans les conversations, pages et commandes…',
+    'Results': 'Résultats',
+    'No match.': 'Aucun résultat.',
+    'Change model': 'Changer de modèle',
+    'New chat': 'Nouvelle discussion',
+    'On this machine': 'Sur cette machine',
+    'No local model running': 'Aucun modèle local en cours',
+    'Cloud models': 'Modèles cloud',
+    'Why this route?': 'Pourquoi ce routage ?',
+    'Provider': 'Fournisseur',
+    'Runtime': 'Runtime',
+    'Where': 'Emplacement',
+    'Local, on this machine': 'Local, sur cette machine',
+    'Messages never leave this computer': 'Les messages ne quittent jamais cet ordinateur',
+    'Cost': 'Coût',
+    '$0 (local inference)': '0 $ (inférence locale)',
+    'Hardware fit': 'Compatibilité matérielle',
+    'Tools': 'Outils',
+    'Skills / MCP': 'Skills / MCP',
+    'not used in chat': 'non utilisés dans le chat',
+    'Chosen by': 'Choisi par',
+    'Looking for local AI on this machine…': 'Recherche des IA locales sur cette machine…',
+    'Start a local runtime to see which models fit.': 'Démarrez un runtime local pour voir quels modèles sont adaptés.',
+    'Running': 'En cours',
+    'Not running': 'Arrêté',
+    'Start': 'Démarrer',
+    'Actions': 'Actions',
+    'Save': 'Enregistrer',
+    'Search': 'Rechercher',
+    'Question': 'Question',
+    'Recall': 'Rappeler',
+    'Remember': 'Mémoriser',
+    'This project': 'Ce projet',
+    'Me, everywhere': 'Moi, partout',
+    'Folder inside this project': 'Dossier dans ce projet',
+    'Index folder': 'Indexer le dossier',
+    'Task': 'Tâche',
+    'Any': 'Tous',
+    'Preview selection': 'Prévisualiser la sélection',
+    'Local': 'Local',
+    'Private': 'Privé',
+    'Installed': 'Installé',
+    'Available': 'Disponible'
+  });
+  function detectedLanguage() {
+    const langs = Array.isArray(navigator.languages) && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+    for (const raw of langs) {
+      const lang = String(raw || '').toLowerCase().split('-')[0];
+      if (SUPPORTED_LANGUAGES.includes(lang)) return lang;
+    }
+    return 'en';
+  }
+  function languagePreference() {
+    const saved = store.get('language', 'auto');
+    return saved === 'auto' || SUPPORTED_LANGUAGES.includes(saved) ? saved : 'auto';
+  }
+  function currentLanguage() {
+    const pref = languagePreference();
+    return pref === 'auto' ? detectedLanguage() : pref;
+  }
+  let activeLanguage = currentLanguage();
+  function translated(value) {
+    return activeLanguage === 'fr' ? (FR[value] || value) : value;
+  }
+  function translateTextNode(node) {
+    const raw = node.nodeValue || '';
+    const value = raw.trim();
+    if (!value) return;
+    const parent = node.parentElement;
+    if (parent && parent.closest('script,style,pre,code,textarea,.code')) return;
+    const next = translated(value);
+    if (next === value) return;
+    const start = raw.match(/^\s*/u)?.[0] || '';
+    const end = raw.match(/\s*$/u)?.[0] || '';
+    node.nodeValue = start + next + end;
+  }
+  function translateDom(root = document) {
+    if (activeLanguage === 'en') return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) translateTextNode(node);
+    const elements = root.querySelectorAll ? root.querySelectorAll('[placeholder],[title],[aria-label]') : [];
+    for (const node of elements) for (const attr of ['placeholder','title','aria-label']) {
+      const value = node.getAttribute(attr);
+      if (value && FR[value]) node.setAttribute(attr, FR[value]);
+    }
+  }
+  function applyLanguage() {
+    activeLanguage = currentLanguage();
+    document.documentElement.lang = activeLanguage;
+    for (const r of $('input[name="pref-language"]')) r.checked = r.value === languagePreference();
+    translateDom(document);
+  }
   async function getJson(url, init) {
     const res = await fetch(url, init);
     const body = await res.json().catch(() => ({}));
@@ -497,8 +690,18 @@ const SCRIPT = String.raw`
     d.dataset.theme = store.get('theme', 'dark'); d.dataset.motion = store.get('motion', 'system'); d.dataset.density = store.get('density', 'comfortable');
     for (const n of ['theme', 'motion', 'density']) for (const r of $$('input[name="pref-' + n + '"]')) r.checked = r.value === d.dataset[n];
   }
-  for (const n of ['theme', 'motion', 'density']) for (const r of $$('input[name="pref-' + n + '"]')) r.addEventListener('change', () => { store.set(n, r.value); applyPrefs(); });
+  for (const n of ['theme', 'motion', 'density']) for (const r of $('input[name="pref-' + n + '"]')) r.addEventListener('change', () => { store.set(n, r.value); applyPrefs(); });
   applyPrefs();
+  for (const r of $('input[name="pref-language"]')) r.addEventListener('change', () => { store.set('language', r.value); location.reload(); });
+  applyLanguage();
+  const i18nObserver = new MutationObserver((records) => {
+    if (activeLanguage === 'en') return;
+    for (const record of records) {
+      if (record.type === 'characterData') translateTextNode(record.target);
+      for (const node of record.addedNodes) if (node.nodeType === Node.TEXT_NODE) translateTextNode(node); else if (node.nodeType === Node.ELEMENT_NODE) translateDom(node);
+    }
+  });
+  i18nObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
   document.addEventListener('visibilitychange', () => document.body.classList.toggle('paused', document.hidden));
 
   /* ---------- Sidebar ---------- */
@@ -1279,6 +1482,7 @@ const SCRIPT = String.raw`
   loadConversations();
   renderConversation();
   route();
+  translateDom(document);
 })();
 `;
 
@@ -1446,6 +1650,7 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   <div class="settings"><nav class="settings-nav" aria-label="Settings sections"><a href="#set-general">General</a><a href="#set-appearance">Appearance</a><a href="#set-privacy">Privacy</a><a href="#set-advanced">Advanced</a></nav>
   <div>
     <div class="card set-group" id="set-general"><h2>General</h2>
+      <div class="set-row"><div class="t"><b>Language</b><span>Automatically follows your browser language. You can override it here.</span></div>${seg('language', [['auto', 'Auto'], ['en', 'English'], ['fr', 'French']])}</div>
       <div class="set-row"><div class="t"><b>Workspace mode</b><span>How much of FuryPipe's control plane you see. Power features are always one switch away.</span></div>${seg('mode', [['simple', 'Simple'], ['power', 'Power'], ['engineer', 'Engineer'], ['expert', 'Expert']])}</div></div>
     <div class="card set-group" id="set-appearance"><h2>Appearance</h2>
       <div class="set-row"><div class="t"><b>Theme</b><span>Dark is the signature FuryPipe look. System follows your OS.</span></div>${seg('theme', [['dark', 'Dark'], ['system', 'System']])}</div>

@@ -332,6 +332,21 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
       }
     }
 
+    // Locale: browser language is detected automatically; a persisted override wins.
+    const frContext = await browser.newContext({ viewport: { width: 1280, height: 860 }, locale: 'fr-FR' });
+    const frPage = await frContext.newPage();
+    await frPage.goto(`${origins.normal}/#/chat`, { waitUntil: 'load' });
+    await frPage.locator('.hero h2').filter({ hasText: 'Comment FuryPipe peut-il vous aider ?' }).waitFor();
+    assert(await frPage.locator('html').getAttribute('lang') === 'fr', `${name}: French browser locale was not applied`);
+    await frPage.goto(`${origins.normal}/#/settings`);
+    await frPage.locator('#set-general').filter({ hasText: 'Langue' }).waitFor();
+    await frPage.evaluate(() => localStorage.setItem('furypipe.studio.language', 'en'));
+    await frPage.reload({ waitUntil: 'load' });
+    assert(await frPage.locator('html').getAttribute('lang') === 'en', `${name}: explicit English language override was not applied`);
+    await frPage.goto(`${origins.normal}/#/chat`);
+    await frPage.locator('.hero h2').filter({ hasText: 'How can FuryPipe help?' }).waitFor();
+    await frContext.close();
+
     // Expected: 503 discovery-failed (error-state server), 409 not-runnable / web search not configured, 403 web SSRF refusal.
     const unexpected = errors.filter((e) => !/Failed to load resource: the server responded with a status of (503|409|403|422)/u.test(e));
     assert(unexpected.length === 0, `${name}: console errors: ${unexpected.join(' | ')}`);
