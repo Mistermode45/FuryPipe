@@ -70,5 +70,10 @@ describe('FuryFlow', () => {
     const done = dryRunFuryFlow(f, { fixtures: { classify: 'other', route: 'other', reply: 'hi' }, resumeFrom: stopped.checkpoint });
     expect(done.status).toBe('completed');
     expect(done.checkpoint.skipped).toEqual(expect.arrayContaining(['approve', 'pay']));
+    // Resuming a finished run is a no-op (no node runs twice); an edited checkpoint is refused.
+    const twice = dryRunFuryFlow(f, { fixtures: {}, resumeFrom: done.checkpoint });
+    expect(twice.status).toBe('completed');
+    expect(twice.trace).toEqual([]);
+    expect(() => dryRunFuryFlow(f, { fixtures: {}, resumeFrom: { ...done.checkpoint, completed: done.checkpoint.completed.slice(0, 1) } })).toThrow(FuryFlowError);
   });
 });
