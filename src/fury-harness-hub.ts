@@ -119,6 +119,22 @@ export const FURY_HARNESS_REGISTRY: readonly FuryHarnessDefinition[] = Object.fr
     localModel: { mechanism: 'unverified', note: 'Executable name and local-model path not verified in this session.' },
     capabilities: { streaming: 'unverified', resume: 'unverified', subagents: 'unverified' }, evidence: 'PRIOR_KNOWLEDGE',
   }),
+  // Protocol-level entries: any agent speaking ACP (stdio) or A2A (remote) is driven through
+  // the governed ACP/A2A runtimes of the foundation. They are configured, not found on PATH.
+  def({
+    id: 'acp-generic', displayName: 'Any ACP agent', executables: [], versionArgs: [],
+    integrations: ['acp'], protocols: ['acp', 'mcp'], skillsDirectories: [],
+    localModel: { mechanism: 'unverified', note: 'Depends on the configured agent.' },
+    capabilities: { streaming: true, resume: 'unverified', subagents: 'unverified' }, evidence: 'BUILTIN',
+    source: 'src/acp-external-client-runtime-node.ts',
+  }),
+  def({
+    id: 'a2a-generic', displayName: 'Any A2A agent', executables: [], versionArgs: [],
+    integrations: ['a2a'], protocols: ['a2a'], skillsDirectories: [],
+    localModel: { mechanism: 'none', note: 'Remote agent: its models are its own.' },
+    capabilities: { streaming: 'unverified', resume: 'unverified', subagents: 'unverified' }, evidence: 'BUILTIN',
+    source: 'src/a2a-remote-adapter-node.ts',
+  }),
 ]);
 
 const VERSION_PATTERN = /\b(\d+\.\d+(?:\.\d+)?(?:[-+][0-9A-Za-z.-]{1,32})?)\b/u;
@@ -197,6 +213,8 @@ export async function discoverFuryHarnesses(options: {
     if (definition.integrations.includes('native')) {
       return Object.freeze({ ...baseStatus, installed: true, versionStatus: 'builtin' as const });
     }
+    // Protocol entries (ACP/A2A) are configured endpoints: nothing to look up or run.
+    if (definition.executables.length === 0) return Object.freeze({ ...baseStatus, installed: false, versionStatus: 'not-executed' as const });
     let executable: string | undefined;
     for (const name of definition.executables) {
       executable = resolveFuryExecutable(name, env, platform);

@@ -25,7 +25,7 @@ function binDir(): string {
 describe('Harness Hub', () => {
   it('registers the priority harnesses with an integration path and a local-model mechanism', () => {
     const ids = FURY_HARNESS_REGISTRY.map((h) => h.id);
-    for (const id of ['furypipe-native', 'claude-code', 'codex', 'gemini-cli', 'opencode', 'openclaw', 'openhands', 'goose', 'kilo']) {
+    for (const id of ['furypipe-native', 'claude-code', 'codex', 'gemini-cli', 'opencode', 'openclaw', 'openhands', 'goose', 'kilo', 'acp-generic', 'a2a-generic']) {
       expect(ids).toContain(id);
     }
     expect(new Set(ids).size).toBe(ids.length);
@@ -45,6 +45,9 @@ describe('Harness Hub', () => {
     expect(calls).toBe(0);
     expect(result.harnesses.find((h) => h.id === 'claude-code')).toMatchObject({ installed: false, versionStatus: 'not-installed', authentication: 'not-probed' });
     expect(result.harnesses.find((h) => h.id === 'furypipe-native')).toMatchObject({ installed: true, versionStatus: 'builtin' });
+    // Protocol entries are configured endpoints: never looked up on PATH, never executed.
+    expect(result.harnesses.find((h) => h.id === 'acp-generic')).toMatchObject({ installed: false, versionStatus: 'not-executed' });
+    expect(result.harnesses.find((h) => h.id === 'a2a-generic')?.definition.integrations).toEqual(['a2a']);
   });
 
   it.skipIf(process.platform === 'win32')('executes the real binary with --version, no shell and a minimal environment', async () => {

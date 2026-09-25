@@ -149,4 +149,13 @@ describe('FuryLocal measurement', () => {
     });
     await expect(measureFuryLocalModel({ backend: 'vllm', baseUrl: empty, model: 'm' })).rejects.toThrow(/no streamed content/u);
   });
+  it('handles bad JSON, slow servers and unknown models without throwing from discovery', async () => {
+    const garbage = await serve((_req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{not json'); });
+    const slow = await serve(() => undefined); // accepts and never answers
+    const { backends } = await discoverFuryLocalBackends({ endpoints: [{ kind: 'vllm', baseUrl: garbage }, { kind: 'localai', baseUrl: slow }], timeoutMs: 300 });
+    expect(backends[0]!.reachable).toBe(false);
+    expect(backends[1]!.reachable).toBe(false);
+    const missing = await serve((_req, res) => json(res, { error: { message: 'model "nope" not found' } }, 404));
+    await expect(measureFuryLocalModel({ backend: 'ollama', baseUrl: missing, model: 'nope' })).rejects.toThrow(FuryLocalFabricError);
+  });
 });

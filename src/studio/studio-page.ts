@@ -242,7 +242,7 @@ const SCRIPT = String.raw`
     try {
       state.harnesses = await getJson('/api/studio/harnesses.json'); body.replaceChildren();
       for (const h of state.harnesses.harnesses) {
-        body.append(el('tr', {}, el('td', { text: h.displayName }), el('td', {}, h.installed ? badge(h.versionStatus === 'builtin' ? 'built in' : 'installed', 'ok') : badge('not installed', 'muted')),
+        body.append(el('tr', {}, el('td', { text: h.displayName }), el('td', {}, h.installed ? badge(h.versionStatus === 'builtin' ? 'built in' : 'installed', 'ok') : badge(h.versionStatus === 'not-executed' ? 'configure an endpoint' : 'not installed', 'muted')),
           el('td', { text: h.version || '—' }), el('td', { text: h.definition.integrations.join(', ') }), el('td', { text: h.definition.localModel.mechanism }), el('td', { text: h.definition.evidence })));
       }
       status.textContent = state.harnesses.harnesses.filter(h => h.installed).length + ' runtime(s) available. Authentication is never probed.';

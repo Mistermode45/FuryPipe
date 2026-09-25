@@ -159,6 +159,7 @@ async function probeBackend(endpoint: FuryLocalEndpoint, options: { timeoutMs: n
     if (endpoint.kind === 'ollama') {
       const tags = await boundedJson(url, '/api/tags', options.timeoutMs);
       if (tags.status !== 200) return unreachable(`HTTP ${tags.status}`);
+      if (!Array.isArray((tags.body as { models?: unknown } | undefined)?.models)) return unreachable('not an Ollama /api/tags response');
       const versionResponse = await boundedJson(url, '/api/version', options.timeoutMs).catch(() => undefined);
       const version = str((versionResponse?.body as { version?: unknown } | undefined)?.version, 64);
       const models = ((tags.body as { models?: unknown })?.models);
@@ -198,6 +199,8 @@ async function probeBackend(endpoint: FuryLocalEndpoint, options: { timeoutMs: n
     }
     const models = await boundedJson(url, '/v1/models', options.timeoutMs);
     if (models.status !== 200) return unreachable(`HTTP ${models.status}`);
+    // A 200 that is not an OpenAI-style model list is not a working backend.
+    if (!Array.isArray((models.body as { data?: unknown } | undefined)?.data)) return unreachable('not an OpenAI-compatible /v1/models response');
     const protocols: FuryLocalProtocol[] = endpoint.kind === 'anthropic-compatible' ? ['anthropic-messages'] : ['openai-chat'];
     return Object.freeze({ kind: endpoint.kind, baseUrl, reachable: true, protocols: Object.freeze(protocols), models: Object.freeze(openAiModels(endpoint.kind, baseUrl, models.body)) });
   } catch (error) {
