@@ -1658,7 +1658,7 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   const html = `<!doctype html>
 <html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light"><meta name="theme-color" content="#050506">
-<title>FuryPipe Studio</title><style nonce="${nonce}">${CSS}</style></head>
+<title>Chat · FuryPipe Studio</title><style nonce="${nonce}">${CSS}</style></head>
 <body data-mode="simple" data-view="chat"><a class="skip" href="#main">Skip to content</a>
 <svg class="defs" aria-hidden="true" focusable="false"><defs>
 <radialGradient id="fury-core" cx="45%" cy="40%" r="60%"><stop offset="0" stop-color="#ffe2c7"/><stop offset=".45" stop-color="#ff8a3d"/><stop offset="1" stop-color="#d9480f"/></radialGradient>
