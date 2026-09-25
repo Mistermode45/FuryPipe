@@ -16,6 +16,6 @@ Measurement (`measureFuryLocalModel`): streams one short completion from a local
 
 ## Harness Hub
 
-The registry covers FuryPipe Native, Claude Code, Codex, Gemini CLI, OpenCode, OpenClaw, OpenHands, Goose and Kilo. Each entry records its integration path (official protocol > SDK > ACP/A2A > structured CLI > PTY), its protocols, its skills directories, and how it reaches a local model (e.g. Claude Code via an Anthropic-compatible base URL, Codex via `--oss`). Each entry also carries an evidence level and source.
+The registry covers FuryPipe Native, Claude Code, Codex, Gemini CLI, OpenCode, OpenClaw, OpenHands, Goose and Kilo. Each entry records its integration path (ACP/official protocol > official SDK/API > A2A > structured CLI > PTY, per master §15), its protocols, its skills directories, and how it reaches a local model (e.g. Claude Code via an Anthropic-compatible base URL, Codex via `--oss`). Each entry also carries an evidence level and source.
 
 Discovery resolves executables on absolute PATH entries only and runs `--version` with a timeout, no shell and a minimal environment; provider keys are not forwarded. Windows `.cmd` shims go through the hardened FuryLink `cmd.exe` boundary. Authentication is never probed.

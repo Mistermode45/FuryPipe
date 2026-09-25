@@ -2,7 +2,7 @@
 
 Single definition of done for the `claude/furypipe-studio-universal-ai-workspace` track (mission §20–§21, §119). No numbered phases are added on top of this list; a requirement leaves this file only by reaching DONE with evidence or by an explicit reclassification recorded in `MASTER_DOC_SYNC_LOG.md`.
 
-Source note: the Google Docs master specification could not be read (egress blocked); requirements come from the operator's 2026-09-25 mission prompt and must be re-synchronised.
+Source: master product vision 2026-09-25 (read in full from the operator's export; see `MASTER_DOC_SYNC_LOG.md`) and the operator's 2026-09-25 mission prompt. Section references (§) point to the master document.
 
 Status values: NOT_STARTED, PARTIAL (existing primitive, not yet meeting the acceptance criteria), DONE (acceptance met, evidence linked), OPTIONAL_NOT_LIVE_VERIFIED (contract/mocks pass, live service not available).
 
@@ -29,6 +29,10 @@ Release gates (all MUST): P0 = 0, P1 = 0, P2 release-blocking = 0, exact-head CI
 | UX-04 | Code: repo explorer, diff, tests, worktrees, agents | MUST | UX-01,CORE-07 | Diff and test receipts visible per worktree | browser QA | PARTIAL — graph summary and blast radius; no editor/diff/terminal yet |
 | UX-05 | Agents / Mission Control view | MUST | UX-01,CORE-12 | Live state from the runtime API | browser QA | PARTIAL — dispatch preview; no live Mission Control state |
 | UX-06 | Automations / FuryFlow builder with deterministic vs agentic zones | MUST | UX-01 | Flow validates as a DAG; zones rendered | browser QA + unit | NOT_STARTED |
+| CORE-14 | Budget governance modes FAST, BALANCED, QUALITY, BUDGET, LOCAL-FIRST, PRIVATE, CUSTOM mapped to dispatcher ranking and privacy (§28) | MUST | CORE-06 | Each mode changes ranking/filters deterministically; PRIVATE = local-only | unit | NOT_STARTED |
+| CORE-15 | Predicted vs actual impact: blast radius before patch compared with the changed dependency region after patch; Judge can require tests for uncovered neighbours (§47.5) | MUST | CORE-10, CORE-02 | Delta lists unexpected files and untested neighbours | unit | NOT_STARTED |
+| SHOULD-04 | Graphify refresh of changed files after agent patch/merge/checkout (§47.2) | SHOULD | CORE-10 | Explicit, shell-free, bounded | unit | NOT_STARTED |
+| UX-07 | Progressive UX: Simple (chat, model, message) → Power → Engineer → Expert without exposing DAG/receipts to simple users (§37) | MUST | UX-01 | Simple mode hides expert surfaces; switch persisted per viewer | browser QA | NOT_STARTED |
 | PLAT-01 | Skills Hub (discovery across .furypipe/.claude/.agents/.opencode skills, metadata, enable/disable/pin) | MUST | – | Existing skill-registry reused; discovery bounded and symlink-safe | unit | PARTIAL (agent-skills-standard, skill-registry exist) |
 | PLAT-02 | MCP Hub (installed/local/remote, health, permissions) | MUST | – | Existing MCP Direct reused | unit | PARTIAL (MCP Direct exists) |
 | PLAT-03 | Memory (scopes, why-retrieved, source, age, confidence) | MUST | – | Existing Memory VNext reused | unit | PARTIAL (memory-vnext exists) |
