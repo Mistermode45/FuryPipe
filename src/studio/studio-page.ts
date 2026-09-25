@@ -99,7 +99,7 @@ const SCRIPT = String.raw`
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'text') n.textContent = v; else if (k === 'class') n.className = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; };
-  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','settings'];
+  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','mcp','settings'];
   const state = { local: null, harnesses: null, model: null, history: [] };
   async function getJson(url, init) {
     const res = await fetch(url, init);
@@ -128,6 +128,7 @@ const SCRIPT = String.raw`
     if (name === 'chat' || name === 'models') loadLocal();
     if (name === 'runtimes') loadHarnesses();
     if (name === 'skills') loadSkills();
+    if (name === 'mcp') loadMcp();
     if (name === 'code') loadGraph();
     if (name === 'mission') loadRuns();
     clearInterval(state.poll); if (name === 'mission') state.poll = setInterval(loadRuns, 2000);
@@ -289,6 +290,43 @@ const SCRIPT = String.raw`
       if (r.excluded.length) { const ul = el('ul', { class: 'reasons' }); for (const x of r.excluded) ul.append(el('li', { text: x.name + ': ' + x.reason })); out.append(ul); }
     } catch (e) { out.append(el('p', { class: 'bad', text: e.message })); }
   });
+  async function mcpPost(url, payload) { return getJson(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); }
+  async function loadMcp() {
+    const box = $('#mcp-list'); const status = $('#mcp-status');
+    try { const r = await getJson('/api/studio/mcp.json'); box.replaceChildren();
+      if (!r.sources.length) box.append(el('p', { class: 'empty', text: 'No MCP server configured. FuryPipe reads .mcp.json, .cursor/mcp.json, .vscode/mcp.json, opencode.json, ~/.claude.json and ~/.codex/config.toml.' }));
+      for (const s of r.sources) {
+        const card = el('div', { class: 'card' });
+        const health = s.health ? (s.health.ok ? badge('healthy · ' + s.health.toolCount + ' tool(s)', 'ok') : badge('unhealthy', 'warn')) : badge('not probed', 'muted');
+        card.append(el('h2', { text: s.name }), el('p', { class: 'muted', text: s.origin + ' · ' + s.transport + ' · ' + s.locality + ' · ' + (s.command ? s.command + ' ' + (s.args || []).join(' ') : s.url) }), el('p', {}, health, ' ', s.trusted ? badge('trusted', 'ok') : badge('untrusted', 'muted'), ' ', s.enabled ? badge('enabled', 'ok') : badge('disabled', 'muted')));
+        if (s.envNames.length || s.headerNames.length) card.append(el('p', { class: 'muted', text: 'Credentials referenced (values never shown or sent by probes): ' + [...s.envNames, ...s.headerNames].join(', ') }));
+        if (s.health && s.health.error) card.append(el('p', { class: 'bad', text: s.health.error }));
+        const row = el('div', { class: 'row' });
+        const act = (label, action, value) => { const b = el('button', { type: 'button', class: 'secondary', text: label }); b.setAttribute('aria-label', label + ' ' + s.name); b.addEventListener('click', async () => { try { await mcpPost('/api/studio/mcp/act', { sourceId: s.sourceId, action, value }); await loadMcp(); status.textContent = label + ': ' + s.name; } catch (e) { status.textContent = e.message; } }); return b; };
+        row.append(act(s.enabled ? 'Disable' : 'Enable', s.enabled ? 'DISABLE' : 'ENABLE'), act(s.trusted ? 'Untrust' : 'Trust', s.trusted ? 'UNTRUST' : 'TRUST'));
+        const pol = el('select', { 'aria-label': 'Default tool policy for ' + s.name }); for (const p of ['ALLOW','ASK','DENY','READ_ONLY']) { const o = el('option', { text: p }); if (p === s.defaultPolicy) o.selected = true; pol.append(o); }
+        pol.addEventListener('change', async () => { try { await mcpPost('/api/studio/mcp/act', { sourceId: s.sourceId, action: 'DEFAULT_POLICY', value: pol.value }); status.textContent = 'Default policy for ' + s.name + ': ' + pol.value; } catch (e) { status.textContent = e.message; } });
+        const probe = el('button', { type: 'button', text: 'Health check' }); probe.setAttribute('aria-label', 'Health check ' + s.name);
+        probe.addEventListener('click', async () => {
+          const remote = s.locality === 'remote';
+          if (!confirm(remote ? 'Contact the remote server ' + s.url + ' without credentials?' : 'Start ' + s.name + ' locally to list its tools?')) return;
+          probe.disabled = true; status.textContent = 'Probing ' + s.name + '…';
+          try { await mcpPost('/api/studio/mcp/probe', { sourceId: s.sourceId, allowRemote: remote, confirm: true }); await loadMcp(); status.textContent = 'Probed ' + s.name + '.'; } catch (e) { status.textContent = e.message; probe.disabled = false; }
+        });
+        row.append(el('label', {}, 'Default policy ', pol), probe); card.append(row);
+        if (s.health && s.health.tools.length) {
+          const t = el('table'); t.append(el('thead', {}, el('tr', {}, ...['Tool','Risk','Read-only','Policy'].map(h => el('th', { scope: 'col', text: h })))));
+          const tb = el('tbody');
+          for (const tool of s.health.tools) { const sel = el('select', { 'aria-label': 'Policy for ' + tool.name }); for (const p of ['(default)','ALLOW','ASK','DENY','READ_ONLY']) { const o = el('option', { text: p }); if ((s.toolPolicies[tool.name] || '(default)') === p) o.selected = true; sel.append(o); }
+            sel.addEventListener('change', async () => { try { await mcpPost('/api/studio/mcp/act', { sourceId: s.sourceId, action: 'TOOL_POLICY', tool: tool.name, value: sel.value === '(default)' ? null : sel.value }); status.textContent = tool.name + ': ' + sel.value; } catch (e) { status.textContent = e.message; } });
+            tb.append(el('tr', {}, el('td', { text: tool.name }), el('td', { text: tool.riskClass }), el('td', { text: tool.readOnly ? 'yes' : 'no' }), el('td', {}, sel))); }
+          t.append(tb); card.append(t);
+        }
+        box.append(card);
+      }
+      status.textContent = r.sources.length + ' MCP server(s) across ' + r.configs.filter(c => c.status === 'found').length + ' config file(s).';
+    } catch (e) { status.textContent = 'MCP discovery failed: ' + e.message; }
+  }
   const LEVELS = ['simple', 'power', 'engineer', 'expert'];
   function applyMode(mode) {
     if (!LEVELS.includes(mode)) mode = 'simple';
@@ -350,7 +388,7 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
 <nav class="side" aria-label="Studio">
   <div class="brand">Fury<span>Pipe</span> Studio</div>
   <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'engineer', 'Mission Control')}${nav('automations', 'expert', 'Automations')}</ul></div>
-  <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'simple', 'Models')}${nav('runtimes', 'power', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('settings', 'simple', 'Settings')}</ul></div>
+  <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'simple', 'Models')}${nav('runtimes', 'power', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'engineer', 'MCP')}${nav('settings', 'simple', 'Settings')}</ul></div>
 </nav>
 <div>
 <header class="top" aria-label="Active execution context">
@@ -403,6 +441,8 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   <div class="card"><table><thead><tr><th scope="col">Skill</th><th scope="col">Scope</th><th scope="col">State</th><th scope="col">Version</th><th scope="col">Runtimes</th><th scope="col">Uses</th><th scope="col">Checksum</th><th scope="col">Governance</th><th scope="col">Actions</th></tr></thead><tbody id="skills-body"></tbody></table><p id="skills-status" class="status muted" role="status"></p></div>
   <div class="card"><h2>Which skills would a task use?</h2><form id="skill-select-form"><label for="skill-objective">Task</label><textarea id="skill-objective" required placeholder="e.g. Review the SQL migration for locking"></textarea>
   <div class="row"><div><label for="skill-harness">Runtime</label><select id="skill-harness"><option value="">Any</option>${FURY_HARNESS_REGISTRY.map((h) => `<option value="${h.id}">${escapeHtml(h.displayName)}</option>`).join('')}</select></div><button type="submit">Preview selection</button></div></form><div id="skill-select-out" aria-live="polite"></div></div></section>
+<section data-view="mcp" aria-labelledby="h-mcp" hidden><h1 id="h-mcp">MCP servers</h1><p class="lead">Every MCP server your coding tools are configured with, one place to decide what each tool may do. Health checks never send configured secrets.</p>
+  <p id="mcp-status" class="status muted" role="status"></p><div id="mcp-list"></div></section>
 <section data-view="settings" aria-labelledby="h-settings" hidden><h1 id="h-settings">Settings</h1><p class="lead">Advanced surfaces for operators.</p>
   <div class="card"><h2>Advanced</h2><p><a href="/control-plane">Control Plane</a> — the technical dashboard: sessions, compression, readiness, provider and MCP evidence.</p></div></section>
 <section data-view="notfound" aria-labelledby="h-notfound" hidden><h1 id="h-notfound">Page not found</h1><p class="lead">This Studio view does not exist. <a href="#/chat">Go to Chat</a>.</p></section>

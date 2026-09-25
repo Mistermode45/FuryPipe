@@ -15,6 +15,7 @@ import { chromium, firefox, webkit, type BrowserType, type Page } from 'playwrig
 
 import { FURY_HARNESS_REGISTRY, type FuryHarnessDiscovery } from '../src/fury-harness-hub.js';
 import type { FuryLocalBackendStatus } from '../src/fury-local-fabric.js';
+import { createFuryMcpHub } from '../src/fury-mcp-hub.js';
 import { createFurySkillHub } from '../src/fury-skill-hub.js';
 import { createStudioApi, studioApiRoute } from '../src/studio/studio-api.js';
 import { studioHtmlResponse } from '../src/studio/studio-page.js';
@@ -90,6 +91,7 @@ async function startStudio(mode: 'normal' | 'empty' | 'error', backendUrl: strin
   const api = createStudioApi({
     projectRoot,
     // Isolated hub state: QA never touches the operator's ~/.furypipe.
+    mcpHub: createFuryMcpHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-mcp-hub', mode) }),
     skillHub: createFurySkillHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-skill-hub', mode), projectTrustedForInstructions: true }),
     discoverHarnesses: async () => harnesses,
     discoverLocal: async () => {
@@ -178,6 +180,13 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.locator('#skill-harness').selectOption('codex');
     await page.locator('#skill-select-form button[type=submit]').click();
     await page.locator('#skill-select-out p').filter({ hasText: 'Selected: sql-review' }).waitFor();
+    await page.goto(`${origins.normal}/#/mcp`);
+    await page.locator('#mcp-list h2').filter({ hasText: 'qa-fixture' }).waitFor();
+    assert(!(await page.locator('#mcp-list').textContent())?.includes('qa-secret-value'), `${name}: MCP secret leaked`);
+    page.once('dialog', (d) => void d.accept());
+    await page.getByRole('button', { name: 'Health check qa-fixture' }).click();
+    await page.locator('#mcp-list .badge.ok').filter({ hasText: 'healthy · 1 tool(s)' }).waitFor({ timeout: 20_000 });
+    await page.locator('#mcp-list td').filter({ hasText: 'inventory-proof' }).waitFor();
     await page.goto(`${origins.normal}/#/code`);
     await page.waitForFunction(() => document.querySelector('#graph-provider')?.textContent === 'graphify');
     await page.locator('#blast-files').fill('src/auth/session.ts');
@@ -236,6 +245,7 @@ async function main(): Promise<void> {
   for (const [file, meta] of Object.entries(manifest)) utimesSync(path.join(project, file), meta.mtime - 10, meta.mtime - 10);
   mkdirSync(path.join(project, '.claude', 'skills', 'sql-review'), { recursive: true });
   writeFileSync(path.join(project, '.claude', 'skills', 'sql-review', 'SKILL.md'), '---\nname: sql-review\ndescription: Review SQL migrations for locking and data loss.\n---\n\nCheck locks.\n');
+  writeFileSync(path.join(project, '.mcp.json'), JSON.stringify({ mcpServers: { 'qa-fixture': { command: process.execPath, args: [path.resolve('tests/fixtures/mcp-direct-stdio-server.mjs')], env: { QA_TOKEN: 'qa-secret-value' } } } }));
   const backend = await startBackend();
   const normal = await startStudio('normal', backend.baseUrl, project);
   const empty = await startStudio('empty', backend.baseUrl, project);

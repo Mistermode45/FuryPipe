@@ -31,6 +31,7 @@ import { createFuryProofLedger } from '../fury-proof.js';
 import { runFuryTask, type FuryRunResult, type FuryTaskExecutor } from '../fury-run.js';
 import { createFurySkillHub, FurySkillHubError, FURY_SKILL_GOVERNANCE, type FurySkillGovernance, type FurySkillHub } from '../fury-skill-hub.js';
 import { createHash } from 'node:crypto';
+import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy } from '../fury-mcp-hub.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
@@ -38,7 +39,8 @@ const CACHE_MS = 10_000;
 
 export type StudioRoute =
   | 'harnesses' | 'local' | 'hardware' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
-  | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare';
+  | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
+  | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
@@ -58,6 +60,10 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/skills/select': { route: 'skill-select', method: 'POST' },
   '/api/studio/skills/install': { route: 'skill-install', method: 'POST' },
   '/api/studio/skills/compare': { route: 'skill-compare', method: 'POST' },
+  '/api/studio/mcp.json': { route: 'mcp', method: 'GET' },
+  '/api/studio/mcp/act': { route: 'mcp-act', method: 'POST' },
+  '/api/studio/mcp/probe': { route: 'mcp-probe', method: 'POST' },
+  '/api/studio/mcp/decide': { route: 'mcp-decide', method: 'POST' },
 });
 
 export function studioApiRoute(pathname: string): { route: StudioRoute; method: 'GET' | 'POST' } | null {
@@ -78,6 +84,8 @@ export interface StudioApiOptions {
   readonly worktreeRoot?: string;
   /** Skills Hub; defaults to one keyed by project under ~/.furypipe/studio/skill-hub. */
   readonly skillHub?: FurySkillHub;
+  /** MCP Hub; defaults to one keyed by project under ~/.furypipe/studio/mcp-hub. */
+  readonly mcpHub?: FuryMcpHub;
 }
 
 interface StudioRun {
@@ -178,10 +186,9 @@ export function createStudioApi(options: StudioApiOptions) {
   const hardware = () => cached('hardware', discovery(options.discoverHardware ?? (() => discoverFuryHardware())));
   const graph = () => cached('graph', async () => (await (options.loadGraph ?? loadFuryGraph)(options.projectRoot)).graph);
 
-  const skills = options.skillHub ?? createFurySkillHub({
-    projectRoot: options.projectRoot,
-    stateDir: path.join(os.homedir(), '.furypipe', 'studio', 'skill-hub', createHash('sha256').update(path.resolve(options.projectRoot)).digest('hex').slice(0, 16)),
-  });
+  const projectKey = createHash('sha256').update(path.resolve(options.projectRoot)).digest('hex').slice(0, 16);
+  const skills = options.skillHub ?? createFurySkillHub({ projectRoot: options.projectRoot, stateDir: path.join(os.homedir(), '.furypipe', 'studio', 'skill-hub', projectKey) });
+  const mcp = options.mcpHub ?? createFuryMcpHub({ projectRoot: options.projectRoot, stateDir: path.join(os.homedir(), '.furypipe', 'studio', 'mcp-hub', projectKey) });
 
   const runs = new Map<string, StudioRun>();
   const ledger = createFuryProofLedger();
@@ -342,6 +349,30 @@ export function createStudioApi(options: StudioApiOptions) {
             const body = await readJson(request) as { name?: unknown; a?: unknown; b?: unknown };
             return json(await skills.compare(String(body?.name ?? ''), String(body?.a ?? ''), String(body?.b ?? '')));
           }
+          case 'mcp':
+            return json(await mcp.list());
+          case 'mcp-act': {
+            const body = await readJson(request) as { sourceId?: unknown; action?: unknown; tool?: unknown; value?: unknown };
+            const id = String(body?.sourceId ?? '');
+            switch (body?.action) {
+              case 'ENABLE': return json(await mcp.setEnabled(id, true));
+              case 'DISABLE': return json(await mcp.setEnabled(id, false));
+              case 'TRUST': return json(await mcp.setTrusted(id, true));
+              case 'UNTRUST': return json(await mcp.setTrusted(id, false));
+              case 'DEFAULT_POLICY': return json(await mcp.setDefaultPolicy(id, body.value as FuryMcpPolicy));
+              case 'TOOL_POLICY': return json(await mcp.setToolPolicy(id, String(body.tool ?? ''), body.value === null ? null : body.value as FuryMcpPolicy));
+              default: return problem(400, 'invalid-input', 'action must be ENABLE, DISABLE, TRUST, UNTRUST, DEFAULT_POLICY or TOOL_POLICY');
+            }
+          }
+          case 'mcp-probe': {
+            const body = await readJson(request) as { sourceId?: unknown; allowRemote?: unknown; confirm?: unknown };
+            if (body?.confirm !== true) return problem(400, 'confirmation-required', 'a health probe starts the configured server; it requires confirm: true');
+            return json(await mcp.probe(String(body.sourceId ?? ''), { allowRemote: body.allowRemote === true }));
+          }
+          case 'mcp-decide': {
+            const body = await readJson(request) as { sourceId?: unknown; tool?: unknown };
+            return json(await mcp.decide(String(body?.sourceId ?? ''), String(body?.tool ?? '')));
+          }
           case 'chat': {
             const body = await readJson(request) as { kind?: unknown; baseUrl?: unknown; model?: unknown; messages?: unknown };
             if (typeof body?.baseUrl !== 'string' || typeof body.model !== 'string' || body.model.length > 256 || !Array.isArray(body.messages) || body.messages.length === 0 || body.messages.length > 64) {
@@ -374,6 +405,7 @@ export function createStudioApi(options: StudioApiOptions) {
         if (status) return problem(status, status === 503 ? 'discovery-failed' : status === 409 ? 'not-runnable' : 'invalid-request', (error as Error).message);
         if (error instanceof FuryIrError) return problem(422, 'invalid-ir', error.message);
         if (error instanceof FuryDispatchError) return problem(422, 'dispatch-rejected', error.message);
+        if (error instanceof FuryMcpHubError) return problem(/^unknown MCP source/u.test(error.message) ? 404 : 422, 'mcp-rejected', error.message);
         if (error instanceof FurySkillHubError) return problem(/^unknown skill/u.test(error.message) ? 404 : 422, 'skill-rejected', error.message);
         if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') return problem(404, 'not-found', 'path not found');
         if (error instanceof FuryFlowError) return problem(422, 'invalid-flow', error.message);

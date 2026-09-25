@@ -223,3 +223,35 @@ describe('Studio Skills Hub', () => {
     }
   });
 });
+
+describe('Studio MCP Hub', () => {
+  it('lists redacted sources, sets policies and requires confirmation to probe', async () => {
+    const { mkdtempSync, writeFileSync, rmSync, mkdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const { createFuryMcpHub } = await import('../src/fury-mcp-hub.js');
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-studio-mcp-'));
+    try {
+      const project = join(root, 'p');
+      mkdirSync(project);
+      const fixture = fileURLToPath(new URL('./fixtures/mcp-direct-stdio-server.mjs', import.meta.url));
+      writeFileSync(join(project, '.mcp.json'), JSON.stringify({ mcpServers: { fx: { command: process.execPath, args: [fixture], env: { K: 'secret-env-value' } } } }));
+      const mcpHub = createFuryMcpHub({ projectRoot: project, homeDir: join(root, 'h'), stateDir: join(root, 's') });
+      const studio = createStudioApi({ projectRoot: project, mcpHub, discoverHarnesses: async () => harnesses, discoverLocal: async () => ({ backends: [] }) });
+      const listed = await (await studio.handle('mcp', new Request('http://127.0.0.1/'))).text();
+      expect(listed).toContain('project-mcp.fx');
+      expect(listed).not.toContain('secret-env-value');
+      expect((await studio.handle('mcp-probe', post({ sourceId: 'project-mcp.fx' }))).status).toBe(400);
+      expect((await studio.handle('mcp-probe', post({ sourceId: 'ghost', confirm: true }))).status).toBe(404);
+      expect((await studio.handle('mcp-act', post({ sourceId: 'project-mcp.fx', action: 'DEFAULT_POLICY', value: 'SOMETIMES' }))).status).toBe(422);
+      await studio.handle('mcp-act', post({ sourceId: 'project-mcp.fx', action: 'TRUST' }));
+      await studio.handle('mcp-act', post({ sourceId: 'project-mcp.fx', action: 'DEFAULT_POLICY', value: 'READ_ONLY' }));
+      const probed = await (await studio.handle('mcp-probe', post({ sourceId: 'project-mcp.fx', confirm: true }))).json() as { health: { ok: boolean } };
+      expect(probed.health.ok).toBe(true);
+      expect(await (await studio.handle('mcp-decide', post({ sourceId: 'project-mcp.fx', tool: 'inventory-proof' }))).json()).toMatchObject({ decision: 'ALLOW' });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
