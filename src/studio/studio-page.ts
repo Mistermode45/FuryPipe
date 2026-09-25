@@ -1337,7 +1337,12 @@ const SCRIPT = String.raw`
     const max = LEVELS.indexOf(document.body.dataset.mode || 'simple'); const items = [];
     items.push({ icon: 'compose', label: 'New chat', hint: 'Ctrl Shift O', run: newChat });
     items.push({ icon: 'models', label: 'Change model', run: () => { location.hash = '#/chat'; setTimeout(() => $('#model-button').click(), 30); } });
-    for (const li of $$('.side-nav li[data-level]')) { if (LEVELS.indexOf(li.dataset.level) > max) continue; const a = li.querySelector('a'); items.push({ icon: a.dataset.view, label: 'Go to ' + a.textContent.trim(), run: () => { location.hash = '#/' + a.dataset.view; } }); }
+    for (const li of $('.side-nav li[data-level]')) {
+      if (LEVELS.indexOf(li.dataset.level) > max) continue;
+      const a = li.querySelector('a[data-view]');
+      if (!a) continue;
+      items.push({ icon: a.dataset.view, label: 'Go to ' + a.textContent.trim(), run: () => { location.hash = '#/' + a.dataset.view; } });
+    }
     for (const m of LEVELS) items.push({ icon: 'settings', label: 'Switch to ' + MODE_TEXT[m] + ' mode', run: () => applyMode(m) });
     for (const b of $$('#chat-list .conv')) items.push({ icon: 'chat', label: b.textContent, hint: 'Conversation', run: () => b.click() });
     return items;
