@@ -692,7 +692,7 @@ const SCRIPT = String.raw`
   function applyLanguage() {
     activeLanguage = currentLanguage();
     document.documentElement.lang = activeLanguage;
-    for (const r of $('input[name="pref-language"]')) r.checked = r.value === languagePreference();
+    for (const r of document.querySelectorAll('input[name="pref-language"]')) r.checked = r.value === languagePreference();
     translateDom(document);
   }
   async function getJson(url, init) {
@@ -711,9 +711,9 @@ const SCRIPT = String.raw`
     d.dataset.theme = store.get('theme', 'dark'); d.dataset.motion = store.get('motion', 'system'); d.dataset.density = store.get('density', 'comfortable');
     for (const n of ['theme', 'motion', 'density']) for (const r of $$('input[name="pref-' + n + '"]')) r.checked = r.value === d.dataset[n];
   }
-  for (const n of ['theme', 'motion', 'density']) for (const r of $('input[name="pref-' + n + '"]')) r.addEventListener('change', () => { store.set(n, r.value); applyPrefs(); });
+  for (const n of ['theme', 'motion', 'density']) for (const r of document.querySelectorAll('input[name="pref-' + n + '"]')) r.addEventListener('change', () => { store.set(n, r.value); applyPrefs(); });
   applyPrefs();
-  for (const r of $('input[name="pref-language"]')) r.addEventListener('change', () => { store.set('language', r.value); location.reload(); });
+  for (const r of document.querySelectorAll('input[name="pref-language"]')) r.addEventListener('change', () => { store.set('language', r.value); location.reload(); });
   applyLanguage();
   const i18nObserver = new MutationObserver((records) => {
     if (activeLanguage === 'en') return;
