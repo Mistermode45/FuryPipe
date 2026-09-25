@@ -207,10 +207,18 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.goto(`${origins.normal}/#/mcp`);
     await page.locator('#mcp-list h2').filter({ hasText: 'qa-fixture' }).waitFor();
     assert(!(await page.locator('#mcp-list').textContent())?.includes('qa-secret-value'), `${name}: MCP secret leaked`);
+    // Untrusted project command: the probe is refused until the operator trusts the source.
     page.once('dialog', (d) => void d.accept());
+    await page.getByRole('button', { name: 'Health check qa-fixture' }).click();
+    await page.waitForFunction(() => /mark the source trusted/u.test(document.querySelector('#mcp-status')?.textContent ?? ''));
+    await page.getByRole('button', { name: 'Trust qa-fixture' }).click();
+    await page.locator('#mcp-list .badge.ok').filter({ hasText: 'trusted' }).waitFor();
+    let probePrompt = '';
+    page.once('dialog', (d) => { probePrompt = d.message(); void d.accept(); });
     await page.getByRole('button', { name: 'Health check qa-fixture' }).click();
     await page.locator('#mcp-list .badge.ok').filter({ hasText: 'healthy · 1 tool(s)' }).waitFor({ timeout: 20_000 });
     await page.locator('#mcp-list td').filter({ hasText: 'inventory-proof' }).waitFor();
+    assert(probePrompt.includes('mcp-direct-stdio-server.mjs') && probePrompt.includes('.mcp.json'), `${name}: probe confirmation must show the command: ${probePrompt}`);
     await page.goto(`${origins.normal}/#/knowledge`);
     await page.waitForFunction(() => /keyword search only/u.test(document.querySelector('#kb-stats')?.textContent ?? ''));
     await page.locator('#kb-dir').fill('src');
@@ -291,7 +299,7 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     assert(overflow <= 1, `${name}: horizontal overflow ${overflow}px at 390px`);
 
     // Expected: 503 discovery-failed (error-state server), 409 not-runnable / web search not configured, 403 web SSRF refusal.
-    const unexpected = errors.filter((e) => !/Failed to load resource: the server responded with a status of (503|409|403)/u.test(e));
+    const unexpected = errors.filter((e) => !/Failed to load resource: the server responded with a status of (503|409|403|422)/u.test(e));
     assert(unexpected.length === 0, `${name}: console errors: ${unexpected.join(' | ')}`);
     return { engine: name, status: 'PASS', dispatchRows: rows, consoleErrors: 0 };
   } finally {

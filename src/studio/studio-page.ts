@@ -360,7 +360,7 @@ const SCRIPT = String.raw`
         const probe = el('button', { type: 'button', text: 'Health check' }); probe.setAttribute('aria-label', 'Health check ' + s.name);
         probe.addEventListener('click', async () => {
           const remote = s.locality === 'remote';
-          if (!confirm(remote ? 'Contact the remote server ' + s.url + ' without credentials?' : 'Start ' + s.name + ' locally to list its tools?')) return;
+          if (!confirm(remote ? 'Contact the remote server ' + s.url + ' without credentials?' : 'Run this command on your machine to list its tools?\n\n' + s.command + ' ' + (s.args || []).join(' ') + '\n\nFrom: ' + s.configPath)) return;
           probe.disabled = true; status.textContent = 'Probing ' + s.name + '…';
           try { await mcpPost('/api/studio/mcp/probe', { sourceId: s.sourceId, allowRemote: remote, confirm: true }); await loadMcp(); status.textContent = 'Probed ' + s.name + '.'; } catch (e) { status.textContent = e.message; probe.disabled = false; }
         });

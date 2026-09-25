@@ -90,6 +90,8 @@ describe('FuryMcpHub policy and health', () => {
     expect(JSON.stringify(seen[0])).not.toContain('sk-live-123');
     expect(seen[0]).toMatchObject({ allowedHosts: ['api.example.com'] });
     expect(JSON.stringify(seen[0])).not.toContain('headers');
+    await expect(hub.probe('project-opencode.fs')).rejects.toThrow(/mark the source trusted/u);
+    await hub.setTrusted('project-opencode.fs', true);
     await hub.probe('project-opencode.fs');
     expect(JSON.stringify(seen[1])).not.toContain('super-secret-value');
   });

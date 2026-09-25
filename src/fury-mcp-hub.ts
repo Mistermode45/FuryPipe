@@ -355,6 +355,8 @@ export function createFuryMcpHub(options: {
       const st = stateOf(state, sourceId);
       if (!st.enabled) throw new FuryMcpHubError('source is disabled');
       if (source.transport === 'sse' || source.transport === 'unknown') throw new FuryMcpHubError(`${source.transport} transport is not probed (MCP Direct supports stdio and streamable HTTP)`);
+      // A project config comes from the repository: launching its command runs repository-chosen code.
+      if (source.scope === 'project' && source.transport === 'stdio' && !st.trusted) throw new FuryMcpHubError('project MCP servers start a command chosen by the repository; mark the source trusted before probing it');
       if (source.locality === 'remote' && request.allowRemote !== true) throw new FuryMcpHubError('remote MCP servers are probed only with allowRemote: true');
       const trust = st.trusted ? 'trusted' as const : 'untrusted' as const;
       let provisional: McpDirectRuntimeConfig;
