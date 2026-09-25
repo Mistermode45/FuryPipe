@@ -412,7 +412,10 @@ async function captureScreens(type: BrowserType, origins: Record<'normal' | 'emp
     await page.goto(`${origins.normal}/#/mission`);
     await page.locator('section[data-view="mission"] h1').waitFor();
     await shot('08-expert-mission-control.png');
-    await page.keyboard.press('Control+k');
+    // Browser-level Ctrl+K can be intercepted by the browser chrome in CI.
+    // Dispatch the same bubbling DOM KeyboardEvent to verify FuryPipe's handler.
+    await page.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })));
+    await page.locator('#palette-overlay').waitFor({ state: 'visible' });
     await page.locator('#palette-list [role=option]').first().waitFor();
     await shot('09-command-palette.png');
     await page.keyboard.press('Escape');
