@@ -482,6 +482,25 @@ const SCRIPT = String.raw`
       $('#wt-status').textContent = r.worktrees.length + ' worktree(s).';
     } catch (e) { $('#wt-status').textContent = 'Worktrees unavailable: ' + e.message; }
   }
+  $('#cowork-run').addEventListener('click', async () => {
+    const status = $('#cowork-status');
+    const caps = {}; for (const cap of ['READ','WRITE','EXECUTE','NETWORK','EXTERNAL_ACTION']) caps[cap] = $('#perm-' + cap).value;
+    const payload = { intent: $('#cowork-intent').value.trim(), plannedFiles: $('#cowork-files').value.split(/\n/).map(x => x.trim()).filter(Boolean), capabilities: caps, confirm: $('#cowork-confirm').checked };
+    if (!payload.intent) { status.textContent = 'Describe the task first.'; return; }
+    const start = async (approvedCapabilities) => {
+      const res = await fetch('/api/studio/runs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...payload, approvedCapabilities }) });
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 409 && body.approvalRequired) {
+        const ok = confirm('This task asks for: ' + body.approvalRequired.join(', ') + '. Allow for this run? Cancel denies them.');
+        if (!ok) { for (const c of body.approvalRequired) { caps[c] = 'DENY'; $('#perm-' + c).value = 'DENY'; } return start([]); }
+        return start(body.approvalRequired);
+      }
+      if (!res.ok) throw new Error((body.error && body.error.message) || ('HTTP ' + res.status));
+      return body;
+    };
+    try { const r = await start([]); status.textContent = 'Started ' + r.runId + '. Opening Mission Control…'; location.hash = '#/mission'; }
+    catch (e) { status.textContent = 'Not started: ' + e.message; }
+  });
   const LEVELS = ['simple', 'power', 'engineer', 'expert'];
   function applyMode(mode) {
     if (!LEVELS.includes(mode)) mode = 'simple';
@@ -562,10 +581,12 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
       <label for="chat-input">Message</label><textarea id="chat-input" required></textarea>
       <div class="row"><button id="chat-send" type="submit">Send</button><span id="chat-status" class="status muted" role="status"></span></div></form>
   </div></section>
-<section data-view="cowork" aria-labelledby="h-cowork" hidden><h1 id="h-cowork">Cowork</h1><p class="lead">Describe a task and decide what the agent may do. Studio drafts an Executable Intent Contract; nothing runs until a runtime executes it.</p>
+<section data-view="cowork" aria-labelledby="h-cowork" hidden><h1 id="h-cowork">Cowork</h1><p class="lead">Describe a task and decide what the agent may do. Denied permissions never run; anything set to Ask needs your approval before agents start.</p>
   <div class="card"><label for="cowork-intent">Task</label><textarea id="cowork-intent" placeholder="e.g. Tidy the docs folder and summarise open TODOs"></textarea>
   <fieldset class="row"><legend class="muted">Permissions</legend>${perm('READ', 'ALLOW')}${perm('WRITE', 'ASK')}${perm('EXECUTE', 'ASK')}${perm('NETWORK', 'DENY')}${perm('EXTERNAL_ACTION', 'DENY')}</fieldset>
-  <p><button id="cowork-plan" type="button">Plan with Agents</button></p></div></section>
+  <label for="cowork-files">Files or folders it may change (one per line)</label><textarea id="cowork-files" placeholder="docs/"></textarea>
+  <div class="row"><label for="cowork-confirm"><input id="cowork-confirm" type="checkbox"> I confirm starting agents on this repository (local runtimes only)</label></div>
+  <p class="row"><button id="cowork-run" type="button">Run with agents</button><button id="cowork-plan" type="button" class="secondary">Plan with Agents</button></p><p id="cowork-status" class="status" role="status"></p></div></section>
 <section data-view="code" aria-labelledby="h-code" hidden><h1 id="h-code">Code</h1><p class="lead">Project graph for this workspace (Graphify when present, native indexer otherwise) and change blast radius.</p>
   <div class="grid"><div class="card"><h2>Project graph</h2><table><tbody>
     <tr><th scope="row">Provider</th><td id="graph-provider">—</td></tr><tr><th scope="row">Files</th><td id="graph-files">—</td></tr>

@@ -335,14 +335,26 @@ export function createStudioApi(options: StudioApiOptions) {
             return json(runSnapshot(run));
           }
           case 'run-start': {
-            const body = await readJson(request) as { intent?: unknown; plannedFiles?: unknown; mode?: unknown; profile?: unknown; allowCloud?: unknown; confirm?: unknown };
+            const body = await readJson(request) as { intent?: unknown; plannedFiles?: unknown; mode?: unknown; profile?: unknown; allowCloud?: unknown; confirm?: unknown; capabilities?: unknown; approvedCapabilities?: unknown };
             if (body?.confirm !== true) return problem(400, 'confirmation-required', 'starting agents requires confirm: true');
+            // Cowork permissions: DENY never runs, ASK must be approved (or it is refused) before agents start.
+            let capabilities: Partial<Record<'READ' | 'WRITE' | 'EXECUTE' | 'NETWORK' | 'EXTERNAL_ACTION', 'ALLOW' | 'ASK' | 'DENY'>> | undefined;
+            if (body.capabilities !== undefined) {
+              const caps = body.capabilities as Record<string, unknown>;
+              const names = ['READ', 'WRITE', 'EXECUTE', 'NETWORK', 'EXTERNAL_ACTION'] as const;
+              if (!caps || typeof caps !== 'object' || Object.keys(caps).some((k) => !(names as readonly string[]).includes(k)) || Object.values(caps).some((v) => v !== 'ALLOW' && v !== 'ASK' && v !== 'DENY')) return problem(400, 'invalid-input', 'capabilities map READ/WRITE/EXECUTE/NETWORK/EXTERNAL_ACTION to ALLOW, ASK or DENY');
+              if (caps.EXTERNAL_ACTION === 'ALLOW') return problem(400, 'invalid-input', 'external actions only run through a human gate; use ASK or DENY');
+              const approved = new Set(Array.isArray(body.approvedCapabilities) ? body.approvedCapabilities.filter((c): c is string => typeof c === 'string') : []);
+              const pending = names.filter((n) => caps[n] === 'ASK' && n !== 'EXTERNAL_ACTION' && !approved.has(n));
+              if (pending.length) return json({ error: { code: 'approval-required', message: `approve or deny before agents start: ${pending.join(', ')}` }, approvalRequired: pending }, 409);
+              capabilities = Object.fromEntries(names.filter((n) => caps[n] !== undefined).map((n) => [n, caps[n] === 'ASK' && n !== 'EXTERNAL_ACTION' ? 'ALLOW' : caps[n]])) as typeof capabilities;
+            }
             if (typeof body.intent !== 'string' || !body.intent.trim() || body.intent.length > 4_000) return problem(400, 'invalid-input', 'intent is required');
             if (!Array.isArray(body.plannedFiles) || body.plannedFiles.length > 200 || !body.plannedFiles.every((f) => typeof f === 'string')) return problem(400, 'invalid-input', 'plannedFiles must be an array of relative paths');
             if ([...runs.values()].filter((r) => r.status === 'running').length >= 2) return problem(429, 'too-many-runs', 'two runs are already active');
             const runId = `run-${now().toString(36)}-${runs.size + 1}`;
             const graphValue = await graph().catch(() => undefined);
-            const plan = planFuryTask({ runId, intent: body.intent, plannedFiles: body.plannedFiles as string[], ...(graphValue ? { graph: graphValue } : {}) });
+            const plan = planFuryTask({ runId, intent: body.intent, plannedFiles: body.plannedFiles as string[], ...(capabilities ? { capabilities } : {}), ...(graphValue ? { graph: graphValue } : {}) });
             const [h, l] = await Promise.all([harnesses(), local()]);
             const all = studioBindings(h, l.backends);
             // Paid-call guard: cloud runtimes only on explicit request.

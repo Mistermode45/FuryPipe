@@ -155,6 +155,7 @@ describe('Studio runs (Mission Control)', () => {
     execFileSync('git', ['commit', '-q', '-m', 'base'], { cwd: repo, env });
     try {
       const seen: string[] = [];
+      const authorities: string[] = [];
       const studio = createStudioApi({
         projectRoot: repo, worktreeRoot: join(root, 'wt'),
         discoverHarnesses: async () => harnesses,
@@ -163,6 +164,7 @@ describe('Studio runs (Mission Control)', () => {
         loadGraph: async () => { throw new Error('no graph'); },
         executor: async ({ assignment, binding, worktree }) => {
           seen.push(`${assignment.taskId}@${binding.locality}`);
+          authorities.push(assignment.authority.WRITE);
           if (assignment.role === 'implementer') writeFileSync(join(worktree, 'src', 'auth', 'login.ts'), 'export const x = 2;\n');
           return { ok: true, receipts: [] };
         },
@@ -185,6 +187,24 @@ describe('Studio runs (Mission Control)', () => {
       expect(snapshot?.workers.every((w) => w.locality === 'local')).toBe(true);
       expect((await studio.handle('run-act', post({ runId, workerId: 'x', action: 'DELETE' }))).status).toBe(400);
       expect((await studio.handle('run-act', post({ runId: 'nope', workerId: 'x', action: 'STOP' }))).status).toBe(404);
+
+      // Cowork permissions: ASK must be approved first, external actions never ALLOW, DENY reaches every agent.
+      const ask = await studio.handle('run-start', post({ intent: 'Tidy', plannedFiles: ['src/auth/login.ts'], confirm: true, capabilities: { READ: 'ALLOW', WRITE: 'ASK' } }));
+      expect(ask.status).toBe(409);
+      expect(await ask.json()).toMatchObject({ approvalRequired: ['WRITE'] });
+      expect((await studio.handle('run-start', post({ intent: 'Tidy', plannedFiles: [], confirm: true, capabilities: { EXTERNAL_ACTION: 'ALLOW' } }))).status).toBe(400);
+      expect((await studio.handle('run-start', post({ intent: 'Tidy', plannedFiles: [], confirm: true, capabilities: { SUDO: 'ALLOW' } }))).status).toBe(400);
+      authorities.length = 0;
+      const denied = await studio.handle('run-start', post({ intent: 'Read only review', plannedFiles: ['src/auth/login.ts'], confirm: true, capabilities: { READ: 'ALLOW', WRITE: 'DENY', EXECUTE: 'DENY' } }));
+      expect(denied.status, await denied.clone().text()).toBe(202);
+      const deniedId = (await denied.json() as { runId: string }).runId;
+      for (let i = 0; i < 200; i += 1) {
+        const list = await (await studio.handle('runs', new Request('http://127.0.0.1/x'))).json() as { runs: { runId: string; status: string }[] };
+        if (list.runs.find((r) => r.runId === deniedId)?.status !== 'running') break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(authorities.length).toBeGreaterThan(0);
+      expect(authorities.every((a) => a === 'DENY')).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

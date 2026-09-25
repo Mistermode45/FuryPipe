@@ -178,6 +178,15 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
 
     // Cowork → Agents handoff keeps the chosen permissions.
     await page.goto(`${origins.normal}/#/cowork`);
+    // Cowork run: ASK permissions raise an approval before anything starts.
+    await page.locator('#cowork-intent').fill('Tidy the docs folder');
+    await page.locator('#cowork-files').fill('docs/');
+    await page.locator('#cowork-confirm').check();
+    let approvalPrompt = '';
+    page.once('dialog', (d) => { approvalPrompt = d.message(); void d.accept(); });
+    await page.locator('#cowork-run').click();
+    await page.waitForFunction(() => /Not started: project root is not a git repository/u.test(document.querySelector('#cowork-status')?.textContent ?? ''));
+    assert(/WRITE, EXECUTE/u.test(approvalPrompt), `${name}: Cowork approval prompt: ${approvalPrompt}`);
     await page.locator('#perm-NETWORK').selectOption('ASK');
     await page.locator('#cowork-plan').click();
     await page.waitForFunction(() => location.hash === '#/agents');

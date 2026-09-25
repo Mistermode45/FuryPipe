@@ -123,6 +123,13 @@ export function planFuryTask(input: FuryPlannerInput): FuryPlan {
     READ: 'ALLOW', WRITE: 'ALLOW', EXECUTE: 'ASK', NETWORK: input.privacy === 'local-only' ? 'DENY' : 'ASK',
     EXTERNAL_ACTION: input.externalActions?.length ? 'ASK' : 'DENY', ...input.capabilities,
   };
+  // WRITE denied: nobody may write, so the plan becomes a read-only review of the planned files.
+  const readOnly = capabilities.WRITE === 'DENY';
+  if (readOnly) {
+    workstreams.length = 0;
+    notes.push('WRITE denied: read-only review plan (no writer, test or docs tasks)');
+  }
+  const wantTests = checks.tests && !readOnly;
 
   // 3. Tasks.
   type Task = { id: string; role: string; description: string; dependsOn: string[]; capabilities: FuryCapability[]; writeScopes: string[] };
@@ -132,12 +139,12 @@ export function planFuryTask(input: FuryPlannerInput): FuryPlan {
   }
   const impl = workstreams.map((w) => w.id);
   const exec: FuryCapability[] = capabilities.EXECUTE === 'DENY' ? [] : ['EXECUTE'];
-  if (checks.tests) tasks.push({ id: 'tests', role: 'tester', description: 'Add or update tests and run them', dependsOn: ['plan'], capabilities: ['READ', 'WRITE', ...exec], writeScopes: ['tests/**'] });
+  if (wantTests) tasks.push({ id: 'tests', role: 'tester', description: 'Add or update tests and run them', dependsOn: ['plan'], capabilities: ['READ', 'WRITE', ...exec], writeScopes: ['tests/**'] });
   const securityWanted = checks.security === 'always' || (checks.security === 'auto' && (SECURITY_HINT.test(input.intent) || files.some((f) => SECURITY_HINT.test(f))));
-  const docsWanted = checks.docs === 'always' || (checks.docs === 'auto' && (docsFiles.length > 0 || DOCS_HINT.test(input.intent)));
+  const docsWanted = !readOnly && (checks.docs === 'always' || (checks.docs === 'auto' && (docsFiles.length > 0 || DOCS_HINT.test(input.intent))));
   if (docsWanted) tasks.push({ id: 'docs', role: 'documenter', description: 'Update documentation', dependsOn: ['plan'], capabilities: ['READ', 'WRITE'], writeScopes: ['docs/**', ...docsFiles.filter((f) => !f.startsWith('docs/'))].sort() });
   const afterImpl = impl.length ? impl : ['plan'];
-  tasks.push({ id: 'review', role: 'reviewer', description: 'Independent code review', dependsOn: [...afterImpl, ...(checks.tests ? ['tests'] : [])], capabilities: ['READ'], writeScopes: [] });
+  tasks.push({ id: 'review', role: 'reviewer', description: 'Independent code review', dependsOn: [...afterImpl, ...(wantTests ? ['tests'] : [])], capabilities: ['READ'], writeScopes: [] });
   if (securityWanted) tasks.push({ id: 'security', role: 'security', description: 'Security review of the change', dependsOn: afterImpl, capabilities: ['READ'], writeScopes: [] });
   if (checks.browser) tasks.push({ id: 'browser', role: 'browser', description: 'Browser/UX verification', dependsOn: afterImpl, capabilities: ['READ', ...exec], writeScopes: [] });
   const beforeIntegrate = tasks.filter((t) => t.id !== 'plan').map((t) => t.id);
@@ -152,7 +159,7 @@ export function planFuryTask(input: FuryPlannerInput): FuryPlan {
 
   // 4. Success predicates with evidence contracts.
   const predicates: { id: string; level: 'MUST' | 'SHOULD'; description: string; evidence: { kind: string; subject: string }[] }[] = [];
-  if (checks.tests) predicates.push({ id: 'tests', level: 'MUST', description: 'tests pass after integration', evidence: [{ kind: 'TEST_RECEIPT', subject: `test:${input.runId}` }] });
+  if (wantTests) predicates.push({ id: 'tests', level: 'MUST', description: 'tests pass after integration', evidence: [{ kind: 'TEST_RECEIPT', subject: `test:${input.runId}` }] });
   predicates.push({ id: 'review', level: 'MUST', description: 'independent review accepted', evidence: [{ kind: 'AGENT_RECEIPT', subject: `review:${input.runId}` }] });
   for (const w of workstreams) predicates.push({ id: `integrated-${w.id}`, level: 'MUST', description: `${w.id} integrated without conflict`, evidence: [{ kind: 'INTEGRATION_RECEIPT', subject: `integration:${input.runId}:${w.id}` }] });
   if (securityWanted) predicates.push({ id: 'security', level: 'MUST', description: 'security review found no blocking issue', evidence: [{ kind: 'AGENT_RECEIPT', subject: `security:${input.runId}` }] });
@@ -160,7 +167,8 @@ export function planFuryTask(input: FuryPlannerInput): FuryPlan {
   if (checks.browser) predicates.push({ id: 'browser', level: 'MUST', description: 'browser checks pass', evidence: [{ kind: 'BROWSER_RECEIPT', subject: `browser:${input.runId}` }] });
 
   // 5. Budget: parallel writers + reviewers, capped by the requested budget.
-  const widest = Math.max(1, workstreams.length + (checks.tests ? 1 : 0) + (docsWanted ? 1 : 0));
+  // Readers (review, security, browser) can run side by side after the writers.
+  const widest = Math.max(1, workstreams.length + (wantTests ? 1 : 0) + (docsWanted ? 1 : 0), 1 + (securityWanted ? 1 : 0) + (checks.browser ? 1 : 0));
   const budget: FuryBudget = { ...DEFAULT_BUDGET, maxAgents: Math.min(DEFAULT_BUDGET.maxAgents, widest), ...input.budget };
   if (workstreams.length === 0) notes.push('no code files planned: review-only plan');
 

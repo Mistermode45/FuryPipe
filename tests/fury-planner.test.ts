@@ -71,4 +71,12 @@ describe('FuryPlanner', () => {
     expect(() => planFuryTask({ runId: 'BAD ID', intent: 'x', plannedFiles: [] })).toThrow(FuryPlannerError);
     expect(planFuryTask({ runId: 'r6', intent: 'Review only.', plannedFiles: [] }).notes).toContain('no code files planned: review-only plan');
   });
+  it('plans a read-only review when WRITE is denied, with room for parallel reviewers', () => {
+    const plan = planFuryTask({ runId: 'ro', intent: 'Review the auth token handling', plannedFiles: ['src/auth/token.ts'], capabilities: { WRITE: 'DENY', EXECUTE: 'DENY' } });
+    expect(plan.ir.tasks.filter((t) => t.writeScopes.length)).toEqual([]);
+    expect(plan.ir.tasks.map((t) => t.id)).toEqual(expect.arrayContaining(['plan', 'review', 'security', 'judge']));
+    expect(plan.ir.successPredicates.map((p) => p.id)).not.toContain('tests');
+    expect(plan.ir.budget.maxAgents).toBeGreaterThanOrEqual(2);
+    expect(plan.notes.join(' ')).toMatch(/read-only review plan/u);
+  });
 });
