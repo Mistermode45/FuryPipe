@@ -132,6 +132,7 @@ describe('Graph-aware dispatch and context capsule', () => {
     expect(capsule.usedBytes).toBeLessThan(capsule.candidateBytes);
     for (const e of capsule.entries) expect(e.digest).toMatch(/^[0-9a-f]{64}$/u);
     expect(capsule.entries.find((e) => e.source === 'src/auth/session.ts')?.reason).toContain('changed file');
+    expect(capsule.entries.find((e) => e.source === 'src/auth/login.ts')?.reason).toMatch(/direct import neighbour of the change; same folder as the change/u);
   });
 
   it('refuses to drop a MUST constraint when the budget is too small', () => {

@@ -55,6 +55,7 @@ artifacts/dashboard-browser-qa/
 artifacts/gateway-webchat-browser-qa/
 artifacts/web-studio-browser-qa/
 artifacts/studio-browser-qa/
+artifacts/furybench-studio/
 artifacts/final-validation/
 artifacts/rc-preparation/
 artifacts/external-validation/

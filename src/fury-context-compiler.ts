@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 
 import type { FuryIrDocument, FuryIrTask } from './fury-ir.js';
 import type { FuryGraph } from './fury-graph.js';
-import { furyBlastRadius } from './fury-graph.js';
+import { furyBlastRadius, furyFileDependencies } from './fury-graph.js';
 
 export const FURY_CONTEXT_CAPSULE_FORMAT = 'furypipe-context-capsule/v1' as const;
 
@@ -91,6 +91,15 @@ export function compileFuryContextCapsule(input: {
   }
 
   const blast = input.graph && input.changedFiles?.length ? furyBlastRadius(input.graph, input.changedFiles) : undefined;
+  // Direct neighbours rank above the transitive radius: files the change imports
+  // and files that import it are the ones most often edited together.
+  const direct = new Set<string>();
+  if (input.graph && blast) {
+    const deps = furyFileDependencies(input.graph);
+    for (const f of blast.changed) for (const to of deps.get(f)?.keys() ?? []) direct.add(to);
+    for (const [from, row] of deps) if (blast.changed.some((f) => row.has(f))) direct.add(from);
+  }
+  const changedDirs = new Set((blast?.changed ?? input.changedFiles ?? []).map((f) => f.replace(/\/[^/]*$/u, '')));
   const inWriteScope = (file: string) => task.writeScopes.some((s) => {
     const p = s.replace(/\*+$/u, '').replace(/\/+$/u, '');
     return file === p || file.startsWith(`${p}/`);
@@ -115,7 +124,9 @@ export function compileFuryContextCapsule(input: {
     const reasons = [`priority ${score}`];
     if (c.kind === 'file') {
       if (blast?.changed.includes(c.source)) { score += 60; reasons.push('changed file'); }
-      else if (blast?.affected.includes(c.source)) { score += 40; reasons.push('in blast radius'); }
+      else if (direct.has(c.source)) { score += 45; reasons.push('direct import neighbour of the change'); }
+      else if (blast?.affected.includes(c.source)) { score += 30; reasons.push('in blast radius'); }
+      if (changedDirs.has(c.source.replace(/\/[^/]*$/u, ''))) { score += 10; reasons.push('same folder as the change'); }
       if (inWriteScope(c.source)) { score += 30; reasons.push('inside task write scope'); }
     }
     ranked.push({ c, score, reason: reasons.join('; '), bytes });
