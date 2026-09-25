@@ -182,6 +182,28 @@ async function main() {
     const studioHarnesses = await fetch(`http://127.0.0.1:${port}/api/studio/harnesses.json`);
     const harnessBody = await studioHarnesses.json();
     assert(studioHarnesses.status === 200 && harnessBody.harnesses.some((h) => h.id === 'furypipe-native' && h.installed), 'installed Studio harness discovery failed');
+    // Studio platform surfaces answer from the packaged bundle, with their safe defaults.
+    const studioGet = async (route) => {
+      const res = await fetch(`http://127.0.0.1:${port}/api/studio/${route}`);
+      const body = await res.json();
+      assert(res.status === 200, `installed Studio ${route} returned HTTP ${res.status}`);
+      return body;
+    };
+    const studioPost = (route, payload) => fetch(`http://127.0.0.1:${port}/api/studio/${route}`, { method: 'POST', headers: { 'content-type': 'application/json', origin: `http://127.0.0.1:${port}` }, body: JSON.stringify(payload) });
+    assert(Array.isArray((await studioGet('skills.json')).skills), 'installed Studio Skills Hub failed');
+    assert(Array.isArray((await studioGet('mcp.json')).sources), 'installed Studio MCP Hub failed');
+    assert((await studioGet('integrations.json')).manifest === 'absent', 'installed Studio integration registry failed');
+    assert(typeof (await studioGet('knowledge.json')).chunks === 'number', 'installed Studio knowledge base failed');
+    assert((await studioGet('memory.json')).enabled === false, 'installed Studio memory must stay off without an encrypted config');
+    const ssrf = await studioPost('web', { action: 'FETCH', url: 'http://127.0.0.1/' });
+    assert(ssrf.status === 403, `installed Studio web fetch reached loopback (HTTP ${ssrf.status})`);
+    const savedChat = await studioPost('chats/save', { messages: [{ role: 'user', content: 'clean-room hello' }] });
+    assert(savedChat.status === 200, `installed Studio chat save returned HTTP ${savedChat.status}`);
+    assert((await studioGet('chats.json')).conversations.some((c) => c.title === 'clean-room hello'), 'installed Studio conversations not persisted');
+    const tree = await studioPost('code/tree', { path: '' });
+    assert(tree.status === 200 && (await tree.json()).entries.some((e) => e.name === 'package.json'), 'installed Studio code explorer failed');
+    const crossOrigin = await fetch(`http://127.0.0.1:${port}/api/studio/chats/save`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{"messages":[]}' });
+    assert(crossOrigin.status === 403, `installed Studio accepted a cross-origin POST (HTTP ${crossOrigin.status})`);
     const firstStop = await stop(first);
     let runtimeDown = false;
     try {
