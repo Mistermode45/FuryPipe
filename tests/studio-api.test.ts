@@ -7,7 +7,7 @@ import type { FuryHarnessDiscovery } from '../src/fury-harness-hub.js';
 import { FURY_HARNESS_REGISTRY } from '../src/fury-harness-hub.js';
 import type { FuryLocalBackendStatus } from '../src/fury-local-fabric.js';
 import { createStudioApi, studioApiRoute, studioBindings } from '../src/studio/studio-api.js';
-import { renderStudioHtml, STUDIO_EXAMPLE_IR } from '../src/studio/studio-page.js';
+import { renderStudioHtml, STUDIO_EXAMPLE_FLOW, STUDIO_EXAMPLE_IR } from '../src/studio/studio-page.js';
 
 const servers: Server[] = [];
 afterEach(async () => {
@@ -105,6 +105,18 @@ describe('Studio API', () => {
     expect((await studio.handle('chat', post({}, 'text/plain'))).status).toBe(415);
     const huge = new Request('http://127.0.0.1/x', { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'x'.repeat(300_000) });
     expect((await studio.handle('chat', huge)).status).toBe(413);
+  });
+
+  it('validates and dry-runs a FuryFlow without side effects', async () => {
+    const studio = api('http://127.0.0.1:1');
+    const ok = await studio.handle('flow-preview', post({ flow: STUDIO_EXAMPLE_FLOW, fixtures: { classify: 'refund', route: 'refund', reply: 'x' } }));
+    expect(ok.status).toBe(200);
+    const body = await ok.json() as { flow: { stochasticSurface: { agentic: number } }; run: { status: string }; execution: string };
+    expect(body.flow.stochasticSurface.agentic).toBe(2);
+    expect(body.run.status).toBe('waiting-approval');
+    expect(body.execution).toMatch(/DRY_RUN/u);
+    const bad = await studio.handle('flow-preview', post({ flow: { ...STUDIO_EXAMPLE_FLOW, nodes: STUDIO_EXAMPLE_FLOW.nodes.map((n) => (n.id === 'classify' ? { ...n, critical: true } : n)) } }));
+    expect(bad.status).toBe(422);
   });
 
   it('validates blast-radius input', async () => {

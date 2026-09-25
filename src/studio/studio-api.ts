@@ -18,13 +18,14 @@ import {
 import { compileFuryIr, FuryIrError } from '../fury-ir.js';
 import { FuryDispatchError, FURY_DISPATCH_MODES, planFuryDispatch, type FuryDispatchMode, type FuryRuntimeBinding } from '../fury-dispatcher.js';
 import { furyBlastRadius, furyScopeCoupling, loadFuryGraph, type FuryGraph } from '../fury-graph.js';
+import { compileFuryFlow, dryRunFuryFlow, FuryFlowError } from '../fury-flow.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
 const CACHE_MS = 10_000;
 
 export type StudioRoute =
-  | 'harnesses' | 'local' | 'hardware' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat';
+  | 'harnesses' | 'local' | 'hardware' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
@@ -35,6 +36,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/blast-radius': { route: 'blast-radius', method: 'POST' },
   '/api/studio/dispatch-preview': { route: 'dispatch-preview', method: 'POST' },
   '/api/studio/chat': { route: 'chat', method: 'POST' },
+  '/api/studio/flow-preview': { route: 'flow-preview', method: 'POST' },
 });
 
 export function studioApiRoute(pathname: string): { route: StudioRoute; method: 'GET' | 'POST' } | null {
@@ -183,6 +185,17 @@ export function createStudioApi(options: StudioApiOptions) {
             const plan = planFuryDispatch({ ir, candidates, mode, ...(coupling ? { coupling } : {}) });
             return json({ plan, candidates: candidates.map((c) => ({ id: c.id, harnessId: c.harnessId, provider: c.provider, model: c.model, locality: c.locality })), execution: 'NOT_EXECUTED: preview only' });
           }
+          case 'flow-preview': {
+            const body = await readJson(request) as { flow?: unknown; fixtures?: unknown; approvals?: unknown };
+            const flow = compileFuryFlow(body?.flow);
+            let run: unknown;
+            if (body?.fixtures !== undefined) {
+              if (!body.fixtures || typeof body.fixtures !== 'object' || Array.isArray(body.fixtures)) return problem(400, 'invalid-input', 'fixtures must be an object');
+              const approvals = Array.isArray(body.approvals) ? body.approvals.filter((a): a is string => typeof a === 'string').slice(0, 100) : [];
+              run = dryRunFuryFlow(flow, { fixtures: body.fixtures as Record<string, unknown>, approvals });
+            }
+            return json({ flow, ...(run ? { run } : {}), execution: 'DRY_RUN: deterministic handlers are pass-through, agentic nodes use fixtures; no side effect' });
+          }
           case 'chat': {
             const body = await readJson(request) as { kind?: unknown; baseUrl?: unknown; model?: unknown; messages?: unknown };
             if (typeof body?.baseUrl !== 'string' || typeof body.model !== 'string' || body.model.length > 256 || !Array.isArray(body.messages) || body.messages.length === 0 || body.messages.length > 64) {
@@ -215,6 +228,7 @@ export function createStudioApi(options: StudioApiOptions) {
         if (status) return problem(status, status === 503 ? 'discovery-failed' : 'invalid-request', (error as Error).message);
         if (error instanceof FuryIrError) return problem(422, 'invalid-ir', error.message);
         if (error instanceof FuryDispatchError) return problem(422, 'dispatch-rejected', error.message);
+        if (error instanceof FuryFlowError) return problem(422, 'invalid-flow', error.message);
         if ((error as Error).name === 'FuryLocalFabricError') return problem(403, 'endpoint-denied', (error as Error).message);
         if ((error as Error).name === 'FuryGraphError') return problem(404, 'graph-unavailable', (error as Error).message);
         return problem(500, 'internal', 'studio request failed');

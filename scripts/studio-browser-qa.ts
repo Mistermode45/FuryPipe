@@ -138,6 +138,12 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     assert((await page.locator('#ind-locality b').textContent()) === 'local', `${name}: locality indicator`);
     assert((await page.locator('#ind-model b').textContent()) === 'qwen2.5-coder:7b', `${name}: model indicator`);
 
+    // Progressive UX: Simple hides engineer/expert surfaces; Expert shows all.
+    assert(await page.locator('#ui-mode').inputValue() === 'simple', `${name}: default mode is not Simple`);
+    assert(!(await page.locator('nav.side a[data-view="agents"]').isVisible()), `${name}: Agents visible in Simple mode`);
+    await page.locator('#ui-mode').selectOption('expert');
+    assert(await page.locator('nav.side a[data-view="automations"]').isVisible(), `${name}: Automations hidden in Expert mode`);
+
     // Navigation via the keyboard.
     await page.locator('nav.side a[data-view="agents"]').focus();
     await page.keyboard.press('Enter');
@@ -166,6 +172,14 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.locator('#blast-files').fill('src/auth/session.ts');
     await page.locator('#blast-form button').click();
     await page.locator('#blast-out li').filter({ hasText: 'tests/login.test.ts' }).waitFor();
+
+    await page.goto(`${origins.normal}/#/automations`);
+    await page.locator('#flow-form button[type=submit]').click();
+    await page.locator('#flow-canvas svg g.node').first().waitFor();
+    assert(await page.locator('#flow-canvas svg g.node').count() === 7, `${name}: flow canvas node count`);
+    assert(await page.locator('#flow-canvas svg g.node.agentic').count() === 2, `${name}: agentic zone count`);
+    await page.locator('#flow-dry').click();
+    await page.locator('#flow-trace li').filter({ hasText: 'Paused at human approval: approve' }).waitFor();
 
     await page.goto(`${origins.normal}/#/does-not-exist`);
     assert(await visible(page, '#h-notfound'), `${name}: 404 view`);

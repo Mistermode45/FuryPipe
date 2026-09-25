@@ -30,6 +30,24 @@ export const STUDIO_EXAMPLE_IR = Object.freeze({
   rollbackPolicy: 'revert-worktree',
 });
 
+export const STUDIO_EXAMPLE_FLOW = Object.freeze({
+  format: 'furypipe-flow/v1', id: 'refund-triage', version: 1, name: 'Refund triage',
+  nodes: [
+    { id: 'trigger', type: 'TRIGGER', label: 'Support webhook', config: { kind: 'webhook' } },
+    { id: 'classify', type: 'LLM', label: 'Classify request' },
+    { id: 'route', type: 'CONDITION', label: 'Refund?' },
+    { id: 'approve', type: 'HUMAN_APPROVAL', label: 'Approve refund' },
+    { id: 'pay', type: 'HTTP', label: 'Issue refund', critical: true, config: { sideEffect: true } },
+    { id: 'reply', type: 'AGENT', label: 'Draft reply' },
+    { id: 'notify', type: 'NOTIFICATION', label: 'Notify ops' },
+  ],
+  edges: [
+    { from: 'trigger', to: 'classify' }, { from: 'classify', to: 'route' },
+    { from: 'route', to: 'approve', when: 'refund' }, { from: 'route', to: 'reply', when: 'other' },
+    { from: 'approve', to: 'pay' }, { from: 'pay', to: 'notify' }, { from: 'reply', to: 'notify' },
+  ],
+});
+
 const CSS = `
 :root{color-scheme:light dark;--bg:#f6f7f9;--panel:#fff;--ink:#14161a;--muted:#5b6270;--line:#dfe3ea;--accent:#c2410c;--accent-ink:#fff;--ok:#15803d;--warn:#a16207;--bad:#b91c1c;--focus:#2563eb;--radius:10px;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1115;--panel:#171a21;--ink:#e8eaee;--muted:#9aa3b2;--line:#2a2f3a;--accent:#fb923c;--accent-ink:#1a0f07;--ok:#4ade80;--warn:#facc15;--bad:#f87171;--focus:#60a5fa}}
@@ -65,6 +83,13 @@ label{display:block;font-weight:600;font-size:13px;margin:0 0 4px}.row{display:f
 .msg .who{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:2px}
 .empty{border:1px dashed var(--line);border-radius:var(--radius);padding:18px;color:var(--muted)}
 .status{min-height:1.5em}ul.reasons{margin:6px 0 0;padding-left:18px}
+svg.flow{width:100%;height:auto;background:var(--bg);border:1px solid var(--line);border-radius:var(--radius)}
+svg.flow .node rect{fill:var(--panel);stroke:var(--ink);stroke-width:1.5}
+svg.flow .node.agentic rect{stroke:var(--accent);stroke-dasharray:6 4;stroke-width:2}
+svg.flow .node.critical rect{stroke-width:3}
+svg.flow text{fill:var(--ink);font-size:12px}svg.flow .zone{fill:var(--muted);font-size:10px;text-transform:uppercase}
+svg.flow line{stroke:var(--muted);stroke-width:1.5}svg.flow .when{fill:var(--accent);font-size:11px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
 @media (max-width:760px){.app{grid-template-columns:1fr}nav.side{border-right:0;border-bottom:1px solid var(--line)}nav.side ul{grid-template-columns:repeat(3,1fr)}main{padding:16px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 `;
@@ -206,6 +231,47 @@ const SCRIPT = String.raw`
     ir.intent = $('#cowork-intent').value.trim() || ir.intent;
     $('#dispatch-ir').value = JSON.stringify(ir, null, 2); location.hash = '#/agents';
   });
+  const LEVELS = ['simple', 'power', 'engineer', 'expert'];
+  function applyMode(mode) {
+    if (!LEVELS.includes(mode)) mode = 'simple';
+    $('#ui-mode').value = mode;
+    const max = LEVELS.indexOf(mode);
+    for (const li of document.querySelectorAll('nav.side li[data-level]')) li.hidden = LEVELS.indexOf(li.dataset.level) > max;
+    try { localStorage.setItem('furypipe.studio.mode', mode); } catch {}
+  }
+  let savedMode = 'simple'; try { savedMode = localStorage.getItem('furypipe.studio.mode') || 'simple'; } catch {}
+  applyMode(savedMode);
+  $('#ui-mode').addEventListener('change', (e) => applyMode(e.target.value));
+
+  const SVG = 'http://www.w3.org/2000/svg';
+  const svgEl = (tag, attrs = {}, text) => { const n = document.createElementNS(SVG, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v)); if (text !== undefined) n.textContent = text; return n; };
+  function drawFlow(flow, trace) {
+    const level = {}; for (const id of flow.order) { const ins = flow.edges.filter(e => e.to === id).map(e => level[e.from] + 1); level[id] = ins.length ? Math.max(...ins) : 0; }
+    const cols = {}; for (const id of flow.order) (cols[level[id]] = cols[level[id]] || []).push(id);
+    const W = 170, H = 58, GX = 50, GY = 26; const pos = {};
+    for (const [c, ids] of Object.entries(cols)) ids.forEach((id, r) => { pos[id] = { x: 20 + Number(c) * (W + GX), y: 20 + r * (H + GY) }; });
+    const width = 40 + (Object.keys(cols).length) * (W + GX); const height = 40 + Math.max(...Object.values(cols).map(v => v.length)) * (H + GY);
+    const svg = svgEl('svg', { class: 'flow', viewBox: '0 0 ' + width + ' ' + height, role: 'img', 'aria-label': 'Workflow ' + flow.name + ': ' + flow.nodes.length + ' steps, ' + flow.stochasticSurface.agentic + ' agentic' });
+    const skipped = new Set((trace || []).filter(t => t.skipped).map(t => t.node));
+    for (const e of flow.edges) { const a = pos[e.from], b = pos[e.to]; svg.append(svgEl('line', { x1: a.x + W, y1: a.y + H / 2, x2: b.x, y2: b.y + H / 2 })); if (e.when) svg.append(svgEl('text', { class: 'when', x: (a.x + W + b.x) / 2 - 12, y: (a.y + b.y + H) / 2 - 4 }, e.when)); }
+    for (const n of flow.nodes) { const p = pos[n.id]; const zone = flow.zones[n.id];
+      const g = svgEl('g', { class: 'node ' + zone + (n.critical ? ' critical' : ''), opacity: skipped.has(n.id) ? 0.35 : 1 });
+      g.append(svgEl('rect', { x: p.x, y: p.y, width: W, height: H, rx: 8 }), svgEl('text', { x: p.x + 10, y: p.y + 22 }, n.label.slice(0, 22)), svgEl('text', { class: 'zone', x: p.x + 10, y: p.y + 42 }, n.type + ' · ' + zone));
+      svg.append(g); }
+    $('#flow-canvas').replaceChildren(svg);
+  }
+  async function previewFlow(withRun) {
+    const status = $('#flow-status'); let flow; try { flow = JSON.parse($('#flow-json').value); } catch { status.textContent = 'The flow is not valid JSON.'; return; }
+    const body = { flow }; if (withRun) { body.fixtures = { classify: 'refund', route: 'refund', reply: 'Thanks, refund on its way.' }; body.approvals = []; }
+    try { const r = await getJson('/api/studio/flow-preview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const s = r.flow.stochasticSurface; status.textContent = 'Valid · ' + s.nodes + ' steps · ' + s.agentic + ' agentic (' + Math.round(s.ratio * 100) + '% stochastic surface) · digest ' + r.flow.digest.slice(0, 12) + (r.run ? ' · dry-run ' + r.run.status : '');
+      drawFlow(r.flow, r.run && r.run.trace); const ol = $('#flow-trace'); ol.replaceChildren();
+      if (r.run) for (const t of r.run.trace) ol.append(el('li', { text: t.node + ' — ' + t.zone + (t.skipped ? ' (branch not taken)' : '') }));
+      if (r.run && r.run.status === 'waiting-approval') ol.append(el('li', { text: 'Paused at human approval: ' + r.run.checkpoint.waitingApproval }));
+    } catch (e) { status.textContent = 'Invalid flow: ' + e.message; $('#flow-canvas').replaceChildren(); }
+  }
+  $('#flow-form').addEventListener('submit', (ev) => { ev.preventDefault(); previewFlow(false); });
+  $('#flow-dry').addEventListener('click', () => previewFlow(true));
   route();
 })();
 `;
@@ -217,7 +283,7 @@ function escapeHtml(value: string): string {
 export function renderStudioHtml(): { readonly html: string; readonly nonce: string } {
   const nonce = randomBytes(16).toString('base64');
   const perm = (cap: string, def: string) => `<div><label for="perm-${cap}">${cap.replace('_', ' ')}</label><select id="perm-${cap}">${['ALLOW', 'ASK', 'DENY'].map((d) => `<option${d === def ? ' selected' : ''}>${d}</option>`).join('')}</select></div>`;
-  const nav = (view: string, label: string) => `<li><a href="#/${view}" data-view="${view}">${label}</a></li>`;
+  const nav = (view: string, level: string, label: string) => `<li data-level="${level}"><a href="#/${view}" data-view="${view}">${label}</a></li>`;
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FuryPipe Studio</title><style nonce="${nonce}">${CSS}</style></head>
@@ -225,11 +291,12 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
 <div class="app">
 <nav class="side" aria-label="Studio">
   <div class="brand">Fury<span>Pipe</span> Studio</div>
-  <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'Chat')}${nav('cowork', 'Cowork')}${nav('code', 'Code')}${nav('agents', 'Agents')}${nav('automations', 'Automations')}</ul></div>
-  <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'Models')}${nav('runtimes', 'Runtimes')}${nav('settings', 'Settings')}</ul></div>
+  <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('automations', 'expert', 'Automations')}</ul></div>
+  <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'simple', 'Models')}${nav('runtimes', 'power', 'Runtimes')}${nav('settings', 'simple', 'Settings')}</ul></div>
 </nav>
 <div>
 <header class="top" aria-label="Active execution context">
+  <label class="chip" for="ui-mode">Mode <select id="ui-mode"><option value="simple">Simple</option><option value="power">Power</option><option value="engineer">Engineer</option><option value="expert">Expert</option></select></label>
   <span class="chip" id="ind-runtime">Runtime <b>—</b></span><span class="chip" id="ind-provider">Provider <b>—</b></span>
   <span class="chip" id="ind-model">Model <b>—</b></span><span class="chip" id="ind-locality">Locality <b>—</b></span>
 </header>
@@ -257,8 +324,12 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
     <div class="row"><div><label for="dispatch-mode">Mode</label><select id="dispatch-mode">${['AUTO', 'SINGLE', 'SPECIALISTS', 'PARALLEL', 'PIPELINE', 'REVIEW_CHAIN', 'COUNCIL', 'RACE', 'LOCAL_CLOUD_HYBRID', 'LOCAL_ONLY', 'OFF'].map((m) => `<option>${m}</option>`).join('')}</select></div>
     <div><label for="dispatch-graph"><input id="dispatch-graph" type="checkbox"> Graph-aware</label></div><button type="submit">Preview plan</button></div></form>
     <p id="dispatch-status" class="status" role="status"></p><div id="dispatch-out"></div></div></section>
-<section data-view="automations" aria-labelledby="h-automations" hidden><h1 id="h-automations">Automations</h1><p class="lead">Scheduled and webhook automations run in the FuryPipe Gateway.</p>
-  <div class="empty">Automations are not managed from Studio yet. Start the Gateway with <code>furypipe gateway start</code>; its WebChat shows automation status when observability is enabled.</div></section>
+<section data-view="automations" aria-labelledby="h-automations" hidden><h1 id="h-automations">Automations</h1><p class="lead">FuryFlow: build a workflow and see where non-determinism lives. Validation and dry-run only here; scheduled runs use the Gateway automation scheduler.</p>
+  <div class="card"><form id="flow-form"><label for="flow-json">Flow (FuryFlow JSON)</label><textarea id="flow-json" class="code" spellcheck="false">${escapeHtml(JSON.stringify(STUDIO_EXAMPLE_FLOW, null, 2))}</textarea>
+  <div class="row"><button type="submit">Validate &amp; draw</button><button id="flow-dry" type="button" class="secondary">Dry-run (refund branch)</button></div></form>
+  <p id="flow-status" class="status" role="status"></p>
+  <div class="legend"><span>Solid border: deterministic zone</span><span>Dashed orange border: agentic zone</span><span>Thick border: critical step</span></div>
+  <div id="flow-canvas"></div><ol id="flow-trace" aria-label="Dry-run trace"></ol></div></section>
 <section data-view="models" aria-labelledby="h-models" hidden><h1 id="h-models">Models</h1><p class="lead">Local inference servers on this machine and whether each model fits your hardware. Probes stay on loopback.</p>
   <div class="card"><p><b>Hardware:</b> <span id="hw">—</span></p><table><thead><tr><th scope="col">Backend</th><th scope="col">Endpoint</th><th scope="col">State</th><th scope="col">Model</th><th scope="col">Fit</th></tr></thead><tbody id="models-body"></tbody></table><p id="models-status" class="status muted" role="status"></p></div></section>
 <section data-view="runtimes" aria-labelledby="h-runtimes" hidden><h1 id="h-runtimes">Runtimes</h1><p class="lead">Agent harnesses installed on this machine. Harness, provider and model are independent choices.</p>
