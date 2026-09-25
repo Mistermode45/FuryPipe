@@ -162,6 +162,8 @@ kbd{font:600 11px/1 var(--font);color:var(--muted);border:1px solid var(--line-2
 .search-btn{position:relative;z-index:1;display:flex;align-items:center;gap:10px;margin:0 12px 10px;height:36px;padding:0 10px 0 12px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.015);color:var(--muted);font:500 13.5px/1 var(--font);cursor:pointer;white-space:nowrap}
 .search-btn:hover{color:var(--ink);border-color:var(--line-2)}.search-btn kbd{margin-left:auto}
 .side-nav ul{list-style:none;margin:0;padding:2px 8px;display:flex;flex-direction:column;gap:1px}
+.nav-label{padding:12px 12px 5px;color:var(--faint);font:650 9.5px/1 var(--font);letter-spacing:.12em;text-transform:uppercase;user-select:none}
+.nav-label:first-child{padding-top:6px}
 .nav-item{position:relative;display:flex;align-items:center;gap:12px;height:38px;padding:0 12px;border-radius:10px;color:var(--ink-2);text-decoration:none;font:500 14px/1 var(--font);white-space:nowrap;transition:background .15s,color .15s}
 .nav-item:hover{background:var(--b3);color:var(--ink)}
 .nav-item[aria-current="page"]{color:var(--ink);background:linear-gradient(90deg,rgba(255,106,26,.15),rgba(255,106,26,.02) 80%)}
@@ -240,12 +242,12 @@ html[data-theme="system"] .hero h2{-webkit-text-fill-color:currentColor;backgrou
 @keyframes flow{to{stroke-dashoffset:-56}}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 body.paused .orbit,body.paused .flow{animation-play-state:paused}
-.suggest{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:18px;position:relative;z-index:1;animation:rise .6s .08s var(--ease-out) both}
-.chip-btn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border-radius:999px;border:1px solid var(--line-2);background:rgba(255,255,255,.02);color:var(--ink-2);font:500 13.5px/1 var(--font);cursor:pointer;transition:border-color .2s,color .2s,background .2s,transform .12s}
+.suggest{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;max-width:650px;margin:18px auto 0;position:relative;z-index:1;animation:rise .6s .08s var(--ease-out) both}
+.chip-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 14px;border-radius:12px;border:1px solid var(--line-2);background:rgba(255,255,255,.02);color:var(--ink-2);font:500 13.5px/1 var(--font);cursor:pointer;transition:border-color .2s,color .2s,background .2s,transform .12s}
 .chip-btn:hover{border-color:var(--o-line);color:var(--ink);background:rgba(255,106,26,.06)}.chip-btn:active{transform:scale(.97)}
 .chip-btn .i{width:16px;height:16px;color:var(--o-hot)}
-.setup{max-width:640px;margin:0 auto 18px;padding:18px 20px;border-radius:var(--r-lg);border:1px solid var(--line-2);background:linear-gradient(180deg,var(--b3),var(--b2));position:relative;z-index:1}
-.setup h3{margin:0 0 6px;font:600 16px/1.3 var(--display)}
+.setup{max-width:900px;margin:0 auto 18px;padding:18px 20px;border-radius:var(--r-lg);border:1px solid var(--line-2);background:linear-gradient(180deg,var(--b3),var(--b2));position:relative;z-index:1}
+.setup h3{margin:0 0 6px;font:650 17px/1.3 var(--display);letter-spacing:-.015em}
 .setup p{margin:0 0 14px;color:var(--ink-2);font-size:14px}
 .setup .row{gap:8px}.setup-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}.setup-choice{min-width:0;display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.012));color:var(--ink);text-decoration:none;text-align:left;cursor:pointer;transition:border-color .18s,background .18s,transform .18s var(--ease-out),box-shadow .18s}.setup-choice:hover{border-color:rgba(255,122,40,.28);background:linear-gradient(180deg,rgba(255,106,26,.075),rgba(255,255,255,.018));transform:translateY(-1px);box-shadow:0 18px 34px -30px rgba(255,90,0,.65)}.setup-choice.primary{border-color:var(--o-line);background:linear-gradient(135deg,rgba(255,106,26,.17),rgba(255,106,26,.035))}.setup-choice .setup-icon{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex:none;background:rgba(255,106,26,.09);border:1px solid rgba(255,122,40,.14);color:var(--o-hot)}.setup-choice .setup-icon .i{width:18px;height:18px}.setup-choice>span:last-child{display:flex;min-width:0;flex-direction:column;gap:3px}.setup-choice b{font:620 13.5px/1.25 var(--font)}.setup-choice small{color:var(--muted);font:450 11.5px/1.35 var(--font)}.setup-choice[disabled]{opacity:.55;cursor:wait;transform:none}.setup #setup-status{margin:10px 0 0}
 
@@ -257,7 +259,7 @@ body.paused .orbit,body.paused .flow{animation-play-state:paused}
 @keyframes composer-aura{0%,100%{box-shadow:0 0 0 1px rgba(255,122,40,.22),0 0 42px -18px rgba(255,90,0,.55)}50%{box-shadow:0 0 0 1px rgba(255,158,88,.38),0 0 64px -14px rgba(255,90,0,.82)}}
 .composer:hover{border-color:var(--line-3)}
 .composer:focus-within{border-color:var(--o-line);box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 0 0 4px rgba(255,106,26,.08),0 22px 70px -22px rgba(255,90,0,.3)}
-.composer textarea{display:block;width:100%;background:transparent;border:0;outline:0;resize:none;color:var(--ink);font:16px/1.55 var(--font);padding:16px 18px 4px 18px;min-height:30px;max-height:384px;overflow-y:auto}
+.composer textarea{display:block;width:100%;background:transparent;border:0;outline:0;resize:none;color:var(--ink);font:16px/1.55 var(--font);padding:19px 20px 7px 20px;min-height:38px;max-height:384px;overflow-y:auto}
 .composer textarea::placeholder{color:var(--muted)}
 .composer-bar{display:flex;align-items:center;gap:4px;padding:8px 10px 10px}
 .composer-bar .left{display:flex;align-items:center;gap:4px;flex:1;min-width:0;flex-wrap:wrap}
@@ -501,7 +503,7 @@ details.adv>div{padding:0 18px 16px}
 
 /* ---------- Responsive ---------- */
 @media (max-width:1100px){.settings{grid-template-columns:1fr}.settings-nav{position:static;flex-direction:row;flex-wrap:wrap}}
-@media (max-width:520px){.tool span{display:none}.tool{padding:0;width:34px}.setup-actions{grid-template-columns:1fr}}
+@media (max-width:520px){.tool span{display:none}.tool{padding:0;width:34px}.setup-actions{grid-template-columns:1fr}.suggest{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}}
 @media (max-width:860px){
   .app{grid-template-columns:minmax(0,1fr)}
   .side{position:fixed;z-index:80;top:0;bottom:0;left:0;width:min(300px,86vw);transform:translateX(-102%);transition:transform .26s var(--ease-out);box-shadow:30px 0 80px rgba(0,0,0,.6)}
@@ -538,6 +540,9 @@ const SCRIPT = String.raw`
   /* ---------- Locale / i18n ---------- */
   const SUPPORTED_LANGUAGES = Object.freeze(['en', 'fr']);
   const FR = Object.freeze({
+    'Workspace': 'ESPACE DE TRAVAIL',
+    'Context': 'CONTEXTE',
+    'System': 'SYSTÈME',
     'New chat': 'Nouvelle discussion',
     'Search': 'Rechercher',
     'Chat': 'Discussion',
@@ -1724,8 +1729,11 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
   <button type="button" id="new-chat" class="new-chat" title="New chat">${icon('compose')}<span class="label">New chat</span></button>
   <button type="button" id="search-btn" class="search-btn" title="Search and commands (Ctrl K)">${icon('search')}<span class="label">Search</span><kbd>Ctrl K</kbd></button>
   <nav class="side-nav" aria-label="Workspace"><ul>
+    <li class="nav-label label" data-level="simple">Workspace</li>
     ${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'expert', 'Mission Control')}${nav('automations', 'engineer', 'Automations')}
+    <li class="nav-label label" data-level="power">Context</li>
     ${nav('knowledge', 'power', 'Knowledge')}${nav('web', 'power', 'Web')}${nav('memory', 'power', 'Memory')}
+    <li class="nav-label label" data-level="simple">System</li>
     ${nav('models', 'simple', 'Models')}${nav('connections', 'simple', 'Connections')}${nav('runtimes', 'engineer', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'power', 'MCP')}${nav('integrations', 'engineer', 'Integrations')}
   </ul></nav>
   <div class="recent" aria-labelledby="recent-h"><h2 id="recent-h">Recent</h2><ul id="chat-list" aria-labelledby="recent-h"></ul></div>
