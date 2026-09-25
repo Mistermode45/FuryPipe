@@ -38,10 +38,10 @@ export interface FuryHuggingFaceModel {
   readonly recommendationBasis: 'hardware-fit-only';
 }
 
-export interface FuryHuggingFaceRecommendation extends FuryHuggingFaceModel {
+export type FuryHuggingFaceRecommendation = Omit<FuryHuggingFaceModel, 'recommendationBasis'> & {
   readonly score: number;
   readonly recommendationBasis: 'hardware-fit-plus-hub-signals';
-}
+};
 
 function safePart(value: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(value);
