@@ -426,6 +426,34 @@ details.adv>summary::-webkit-details-marker{display:none}
 details.adv>div{padding:0 18px 16px}
 .sec-h{font:650 13px/1 var(--font);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:30px 0 12px}
 
+
+/* Premium work surfaces */
+.cap-rail{display:flex;flex-wrap:wrap;gap:8px;margin:-10px 0 18px}
+.cap-rail span{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.015);color:var(--muted);font:550 12px/1 var(--font)}
+.cap-rail .i{width:14px;height:14px;color:var(--o-hot)}
+.work-brief,.mission-brief,.agent-contract,.flow-studio{position:relative;overflow:hidden}
+.work-brief::before,.mission-brief::before,.agent-contract::before,.flow-studio::before{content:"";position:absolute;inset:0 auto 0 0;width:2px;background:linear-gradient(180deg,transparent,var(--o-core),transparent);opacity:.65}
+.work-brief>form,.mission-brief>form,.agent-contract>form,.flow-studio>form{position:relative}
+.work-brief textarea#cowork-intent,.mission-brief textarea#run-intent{min-height:126px;font-size:15.5px;background:linear-gradient(180deg,rgba(255,255,255,.018),transparent),var(--b1)}
+.work-brief fieldset{background:rgba(255,255,255,.012);border-color:var(--line-2)}
+.work-brief fieldset>div{min-width:118px}
+.work-brief fieldset select{min-width:112px}
+.agent-contract textarea#dispatch-ir,.flow-studio textarea#flow-json{background:#08080a;border-color:var(--line);box-shadow:0 14px 36px -32px #000 inset}
+.agent-contract #dispatch-out,.flow-studio #flow-canvas{margin-top:16px}
+.agent-contract #dispatch-out table{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.mission-workspace #runs{display:flex;flex-direction:column;gap:12px}
+.mission-workspace #runs>.card{margin:0;position:relative;overflow:hidden}
+.mission-workspace #runs>.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:linear-gradient(180deg,var(--o-hot),transparent 75%);opacity:.55}
+.flow-studio #flow-canvas{padding:10px;border:1px solid var(--line);border-radius:14px;background:radial-gradient(420px 180px at 50% 0,rgba(255,106,26,.045),transparent 75%),#08080a;overflow:auto}
+.flow-studio svg.flow{border:0;background:transparent;min-width:640px}
+.flow-studio svg.flow .node.agentic rect{filter:drop-shadow(0 0 5px rgba(255,106,26,.24))}
+.flow-studio .legend{padding-top:8px}
+.code-workspace>.grid{align-items:stretch}
+.code-workspace>.grid>.card{display:flex;flex-direction:column}
+.code-workspace #tree,.code-workspace #file-view{flex:1}
+.code-workspace #file-view{border-color:var(--line-2);box-shadow:0 14px 40px -34px #000 inset}
+@media (max-width:720px){.cap-rail{overflow-x:auto;flex-wrap:nowrap;padding-bottom:3px}.cap-rail span{flex:none}.flow-studio svg.flow{min-width:580px}}
+
 /* Models */
 .models-top{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:16px}
 .hw-card .big{font:650 22px/1.2 var(--display);letter-spacing:-.02em;margin:2px 0 6px}
@@ -673,7 +701,9 @@ const SCRIPT = String.raw`
     'Paste any public Hugging Face GGUF repository. FuryPipe reads metadata only, groups split GGUF files and estimates whether each quant fits this machine.': 'Collez n’importe quel dépôt GGUF public Hugging Face. FuryPipe lit uniquement les métadonnées, regroupe les GGUF découpés et estime si chaque quantification convient à cette machine.',
     'Hugging Face model': 'Modèle Hugging Face', 'Analyze compatibility': 'Analyser la compatibilité',
     'Cloud providers are managed in FuryPipe Connections. Studio will progressively unify local and cloud routing behind Fury Auto.': 'Les fournisseurs cloud sont gérés dans Connexions. Studio unifiera progressivement le routage local et cloud derrière Fury Auto.',
-    'View connections': 'Voir les connexions', 'Manage models': 'Gérer les modèles'
+    'View connections': 'Voir les connexions', 'Manage models': 'Gérer les modèles',
+    'Explicit permissions': 'Permissions explicites', 'Isolated worktrees': 'Worktrees isolés', 'Proof-gated result': 'Résultat validé par preuves',
+    'Live workers': 'Agents actifs', 'Bounded authority': 'Autorité limitée', 'Receipts + FuryJudge': 'Preuves + FuryJudge'
   });
   function detectedLanguage() {
     const langs = Array.isArray(navigator.languages) && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
@@ -1372,7 +1402,8 @@ const SCRIPT = String.raw`
         for (const w of run.workers) { const stop = el('button', { type: 'button', class: 'secondary', text: 'Stop' }); stop.disabled = !['queued','running','paused','awaiting-approval'].includes(w.state);
           stop.setAttribute('aria-label', 'Stop worker ' + w.workerId);
           stop.addEventListener('click', async () => { try { await getJson('/api/studio/runs/act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ runId: run.runId, workerId: w.workerId, action: 'STOP' }) }); loadRuns(); } catch (e) { $('#run-status').textContent = e.message; } });
-          tb.append(el('tr', {}, el('td', { text: w.workerId }), el('td', { text: w.role }), el('td', { text: w.harnessId }), el('td', { text: w.model }), el('td', { text: w.locality }), el('td', { text: w.state }), el('td', { text: String(w.usage.tokens) }), el('td', { text: String(w.receipts) }), el('td', {}, stop))); }
+          const stateClass = ['done','completed','accepted'].includes(String(w.state).toLowerCase()) ? 'ok' : ['failed','error','rejected'].includes(String(w.state).toLowerCase()) ? 'bad' : ['running','awaiting-approval','paused'].includes(String(w.state).toLowerCase()) ? 'warn' : 'muted';
+          tb.append(el('tr', {}, el('td', { text: w.workerId }), el('td', { text: w.role }), el('td', { text: w.harnessId }), el('td', { text: w.model }), el('td', { text: w.locality }), el('td', {}, badge(w.state, stateClass)), el('td', { text: String(w.usage.tokens) }), el('td', { text: String(w.receipts) }), el('td', {}, stop))); }
         t.append(tb); card.append(t);
         if (run.requirements) { const ul = el('ul', { class: 'reasons' }); for (const q of run.requirements) ul.append(el('li', { text: q.id + ': ' + q.status })); card.append(ul); }
         box.append(card);
@@ -1704,13 +1735,16 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
     </div>
   </div></div>
 </section>
-<section data-view="cowork" aria-labelledby="h-cowork" hidden><h1 id="h-cowork">Cowork</h1><p class="lead">Describe a task and decide what the agent may do. Denied permissions never run; anything set to Ask needs your approval before agents start.</p>
-  <div class="card"><label for="cowork-intent">Task</label><textarea id="cowork-intent" placeholder="e.g. Tidy the docs folder and summarise open TODOs"></textarea>
+<section data-view="cowork" class="work-view" aria-labelledby="h-cowork" hidden><h1 id="h-cowork">Cowork</h1><p class="lead">Describe a task and decide what the agent may do. Denied permissions never run; anything set to Ask needs your approval before agents start.</p>
+  <div class="cap-rail" aria-label="Cowork guarantees">
+    <span>${icon('shield')}Explicit permissions</span><span>${icon('branch')}Isolated worktrees</span><span>${icon('check')}Proof-gated result</span>
+  </div>
+  <div class="card work-brief"><label for="cowork-intent">Task</label><textarea id="cowork-intent" placeholder="e.g. Tidy the docs folder and summarise open TODOs"></textarea>
   <fieldset class="row"><legend class="muted">Permissions</legend>${perm('READ', 'ALLOW')}${perm('WRITE', 'ASK')}${perm('EXECUTE', 'ASK')}${perm('NETWORK', 'DENY')}${perm('EXTERNAL_ACTION', 'DENY')}</fieldset>
   <label for="cowork-files">Files or folders it may change (one per line)</label><textarea id="cowork-files" placeholder="docs/"></textarea>
   <div class="row"><label for="cowork-confirm"><input id="cowork-confirm" type="checkbox"> I confirm starting agents on this repository (local runtimes only)</label></div>
   <p class="row"><button id="cowork-run" type="button">Run with agents</button><button id="cowork-plan" type="button" class="secondary">Plan with Agents</button></p><p id="cowork-status" class="status" role="status"></p></div></section>
-<section data-view="code" aria-labelledby="h-code" hidden><h1 id="h-code">Code</h1><p class="lead">Project graph for this workspace (Graphify when present, native indexer otherwise) and change blast radius.</p>
+<section data-view="code" class="code-workspace" aria-labelledby="h-code" hidden><h1 id="h-code">Code</h1><p class="lead">Project graph for this workspace (Graphify when present, native indexer otherwise) and change blast radius.</p>
   <div class="grid"><div class="card"><h2>Project graph</h2><table><tbody>
     <tr><th scope="row">Provider</th><td id="graph-provider">—</td></tr><tr><th scope="row">Files</th><td id="graph-files">—</td></tr>
     <tr><th scope="row">Edges</th><td id="graph-edges">—</td></tr><tr><th scope="row">Freshness</th><td id="graph-stale">—</td></tr>
@@ -1721,20 +1755,23 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   <div class="card"><h2>Worktrees</h2><p class="muted">Every agent writes in its own worktree. Diffs are read-only here; merging goes through FuryIntegrator.</p>
   <table><thead><tr><th scope="col">Worktree</th><th scope="col">Branch</th><th scope="col">Changed</th><th scope="col">Agents · receipts</th><th scope="col"></th></tr></thead><tbody id="wt-body"></tbody></table>
   <p id="wt-status" class="status muted" role="status"></p><pre id="diff-view" class="code-view" hidden tabindex="0" aria-label="Diff"></pre></div></section>
-<section data-view="agents" aria-labelledby="h-agents" hidden><h1 id="h-agents">Agents</h1><p class="lead">Dispatch preview: FuryDispatcher plans runtimes, parallel groups, worktrees and authority for a contract. Preview only — no agent is started.</p>
-  <div class="card"><form id="dispatch-form"><label for="dispatch-ir">Intent contract (FuryIR)</label><textarea id="dispatch-ir" class="code" spellcheck="false">${escapeHtml(JSON.stringify(STUDIO_EXAMPLE_IR, null, 2))}</textarea>
+<section data-view="agents" class="agent-workspace" aria-labelledby="h-agents" hidden><h1 id="h-agents">Agents</h1><p class="lead">Dispatch preview: FuryDispatcher plans runtimes, parallel groups, worktrees and authority for a contract. Preview only — no agent is started.</p>
+  <div class="card agent-contract"><form id="dispatch-form"><label for="dispatch-ir">Intent contract (FuryIR)</label><textarea id="dispatch-ir" class="code" spellcheck="false">${escapeHtml(JSON.stringify(STUDIO_EXAMPLE_IR, null, 2))}</textarea>
     <div class="row"><div><label for="dispatch-mode">Mode</label><select id="dispatch-mode">${['AUTO', 'SINGLE', 'SPECIALISTS', 'PARALLEL', 'PIPELINE', 'REVIEW_CHAIN', 'COUNCIL', 'RACE', 'LOCAL_CLOUD_HYBRID', 'LOCAL_ONLY', 'OFF'].map((m) => `<option>${m}</option>`).join('')}</select></div>
     <div><label for="dispatch-graph"><input id="dispatch-graph" type="checkbox"> Graph-aware</label></div><button type="submit">Preview plan</button></div></form>
     <p id="dispatch-status" class="status" role="status"></p><div id="dispatch-out"></div></div></section>
-<section data-view="mission" aria-labelledby="h-mission" hidden><h1 id="h-mission">Mission Control</h1><p class="lead">Run a planned task with real agents in isolated worktrees and watch every worker. Results are accepted only by FuryJudge with receipts.</p>
-  <div class="card"><form id="run-form"><label for="run-intent">Task</label><textarea id="run-intent" required placeholder="e.g. Fix the login bug and add a test"></textarea>
+<section data-view="mission" class="mission-workspace" aria-labelledby="h-mission" hidden><h1 id="h-mission">Mission Control</h1><p class="lead">Run a planned task with real agents in isolated worktrees and watch every worker. Results are accepted only by FuryJudge with receipts.</p>
+  <div class="cap-rail" aria-label="Mission Control guarantees">
+    <span>${icon('agents')}Live workers</span><span>${icon('shield')}Bounded authority</span><span>${icon('check')}Receipts + FuryJudge</span>
+  </div>
+  <div class="card mission-brief"><form id="run-form"><label for="run-intent">Task</label><textarea id="run-intent" required placeholder="e.g. Fix the login bug and add a test"></textarea>
   <label for="run-files">Files expected to change (one per line)</label><textarea id="run-files" placeholder="src/auth/login.ts"></textarea>
   <div class="row"><label for="run-cloud"><input id="run-cloud" type="checkbox"> Allow cloud runtimes (may incur provider cost)</label>
   <label for="run-confirm"><input id="run-confirm" type="checkbox" required> I confirm starting agents on this repository</label><button type="submit">Start run</button></div></form>
   <p id="run-status" class="status" role="status"></p></div>
   <div id="runs" aria-live="polite"></div></section>
-<section data-view="automations" aria-labelledby="h-automations" hidden><h1 id="h-automations">Automations</h1><p class="lead">FuryFlow: build a workflow and see where non-determinism lives. Validation and dry-run only here; scheduled runs use the Gateway automation scheduler.</p>
-  <div class="card"><form id="flow-form"><label for="flow-json">Flow (FuryFlow JSON)</label><textarea id="flow-json" class="code" spellcheck="false">${escapeHtml(JSON.stringify(STUDIO_EXAMPLE_FLOW, null, 2))}</textarea>
+<section data-view="automations" class="flow-workspace" aria-labelledby="h-automations" hidden><h1 id="h-automations">Automations</h1><p class="lead">FuryFlow: build a workflow and see where non-determinism lives. Validation and dry-run only here; scheduled runs use the Gateway automation scheduler.</p>
+  <div class="card flow-studio"><form id="flow-form"><label for="flow-json">Flow (FuryFlow JSON)</label><textarea id="flow-json" class="code" spellcheck="false">${escapeHtml(JSON.stringify(STUDIO_EXAMPLE_FLOW, null, 2))}</textarea>
   <div class="row"><button type="submit">Validate &amp; draw</button><button id="flow-dry" type="button" class="secondary">Dry-run (refund branch)</button></div></form>
   <p id="flow-status" class="status" role="status"></p>
   <div class="legend"><span>Solid border: deterministic zone</span><span>Dashed orange border: agentic zone</span><span>Thick border: critical step</span></div>
