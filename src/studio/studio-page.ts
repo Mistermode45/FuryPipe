@@ -843,7 +843,7 @@ const SCRIPT = String.raw`
   function setDrawer(open) { app.dataset.drawer = open ? 'open' : 'closed'; $('#side-open').setAttribute('aria-expanded', String(open)); if (open) $('#new-chat').focus(); }
   $('#side-open').addEventListener('click', () => setDrawer(true));
   $('#scrim').addEventListener('click', () => setDrawer(false));
-  for (const a of $('.side-nav a')) { a.addEventListener('click', () => setDrawer(false)); }
+  for (const a of $$('.side-nav a')) { a.addEventListener('click', () => setDrawer(false)); }
   const sideResizer = $('#side-resizer');
   const clampSide = (n) => Math.max(228, Math.min(380, Math.round(n)));
   function setSidebarWidth(value, persist = true) {
