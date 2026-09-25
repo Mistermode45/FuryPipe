@@ -139,4 +139,52 @@ code instead (see the end of this file).
     - Claude logo and remote demo image;
     - a "Thinking" toggle with no real control behind it;
     - image attachments the local chat path cannot send.
-- `ai-prompt-box.tsx`: named by the operator, but its source was not included in the paste and the page is egress-blocked. Not integrated.
+- `ai-prompt-box.tsx`: source was supplied by the operator. FuryComposer uses its useful patterns (compact action rail, attachments/preview concepts, Search/Think-style affordances, send/stop, tooltips and motion) only where FuryPipe has a real capability. Demo-only Search/Think/Canvas prompt-prefix tricks, fake voice states and unsupported image/voice controls are not exposed.
+
+
+## 2026-09-26 official-market synthesis — Fury Lux 2
+
+This pass rechecked current first-party product material and converts the findings into concrete FuryPipe UI rules.
+
+### ChatGPT Work / Codex
+
+- OpenAI describes ChatGPT Work as goal-to-outcome work across apps/files with progress, redirection and approvals, while the Codex app is explicitly a command center for multiple parallel agents organized around project threads.
+- Sources:
+  - https://openai.com/index/chatgpt-for-your-most-ambitious-work/
+  - https://openai.com/index/introducing-the-codex-app/
+- FuryPipe rule: keep Chat conversational and calm; put long-running activity and multi-agent depth one level down in Cowork/Mission Control rather than turning the home screen into a dashboard.
+
+### Cursor 3 / Design Mode
+
+- Cursor 3 moves to an agent-centered workspace with a higher-level overview and drill-down, and Design Mode lets users point at UI elements with visual/spatial context.
+- Sources:
+  - https://cursor.com/changelog/3-0
+  - https://cursor.com/blog/design-mode
+- FuryPipe rule: Simple mode stays outcome-first; Engineer/Expert can expose deep runtime/worktree evidence. Future visual-editing should carry spatial context rather than making users describe pixels in prose.
+
+### OpenClaw 2026.8–2026.9
+
+- OpenClaw rebuilt its web UI around conversations, keeping files, approvals and live work near the chat. It adds resizable panes/sidebar, command-palette search, background task controls, inline tool summaries and remembered workspace layout.
+- Sources:
+  - https://docs.openclaw.ai/releases/2026.8.1/the-new-web-ui
+  - https://docs.openclaw.ai/releases/2026.9.2
+- FuryPipe rule: conversation remains the centre; resize/persistence and compact activity summaries are useful; deep panels must be optional and recover their layout.
+
+### Gemini Neural Expressive
+
+- Google says the 2026 Gemini redesign uses fluid animation, expressive visual composition, streamlined tools and responses that can lay out interactive visual elements instead of only walls of text.
+- Source:
+  - https://blog.google/innovation-and-ai/technology/ai/google-io-2026-all-our-announcements/
+- FuryPipe rule: motion can communicate state, but FuryPipe uses transform/opacity/CSS depth instead of heavy decorative GPU scenes so local inference keeps the GPU budget.
+
+### Resulting Fury Lux 2 changes
+
+- persistent keyboard/pointer-resizable desktop sidebar;
+- stronger layered-black depth and top-bar glass;
+- CSS-only 3D/parallax Fury mark with reduced-motion fallback;
+- pointer-reactive ambient stage light and perspective grid;
+- composer aura tied to real focus/generation state;
+- subtle view transitions and card depth rather than constant animation;
+- no WebGL dependency and no external UI/CDN runtime assets.
+
+These are interaction lessons, not claims that FuryPipe is objectively superior. UX-01 remains a human acceptance gate.

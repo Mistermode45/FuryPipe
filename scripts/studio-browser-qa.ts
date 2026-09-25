@@ -154,6 +154,13 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.locator('#chat-form').waitFor({ state: 'visible' });
     assert(await page.locator('#chat').evaluate((n) => n.classList.contains('is-empty')), `${name}: new chat hero not shown`);
     assert((await page.locator('#model-button').textContent())?.includes('Fury Auto'), `${name}: default model is not Fury Auto`);
+    const sideResizer = page.locator('#side-resizer');
+    await sideResizer.focus();
+    const widthBefore = Number(await sideResizer.getAttribute('aria-valuenow'));
+    await page.keyboard.press('ArrowRight');
+    const widthAfter = Number(await sideResizer.getAttribute('aria-valuenow'));
+    assert(widthAfter > widthBefore, `${name}: keyboard sidebar resize did not increase width`);
+    assert(await page.evaluate(() => localStorage.getItem('furypipe.studio.sidebarWidth')) === String(widthAfter), `${name}: sidebar width was not persisted`);
     await page.locator('#chat-input').fill('Say hello');
     await page.locator('#chat-send').click();
     await page.locator('#chat-log .msg:not(.user)').filter({ hasText: 'Hello from a local model.' }).waitFor();
