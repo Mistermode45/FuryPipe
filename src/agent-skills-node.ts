@@ -119,6 +119,7 @@ function rootCandidates(options: AgentSkillDiscoveryOptions): readonly RootCandi
     ['.furypipe', 'skills'],
     ['.agents', 'skills'],
     ['.claude', 'skills'],
+    ['.opencode', 'skills'],
     ['.github', 'skills'],
   ] as const) {
     roots.push(Object.freeze({
@@ -133,6 +134,7 @@ function rootCandidates(options: AgentSkillDiscoveryOptions): readonly RootCandi
     ['.furypipe', 'skills'],
     ['.agents', 'skills'],
     ['.claude', 'skills'],
+    ['.opencode', 'skills'],
   ] as const) {
     roots.push(Object.freeze({
       path: path.join(homeDir, ...relative),
