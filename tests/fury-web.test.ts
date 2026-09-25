@@ -109,3 +109,34 @@ describe('FuryWeb EXTRACT / MAP / CRAWL / SEARCH', () => {
     expect(new FuryWebError('blocked', 'x').code).toBe('blocked');
   });
 });
+
+describe('FuryWeb SSRF regressions', () => {
+  const resolveTo = (addresses: string[]) => ({ resolveHostname: async () => addresses, dial: () => ({ host: '127.0.0.1', port }) });
+  it.each([
+    ['loopback v4', 'http://127.0.0.1/'], ['short loopback', 'http://127.1/'], ['decimal loopback', 'http://2130706433/'], ['hex loopback', 'http://0x7f000001/'],
+    ['RFC1918 10/8', 'http://10.1.2.3/'], ['RFC1918 172.16/12', 'http://172.20.0.1/'], ['RFC1918 192.168/16', 'http://192.168.1.1/'],
+    ['CGNAT', 'http://100.64.0.1/'], ['link-local metadata', 'http://169.254.169.254/latest/meta-data'], ['zero network', 'http://0.0.0.0/'],
+    ['IPv6 loopback literal', 'http://[::1]/'], ['IPv4-mapped IPv6 literal', 'http://[::ffff:127.0.0.1]/'], ['localhost name', 'http://localhost/'],
+    ['metadata name', 'http://metadata.google.internal/'], ['credentials trick', 'http://docs.test@127.0.0.1/'], ['non-http scheme', 'gopher://docs.test/'],
+  ])('blocks %s', async (_name, url) => {
+    await expect(furyWebFetch(url, net())).rejects.toMatchObject({ code: 'blocked' });
+  });
+
+  it.each([
+    ['one private answer among public ones', ['93.184.216.34', '10.0.0.5']],
+    ['IPv4-mapped IPv6 answer', ['::ffff:10.0.0.5']],
+    ['NAT64 answer embedding loopback', ['64:ff9b::7f00:1']],
+    ['IPv4-compatible answer embedding loopback', ['::7f00:1']],
+    ['6to4 answer embedding RFC1918', ['2002:0a00:0001::1']],
+    ['unique-local answer', ['fd00::1']],
+    ['link-local v6 answer', ['fe80::1']],
+  ])('blocks DNS answers: %s', async (_name, addresses) => {
+    await expect(furyWebFetch('http://rebind.test/', resolveTo(addresses))).rejects.toMatchObject({ code: 'blocked' });
+    expect(hits).toEqual([]);
+  });
+
+  it('ignores a #fragment instead of refusing the page', async () => {
+    const doc = await furyWebFetch('http://docs.test/a#section', net());
+    expect(doc.url).toBe('http://docs.test/a');
+  });
+});

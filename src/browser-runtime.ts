@@ -421,14 +421,15 @@ function ipv6Blocked(value: string): boolean {
   const linkLocal = (first & 0xffc0) === 0xfe80;
   const multicast = (first & 0xff00) === 0xff00;
   const documentation = first === 0x2001 && second === 0x0db8;
+  const embedded = (hi: bigint, lo: bigint) => `${Number(hi >> 8n)}.${Number(hi & 255n)}.${Number(lo >> 8n)}.${Number(lo & 255n)}`;
   const mapped = parts.slice(0, 5).every((part) => part === 0n) && parts[5] === 0xffffn;
-  if (mapped) {
-    const mappedIp = String(Number((parts[6] ?? 0n) >> 8n)) + '.'
-      + String(Number((parts[6] ?? 0n) & 255n)) + '.'
-      + String(Number((parts[7] ?? 0n) >> 8n)) + '.'
-      + String(Number((parts[7] ?? 0n) & 255n));
-    return ipv4Blocked(mappedIp);
-  }
+  // IPv4-compatible (::a.b.c.d, deprecated) and NAT64 well-known prefix (64:ff9b::/96)
+  // also carry an IPv4 address that must pass the IPv4 policy.
+  const compatible = parts.slice(0, 6).every((part) => part === 0n) && !unspecified && !loopback;
+  const nat64 = parts[0] === 0x64n && parts[1] === 0xff9bn && parts.slice(2, 6).every((part) => part === 0n);
+  if (mapped || compatible || nat64) return ipv4Blocked(embedded(parts[6] ?? 0n, parts[7] ?? 0n));
+  // 6to4 (2002::/16) embeds an IPv4 address in bits 16..47.
+  if (first === 0x2002 && ipv4Blocked(embedded(parts[1] ?? 0n, parts[2] ?? 0n))) return true;
   return unspecified || loopback || uniqueLocal || linkLocal || multicast || documentation;
 }
 
@@ -486,8 +487,10 @@ export async function validateBrowserUrl(
     }
   }
   let addresses: readonly string[];
-  if (isIP(url.hostname) !== 0) {
-    addresses = Object.freeze([url.hostname]);
+  // IPv6 literals arrive bracketed ("[::1]"); decide on the literal, never via DNS.
+  const literal = url.hostname.startsWith('[') && url.hostname.endsWith(']') ? url.hostname.slice(1, -1) : url.hostname;
+  if (isIP(literal) !== 0) {
+    addresses = Object.freeze([literal]);
   } else {
     try {
       addresses = await (options.resolveHostname ?? defaultResolveHostname)(url.hostname);

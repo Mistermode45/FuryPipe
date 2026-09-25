@@ -109,7 +109,8 @@ export async function furyWebFetch(value: string, options: FuryWebFetchOptions =
   const timeoutMs = Math.min(options.timeoutMs ?? 15_000, 60_000);
   const maxRedirects = Math.min(options.maxRedirects ?? 5, 10);
   const redirects: string[] = [];
-  let current = value;
+  // A #fragment never reaches the server; drop it rather than refusing the page.
+  let current = typeof value === 'string' ? value.replace(/#.*$/su, '') : value;
   for (;;) {
     let checked: Awaited<ReturnType<typeof validateBrowserUrl>>;
     try {
