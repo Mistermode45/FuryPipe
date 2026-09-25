@@ -4,7 +4,7 @@
 // Code can run against Anthropic or an Anthropic-compatible local server,
 // Codex against OpenAI or `--oss` local backends, and so on. The registry
 // records, per harness, the preferred integration path (ACP/official protocol >
-// SDK > ACP/A2A > structured CLI > PTY) and how it can be pointed at a local
+// SDK/API > A2A > structured CLI > PTY) and how it can be pointed at a local
 // model. Discovery only resolves executables on PATH and runs `--version`
 // with a timeout, no shell (Windows .cmd shims go through the hardened
 // FuryLink cmd.exe boundary) and a minimal environment. It never reads
