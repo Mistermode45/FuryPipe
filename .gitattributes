@@ -1,7 +1,12 @@
 # Normalize end-of-line handling across the repository.
 # Without this file, cloning on Windows with core.autocrlf=true rewrites the
 # shell scripts with CRLF and bash fails with: "$'\r': command not found".
-* text=auto
+# eol=lf keeps every text file LF in the working tree on every OS, so the
+# npm tarball is content-identical whether it is packed on Windows, macOS or
+# Linux. With plain text=auto, a Windows autocrlf checkout shipped CRLF in the
+# packaged docs, LICENSE, package.json and HTML/JS template strings bundled
+# into dist/, producing a different tarball digest from the same commit.
+* text=auto eol=lf
 
 # Files that MUST stay LF even on Windows.
 # - .sh/.bash are executed by bash, which chokes on a trailing \r.

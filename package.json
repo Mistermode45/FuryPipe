@@ -684,6 +684,7 @@
     "validation:recovery": "node scripts/recovery-resilience-smoke.mjs",
     "validation:gateway": "node scripts/gateway-restart-smoke.mjs",
     "validation:gateway-installed-package": "node scripts/gateway-installed-package-smoke.mjs",
+    "validation:package-reproducibility": "node scripts/package-reproducibility.mjs",
     "validation:clean-room": "node scripts/clean-room-package-smoke.mjs",
     "validation:local-contracts": "node scripts/local-contracts.mjs",
     "validation:accessibility": "node scripts/accessibility-automation.mjs",

@@ -212,7 +212,11 @@ async function startChrome(chromeBin) {
     if (stderr.length > 80) stderr.splice(0, stderr.length - 80);
   });
 
-  const deadline = Date.now() + 15_000;
+  // Cold Chrome starts on hosted runners can exceed 15 s before CDP answers
+  // (observed: Chrome 153 on ubuntu-24.04). Match the Web Studio harness
+  // budget; readiness is still polled, so warm starts stay fast.
+  const startedAt = Date.now();
+  const deadline = startedAt + 30_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       throw new Error(`Chromium exited before CDP became ready: ${stderr.join('\n')}`);
@@ -257,7 +261,7 @@ async function startChrome(chromeBin) {
   }
   child.kill('SIGKILL');
   await rm(profile, { recursive: true, force: true });
-  throw new Error(`Timed out starting Chromium: ${stderr.join('\n')}`);
+  throw new Error(`Timed out starting Chromium after ${Date.now() - startedAt} ms: ${stderr.join('\n')}`);
 }
 
 async function openTarget(debugPort) {
