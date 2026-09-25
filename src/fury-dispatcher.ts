@@ -100,7 +100,9 @@ function overlaps(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /** Assign DAG levels, then split any level whose writers overlap. */
-function groupTasks(ir: FuryIrDocument, sequential: boolean): Map<string, number> {
+export type FuryScopeCoupling = (scopeA: readonly string[], scopeB: readonly string[]) => number;
+
+function groupTasks(ir: FuryIrDocument, sequential: boolean, coupled?: (a: readonly string[], b: readonly string[]) => boolean): Map<string, number> {
   const byId = new Map(ir.tasks.map((t) => [t.id, t]));
   const group = new Map<string, number>();
   if (sequential) {
@@ -112,7 +114,12 @@ function groupTasks(ir: FuryIrDocument, sequential: boolean): Map<string, number
     let level = task.dependsOn.reduce((max, dep) => Math.max(max, group.get(dep)! + 1), 0);
     // Push later while an already-placed writer in that group overlaps.
     for (;;) {
-      const clash = [...group].some(([other, g]) => g === level && byId.get(other)!.writeScopes.length > 0 && task.writeScopes.length > 0 && overlaps(byId.get(other)!.writeScopes, task.writeScopes));
+      const clash = [...group].some(([other, g]) => {
+        if (g !== level) return false;
+        const a = byId.get(other)!.writeScopes;
+        if (a.length === 0 || task.writeScopes.length === 0) return false;
+        return overlaps(a, task.writeScopes) || (coupled?.(a, task.writeScopes) ?? false);
+      });
       if (!clash) break;
       level += 1;
     }
@@ -150,6 +157,10 @@ export function planFuryDispatch(input: {
   readonly manual?: Readonly<Record<string, string>>;
   /** COUNCIL / RACE width (default 2, max 4). */
   readonly width?: number;
+  /** Graph-aware dispatch: dependency edges between two write scopes (e.g. furyScopeCoupling). */
+  readonly coupling?: FuryScopeCoupling;
+  /** Writers whose scopes share at least this many edges never run in parallel (default 1). */
+  readonly couplingThreshold?: number;
 }): FuryDispatchPlan {
   const { ir } = input;
   if (!(FURY_DISPATCH_MODES as readonly string[]).includes(input.mode)) throw new FuryDispatchError('dispatch mode is unsupported');
@@ -184,8 +195,17 @@ export function planFuryDispatch(input: {
   }
   if (pool.length === 0) return blocked(localOnly ? 'no available local binding satisfies the privacy boundary' : 'no available runtime binding');
 
+  const threshold = Math.max(1, Math.floor(input.couplingThreshold ?? 1));
+  const coupledReasons = new Set<string>();
+  const coupled = input.coupling
+    ? (a: readonly string[], b: readonly string[]) => {
+        const edges = input.coupling!(a, b);
+        if (edges >= threshold) coupledReasons.add(`graph coupling ${edges} edge(s) between ${a.join(',')} and ${b.join(',')}: writers serialized`);
+        return edges >= threshold;
+      }
+    : undefined;
   // Dispatch benefit: parallelisable width and role diversity.
-  const levels = groupTasks(ir, false);
+  const levels = groupTasks(ir, false, coupled);
   const widest = Math.max(...[...levels.values()].reduce((m, g) => m.set(g, (m.get(g) ?? 0) + 1), new Map<number, number>()).values());
   const roles = new Set(ir.tasks.map((t) => ROLE_SKILL[t.role]));
   const benefit: FuryDispatchPlan['dispatchBenefit'] = ir.tasks.length <= 1 || (widest <= 1 && roles.size <= 1)
@@ -205,7 +225,8 @@ export function planFuryDispatch(input: {
   if (mode === 'LOCAL_ONLY') mode = 'SPECIALISTS';
 
   const sequential = mode === 'SINGLE' || mode === 'PIPELINE';
-  const groups = groupTasks(ir, sequential);
+  const groups = groupTasks(ir, sequential, coupled);
+  reasons.push(...[...coupledReasons].sort());
   const width = Math.min(Math.max(input.width ?? 2, 2), 4);
   const singleBest = rank(pool, 'coding')[0]!;
 
