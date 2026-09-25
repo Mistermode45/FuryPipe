@@ -6,6 +6,11 @@
 // too, but it also depends on the npm version that performed the pack, so the
 // canonical release tarball is the one produced by the RC Preparation job.
 //
+// With `--tarball <path>` the script digests an existing tarball instead of
+// packing (for example the registry tarball fetched by `npm pack
+// furypipe@<version>` after an authorized publish), so the published content
+// can be compared with the RC contentDigest.
+//
 // The pack fails closed if any packed file contains a CR byte: the canonical
 // package is LF-only, and a CR means a line-ending conversion leaked in.
 import { execFile } from 'node:child_process';
@@ -97,12 +102,25 @@ function readTarEntries(tar) {
 
 async function main() {
   const root = process.cwd();
+  const flag = process.argv.indexOf('--tarball');
+  const existing = flag === -1 ? undefined : process.argv[flag + 1];
+  if (flag !== -1 && !existing) throw new Error('--tarball requires a path');
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'furypipe-package-repro-'));
   try {
-    const packed = JSON.parse(await npm(['pack', '--json', '--ignore-scripts', '--quiet', '--pack-destination', workspace], root))[0];
-    if (!packed?.filename) throw new Error('npm pack returned no tarball');
-    const tarball = await readFile(path.join(workspace, packed.filename));
+    let packed;
+    let tarball;
+    if (existing) {
+      tarball = await readFile(path.resolve(existing));
+    } else {
+      packed = JSON.parse(await npm(['pack', '--json', '--ignore-scripts', '--quiet', '--pack-destination', workspace], root))[0];
+      if (!packed?.filename) throw new Error('npm pack returned no tarball');
+      tarball = await readFile(path.join(workspace, packed.filename));
+    }
     const entries = readTarEntries(gunzipSync(tarball)).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    const manifestFile = entries.find((entry) => entry.path === 'package/package.json');
+    if (!manifestFile) throw new Error('tarball has no package/package.json');
+    const manifestJson = JSON.parse(manifestFile.bytes.toString('utf8'));
+    packed ??= { name: manifestJson.name, version: manifestJson.version, entryCount: entries.length, unpackedSize: entries.reduce((sum, entry) => sum + entry.bytes.length, 0) };
     if (entries.length !== packed.entryCount) {
       throw new Error(`tar entry count ${entries.length} does not match npm entryCount ${packed.entryCount}`);
     }
@@ -115,9 +133,12 @@ async function main() {
       format: 'furypipe-package-reproducibility/v1',
       status: 'PASS',
       sourceCommit: process.env.FURYPIPE_SOURCE_COMMIT?.trim() || 'not-bound',
+      mode: existing ? 'existing-tarball' : 'npm-pack',
       platform: { os: process.platform, arch: process.arch, node: process.version, npm: (await npm(['--version'], root)).trim() },
       package: { name: packed.name, version: packed.version, fileCount: entries.length, unpackedSize: packed.unpackedSize },
       contentDigest: sha256(Buffer.from(manifest, 'utf8')),
+      bytesDigest: sha256(Buffer.from(entries.map((entry) => `${entry.path}\t${sha256(entry.bytes)}\n`).join(''), 'utf8')),
+      fileModes: Object.fromEntries([...entries.reduce((counts, entry) => counts.set(entry.mode.toString(8), (counts.get(entry.mode.toString(8)) ?? 0) + 1), new Map())].sort()),
       carriageReturnFiles: 0,
       tarballSha256: sha256(tarball),
       tarballBytes: tarball.length,
