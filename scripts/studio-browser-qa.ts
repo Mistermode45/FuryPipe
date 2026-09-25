@@ -86,18 +86,20 @@ const harnesses: FuryHarnessDiscovery = {
   })),
 };
 
-async function startStudio(mode: 'normal' | 'empty' | 'error', backendUrl: string, projectRoot: string): Promise<{ server: Server; origin: string }> {
+async function startStudio(mode: 'normal' | 'empty' | 'error', backendUrl: string, projectRoot: string, run: string): Promise<{ server: Server; origin: string }> {
+  // State is per engine run: one engine's actions (trust, pins, chats, memory) must not leak into the next.
+  const state = `${mode}-${run}`;
   const local = (): FuryLocalBackendStatus[] => mode === 'empty'
     ? [{ kind: 'ollama', baseUrl: 'http://127.0.0.1:11434', reachable: false, protocols: [], models: [], error: 'unreachable' }]
     : [{ kind: 'ollama', baseUrl: backendUrl, reachable: true, version: '0.14.2', protocols: ['native', 'openai-chat', 'anthropic-messages'], models: [{ backend: 'ollama', baseUrl: backendUrl, id: 'qwen2.5-coder:7b', sizeBytes: 4_700_000_000, parameterSize: '7.6B', quantization: 'Q4_K_M' }, { backend: 'ollama', baseUrl: backendUrl, id: 'llama3.2:3b', sizeBytes: 2_000_000_000 }] }];
   const api = createStudioApi({
     projectRoot,
     // Isolated hub state: QA never touches the operator's ~/.furypipe.
-    knowledgeDir: path.join(projectRoot, '.qa-knowledge', mode),
-    chatsDir: path.join(projectRoot, '.qa-chats', mode),
-    memory: mode === 'empty' ? { enabled: false, reason: 'Memory is off. Set FURYPIPE_WEBCHAT_MEMORY_CONFIG to an encrypted memory config to turn it on.' } : { enabled: true, store: createMemoryVNextStore({ recovery: createRecoveryStore(path.join(projectRoot, '.qa-memory', mode), { namespace: 'studio-qa' }), authorize: () => true }) },
-    mcpHub: createFuryMcpHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-mcp-hub', mode) }),
-    skillHub: createFurySkillHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-skill-hub', mode), projectTrustedForInstructions: true }),
+    knowledgeDir: path.join(projectRoot, '.qa-knowledge', state),
+    chatsDir: path.join(projectRoot, '.qa-chats', state),
+    memory: mode === 'empty' ? { enabled: false, reason: 'Memory is off. Set FURYPIPE_WEBCHAT_MEMORY_CONFIG to an encrypted memory config to turn it on.' } : { enabled: true, store: createMemoryVNextStore({ recovery: createRecoveryStore(path.join(projectRoot, '.qa-memory', state), { namespace: 'studio-qa' }), authorize: () => true }) },
+    mcpHub: createFuryMcpHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-mcp-hub', state) }),
+    skillHub: createFurySkillHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-skill-hub', state), projectTrustedForInstructions: true }),
     discoverHarnesses: async () => harnesses,
     discoverLocal: async () => {
       if (mode === 'error') throw new Error('probe failed');
@@ -326,22 +328,24 @@ async function main(): Promise<void> {
   writeFileSync(path.join(project, 'status-api.json'), JSON.stringify({ openapi: '3.1.0', info: { title: 'Status' }, servers: [{ url: 'https://status.example.com' }], paths: { '/status': { get: { operationId: 'getStatus' } } } }));
   writeFileSync(path.join(project, '.furypipe', 'integrations.json'), JSON.stringify({ format: 'furypipe-integrations/v1', integrations: [{ id: 'qa-status-api', kind: 'OPENAPI', spec: 'status-api.json' }] }));
   const backend = await startBackend();
-  const normal = await startStudio('normal', backend.baseUrl, project);
-  const empty = await startStudio('empty', backend.baseUrl, project);
-  const error = await startStudio('error', backend.baseUrl, project);
-  const origins = { normal: normal.origin, empty: empty.origin, error: error.origin };
   const engines = (process.env.FURYPIPE_STUDIO_QA_ENGINES ?? 'chromium,firefox,webkit').split(',').map((s) => s.trim());
   const types: Record<string, BrowserType> = { chromium, firefox, webkit };
   const results: Record<string, unknown>[] = [];
+  const servers: Server[] = [backend.server];
   try {
-    for (const engine of engines) {
+    for (const [index, engine] of engines.entries()) {
       const type = types[engine];
       assert(type, `unknown engine ${engine}`);
-      results.push(await runEngine(engine, type, origins));
+      const run = `${engine}-${index}`;
+      const normal = await startStudio('normal', backend.baseUrl, project, run);
+      const empty = await startStudio('empty', backend.baseUrl, project, run);
+      const error = await startStudio('error', backend.baseUrl, project, run);
+      servers.push(normal.server, empty.server, error.server);
+      results.push(await runEngine(engine, type, { normal: normal.origin, empty: empty.origin, error: error.origin }));
       console.log(`✓ studio ${engine}`);
     }
   } finally {
-    for (const s of [backend.server, normal.server, empty.server, error.server]) await new Promise((r) => s.close(r));
+    for (const s of servers) await new Promise((r) => s.close(r));
     rmSync(project, { recursive: true, force: true });
   }
   mkdirSync(OUT, { recursive: true });
