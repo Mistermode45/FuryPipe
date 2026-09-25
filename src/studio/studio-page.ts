@@ -1209,9 +1209,12 @@ const SCRIPT = String.raw`
 
   async function loadConnections() {
     const grid = $('#connections-grid'); const status = $('#connections-status');
-    status.textContent = 'Detecting AI connections…'; grid.replaceChildren();
+    status.textContent = 'Detecting AI connections…';
     try {
       const r = await getJson('/api/studio/connections.json');
+      // Clear only after the async request resolves. Multiple route/render passes
+      // can overlap; clearing before await lets both responses append duplicate cards.
+      grid.replaceChildren();
       for (const c of r.connections) {
         const card = el('div', { class: 'card connection-card' });
         const stateLabel = c.state === 'credential-configured' ? 'Credential configured' : c.state === 'runtime-detected' ? 'Runtime detected' : 'Not detected';
