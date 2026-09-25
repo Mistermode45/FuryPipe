@@ -156,6 +156,7 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     assert((await page.locator('#model-button').textContent())?.includes('Fury Auto'), `${name}: default model is not Fury Auto`);
     const sideResizer = page.locator('#side-resizer');
     await sideResizer.focus();
+    await page.keyboard.press('Home');
     const widthBefore = Number(await sideResizer.getAttribute('aria-valuenow'));
     await page.keyboard.press('ArrowRight');
     const widthAfter = Number(await sideResizer.getAttribute('aria-valuenow'));
@@ -349,11 +350,12 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     const frContext = await browser.newContext({ viewport: { width: 1280, height: 860 }, locale: 'fr-FR' });
     const frPage = await frContext.newPage();
     await frPage.goto(`${origins.normal}/#/chat`, { waitUntil: 'load' });
+    assert(await frPage.evaluate(() => localStorage.getItem('furypipe.studio.languageV2')) === null, `${name}: locale test unexpectedly has a stored override`);
     await frPage.locator('.hero h2').filter({ hasText: 'Comment FuryPipe peut-il vous aider ?' }).waitFor();
     assert(await frPage.locator('html').getAttribute('lang') === 'fr', `${name}: French browser locale was not applied`);
     await frPage.goto(`${origins.normal}/#/settings`);
     await frPage.locator('#set-general').filter({ hasText: 'Langue' }).waitFor();
-    await frPage.evaluate(() => localStorage.setItem('furypipe.studio.language', 'en'));
+    await frPage.evaluate(() => localStorage.setItem('furypipe.studio.languageV2', 'en'));
     await frPage.reload({ waitUntil: 'load' });
     assert(await frPage.locator('html').getAttribute('lang') === 'en', `${name}: explicit English language override was not applied`);
     await frPage.goto(`${origins.normal}/#/chat`);

@@ -135,6 +135,10 @@ describe('Studio page', () => {
     expect(a.html).not.toMatch(/style="/u);
     expect(a.html).toContain('<a class="skip" href="#main">');
     expect(a.html).toContain('&quot;format&quot;: &quot;furypipe-ir/v1&quot;');
+    const fr = renderStudioHtml({ locale: 'fr' });
+    expect(fr.html).toContain('<html lang="fr"');
+    expect(fr.html).toContain('const SERVER_LANGUAGE = "fr";');
+    expect(fr.html).not.toContain('__SERVER_LANGUAGE__');
   });
 });
 

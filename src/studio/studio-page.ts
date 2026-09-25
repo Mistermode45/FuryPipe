@@ -522,6 +522,7 @@ html[data-motion="reduced"] *,html[data-motion="reduced"] *::before,html[data-mo
 const SCRIPT = String.raw`
 (() => {
   const ICONS = __ICONS__;
+  const SERVER_LANGUAGE = __SERVER_LANGUAGE__;
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
   const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'text') n.textContent = v; else if (k === 'class') n.className = v; else n.setAttribute(k, v); } for (const k of kids) if (k !== null && k !== undefined && k !== false) n.append(k); return n; };
@@ -706,7 +707,7 @@ const SCRIPT = String.raw`
     'Live workers': 'Agents actifs', 'Bounded authority': 'Autorité limitée', 'Receipts + FuryJudge': 'Preuves + FuryJudge'
   });
   function detectedLanguage() {
-    const langs = Array.isArray(navigator.languages) && navigator.languages.length ? navigator.languages : [navigator.language || 'en'];
+    const langs = [SERVER_LANGUAGE, ...(Array.isArray(navigator.languages) ? navigator.languages : []), navigator.language, Intl.DateTimeFormat().resolvedOptions().locale].filter(Boolean);
     for (const raw of langs) {
       const lang = String(raw || '').toLowerCase().split('-')[0];
       if (SUPPORTED_LANGUAGES.includes(lang)) return lang;
@@ -714,7 +715,9 @@ const SCRIPT = String.raw`
     return 'en';
   }
   function languagePreference() {
-    const saved = store.get('language', 'auto');
+    // v2 deliberately ignores the old key: early Studio builds could persist
+    // an English override while locale auto-detection was still incomplete.
+    const saved = store.get('languageV2', 'auto');
     return saved === 'auto' || SUPPORTED_LANGUAGES.includes(saved) ? saved : 'auto';
   }
   function currentLanguage() {
@@ -773,7 +776,7 @@ const SCRIPT = String.raw`
   }
   for (const n of ['theme', 'motion', 'density']) for (const r of document.querySelectorAll('input[name="pref-' + n + '"]')) r.addEventListener('change', () => { store.set(n, r.value); applyPrefs(); });
   applyPrefs();
-  for (const r of document.querySelectorAll('input[name="pref-language"]')) r.addEventListener('change', () => { store.set('language', r.value); location.reload(); });
+  for (const r of document.querySelectorAll('input[name="pref-language"]')) r.addEventListener('change', () => { store.set('languageV2', r.value); location.reload(); });
   applyLanguage();
   const i18nObserver = new MutationObserver((records) => {
     if (activeLanguage === 'en') return;
@@ -1647,16 +1650,22 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/gu, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
-const SCRIPT_FINAL = SCRIPT.replace('__ICONS__', () => JSON.stringify(ICONS).replace(/</gu, '\\u003c'));
+const SCRIPT_WITH_ICONS = SCRIPT.replace('__ICONS__', () => JSON.stringify(ICONS).replace(/</gu, '\\u003c'));
 
-export function renderStudioHtml(): { readonly html: string; readonly nonce: string } {
+export interface StudioHtmlOptions {
+  readonly locale?: 'en' | 'fr';
+}
+
+export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly html: string; readonly nonce: string } {
   const nonce = randomBytes(16).toString('base64');
+  const initialLocale = options.locale === 'fr' ? 'fr' : 'en';
+  const scriptFinal = SCRIPT_WITH_ICONS.replace('__SERVER_LANGUAGE__', JSON.stringify(initialLocale));
   const perm = (cap: string, def: string) => `<div><label for="perm-${cap}">${cap.replace('_', ' ')}</label><select id="perm-${cap}">${['ALLOW', 'ASK', 'DENY'].map((d) => `<option${d === def ? ' selected' : ''}>${d}</option>`).join('')}</select></div>`;
   const nav = (view: string, level: string, label: string) => `<li data-level="${level}"><a class="nav-item" href="#/${view}" data-view="${view}" title="${label}">${icon(view)}<span class="label">${label}</span></a></li>`;
   const seg = (name: string, options: readonly (readonly [string, string])[]) => `<div class="seg" role="radiogroup" aria-label="${name}">${options.map(([v, t]) => `<label><input type="radio" name="pref-${name}" value="${v}"><span>${t}</span></label>`).join('')}</div>`;
   const modeItem = (mode: string, name: string, desc: string) => `<button type="button" class="opt" role="menuitemradio" aria-checked="false" data-mode="${mode}"><span class="t"><span class="n">${name}</span><span class="d">${desc}</span></span>${icon('check', 'i ck')}</button>`;
   const html = `<!doctype html>
-<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="${initialLocale}" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light"><meta name="theme-color" content="#050506">
 <title>Chat · FuryPipe Studio</title><style nonce="${nonce}">${CSS}</style></head>
 <body data-mode="simple" data-view="chat"><a class="skip" href="#main">Skip to content</a>
@@ -1850,12 +1859,12 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
 <div class="overlay" id="palette-overlay" hidden><div class="palette" role="dialog" aria-modal="true" aria-label="Search and commands">
   <div class="palette-in">${icon('search')}<input id="palette-input" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list" placeholder="Search conversations, pages and commands…" autocomplete="off"><kbd>Esc</kbd></div>
   <ul id="palette-list" role="listbox" aria-label="Results"></ul></div></div>
-<script nonce="${nonce}">${SCRIPT_FINAL}</script></body></html>`;
+<script nonce="${nonce}">${scriptFinal}</script></body></html>`;
   return Object.freeze({ html, nonce });
 }
 
-export function studioHtmlResponse(): Response {
-  const { html, nonce } = renderStudioHtml();
+export function studioHtmlResponse(options: StudioHtmlOptions = {}): Response {
+  const { html, nonce } = renderStudioHtml(options);
   return new Response(html, {
     headers: {
       'content-type': 'text/html; charset=utf-8',

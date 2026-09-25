@@ -67,6 +67,7 @@ import type { FuryPipeVisualPolicy } from './core/applicability.js';
 import { discoverAgentSkillsNode } from './agent-skills-node.js';
 import { createStudioApi, studioApiRoute } from './studio/studio-api.js';
 import { studioHtmlResponse } from './studio/studio-page.js';
+import { parseAcceptLanguage, resolveSupportedLocale } from './i18n/runtime.js';
 import { selectAgentSkillsForTask } from './agent-skill-selector.js';
 import { activateSelectedAgentSkillsNode } from './agent-skill-activation-node.js';
 import type { ProxyCapabilityPlanner } from './proxy-capability-runtime.js';
@@ -2023,7 +2024,13 @@ async function main(): Promise<void> {
           }
           if (isStudioPage) {
             await writeWebResponse(req.method === 'GET' || req.method === 'HEAD'
-              ? studioHtmlResponse()
+              ? studioHtmlResponse({
+                  locale: resolveSupportedLocale(
+                    parseAcceptLanguage(req.headers['accept-language']),
+                    ['en', 'fr'],
+                    'en',
+                  ) as 'en' | 'fr',
+                })
               : new Response('method not allowed', { status: 405, headers: { allow: 'GET' } }), res);
             return;
           }
