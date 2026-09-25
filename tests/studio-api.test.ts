@@ -190,3 +190,36 @@ describe('Studio runs (Mission Control)', () => {
     }
   }, 60_000);
 });
+
+describe('Studio Skills Hub', () => {
+  it('lists, pins, selects and installs skills with confirmation', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { createFurySkillHub } = await import('../src/fury-skill-hub.js');
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-studio-skills-'));
+    try {
+      const project = join(root, 'p');
+      const mk = (dir: string, name: string, description: string) => { mkdirSync(join(dir, name), { recursive: true }); writeFileSync(join(dir, name, 'SKILL.md'), `---\nname: ${name}\ndescription: ${description}\n---\nBody.\n`); return join(dir, name); };
+      mk(join(project, '.agents', 'skills'), 'api-docs', 'Write API reference documentation for endpoints.');
+      const skillHub = createFurySkillHub({ projectRoot: project, homeDir: join(root, 'h'), stateDir: join(root, 's'), projectTrustedForInstructions: true });
+      const studio = createStudioApi({ projectRoot: project, skillHub, discoverHarnesses: async () => harnesses, discoverLocal: async () => ({ backends: [] }) });
+      const list = await (await studio.handle('skills', new Request('http://127.0.0.1/'))).json() as { skills: { name: string; checksum: string }[] };
+      expect(list.skills.map((s) => s.name)).toEqual(['api-docs']);
+      const pinned = await (await studio.handle('skill-act', post({ name: 'api-docs', action: 'PIN' }))).json() as { pinned: string };
+      expect(pinned.pinned).toBe(list.skills[0]!.checksum);
+      expect((await studio.handle('skill-act', post({ name: 'api-docs', action: 'GOVERNANCE', value: 'ROOT' }))).status).toBe(400);
+      expect((await studio.handle('skill-act', post({ name: 'ghost', action: 'PIN' }))).status).toBe(404);
+      const sel = await (await studio.handle('skill-select', post({ objective: 'write API reference documentation', harnessId: 'codex' }))).json() as { plan: { selected: { name: string }[] }; execution: string };
+      expect(sel.plan.selected.map((s) => s.name)).toEqual(['api-docs']);
+      expect(sel.execution).toMatch(/NOT_EXECUTED/u);
+      const src = mk(join(root, 'in'), 'changelog', 'Summarise changes into a changelog.');
+      expect((await studio.handle('skill-install', post({ sourceDir: src }))).status).toBe(400);
+      expect((await studio.handle('skill-install', post({ sourceDir: 'relative/dir', confirm: true }))).status).toBe(400);
+      expect((await studio.handle('skill-install', post({ sourceDir: join(root, 'missing'), confirm: true }))).status).toBe(404);
+      expect((await studio.handle('skill-install', post({ sourceDir: src, confirm: true }))).status).toBe(201);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

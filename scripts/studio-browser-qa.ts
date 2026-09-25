@@ -15,6 +15,7 @@ import { chromium, firefox, webkit, type BrowserType, type Page } from 'playwrig
 
 import { FURY_HARNESS_REGISTRY, type FuryHarnessDiscovery } from '../src/fury-harness-hub.js';
 import type { FuryLocalBackendStatus } from '../src/fury-local-fabric.js';
+import { createFurySkillHub } from '../src/fury-skill-hub.js';
 import { createStudioApi, studioApiRoute } from '../src/studio/studio-api.js';
 import { studioHtmlResponse } from '../src/studio/studio-page.js';
 
@@ -88,6 +89,8 @@ async function startStudio(mode: 'normal' | 'empty' | 'error', backendUrl: strin
     : [{ kind: 'ollama', baseUrl: backendUrl, reachable: true, version: '0.14.2', protocols: ['native', 'openai-chat', 'anthropic-messages'], models: [{ backend: 'ollama', baseUrl: backendUrl, id: 'qwen2.5-coder:7b', sizeBytes: 4_700_000_000, parameterSize: '7.6B', quantization: 'Q4_K_M' }] }];
   const api = createStudioApi({
     projectRoot,
+    // Isolated hub state: QA never touches the operator's ~/.furypipe.
+    skillHub: createFurySkillHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-skill-hub', mode), projectTrustedForInstructions: true }),
     discoverHarnesses: async () => harnesses,
     discoverLocal: async () => {
       if (mode === 'error') throw new Error('probe failed');
@@ -167,6 +170,14 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.locator('#models-body tr .badge.ok').filter({ hasText: 'FITS' }).waitFor();
     await page.goto(`${origins.normal}/#/runtimes`);
     await page.locator('#runtimes-body tr').filter({ hasText: 'Claude Code' }).filter({ hasText: '2.1.282' }).waitFor();
+    await page.goto(`${origins.normal}/#/skills`);
+    await page.locator('#skills-body tr').filter({ hasText: 'sql-review' }).filter({ hasText: 'trusted' }).waitFor();
+    await page.getByRole('button', { name: 'Pin sql-review' }).click();
+    await page.getByRole('button', { name: 'Unpin sql-review' }).waitFor();
+    await page.locator('#skill-objective').fill('Review the SQL migration for locking');
+    await page.locator('#skill-harness').selectOption('codex');
+    await page.locator('#skill-select-form button[type=submit]').click();
+    await page.locator('#skill-select-out p').filter({ hasText: 'Selected: sql-review' }).waitFor();
     await page.goto(`${origins.normal}/#/code`);
     await page.waitForFunction(() => document.querySelector('#graph-provider')?.textContent === 'graphify');
     await page.locator('#blast-files').fill('src/auth/session.ts');
@@ -223,6 +234,8 @@ async function main(): Promise<void> {
   const { readFileSync, utimesSync } = await import('node:fs');
   const manifest = JSON.parse(readFileSync(path.join(project, 'graphify-out', 'manifest.json'), 'utf8')) as Record<string, { mtime: number }>;
   for (const [file, meta] of Object.entries(manifest)) utimesSync(path.join(project, file), meta.mtime - 10, meta.mtime - 10);
+  mkdirSync(path.join(project, '.claude', 'skills', 'sql-review'), { recursive: true });
+  writeFileSync(path.join(project, '.claude', 'skills', 'sql-review', 'SKILL.md'), '---\nname: sql-review\ndescription: Review SQL migrations for locking and data loss.\n---\n\nCheck locks.\n');
   const backend = await startBackend();
   const normal = await startStudio('normal', backend.baseUrl, project);
   const empty = await startStudio('empty', backend.baseUrl, project);

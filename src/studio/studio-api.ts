@@ -29,6 +29,8 @@ import type { FuryMissionControl, FuryWorkerBinding } from '../fury-mission-cont
 import { planFuryTask } from '../fury-planner.js';
 import { createFuryProofLedger } from '../fury-proof.js';
 import { runFuryTask, type FuryRunResult, type FuryTaskExecutor } from '../fury-run.js';
+import { createFurySkillHub, FurySkillHubError, FURY_SKILL_GOVERNANCE, type FurySkillGovernance, type FurySkillHub } from '../fury-skill-hub.js';
+import { createHash } from 'node:crypto';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
@@ -36,7 +38,7 @@ const CACHE_MS = 10_000;
 
 export type StudioRoute =
   | 'harnesses' | 'local' | 'hardware' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
-  | 'runs' | 'run-start' | 'run-act';
+  | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
@@ -51,6 +53,11 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/runs.json': { route: 'runs', method: 'GET' },
   '/api/studio/runs': { route: 'run-start', method: 'POST' },
   '/api/studio/runs/act': { route: 'run-act', method: 'POST' },
+  '/api/studio/skills.json': { route: 'skills', method: 'GET' },
+  '/api/studio/skills/act': { route: 'skill-act', method: 'POST' },
+  '/api/studio/skills/select': { route: 'skill-select', method: 'POST' },
+  '/api/studio/skills/install': { route: 'skill-install', method: 'POST' },
+  '/api/studio/skills/compare': { route: 'skill-compare', method: 'POST' },
 });
 
 export function studioApiRoute(pathname: string): { route: StudioRoute; method: 'GET' | 'POST' } | null {
@@ -69,6 +76,8 @@ export interface StudioApiOptions {
   readonly executor?: FuryTaskExecutor;
   /** Where writer and integration worktrees are created (default: OS temp dir). */
   readonly worktreeRoot?: string;
+  /** Skills Hub; defaults to one keyed by project under ~/.furypipe/studio/skill-hub. */
+  readonly skillHub?: FurySkillHub;
 }
 
 interface StudioRun {
@@ -168,6 +177,11 @@ export function createStudioApi(options: StudioApiOptions) {
   const local = () => cached('local', discovery(options.discoverLocal ?? (() => discoverFuryLocalBackends())));
   const hardware = () => cached('hardware', discovery(options.discoverHardware ?? (() => discoverFuryHardware())));
   const graph = () => cached('graph', async () => (await (options.loadGraph ?? loadFuryGraph)(options.projectRoot)).graph);
+
+  const skills = options.skillHub ?? createFurySkillHub({
+    projectRoot: options.projectRoot,
+    stateDir: path.join(os.homedir(), '.furypipe', 'studio', 'skill-hub', createHash('sha256').update(path.resolve(options.projectRoot)).digest('hex').slice(0, 16)),
+  });
 
   const runs = new Map<string, StudioRun>();
   const ledger = createFuryProofLedger();
@@ -296,6 +310,38 @@ export function createStudioApi(options: StudioApiOptions) {
             }).then((result) => { run.result = result; run.status = result.status; }, (error: unknown) => { run.status = 'ERROR'; run.error = error instanceof Error ? error.message.slice(0, 300) : 'run failed'; });
             return json({ runId, status: 'running', dispatch: { mode: dispatch.mode, benefit: dispatch.dispatchBenefit, reasons: dispatch.reasons, agents: dispatch.agents } }, 202);
           }
+          case 'skills':
+            return json(await skills.list());
+          case 'skill-act': {
+            const body = await readJson(request) as { name?: unknown; action?: unknown; value?: unknown };
+            const name = String(body?.name ?? '');
+            switch (body?.action) {
+              case 'ENABLE': return json(await skills.setEnabled(name, true));
+              case 'DISABLE': return json(await skills.setEnabled(name, false));
+              case 'PIN': return json(await skills.pin(name));
+              case 'UNPIN': return json(await skills.unpin(name));
+              case 'GOVERNANCE':
+                if (!(FURY_SKILL_GOVERNANCE as readonly unknown[]).includes(body.value)) return problem(400, 'invalid-input', `value must be one of ${FURY_SKILL_GOVERNANCE.join(', ')}`);
+                return json(await skills.setGovernance(name, body.value as FurySkillGovernance));
+              case 'ROLLBACK': return json(await skills.rollback(name, String(body.value ?? '')));
+              default: return problem(400, 'invalid-input', 'action must be ENABLE, DISABLE, PIN, UNPIN, GOVERNANCE or ROLLBACK');
+            }
+          }
+          case 'skill-select': {
+            const body = await readJson(request) as { objective?: unknown; harnessId?: unknown };
+            if (typeof body?.objective !== 'string' || !body.objective.trim() || body.objective.length > 16_000) return problem(400, 'invalid-input', 'objective is required');
+            return json({ ...(await skills.autoSelect(body.objective, typeof body.harnessId === 'string' ? { harnessId: body.harnessId } : {})), execution: 'NOT_EXECUTED: instruction routing only' });
+          }
+          case 'skill-install': {
+            const body = await readJson(request) as { sourceDir?: unknown; confirm?: unknown };
+            if (body?.confirm !== true) return problem(400, 'confirmation-required', 'installing a skill requires confirm: true');
+            if (typeof body.sourceDir !== 'string' || !path.isAbsolute(body.sourceDir) || body.sourceDir.length > 1_024) return problem(400, 'invalid-input', 'sourceDir must be an absolute local directory');
+            return json(await skills.install(body.sourceDir), 201);
+          }
+          case 'skill-compare': {
+            const body = await readJson(request) as { name?: unknown; a?: unknown; b?: unknown };
+            return json(await skills.compare(String(body?.name ?? ''), String(body?.a ?? ''), String(body?.b ?? '')));
+          }
           case 'chat': {
             const body = await readJson(request) as { kind?: unknown; baseUrl?: unknown; model?: unknown; messages?: unknown };
             if (typeof body?.baseUrl !== 'string' || typeof body.model !== 'string' || body.model.length > 256 || !Array.isArray(body.messages) || body.messages.length === 0 || body.messages.length > 64) {
@@ -328,6 +374,8 @@ export function createStudioApi(options: StudioApiOptions) {
         if (status) return problem(status, status === 503 ? 'discovery-failed' : status === 409 ? 'not-runnable' : 'invalid-request', (error as Error).message);
         if (error instanceof FuryIrError) return problem(422, 'invalid-ir', error.message);
         if (error instanceof FuryDispatchError) return problem(422, 'dispatch-rejected', error.message);
+        if (error instanceof FurySkillHubError) return problem(/^unknown skill/u.test(error.message) ? 404 : 422, 'skill-rejected', error.message);
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') return problem(404, 'not-found', 'path not found');
         if (error instanceof FuryFlowError) return problem(422, 'invalid-flow', error.message);
         if ((error as Error).name === 'FuryLocalFabricError') return problem(403, 'endpoint-denied', (error as Error).message);
         if ((error as Error).name === 'FuryGraphError') return problem(404, 'graph-unavailable', (error as Error).message);

@@ -5,6 +5,7 @@
 // Security: served with a nonce-based CSP (no inline handlers, no external
 // origins); every runtime value is inserted with textContent, never HTML.
 import { randomBytes } from 'node:crypto';
+import { FURY_HARNESS_REGISTRY } from '../fury-harness-hub.js';
 
 export const STUDIO_EXAMPLE_IR = Object.freeze({
   format: 'furypipe-ir/v1',
@@ -98,7 +99,7 @@ const SCRIPT = String.raw`
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'text') n.textContent = v; else if (k === 'class') n.className = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; };
-  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','settings'];
+  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','settings'];
   const state = { local: null, harnesses: null, model: null, history: [] };
   async function getJson(url, init) {
     const res = await fetch(url, init);
@@ -126,6 +127,7 @@ const SCRIPT = String.raw`
     firstRoute = false;
     if (name === 'chat' || name === 'models') loadLocal();
     if (name === 'runtimes') loadHarnesses();
+    if (name === 'skills') loadSkills();
     if (name === 'code') loadGraph();
     if (name === 'mission') loadRuns();
     clearInterval(state.poll); if (name === 'mission') state.poll = setInterval(loadRuns, 2000);
@@ -258,6 +260,35 @@ const SCRIPT = String.raw`
       status.textContent = 'Started ' + r.runId + ' · ' + r.dispatch.mode + ' · dispatch benefit ' + r.dispatch.benefit; loadRuns();
     } catch (e) { status.textContent = 'Not started: ' + e.message; }
   });
+  async function skillAct(name, action, value) {
+    try { await getJson('/api/studio/skills/act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, action, value }) }); await loadSkills(); $('#skills-status').textContent = action + ' applied to ' + name + '.'; }
+    catch (e) { $('#skills-status').textContent = e.message; }
+  }
+  async function loadSkills() {
+    const body = $('#skills-body'); const status = $('#skills-status');
+    try { const r = await getJson('/api/studio/skills.json'); body.replaceChildren();
+      for (const s of r.skills) {
+        const toggle = el('button', { type: 'button', class: 'secondary', text: s.enabled ? 'Disable' : 'Enable' }); toggle.setAttribute('aria-label', (s.enabled ? 'Disable ' : 'Enable ') + s.name);
+        toggle.addEventListener('click', () => skillAct(s.name, s.enabled ? 'DISABLE' : 'ENABLE'));
+        const pin = el('button', { type: 'button', class: 'secondary', text: s.pinned ? (s.pinMismatch ? 'Re-pin' : 'Unpin') : 'Pin' }); pin.setAttribute('aria-label', pin.textContent + ' ' + s.name);
+        pin.addEventListener('click', () => skillAct(s.name, s.pinned && !s.pinMismatch ? 'UNPIN' : 'PIN'));
+        const gov = el('select', { 'aria-label': 'Governance for ' + s.name }); for (const g of ['DRAFT_ONLY','ASK_BEFORE_WRITE','AUTO_APPLY_LOW_RISK','LOCKED']) { const o = el('option', { text: g }); if (g === s.governance) o.selected = true; gov.append(o); }
+        gov.addEventListener('change', () => skillAct(s.name, 'GOVERNANCE', gov.value));
+        const state = s.pinMismatch ? badge('pin mismatch', 'warn') : !s.enabled ? badge('disabled', 'muted') : s.trust === 'trusted-instructions' ? badge('trusted', 'ok') : badge('untrusted', 'muted');
+        body.append(el('tr', {}, el('td', {}, el('b', { text: s.name }), el('div', { class: 'muted', text: s.description })), el('td', { text: s.scope }), el('td', {}, state),
+          el('td', { text: s.version + ' · ' + s.type }), el('td', { text: s.compatibleHarnesses.join(', ') || 'any' }), el('td', { text: s.stats.uses + ' (' + s.stats.successes + '✓/' + s.stats.failures + '✗)' }),
+          el('td', { class: 'code', text: s.checksum.slice(0, 12) }), el('td', {}, gov), el('td', {}, toggle, pin)));
+      }
+      status.textContent = r.skills.length + ' skill(s) discovered. Skills never gain tool, network or script authority from here.';
+    } catch (e) { status.textContent = 'Skills unavailable: ' + e.message; }
+  }
+  $('#skill-select-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault(); const out = $('#skill-select-out'); out.replaceChildren();
+    try { const r = await getJson('/api/studio/skills/select', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ objective: $('#skill-objective').value, harnessId: $('#skill-harness').value || undefined }) });
+      out.append(el('p', { text: r.plan.selected.length ? 'Selected: ' + r.plan.selected.map(x => x.name + ' (' + x.reason + ')').join(', ') : 'No skill selected.' }));
+      if (r.excluded.length) { const ul = el('ul', { class: 'reasons' }); for (const x of r.excluded) ul.append(el('li', { text: x.name + ': ' + x.reason })); out.append(ul); }
+    } catch (e) { out.append(el('p', { class: 'bad', text: e.message })); }
+  });
   const LEVELS = ['simple', 'power', 'engineer', 'expert'];
   function applyMode(mode) {
     if (!LEVELS.includes(mode)) mode = 'simple';
@@ -319,7 +350,7 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
 <nav class="side" aria-label="Studio">
   <div class="brand">Fury<span>Pipe</span> Studio</div>
   <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'engineer', 'Mission Control')}${nav('automations', 'expert', 'Automations')}</ul></div>
-  <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'simple', 'Models')}${nav('runtimes', 'power', 'Runtimes')}${nav('settings', 'simple', 'Settings')}</ul></div>
+  <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'simple', 'Models')}${nav('runtimes', 'power', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('settings', 'simple', 'Settings')}</ul></div>
 </nav>
 <div>
 <header class="top" aria-label="Active execution context">
@@ -368,6 +399,10 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   <div class="card"><p><b>Hardware:</b> <span id="hw">—</span></p><table><thead><tr><th scope="col">Backend</th><th scope="col">Endpoint</th><th scope="col">State</th><th scope="col">Model</th><th scope="col">Fit</th></tr></thead><tbody id="models-body"></tbody></table><p id="models-status" class="status muted" role="status"></p></div></section>
 <section data-view="runtimes" aria-labelledby="h-runtimes" hidden><h1 id="h-runtimes">Runtimes</h1><p class="lead">Agent harnesses installed on this machine. Harness, provider and model are independent choices.</p>
   <div class="card"><table><thead><tr><th scope="col">Runtime</th><th scope="col">State</th><th scope="col">Version</th><th scope="col">Integration</th><th scope="col">Local models via</th><th scope="col">Evidence</th></tr></thead><tbody id="runtimes-body"></tbody></table><p id="runtimes-status" class="status muted" role="status"></p></div></section>
+<section data-view="skills" aria-labelledby="h-skills" hidden><h1 id="h-skills">Skills</h1><p class="lead">Agent Skills found in this project and your home folder (.furypipe, .agents, .claude, .opencode, .github). Pin a skill to block it automatically if its content changes.</p>
+  <div class="card"><table><thead><tr><th scope="col">Skill</th><th scope="col">Scope</th><th scope="col">State</th><th scope="col">Version</th><th scope="col">Runtimes</th><th scope="col">Uses</th><th scope="col">Checksum</th><th scope="col">Governance</th><th scope="col">Actions</th></tr></thead><tbody id="skills-body"></tbody></table><p id="skills-status" class="status muted" role="status"></p></div>
+  <div class="card"><h2>Which skills would a task use?</h2><form id="skill-select-form"><label for="skill-objective">Task</label><textarea id="skill-objective" required placeholder="e.g. Review the SQL migration for locking"></textarea>
+  <div class="row"><div><label for="skill-harness">Runtime</label><select id="skill-harness"><option value="">Any</option>${FURY_HARNESS_REGISTRY.map((h) => `<option value="${h.id}">${escapeHtml(h.displayName)}</option>`).join('')}</select></div><button type="submit">Preview selection</button></div></form><div id="skill-select-out" aria-live="polite"></div></div></section>
 <section data-view="settings" aria-labelledby="h-settings" hidden><h1 id="h-settings">Settings</h1><p class="lead">Advanced surfaces for operators.</p>
   <div class="card"><h2>Advanced</h2><p><a href="/control-plane">Control Plane</a> — the technical dashboard: sessions, compression, readiness, provider and MCP evidence.</p></div></section>
 <section data-view="notfound" aria-labelledby="h-notfound" hidden><h1 id="h-notfound">Page not found</h1><p class="lead">This Studio view does not exist. <a href="#/chat">Go to Chat</a>.</p></section>
