@@ -74,8 +74,13 @@ describe('Conversation store corruption', () => {
 describe.skipIf(process.platform === 'win32')('Code explorer symlink escape', () => {
   it('refuses a symlinked file that points outside', async () => {
     const root = tmp('fp-code-');
-    symlinkSync('/etc/hostname', join(root, 'host'));
+    const outside = tmp('fp-outside-');
+    writeFileSync(join(outside, 'secret.txt'), 'outside the project\n');
+    symlinkSync(join(outside, 'secret.txt'), join(root, 'host'));
     await expect(createStudioCode(root).file('host')).rejects.toMatchObject({ status: 403 });
+    // A dangling link is simply not found (still refused).
+    symlinkSync(join(outside, 'missing.txt'), join(root, 'dangling'));
+    await expect(createStudioCode(root).file('dangling')).rejects.toMatchObject({ status: 404 });
   });
 });
 
