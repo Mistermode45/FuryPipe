@@ -123,7 +123,7 @@ function variantsFrom(body: Record<string, unknown>, hardware: FuryHardwareProfi
     });
   }).sort((a,b) => {
     const rank:Record<FuryModelFit,number>={FITS:0,MAY_BE_SLOW:1,UNKNOWN:2,DOES_NOT_FIT:3};
-    return rank[a.fit]-rank[b.fit] || ((b.sizeBytes??0)-(a.sizeBytes??0));
+    return rank[a.fit]-rank[b.fit] || ((a.sizeBytes??Number.MAX_SAFE_INTEGER)-(b.sizeBytes??Number.MAX_SAFE_INTEGER));
   });
 }
 
@@ -175,6 +175,6 @@ export async function recommendHuggingFaceGguf(
     const tags=m.tags.join(' ').toLowerCase(); const task=profile==='general'?8:(tags.includes(profile)||m.id.toLowerCase().includes(search)?15:0);
     const score=Math.round(((variant?fitScore[variant.fit]:-100)+pop+likes+task)*100)/100;
     return Object.freeze({...m,score,recommendationBasis:'hardware-fit-plus-hub-signals' as const});
-  }).filter((m)=>m.recommended?.fit!=='DOES_NOT_FIT').sort((a,b)=>b.score-a.score).slice(0,limit);
+  }).filter((m)=>m.recommended !== undefined && m.recommended.fit !== 'DOES_NOT_FIT').sort((a,b)=>b.score-a.score).slice(0,limit);
   return Object.freeze({format:FURY_HF_CATALOG_FORMAT,profile,models:Object.freeze(models),methodology:'Public Hugging Face GGUF discovery ranked by hardware fit plus Hub popularity/task signals; this is not a quality benchmark.'});
 }
