@@ -34,6 +34,7 @@ import { createHash } from 'node:crypto';
 import { createFuryKnowledgeBase, FuryKnowledgeError, type FuryEmbedder, type FuryRetrievalMode } from '../fury-knowledge.js';
 import { createFurySearxngAdapter, furyWebCrawl, furyWebExtract, furyWebFetch, furyWebMap, furyWebSearch, FuryWebError, type FuryWebFetchOptions } from '../fury-web.js';
 import { studioMemoryFromEnv, studioMemoryList, studioMemoryRemember, studioMemoryScopes, studioMemorySearch, type StudioMemory } from './studio-memory.js';
+import { buildFuryIntegrationRegistry } from '../fury-integrations.js';
 import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy } from '../fury-mcp-hub.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
@@ -46,7 +47,8 @@ export type StudioRoute =
   | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
   | 'web'
-  | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act';
+  | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act'
+  | 'integrations';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
@@ -78,6 +80,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/memory/remember': { route: 'memory-remember', method: 'POST' },
   '/api/studio/memory/search': { route: 'memory-search', method: 'POST' },
   '/api/studio/memory/act': { route: 'memory-act', method: 'POST' },
+  '/api/studio/integrations.json': { route: 'integrations', method: 'GET' },
 });
 
 export function studioApiRoute(pathname: string): { route: StudioRoute; method: 'GET' | 'POST' } | null {
@@ -453,6 +456,10 @@ export function createStudioApi(options: StudioApiOptions) {
               }
               default: return problem(400, 'invalid-input', 'action must be FETCH, MAP, CRAWL or SEARCH (browser actions go through the governed browser runtime)');
             }
+          }
+          case 'integrations': {
+            const { sources } = await mcp.list();
+            return json(await buildFuryIntegrationRegistry({ projectRoot: options.projectRoot, mcp: sources }));
           }
           case 'memory': {
             const m = memory();

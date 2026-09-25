@@ -99,7 +99,7 @@ const SCRIPT = String.raw`
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'text') n.textContent = v; else if (k === 'class') n.className = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; };
-  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','mcp','knowledge','web','memory','settings'];
+  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','mcp','knowledge','web','memory','integrations','settings'];
   const state = { local: null, harnesses: null, model: null, history: [] };
   async function getJson(url, init) {
     const res = await fetch(url, init);
@@ -131,6 +131,7 @@ const SCRIPT = String.raw`
     if (name === 'mcp') loadMcp();
     if (name === 'knowledge') loadKnowledge();
     if (name === 'memory') loadMemory();
+    if (name === 'integrations') loadIntegrations();
     if (name === 'code') loadGraph();
     if (name === 'mission') loadRuns();
     clearInterval(state.poll); if (name === 'mission') state.poll = setInterval(loadRuns, 2000);
@@ -395,6 +396,18 @@ const SCRIPT = String.raw`
       const ol = el('ol'); for (const h of r.hits) ol.append(el('li', {}, el('p', { text: h.text }), el('p', { class: 'muted', text: h.scope + ' · ' + age(h.ageMs) + ' · why: ' + h.why }))); out.append(ol);
     } catch (e) { out.append(el('p', { class: 'bad', text: e.message })); }
   });
+  async function loadIntegrations() {
+    const body = $('#int-body'); const status = $('#int-status');
+    try { const r = await getJson('/api/studio/integrations.json'); body.replaceChildren();
+      for (const e of r.entries) {
+        const st = e.status === 'ready' ? badge('ready', 'ok') : e.status === 'needs-credentials' ? badge('needs credentials', 'warn') : badge('invalid', 'bad');
+        body.append(el('tr', {}, el('td', {}, el('b', { text: e.name }), el('div', { class: 'muted', text: e.endpoint || '' })), el('td', { text: e.kind }), el('td', {}, st),
+          el('td', { text: e.auth.schemes.join(', ') + (e.auth.credentialNames.length ? ' (' + e.auth.credentialNames.join(', ') + ')' : '') }), el('td', { text: e.capabilities.join(', ') }), el('td', { text: e.defaultDecision }), el('td', { text: e.trust }),
+          el('td', { text: (e.operations ? e.operations.length + ' operation(s). ' : '') + e.problems.join('; ') })));
+      }
+      status.textContent = r.entries.length + ' integration(s). Manifest: ' + r.manifest + (r.manifestError ? ' — ' + r.manifestError : '') + '. Credentials are shown by name only.';
+    } catch (e) { status.textContent = 'Integrations unavailable: ' + e.message; }
+  }
   const LEVELS = ['simple', 'power', 'engineer', 'expert'];
   function applyMode(mode) {
     if (!LEVELS.includes(mode)) mode = 'simple';
@@ -456,7 +469,7 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
 <nav class="side" aria-label="Studio">
   <div class="brand">Fury<span>Pipe</span> Studio</div>
   <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'engineer', 'Mission Control')}${nav('knowledge', 'power', 'Knowledge')}${nav('web', 'power', 'Web')}${nav('memory', 'power', 'Memory')}${nav('automations', 'expert', 'Automations')}</ul></div>
-  <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'simple', 'Models')}${nav('runtimes', 'power', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'engineer', 'MCP')}${nav('settings', 'simple', 'Settings')}</ul></div>
+  <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'simple', 'Models')}${nav('runtimes', 'power', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'engineer', 'MCP')}${nav('integrations', 'engineer', 'Integrations')}${nav('settings', 'simple', 'Settings')}</ul></div>
 </nav>
 <div>
 <header class="top" aria-label="Active execution context">
@@ -526,6 +539,8 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   <div class="row"><div><label for="mem-scope">For</label><select id="mem-scope"><option value="project">This project</option><option value="user">Me, everywhere</option></select></div><button type="submit">Save</button></div></form></div>
   <div class="card"><form id="mem-search-form"><label for="mem-query">Recall</label><input id="mem-query" required autocomplete="off"><div class="row"><button type="submit">Recall</button></div></form><div id="mem-results" aria-live="polite"></div></div>
   <div class="card"><table><thead><tr><th scope="col">ID</th><th scope="col">State</th><th scope="col">Kind</th><th scope="col">Scope</th><th scope="col">Source</th><th scope="col">Confidence</th><th scope="col">Age</th><th scope="col">Actions</th></tr></thead><tbody id="mem-body"></tbody></table></div></div></section>
+<section data-view="integrations" aria-labelledby="h-integrations" hidden><h1 id="h-integrations">Integrations</h1><p class="lead">MCP servers, APIs (OpenAPI) and webhooks in one registry, with how each one authenticates, what it may do and whether you trust it. Declare APIs and webhooks in .furypipe/integrations.json.</p>
+  <div class="card"><table><thead><tr><th scope="col">Integration</th><th scope="col">Kind</th><th scope="col">Status</th><th scope="col">Auth</th><th scope="col">Can</th><th scope="col">Default</th><th scope="col">Trust</th><th scope="col">Notes</th></tr></thead><tbody id="int-body"></tbody></table><p id="int-status" class="status muted" role="status"></p></div></section>
 <section data-view="settings" aria-labelledby="h-settings" hidden><h1 id="h-settings">Settings</h1><p class="lead">Advanced surfaces for operators.</p>
   <div class="card"><h2>Advanced</h2><p><a href="/control-plane">Control Plane</a> — the technical dashboard: sessions, compression, readiness, provider and MCP evidence.</p></div></section>
 <section data-view="notfound" aria-labelledby="h-notfound" hidden><h1 id="h-notfound">Page not found</h1><p class="lead">This Studio view does not exist. <a href="#/chat">Go to Chat</a>.</p></section>

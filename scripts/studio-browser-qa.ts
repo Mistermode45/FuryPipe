@@ -220,6 +220,9 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.goto(`${origins.empty}/#/memory`);
     await page.waitForFunction(() => /Memory is off/u.test(document.querySelector('#mem-status')?.textContent ?? ''));
     assert(await page.locator('#mem-forms').isHidden(), `${name}: memory forms visible while off`);
+    await page.goto(`${origins.normal}/#/integrations`);
+    await page.locator('#int-body tr').filter({ hasText: 'qa-fixture' }).filter({ hasText: 'MCP' }).waitFor();
+    await page.locator('#int-body tr').filter({ hasText: 'qa-status-api' }).filter({ hasText: 'READ_ONLY' }).waitFor();
     await page.goto(`${origins.normal}/#/code`);
     await page.waitForFunction(() => document.querySelector('#graph-provider')?.textContent === 'graphify');
     await page.locator('#blast-files').fill('src/auth/session.ts');
@@ -279,6 +282,9 @@ async function main(): Promise<void> {
   mkdirSync(path.join(project, '.claude', 'skills', 'sql-review'), { recursive: true });
   writeFileSync(path.join(project, '.claude', 'skills', 'sql-review', 'SKILL.md'), '---\nname: sql-review\ndescription: Review SQL migrations for locking and data loss.\n---\n\nCheck locks.\n');
   writeFileSync(path.join(project, '.mcp.json'), JSON.stringify({ mcpServers: { 'qa-fixture': { command: process.execPath, args: [path.resolve('tests/fixtures/mcp-direct-stdio-server.mjs')], env: { QA_TOKEN: 'qa-secret-value' } } } }));
+  mkdirSync(path.join(project, '.furypipe'), { recursive: true });
+  writeFileSync(path.join(project, 'status-api.json'), JSON.stringify({ openapi: '3.1.0', info: { title: 'Status' }, servers: [{ url: 'https://status.example.com' }], paths: { '/status': { get: { operationId: 'getStatus' } } } }));
+  writeFileSync(path.join(project, '.furypipe', 'integrations.json'), JSON.stringify({ format: 'furypipe-integrations/v1', integrations: [{ id: 'qa-status-api', kind: 'OPENAPI', spec: 'status-api.json' }] }));
   const backend = await startBackend();
   const normal = await startStudio('normal', backend.baseUrl, project);
   const empty = await startStudio('empty', backend.baseUrl, project);

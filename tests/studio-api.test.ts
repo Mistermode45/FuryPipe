@@ -338,3 +338,26 @@ describe('Studio Memory', () => {
     }
   });
 });
+
+describe('Studio Integrations', () => {
+  it('lists the registry with credential names only', async () => {
+    const { mkdtempSync, writeFileSync, rmSync, mkdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { createFuryMcpHub } = await import('../src/fury-mcp-hub.js');
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-studio-int-'));
+    try {
+      mkdirSync(join(root, '.furypipe'));
+      writeFileSync(join(root, '.furypipe', 'integrations.json'), JSON.stringify({ format: 'furypipe-integrations/v1', integrations: [{ id: 'ci', kind: 'WEBHOOK_OUT', url: 'https://ci.example.com/hook', credentialEnv: 'CI_HOOK_TOKEN_TEST_UNSET' }] }));
+      writeFileSync(join(root, '.mcp.json'), JSON.stringify({ mcpServers: { docs: { command: 'docs-mcp', env: { DOCS_TOKEN: 'real-secret' } } } }));
+      const studio = createStudioApi({ projectRoot: root, mcpHub: createFuryMcpHub({ projectRoot: root, homeDir: join(root, 'h'), stateDir: join(root, 's') }), discoverHarnesses: async () => harnesses, discoverLocal: async () => ({ backends: [] }) });
+      const text = await (await studio.handle('integrations', new Request('http://127.0.0.1/'))).text();
+      expect(text).not.toContain('real-secret');
+      const reg = JSON.parse(text) as { manifest: string; entries: { id: string; status: string }[] };
+      expect(reg.manifest).toBe('loaded');
+      expect(reg.entries.map((e) => [e.id, e.status])).toEqual([['mcp:project-mcp.docs', 'ready'], ['webhook_out:ci', 'needs-credentials']]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
