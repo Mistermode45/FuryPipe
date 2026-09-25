@@ -69,9 +69,10 @@ The earlier V5 hardening branch and PR history are retained in repository histor
 
 Current public release status:
 
-- FuryPipe `v0.14.0`: released **2026-09-15**
-- npm `furypipe@0.14.0`: published
-- GitHub Release `v0.14.0`: published
+- FuryPipe `v0.15.0`: released **2026-09-16**
+- npm `furypipe@0.15.0`: published
+- GitHub Release `v0.15.0`: published
+- FuryPipe `v0.16.0`: release candidate under preparation; not published
 - production deployment: separate lifecycle state
 
 Exact release details are recorded in [docs/RELEASE_SECURITY.md](docs/RELEASE_SECURITY.md).

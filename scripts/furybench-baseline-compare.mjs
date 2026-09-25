@@ -17,8 +17,13 @@ const OUTPUT_DIR = path.resolve(
 );
 const BASELINE_REF = process.env.FURYPIPE_BENCHMARK_BASELINE_REF?.trim()
   || '24a2f7030c9fb7340229140f67e653688d5d039a';
-const ITERATIONS = 5;
-const WARMUP = 1;
+// A small sample made p95 equal the single slowest process on Windows. Keep
+// the historical same-runner comparison, use the bounded maximum supported by
+// the envelope, and repeat paired rounds with alternating order so one
+// scheduler outlier cannot decide the release gate.
+const ITERATIONS = 25;
+const WARMUP = 5;
+const COMPARISON_RUNS = 3;
 
 function fail(message) {
   throw new Error(`[furypipe FuryBench comparison] ${message}`);
@@ -81,6 +86,40 @@ function compare(candidate, baseline) {
   return regressions;
 }
 
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = (sorted.length - 1) / 2;
+  const lower = sorted[Math.floor(middle)];
+  const upper = sorted[Math.ceil(middle)];
+  return Number(((lower + upper) / 2).toFixed(3));
+}
+
+function aggregateBenchmark(results) {
+  if (results.length === 0) fail('no benchmark results to aggregate');
+  const first = results[0];
+  const measurements = {};
+  for (const metric of Object.keys(first.measurements ?? {})) {
+    const samples = results.map((result) => result.measurements?.[metric]);
+    if (samples.some((value) => !value)) fail('benchmark result omitted ' + metric);
+    measurements[metric] = {
+      samples: samples[0].samples,
+      minMs: median(samples.map((value) => value.minMs)),
+      medianMs: median(samples.map((value) => value.medianMs)),
+      p95Ms: median(samples.map((value) => value.p95Ms)),
+      maxMs: median(samples.map((value) => value.maxMs)),
+    };
+  }
+  return {
+    ...first,
+    parameters: {
+      ...first.parameters,
+      comparisonRuns: results.length,
+      comparisonAggregation: 'median of paired baseline/candidate rounds',
+    },
+    measurements,
+  };
+}
+
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'furypipe-furybench-baseline-'));
 const previousRoot = path.join(temporary, 'previous');
 let worktreeAdded = false;
@@ -92,11 +131,26 @@ try {
   run('pnpm', ['install', '--frozen-lockfile'], previousRoot, { capture: false });
   run('pnpm', ['run', 'build'], previousRoot, { capture: false });
 
-  const baseline = benchmark(previousRoot);
-  const candidate = benchmark(ROOT);
-  if (baseline.format !== 'furypipe-furybench-beta/v1' || candidate.format !== 'furypipe-furybench-beta/v1') {
-    fail('candidate or baseline uses an unexpected FuryBench format');
+  const rounds = [];
+  for (let index = 0; index < COMPARISON_RUNS; index += 1) {
+    const baselineFirst = index % 2 === 0;
+    const first = baselineFirst ? benchmark(previousRoot) : benchmark(ROOT);
+    const second = baselineFirst ? benchmark(ROOT) : benchmark(previousRoot);
+    const baseline = baselineFirst ? first : second;
+    const candidate = baselineFirst ? second : first;
+    if (baseline.format !== 'furypipe-furybench-beta/v1' || candidate.format !== 'furypipe-furybench-beta/v1') {
+      fail('candidate or baseline uses an unexpected FuryBench format');
+    }
+    rounds.push({
+      round: index + 1,
+      order: baselineFirst ? 'baseline-then-candidate' : 'candidate-then-baseline',
+      baseline,
+      candidate,
+      regressions: compare(candidate, baseline),
+    });
   }
+  const baseline = aggregateBenchmark(rounds.map((round) => round.baseline));
+  const candidate = aggregateBenchmark(rounds.map((round) => round.candidate));
   const regressions = compare(candidate, baseline);
   const report = {
     format: 'furypipe-final-furybench-comparison/v1',
@@ -108,6 +162,7 @@ try {
       result: baseline,
     },
     candidate: { result: candidate },
+    rounds,
     threshold: {
       metric: 'p95Ms',
       maxRelativeRegression: 0.25,

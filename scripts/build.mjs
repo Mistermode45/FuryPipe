@@ -51,12 +51,17 @@ await build({
   target: 'node20',
   format: 'esm',
   sourcemap: true,
+  // Keep the runtime boundaries with CommonJS Node dependencies external to
+  // the shipped ESM CLI. Bundling @modelcontextprotocol/client's cross-spawn
+  // or ws's stream implementation makes esbuild emit a dynamic-require guard
+  // that cannot load Node builtins from ESM. The package manifest already
+  // declares these runtime packages, so the installed package is the
+  // authority for resolving the boundaries.
+  external: ['@modelcontextprotocol/client', '@modelcontextprotocol/client/*', 'ws'],
   // Inline the package version so `furypipe --version` is correct for global/npx
   // installs (see the note where `pkg` is read). esbuild replaces the bare
   // identifier with the string literal at every reference.
   define: { __FURYPIPE_VERSION__: JSON.stringify(pkg.version) },
-  // Atlas is inlined as a base64 string in src/core/atlas.ts, so no external assets.
-  external: [],
   banner: { js: '#!/usr/bin/env node' },
 });
 
@@ -70,8 +75,8 @@ await build({
   target: 'node20',
   format: 'esm',
   sourcemap: true,
+  external: ['@modelcontextprotocol/client', '@modelcontextprotocol/client/*', 'ws'],
   define: { __FURYPIPE_VERSION__: JSON.stringify(pkg.version) },
-  external: [],
   banner: { js: '#!/usr/bin/env node' },
 });
 

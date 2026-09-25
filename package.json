@@ -1,6 +1,6 @@
 {
   "name": "furypipe",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "FuryPipe — context, agents, skills, MCP, memory, provider routing and capability orchestration for production AI workflows.",
   "type": "module",
   "bin": {
@@ -683,10 +683,15 @@
     "validation:upgrade-rollback": "node scripts/upgrade-rollback-smoke.mjs",
     "validation:recovery": "node scripts/recovery-resilience-smoke.mjs",
     "validation:gateway": "node scripts/gateway-restart-smoke.mjs",
+    "validation:gateway-installed-package": "node scripts/gateway-installed-package-smoke.mjs",
+    "validation:package-reproducibility": "node scripts/package-reproducibility.mjs",
     "validation:clean-room": "node scripts/clean-room-package-smoke.mjs",
     "validation:local-contracts": "node scripts/local-contracts.mjs",
     "validation:accessibility": "node scripts/accessibility-automation.mjs",
     "validation:furybench": "node scripts/furybench-baseline-compare.mjs",
+    "validation:provider-live": "tsx scripts/provider-live-validation.ts",
+    "validation:oidc-live": "node scripts/oidc-live-validation.mjs",
+    "validation:mcp-remote": "node scripts/mcp-remote-validation.mjs",
     "openclaw:probe": "tsx scripts/openclaw-live-probe.ts",
     "hosted-mcp:fixture": "tsx scripts/hosted-mcp-fixture.ts",
     "hosted-mcp:conformance": "tsx scripts/hosted-mcp-conformance.ts",
@@ -694,7 +699,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.hosted-mcp.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package:smoke": "node scripts/package-smoke.mjs && node scripts/phase6-package-smoke.mjs && node scripts/phase7-package-smoke.mjs && node scripts/phase8-acp-package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
+    "package:smoke": "node scripts/package-smoke.mjs && node scripts/gateway-installed-package-smoke.mjs && node scripts/phase6-package-smoke.mjs && node scripts/phase7-package-smoke.mjs && node scripts/phase8-acp-package-smoke.mjs && node scripts/benchmark-claim-package-smoke.mjs && node scripts/provider-attempt-package-smoke.mjs && node scripts/governed-provider-package-smoke.mjs",
     "prepublishOnly": "pnpm run typecheck && pnpm test && pnpm run build",
     "vendor:ui": "node scripts/vendor-ui.mjs",
     "browser:webchat:qa": "tsx scripts/gateway-webchat-browser-qa.ts"

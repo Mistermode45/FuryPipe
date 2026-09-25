@@ -6,8 +6,8 @@ Security fixes are applied to the latest public FuryPipe release.
 
 | Version | Security support |
 |---|---|
-| 0.14.x | Supported |
-| 0.15.0 release candidate | Validated before publication; becomes the supported line when publicly released |
+| 0.15.x | Supported |
+| 0.16.0 release candidate | Validated before publication; becomes the supported line when publicly released |
 | Older releases / unreleased snapshots | Upgrade or reproduce on the latest supported release before triage |
 
 Pre-1.0 releases may contain API changes. Security support refers to vulnerability fixes, not indefinite compatibility guarantees.

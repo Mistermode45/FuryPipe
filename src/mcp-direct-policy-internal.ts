@@ -1,5 +1,4 @@
-import { fromJsonSchema } from '@modelcontextprotocol/client';
-import { AjvJsonSchemaValidator } from '@modelcontextprotocol/client/validators/ajv';
+import type { fromJsonSchema } from '@modelcontextprotocol/client';
 
 import {
   resolveMcpDirectSelectedToolSchema,
@@ -371,6 +370,10 @@ export async function createMcpDirectToolProposal(
   try {
     // A fresh validator prevents cross-server/cross-proposal $id cache reuse
     // from validating one server's arguments against another server's schema.
+    const [{ fromJsonSchema }, { AjvJsonSchemaValidator }] = await Promise.all([
+      import('@modelcontextprotocol/client'),
+      import('@modelcontextprotocol/client/validators/ajv'),
+    ]);
     const validator = fromJsonSchema(
       schema as Parameters<typeof fromJsonSchema>[0],
       new AjvJsonSchemaValidator(),

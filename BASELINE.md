@@ -331,3 +331,22 @@ Baseline d'intégration : `v5-production-hardening` / `bc92bef794df25b2a7c541846
 | Browser QA | PASS hébergé exact-head | aucune surface visuelle modifiée; Dashboard `35993617584`, Web Studio `35993617772`, Cross-Browser `35993617660` PASS |
 | CI exact-head | PASS hébergé | Benchmark Contract `35993617851`, RC Preparation `35993617553`, CI `35993617806`, matrice 9/9 PASS |
 | Publication / mutation externe | NOT_EXECUTED | pas de merge, release, tag, npm publish, deploy, restart production, force push ou migration de données réelle |
+
+## FuryPipe 0.16.0 RC — 2026-09-25 — Gateway installé + identité du paquet
+
+| Vérification | Résultat | Mesure / preuve |
+|---|---|---|
+| Source de vérité | PASS exact | PR #226 `OPEN + DRAFT`, base `eed62617…`; head code `f41aa957619a0d4b468f81a5d627b4980f783ac1` |
+| Gateway installé (bundle) | PASS 3 OS × 3 Node | `gateway start --json` ready, loopback, arrêt propre, 0 dynamic require |
+| MCP stdio installé via Gateway | PASS 3 OS × 3 Node | bootstrap + cookie → WebSocket `tools.source.inspect.stdio` → enfant MCP stdio → inventaire → fermeture |
+| Preuve négative bundle | FAIL attendu | `external: []` → `Dynamic require of "events" is not supported` |
+| Dashboard Browser QA | PASS | budget CDP 30 s; local 39/39; hébergé PASS |
+| Reproductibilité paquet | PASS | 9/9 jobs CI + RC Preparation : SHA-256 `99feb17f…`, 5 404 064 octets, content `30108a5f…`, 614 fichiers mode 644, 0 CR |
+| Tests | PASS | 284 fichiers / 3 223 tests |
+| typecheck / build / audit | PASS | aucune vulnérabilité production connue |
+| package:smoke / clean-room / upgrade-rollback / recovery / gateway / local-contracts | PASS local + hébergé | 0.15.0 → 0.16.0 → 0.15.0, config et données préservées |
+| FuryBench | PASS local + hébergé | 3 rounds appariés, p95 candidat ≤ baseline × 1,25, 0 régression; mesure hors provider/production |
+| Accessibilité automatisée | PASS local (Chromium) + hébergé | lecteur d’écran humain non remplacé |
+| Cross-browser / WebChat | PASS hébergé | Firefox/WebKit indisponibles localement |
+| Registre npm | 0.16.0 absent | `latest` = 0.15.0 |
+| Publication / mutation externe | NOT_EXECUTED | aucun merge, tag, release, publish, deploy |

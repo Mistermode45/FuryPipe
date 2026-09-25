@@ -687,7 +687,7 @@ export function createFuryAcpExternalClientRuntime(options: {
             clientCapabilities: {},
             clientInfo: {
               name: 'furypipe',
-              version: '0.15.0',
+              version: '0.16.0',
             },
           },
           { cancellationSignal: startupAbort.signal },

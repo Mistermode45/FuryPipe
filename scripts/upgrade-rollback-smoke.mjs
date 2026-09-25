@@ -9,7 +9,9 @@ import { isPnpmCommand, resolvePnpmCommand } from './validation-command.mjs';
 
 const execFileAsync = promisify(execFile);
 const ROOT = process.cwd();
-const PREVIOUS_REF = process.env.FURYPIPE_PREVIOUS_REF?.trim() || 'v0.14.0';
+const PREVIOUS_REF = process.env.FURYPIPE_PREVIOUS_REF?.trim() || 'v0.15.0';
+const EXPECTED_PREVIOUS_VERSION = process.env.FURYPIPE_PREVIOUS_VERSION?.trim() || '0.15.0';
+const EXPECTED_CANDIDATE_VERSION = process.env.FURYPIPE_CANDIDATE_VERSION?.trim() || '0.16.0';
 const OUTPUT_DIR = path.resolve(
   process.env.FURYPIPE_VALIDATION_OUTPUT_DIR?.trim() || 'artifacts/final-validation',
 );
@@ -216,7 +218,7 @@ async function main() {
   const installDir = path.join(workspace, 'install');
   const dataDir = path.join(installDir, 'data');
   const homeDir = path.join(installDir, 'home');
-  // v0.14 retains the historical pxpipe compatibility path when it exists.
+  // v0.15 retains the historical pxpipe compatibility path when it exists.
   // Keeping the fixture there proves that the candidate can migrate a real
   // legacy-owned config without moving or deleting unrelated state.
   const configFile = path.join(homeDir, '.config', 'pxpipe', 'config.json');
@@ -239,8 +241,8 @@ async function main() {
     trace(`previous packed: ${previous.version}`);
     assert(candidate.name === 'furypipe', `candidate package name mismatch: ${candidate.name}`);
     assert(previous.name === candidate.name, 'previous and candidate package names differ');
-    assert(previous.version === '0.14.0', `unexpected previous version: ${previous.version}`);
-    assert(candidate.version === '0.15.0', `unexpected candidate version: ${candidate.version}`);
+    assert(previous.version === EXPECTED_PREVIOUS_VERSION, `unexpected previous version: ${previous.version}`);
+    assert(candidate.version === EXPECTED_CANDIDATE_VERSION, `unexpected candidate version: ${candidate.version}`);
     assert(candidate.files.includes('bin/cli.js') && candidate.files.includes('dist/node.js'), 'candidate package omitted executable runtime');
     assert(previous.files.includes('bin/cli.js') && previous.files.includes('dist/node.js'), 'previous package omitted executable runtime');
 
@@ -251,7 +253,7 @@ async function main() {
     await runCli(installDir, ['setup', '--lang=en', '--yes', '--no-color'], baseEnv);
     const setupBefore = await readConfig(configFile);
     const userDataPath = path.join(dataDir, 'user-owned.txt');
-    await writeFile(userDataPath, 'user-owned-state-v0.14\n', 'utf8');
+    await writeFile(userDataPath, 'user-owned-state-v0.15\n', 'utf8');
     const mixedConfig = {
       ...setupBefore,
       userOwned: { keep: true, marker: 'outside-furypipe-beta-contract' },
