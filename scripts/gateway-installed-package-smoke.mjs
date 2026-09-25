@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import { createServer } from 'node:http';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -239,6 +240,93 @@ console.log(JSON.stringify({ status: 'PASS', transport: 'stdio', toolCount: evid
 `;
 }
 
+function toolConfigSource(fixturePath, markerFile) {
+  return JSON.stringify({
+    format: 'furypipe-gateway-local-tool-config/v1',
+    allowDisplayResult: false,
+    sources: [{
+      sourceId: 'installed-gateway-stdio-fixture',
+      transport: 'stdio',
+      trust: 'trusted',
+      command: process.execPath,
+      args: [fixturePath, markerFile],
+      policy: { governedReadTools: ['installed-stdio-echo'], operatorApprovalTools: [] },
+    }],
+  }, null, 2);
+}
+
+// Drive the exact path that crashed in real acceptance: the bundled installed
+// CLI (dist/node.js) Gateway -> WebChat tool bridge -> MCP Direct stdio client
+// -> @modelcontextprotocol/client/stdio -> cross-spawn -> child_process.
+// Authentication uses the real one-time bootstrap code and loopback cookie; no
+// Gateway, MCP or transport boundary is mocked.
+async function inspectInstalledGatewayStdio(installDir, startEnvelope) {
+  const origin = startEnvelope.origin;
+  const bootstrap = await fetch(new URL('/gateway/local-bootstrap/v1', origin), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin },
+    body: JSON.stringify({ format: startEnvelope.bootstrap.format, code: startEnvelope.bootstrap.code }),
+  });
+  assert(bootstrap.status === 204, `installed Gateway bootstrap returned HTTP ${bootstrap.status}`);
+  const cookie = String(bootstrap.headers.get('set-cookie') ?? '').split(';')[0];
+  assert(cookie.includes('='), 'installed Gateway bootstrap issued no browser session cookie');
+
+  const requireFromInstall = createRequire(path.join(installedRoot(installDir), 'package.json'));
+  const { WebSocket } = requireFromInstall('ws');
+  const ws = new WebSocket(startEnvelope.websocketUrl, 'furypipe.gateway.v1', { headers: { origin, cookie } });
+  const messages = [];
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`installed Gateway MCP stdio inspect timed out (messages=${JSON.stringify(messages).slice(-2_000)})`)), 30_000);
+      ws.once('error', (error) => { clearTimeout(timer); reject(error); });
+      ws.once('close', (code) => { clearTimeout(timer); reject(new Error(`installed Gateway WebSocket closed early (code=${code})`)); });
+      ws.on('message', (raw) => {
+        let message;
+        try { message = JSON.parse(String(raw)); } catch { return; }
+        messages.push({ type: message.type, commandName: message.commandName ?? message.admission?.commandName, outcome: message.admission?.outcome, reason: message.admission?.reason });
+        if (message.type === 'connected') {
+          ws.send(JSON.stringify({
+            format: 'furypipe-gateway-message/v1',
+            messageId: 'installed-smoke-inspect-1',
+            connectionId: message.connectionId,
+            sequence: 1,
+            type: 'command',
+            sentAt: Date.now(),
+            payload: {
+              commandName: 'tools.source.inspect.stdio',
+              declaredPluginPermissions: ['process'],
+              input: { sourceId: 'installed-gateway-stdio-fixture' },
+            },
+          }));
+          return;
+        }
+        if (message.type === 'command-admission' && message.admission?.outcome !== 'eligible') {
+          clearTimeout(timer);
+          reject(new Error(`installed Gateway denied MCP stdio inspect: ${String(message.admission?.reason)}`));
+          return;
+        }
+        if (message.type === 'error') {
+          clearTimeout(timer);
+          reject(new Error(`installed Gateway returned an error frame: ${JSON.stringify(message).slice(0, 1_000)}`));
+          return;
+        }
+        if (message.type === 'execution-command-result' && message.commandName === 'tools.source.inspect.stdio') {
+          clearTimeout(timer);
+          resolve(message.result);
+        }
+      });
+    });
+    assert(result?.status === 'ok', `installed Gateway MCP stdio inspect was rejected: ${JSON.stringify(result).slice(0, 1_000)}`);
+    const serialized = JSON.stringify(result.result ?? {});
+    assert(serialized.includes('installed-stdio-echo'), `installed Gateway MCP stdio inventory omitted the fixture tool: ${serialized.slice(0, 1_000)}`);
+    return { status: 'PASS', frames: messages.map((entry) => entry.type) };
+  } finally {
+    ws.removeAllListeners('close');
+    ws.on('error', () => undefined);
+    ws.close();
+  }
+}
+
 async function main() {
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'furypipe-gateway-installed-'));
   const installDir = path.join(workspace, 'install');
@@ -297,6 +385,24 @@ async function main() {
     }
     assert(existsSync(markerFile), 'installed MCP stdio child did not close after probe');
 
+    const gatewayMarker = path.join(workspace, 'gateway-stdio-closed.marker');
+    const toolConfigFile = path.join(workspace, 'webchat-mcp.json');
+    await writeFile(toolConfigFile, toolConfigSource(fixturePath, gatewayMarker), 'utf8');
+    const gatewayMcpEnv = { ...acceptanceEnv(installDir, configFile, await freePort()), FURYPIPE_WEBCHAT_MCP_CONFIG: toolConfigFile };
+    gateway = startInstalled(installDir, ['gateway', 'start', '--json'], gatewayMcpEnv);
+    const mcpStartEnvelope = await waitForGatewayReady(gateway);
+    assert(mcpStartEnvelope.tools?.enabled === true && mcpStartEnvelope.tools.sourceCount === 1, 'installed Gateway did not enable the configured MCP stdio source');
+    const gatewayStdio = await inspectInstalledGatewayStdio(installDir, mcpStartEnvelope);
+    assert(!gateway.output().includes(DYNAMIC_REQUIRE_ERROR), 'installed Gateway MCP stdio path emitted the dynamic child_process require failure');
+    assert(gateway.exitCode === null, 'installed Gateway exited during MCP stdio inspect');
+    await stop(gateway);
+    gateway = undefined;
+    const gatewayMarkerDeadline = Date.now() + 5_000;
+    while (!existsSync(gatewayMarker) && Date.now() < gatewayMarkerDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert(existsSync(gatewayMarker), 'installed Gateway MCP stdio child did not close');
+
     const evidence = {
       format: 'furypipe-installed-gateway-mcp-smoke/v1',
       status: 'PASS',
@@ -321,6 +427,15 @@ async function main() {
         connect: 'PASS',
         toolsList: 'PASS',
         shutdown: 'PASS',
+        dynamicRequireError: 0,
+      },
+      gatewayMcpStdio: {
+        installedBin: 'bin/cli.js',
+        bundle: 'dist/node.js',
+        auth: 'one-time-bootstrap-code+loopback-cookie',
+        command: 'tools.source.inspect.stdio',
+        inventory: gatewayStdio.status,
+        childClosed: true,
         dynamicRequireError: 0,
       },
     };
