@@ -727,7 +727,7 @@ const SCRIPT = String.raw`
     'Installation complete. FuryPipe is checking the runtime…': 'Installation terminée. FuryPipe vérifie le runtime…'
   });
   function detectedLanguage() {
-    const langs = [SERVER_LANGUAGE, ...(Array.isArray(navigator.languages) ? navigator.languages : []), navigator.language, Intl.DateTimeFormat().resolvedOptions().locale].filter(Boolean);
+    const langs = [...(Array.isArray(navigator.languages) ? navigator.languages : []), navigator.language, Intl.DateTimeFormat().resolvedOptions().locale, SERVER_LANGUAGE].filter(Boolean);
     for (const raw of langs) {
       const lang = String(raw || '').toLowerCase().split('-')[0];
       if (SUPPORTED_LANGUAGES.includes(lang)) return lang;
