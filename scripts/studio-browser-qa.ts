@@ -91,6 +91,7 @@ async function startStudio(mode: 'normal' | 'empty' | 'error', backendUrl: strin
   const api = createStudioApi({
     projectRoot,
     // Isolated hub state: QA never touches the operator's ~/.furypipe.
+    knowledgeDir: path.join(projectRoot, '.qa-knowledge', mode),
     mcpHub: createFuryMcpHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-mcp-hub', mode) }),
     skillHub: createFurySkillHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-skill-hub', mode), projectTrustedForInstructions: true }),
     discoverHarnesses: async () => harnesses,
@@ -187,6 +188,17 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.getByRole('button', { name: 'Health check qa-fixture' }).click();
     await page.locator('#mcp-list .badge.ok').filter({ hasText: 'healthy · 1 tool(s)' }).waitFor({ timeout: 20_000 });
     await page.locator('#mcp-list td').filter({ hasText: 'inventory-proof' }).waitFor();
+    await page.goto(`${origins.normal}/#/knowledge`);
+    await page.waitForFunction(() => /keyword search only/u.test(document.querySelector('#kb-stats')?.textContent ?? ''));
+    await page.locator('#kb-dir').fill('src');
+    await page.locator('#kb-ingest-form button').click();
+    await page.waitForFunction(() => /Indexed \d+ new or changed file/u.test(document.querySelector('#kb-ingest-status')?.textContent ?? ''));
+    await page.locator('#kb-query').fill('session');
+    await page.locator('#kb-mode').selectOption('lexical');
+    await page.locator('#kb-search-form button').click();
+    await page.locator('#kb-results li b').filter({ hasText: 'src/auth/session.ts:' }).first().waitFor();
+    await page.getByRole('button', { name: 'Ask a local model with these sources' }).click();
+    await page.waitForFunction(() => location.hash === '#/chat' && (document.querySelector('#chat-input') as HTMLTextAreaElement | null)?.value.includes('[1] src/auth/session.ts:'));
     await page.goto(`${origins.normal}/#/code`);
     await page.waitForFunction(() => document.querySelector('#graph-provider')?.textContent === 'graphify');
     await page.locator('#blast-files').fill('src/auth/session.ts');

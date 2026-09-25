@@ -255,3 +255,28 @@ describe('Studio MCP Hub', () => {
     }
   }, 30_000);
 });
+
+describe('Studio Knowledge', () => {
+  it('indexes a project folder, refuses escapes and returns cited hits', async () => {
+    const { mkdtempSync, writeFileSync, rmSync, mkdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-studio-kb-'));
+    try {
+      const project = join(root, 'p');
+      mkdirSync(join(project, 'docs'), { recursive: true });
+      writeFileSync(join(project, 'docs', 'ops.md'), '# Operations\n\n## Backups\n\nBackups run nightly and are kept for 30 days.\n');
+      const studio = createStudioApi({ projectRoot: project, knowledgeDir: join(root, 'kb'), discoverHarnesses: async () => harnesses, discoverLocal: async () => ({ backends: [] }) });
+      expect((await studio.handle('knowledge-ingest', post({ dir: '../' }))).status).toBe(400);
+      expect((await studio.handle('knowledge-ingest', post({ dir: '/etc' }))).status).toBe(400);
+      expect(await (await studio.handle('knowledge-ingest', post({ dir: 'docs' }))).json()).toMatchObject({ filesIndexed: 1 });
+      const found = await (await studio.handle('knowledge-search', post({ query: 'how long are backups kept?' }))).json() as { mode: string; hits: { citation: string }[] };
+      expect(found.mode).toBe('lexical');
+      expect(found.hits[0]?.citation).toBe('docs/ops.md:3-5');
+      expect((await studio.handle('knowledge-search', post({ query: 'backups', mode: 'semantic' }))).status).toBe(422);
+      expect(await (await studio.handle('knowledge', new Request('http://127.0.0.1/'))).json()).toMatchObject({ files: 1, availableEmbeddingModel: null });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

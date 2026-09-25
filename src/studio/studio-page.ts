@@ -99,7 +99,7 @@ const SCRIPT = String.raw`
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'text') n.textContent = v; else if (k === 'class') n.className = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; };
-  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','mcp','settings'];
+  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','skills','mcp','knowledge','settings'];
   const state = { local: null, harnesses: null, model: null, history: [] };
   async function getJson(url, init) {
     const res = await fetch(url, init);
@@ -129,6 +129,7 @@ const SCRIPT = String.raw`
     if (name === 'runtimes') loadHarnesses();
     if (name === 'skills') loadSkills();
     if (name === 'mcp') loadMcp();
+    if (name === 'knowledge') loadKnowledge();
     if (name === 'code') loadGraph();
     if (name === 'mission') loadRuns();
     clearInterval(state.poll); if (name === 'mission') state.poll = setInterval(loadRuns, 2000);
@@ -327,6 +328,32 @@ const SCRIPT = String.raw`
       status.textContent = r.sources.length + ' MCP server(s) across ' + r.configs.filter(c => c.status === 'found').length + ' config file(s).';
     } catch (e) { status.textContent = 'MCP discovery failed: ' + e.message; }
   }
+  async function loadKnowledge() {
+    try { const k = await getJson('/api/studio/knowledge.json');
+      $('#kb-stats').textContent = k.files + ' file(s), ' + k.chunks + ' passage(s), ' + k.embedded + ' with embeddings. Semantic search: ' + (k.availableEmbeddingModel ? 'available (' + k.availableEmbeddingModel + ')' : 'no local embeddings model found, keyword search only') + '.';
+    } catch (e) { $('#kb-stats').textContent = 'Knowledge unavailable: ' + e.message; }
+  }
+  $('#kb-ingest-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault(); const status = $('#kb-ingest-status'); status.textContent = 'Indexing…';
+    try { const r = await mcpPost('/api/studio/knowledge/ingest', { dir: $('#kb-dir').value.trim() });
+      status.textContent = 'Indexed ' + r.filesIndexed + ' new or changed file(s), ' + r.filesUnchanged + ' unchanged, ' + r.filesRemoved + ' removed' + (r.skipped.length ? ', ' + r.skipped.length + ' skipped' : '') + '.'; loadKnowledge();
+    } catch (e) { status.textContent = 'Not indexed: ' + e.message; }
+  });
+  let kbHits = [];
+  $('#kb-search-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault(); const out = $('#kb-results'); out.replaceChildren();
+    try { const r = await mcpPost('/api/studio/knowledge/search', { query: $('#kb-query').value, mode: $('#kb-mode').value }); kbHits = r.hits;
+      if (!r.hits.length) { out.append(el('p', { class: 'empty', text: 'No passage matches. Index a folder first or rephrase.' })); return; }
+      out.append(el('p', { class: 'muted', text: r.hits.length + ' passage(s) · ' + r.mode + ' retrieval' }));
+      const ol = el('ol', { class: 'hits' });
+      for (const h of r.hits) ol.append(el('li', {}, el('b', { text: h.citation }), h.heading ? el('span', { class: 'muted', text: ' — ' + h.heading }) : '', el('pre', { text: h.snippet }), el('p', { class: 'muted', text: 'Why: ' + h.why })));
+      const ask = el('button', { type: 'button', class: 'secondary', text: 'Ask a local model with these sources' });
+      ask.addEventListener('click', () => { const q = $('#kb-query').value;
+        $('#chat-input').value = 'Answer using only the sources below. Cite them as [n]. If the sources do not contain the answer, say so.\n\nSources:\n' + kbHits.map((h, i) => '[' + (i + 1) + '] ' + h.citation + '\n' + h.snippet).join('\n\n') + '\n\nQuestion: ' + q;
+        location.hash = '#/chat'; });
+      out.append(ol, ask);
+    } catch (e) { out.append(el('p', { class: 'bad', text: e.message })); }
+  });
   const LEVELS = ['simple', 'power', 'engineer', 'expert'];
   function applyMode(mode) {
     if (!LEVELS.includes(mode)) mode = 'simple';
@@ -387,7 +414,7 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
 <div class="app">
 <nav class="side" aria-label="Studio">
   <div class="brand">Fury<span>Pipe</span> Studio</div>
-  <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'engineer', 'Mission Control')}${nav('automations', 'expert', 'Automations')}</ul></div>
+  <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'engineer', 'Mission Control')}${nav('knowledge', 'power', 'Knowledge')}${nav('automations', 'expert', 'Automations')}</ul></div>
   <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'simple', 'Models')}${nav('runtimes', 'power', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'engineer', 'MCP')}${nav('settings', 'simple', 'Settings')}</ul></div>
 </nav>
 <div>
@@ -443,6 +470,11 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
   <div class="row"><div><label for="skill-harness">Runtime</label><select id="skill-harness"><option value="">Any</option>${FURY_HARNESS_REGISTRY.map((h) => `<option value="${h.id}">${escapeHtml(h.displayName)}</option>`).join('')}</select></div><button type="submit">Preview selection</button></div></form><div id="skill-select-out" aria-live="polite"></div></div></section>
 <section data-view="mcp" aria-labelledby="h-mcp" hidden><h1 id="h-mcp">MCP servers</h1><p class="lead">Every MCP server your coding tools are configured with, one place to decide what each tool may do. Health checks never send configured secrets.</p>
   <p id="mcp-status" class="status muted" role="status"></p><div id="mcp-list"></div></section>
+<section data-view="knowledge" aria-labelledby="h-knowledge" hidden><h1 id="h-knowledge">Knowledge</h1><p class="lead">Index project documents and find cited passages. Everything stays on this machine.</p>
+  <p id="kb-stats" class="status muted" role="status"></p>
+  <div class="card"><form id="kb-ingest-form"><label for="kb-dir">Folder inside this project</label><input id="kb-dir" required value="docs" autocomplete="off"><div class="row"><button type="submit">Index folder</button></div></form><p id="kb-ingest-status" class="status" role="status"></p></div>
+  <div class="card"><form id="kb-search-form"><label for="kb-query">Question</label><input id="kb-query" required autocomplete="off" placeholder="e.g. How does token refresh work?">
+  <div class="row"><div><label for="kb-mode">Retrieval</label><select id="kb-mode"><option value="hybrid">Hybrid (keywords + meaning)</option><option value="lexical">Keywords</option><option value="semantic">Meaning only</option></select></div><button type="submit">Search</button></div></form><div id="kb-results" aria-live="polite"></div></div></section>
 <section data-view="settings" aria-labelledby="h-settings" hidden><h1 id="h-settings">Settings</h1><p class="lead">Advanced surfaces for operators.</p>
   <div class="card"><h2>Advanced</h2><p><a href="/control-plane">Control Plane</a> — the technical dashboard: sessions, compression, readiness, provider and MCP evidence.</p></div></section>
 <section data-view="notfound" aria-labelledby="h-notfound" hidden><h1 id="h-notfound">Page not found</h1><p class="lead">This Studio view does not exist. <a href="#/chat">Go to Chat</a>.</p></section>

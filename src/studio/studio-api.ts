@@ -31,6 +31,7 @@ import { createFuryProofLedger } from '../fury-proof.js';
 import { runFuryTask, type FuryRunResult, type FuryTaskExecutor } from '../fury-run.js';
 import { createFurySkillHub, FurySkillHubError, FURY_SKILL_GOVERNANCE, type FurySkillGovernance, type FurySkillHub } from '../fury-skill-hub.js';
 import { createHash } from 'node:crypto';
+import { createFuryKnowledgeBase, FuryKnowledgeError, type FuryEmbedder, type FuryRetrievalMode } from '../fury-knowledge.js';
 import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy } from '../fury-mcp-hub.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
@@ -40,7 +41,8 @@ const CACHE_MS = 10_000;
 export type StudioRoute =
   | 'harnesses' | 'local' | 'hardware' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
-  | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide';
+  | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
+  | 'knowledge' | 'knowledge-ingest' | 'knowledge-search';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
@@ -64,6 +66,9 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/mcp/act': { route: 'mcp-act', method: 'POST' },
   '/api/studio/mcp/probe': { route: 'mcp-probe', method: 'POST' },
   '/api/studio/mcp/decide': { route: 'mcp-decide', method: 'POST' },
+  '/api/studio/knowledge.json': { route: 'knowledge', method: 'GET' },
+  '/api/studio/knowledge/ingest': { route: 'knowledge-ingest', method: 'POST' },
+  '/api/studio/knowledge/search': { route: 'knowledge-search', method: 'POST' },
 });
 
 export function studioApiRoute(pathname: string): { route: StudioRoute; method: 'GET' | 'POST' } | null {
@@ -86,6 +91,8 @@ export interface StudioApiOptions {
   readonly skillHub?: FurySkillHub;
   /** MCP Hub; defaults to one keyed by project under ~/.furypipe/studio/mcp-hub. */
   readonly mcpHub?: FuryMcpHub;
+  /** Knowledge base state directory (default ~/.furypipe/studio/knowledge/<project>). */
+  readonly knowledgeDir?: string;
 }
 
 interface StudioRun {
@@ -189,6 +196,20 @@ export function createStudioApi(options: StudioApiOptions) {
   const projectKey = createHash('sha256').update(path.resolve(options.projectRoot)).digest('hex').slice(0, 16);
   const skills = options.skillHub ?? createFurySkillHub({ projectRoot: options.projectRoot, stateDir: path.join(os.homedir(), '.furypipe', 'studio', 'skill-hub', projectKey) });
   const mcp = options.mcpHub ?? createFuryMcpHub({ projectRoot: options.projectRoot, stateDir: path.join(os.homedir(), '.furypipe', 'studio', 'mcp-hub', projectKey) });
+
+  // Embeddings come only from a reachable loopback backend that lists an embeddings model.
+  const knowledge = async () => {
+    const backends = (await local().catch(() => ({ backends: [] as readonly FuryLocalBackendStatus[] }))).backends;
+    const model = backends.filter((b) => b.reachable).flatMap((b) => b.models).find((m) => m.modality === 'embeddings');
+    const embed: FuryEmbedder | undefined = model ? async (input) => {
+      const url = assertFuryLocalEndpoint(model.baseUrl);
+      const res = await fetch(new URL('v1/embeddings', url.href.endsWith('/') ? url.href : `${url.href}/`), { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(120_000), headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: model.id, input }) });
+      if (res.status !== 200) throw Object.assign(new Error(`local embeddings answered HTTP ${res.status}`), { status: 502 });
+      const body = await res.json() as { data?: { embedding?: number[] }[] };
+      return (body.data ?? []).map((d) => d.embedding ?? []);
+    } : undefined;
+    return { kb: createFuryKnowledgeBase({ stateDir: options.knowledgeDir ?? path.join(os.homedir(), '.furypipe', 'studio', 'knowledge', projectKey), ...(embed && model ? { embed, embeddingModel: `${model.backend}:${model.id}` } : {}) }), embeddingModel: model ? `${model.backend}:${model.id}` : null };
+  };
 
   const runs = new Map<string, StudioRun>();
   const ledger = createFuryProofLedger();
@@ -373,6 +394,24 @@ export function createStudioApi(options: StudioApiOptions) {
             const body = await readJson(request) as { sourceId?: unknown; tool?: unknown };
             return json(await mcp.decide(String(body?.sourceId ?? ''), String(body?.tool ?? '')));
           }
+          case 'knowledge': {
+            const { kb, embeddingModel } = await knowledge();
+            return json({ ...(await kb.stats()), availableEmbeddingModel: embeddingModel });
+          }
+          case 'knowledge-ingest': {
+            const body = await readJson(request) as { dir?: unknown; label?: unknown };
+            const rel = typeof body?.dir === 'string' ? body.dir : '';
+            const abs = path.resolve(options.projectRoot, rel);
+            if (!rel || path.isAbsolute(rel) || (abs !== path.resolve(options.projectRoot) && !abs.startsWith(`${path.resolve(options.projectRoot)}${path.sep}`))) return problem(400, 'invalid-input', 'dir must be a relative folder inside the project');
+            const { kb } = await knowledge();
+            return json(await kb.ingest(abs, { label: typeof body.label === 'string' && body.label ? body.label : path.basename(abs) }));
+          }
+          case 'knowledge-search': {
+            const body = await readJson(request) as { query?: unknown; mode?: unknown; limit?: unknown };
+            const mode = body?.mode === 'lexical' || body?.mode === 'semantic' || body?.mode === 'hybrid' ? body.mode as FuryRetrievalMode : undefined;
+            const { kb } = await knowledge();
+            return json(await kb.search(String(body?.query ?? ''), { ...(mode ? { mode } : {}), ...(typeof body?.limit === 'number' ? { limit: body.limit } : {}) }));
+          }
           case 'chat': {
             const body = await readJson(request) as { kind?: unknown; baseUrl?: unknown; model?: unknown; messages?: unknown };
             if (typeof body?.baseUrl !== 'string' || typeof body.model !== 'string' || body.model.length > 256 || !Array.isArray(body.messages) || body.messages.length === 0 || body.messages.length > 64) {
@@ -405,6 +444,7 @@ export function createStudioApi(options: StudioApiOptions) {
         if (status) return problem(status, status === 503 ? 'discovery-failed' : status === 409 ? 'not-runnable' : 'invalid-request', (error as Error).message);
         if (error instanceof FuryIrError) return problem(422, 'invalid-ir', error.message);
         if (error instanceof FuryDispatchError) return problem(422, 'dispatch-rejected', error.message);
+        if (error instanceof FuryKnowledgeError) return problem(422, 'knowledge-rejected', error.message);
         if (error instanceof FuryMcpHubError) return problem(/^unknown MCP source/u.test(error.message) ? 404 : 422, 'mcp-rejected', error.message);
         if (error instanceof FurySkillHubError) return problem(/^unknown skill/u.test(error.message) ? 404 : 422, 'skill-rejected', error.message);
         if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') return problem(404, 'not-found', 'path not found');
