@@ -81,6 +81,7 @@ textarea{width:100%;min-height:90px;resize:vertical}textarea.code{font-family:ui
 label{display:block;font-weight:600;font-size:13px;margin:0 0 4px}.row{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
 .log{display:grid;gap:10px;max-height:52vh;overflow:auto;padding:4px}
 .msg{padding:10px 12px;border-radius:10px;border:1px solid var(--line);white-space:pre-wrap}.msg.user{background:color-mix(in srgb,var(--accent) 8%,var(--panel))}
+.tree{list-style:none;margin:0;padding:0;max-height:40vh;overflow:auto}.code-view{max-height:50vh;overflow:auto;white-space:pre;font:12px/1.5 ui-monospace,monospace;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}.code-view .add{color:var(--ok)}.code-view .del{color:var(--bad)}.code-view .hunk{color:var(--muted)}
 .convs{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}.linkish{background:none;border:1px solid var(--line);color:inherit;padding:3px 8px;border-radius:6px;cursor:pointer}.linkish[aria-current=true]{border-color:var(--accent);font-weight:600}
 .msg .who{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);display:block;margin-bottom:2px}
 .empty{border:1px dashed var(--line);border-radius:var(--radius);padding:18px;color:var(--muted)}
@@ -134,7 +135,7 @@ const SCRIPT = String.raw`
     if (name === 'knowledge') loadKnowledge();
     if (name === 'memory') loadMemory();
     if (name === 'integrations') loadIntegrations();
-    if (name === 'code') loadGraph();
+    if (name === 'code') { loadGraph(); loadTree(''); loadWorktrees(); }
     if (name === 'mission') loadRuns();
     clearInterval(state.poll); if (name === 'mission') state.poll = setInterval(loadRuns, 2000);
   }
@@ -455,6 +456,32 @@ const SCRIPT = String.raw`
       status.textContent = r.entries.length + ' integration(s). Manifest: ' + r.manifest + (r.manifestError ? ' — ' + r.manifestError : '') + '. Credentials are shown by name only.';
     } catch (e) { status.textContent = 'Integrations unavailable: ' + e.message; }
   }
+  async function loadTree(p) {
+    try { const r = await post('/api/studio/code/tree', { path: p }); const ul = $('#tree'); ul.replaceChildren(); $('#tree-path').textContent = '/' + r.path;
+      if (r.path) { const up = el('button', { type: 'button', class: 'linkish', text: '..' }); up.addEventListener('click', () => loadTree(r.path.split('/').slice(0, -1).join('/'))); ul.append(el('li', {}, up)); }
+      for (const e of r.entries) { const full = (r.path ? r.path + '/' : '') + e.name; const b = el('button', { type: 'button', class: 'linkish', text: e.name + (e.kind === 'dir' ? '/' : '') });
+        b.addEventListener('click', () => e.kind === 'dir' ? loadTree(full) : openFile(full)); ul.append(el('li', {}, b)); }
+    } catch (e) { $('#tree-path').textContent = 'Files unavailable: ' + e.message; }
+  }
+  async function openFile(p) {
+    try { const r = await post('/api/studio/code/file', { path: p }); $('#file-title').textContent = p; $('#file-view').textContent = r.binary ? '(binary file, ' + r.bytes + ' bytes)' : r.content; }
+    catch (e) { $('#file-view').textContent = e.message; }
+  }
+  function renderDiff(patch) {
+    const pre = $('#diff-view'); pre.replaceChildren(); pre.hidden = false;
+    for (const line of patch.split('\n').slice(0, 5000)) pre.append(el('span', { class: line.startsWith('+') && !line.startsWith('+++') ? 'add' : line.startsWith('-') && !line.startsWith('---') ? 'del' : line.startsWith('@@') ? 'hunk' : '', text: line + '\n' }));
+  }
+  async function loadWorktrees() {
+    try { const r = await getJson('/api/studio/code/worktrees.json'); const body = $('#wt-body'); body.replaceChildren();
+      for (const w of r.worktrees) {
+        const btn = el('button', { type: 'button', class: 'secondary', text: 'Show diff' }); btn.setAttribute('aria-label', 'Show diff of ' + (w.branch || w.path));
+        btn.addEventListener('click', async () => { try { const d = await post('/api/studio/code/diff', { worktree: w.path }); $('#wt-status').textContent = d.files.length + ' file(s) changed in ' + (d.branch || d.worktree) + ' (' + d.base + ').'; renderDiff(d.patch || '(no changes)'); } catch (e) { $('#wt-status').textContent = e.message; } });
+        body.append(el('tr', {}, el('td', { class: 'code', text: w.path }), el('td', { text: w.branch || (w.detached ? 'detached' : '—') }), el('td', { text: String(w.changedFiles) }),
+          el('td', { text: w.workers.length ? w.workers.map(x => x.taskId + ' (' + x.state + ', ' + x.receipts + ' receipt' + (x.receipts === 1 ? '' : 's') + (x.verdict ? ', ' + x.verdict : '') + ')').join('; ') : '—' }), el('td', {}, btn)));
+      }
+      $('#wt-status').textContent = r.worktrees.length + ' worktree(s).';
+    } catch (e) { $('#wt-status').textContent = 'Worktrees unavailable: ' + e.message; }
+  }
   const LEVELS = ['simple', 'power', 'engineer', 'expert'];
   function applyMode(mode) {
     if (!LEVELS.includes(mode)) mode = 'simple';
@@ -544,7 +571,12 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
     <tr><th scope="row">Provider</th><td id="graph-provider">—</td></tr><tr><th scope="row">Files</th><td id="graph-files">—</td></tr>
     <tr><th scope="row">Edges</th><td id="graph-edges">—</td></tr><tr><th scope="row">Freshness</th><td id="graph-stale">—</td></tr>
     <tr><th scope="row">Outputs</th><td id="graph-outputs">—</td></tr></tbody></table><p id="graph-status" class="status muted" role="status"></p></div>
-  <div class="card"><h2>Blast radius</h2><form id="blast-form"><label for="blast-files">Changed files (one per line)</label><textarea id="blast-files" placeholder="src/auth/session.ts"></textarea><button type="submit">Analyse</button></form><div id="blast-out" aria-live="polite"></div></div></div></section>
+  <div class="card"><h2>Blast radius</h2><form id="blast-form"><label for="blast-files">Changed files (one per line)</label><textarea id="blast-files" placeholder="src/auth/session.ts"></textarea><button type="submit">Analyse</button></form><div id="blast-out" aria-live="polite"></div></div></div>
+  <div class="grid"><div class="card"><h2>Files</h2><p class="muted" id="tree-path">/</p><ul id="tree" class="tree"></ul></div>
+  <div class="card"><h2 id="file-title">File</h2><pre id="file-view" class="code-view" tabindex="0" aria-labelledby="file-title">Select a file.</pre></div></div>
+  <div class="card"><h2>Worktrees</h2><p class="muted">Every agent writes in its own worktree. Diffs are read-only here; merging goes through FuryIntegrator.</p>
+  <table><thead><tr><th scope="col">Worktree</th><th scope="col">Branch</th><th scope="col">Changed</th><th scope="col">Agents · receipts</th><th scope="col"></th></tr></thead><tbody id="wt-body"></tbody></table>
+  <p id="wt-status" class="status muted" role="status"></p><pre id="diff-view" class="code-view" hidden tabindex="0" aria-label="Diff"></pre></div></section>
 <section data-view="agents" aria-labelledby="h-agents" hidden><h1 id="h-agents">Agents</h1><p class="lead">Dispatch preview: FuryDispatcher plans runtimes, parallel groups, worktrees and authority for a contract. Preview only — no agent is started.</p>
   <div class="card"><form id="dispatch-form"><label for="dispatch-ir">Intent contract (FuryIR)</label><textarea id="dispatch-ir" class="code" spellcheck="false">${escapeHtml(JSON.stringify(STUDIO_EXAMPLE_IR, null, 2))}</textarea>
     <div class="row"><div><label for="dispatch-mode">Mode</label><select id="dispatch-mode">${['AUTO', 'SINGLE', 'SPECIALISTS', 'PARALLEL', 'PIPELINE', 'REVIEW_CHAIN', 'COUNCIL', 'RACE', 'LOCAL_CLOUD_HYBRID', 'LOCAL_ONLY', 'OFF'].map((m) => `<option>${m}</option>`).join('')}</select></div>

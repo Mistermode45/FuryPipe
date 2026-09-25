@@ -239,6 +239,12 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.locator('#blast-files').fill('src/auth/session.ts');
     await page.locator('#blast-form button').click();
     await page.locator('#blast-out li').filter({ hasText: 'tests/login.test.ts' }).waitFor();
+    await page.locator('#tree button').filter({ hasText: /^src\/$/u }).click();
+    await page.locator('#tree button').filter({ hasText: /^auth\/$/u }).click();
+    await page.locator('#tree button').filter({ hasText: /^session\.ts$/u }).click();
+    await page.waitForFunction(() => (document.querySelector('#file-view')?.textContent ?? '').includes('createSession'));
+    // The QA project is not a git repository: worktrees report that plainly.
+    await page.waitForFunction(() => /Worktrees unavailable/u.test(document.querySelector('#wt-status')?.textContent ?? ''));
 
     await page.goto(`${origins.normal}/#/mission`);
     await page.locator('#runs .empty').waitFor();

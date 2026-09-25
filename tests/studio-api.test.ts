@@ -361,3 +361,45 @@ describe('Studio Integrations', () => {
     }
   });
 });
+
+describe('Studio Code', () => {
+  it('browses inside the project only, lists worktrees with diffs', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const { mkdtempSync, writeFileSync, rmSync, mkdirSync, symlinkSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-studio-code-'));
+    try {
+      const repo = join(root, 'repo');
+      mkdirSync(join(repo, 'src'), { recursive: true });
+      const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+      const git = (cwd: string, ...a: string[]) => execFileSync('git', a, { cwd, env, encoding: 'utf8' });
+      git(repo, 'init', '-q', '-b', 'main');
+      git(repo, 'config', 'core.autocrlf', 'false');
+      writeFileSync(join(repo, 'src', 'a.ts'), 'export const a = 1;\n');
+      git(repo, 'add', '.');
+      git(repo, 'commit', '-q', '-m', 'base');
+      git(repo, 'worktree', 'add', '-q', '-b', 'fury/r1/impl', join(root, 'wt'));
+      writeFileSync(join(root, 'wt', 'src', 'a.ts'), 'export const a = 2;\n');
+      if (process.platform !== 'win32') symlinkSync('/etc', join(repo, 'etc-link'));
+      const studio = createStudioApi({ projectRoot: repo, discoverHarnesses: async () => harnesses, discoverLocal: async () => ({ backends: [] }) });
+      const tree = await (await studio.handle('code-tree', post({ path: '' }))).json() as { entries: { name: string; kind: string }[] };
+      expect(tree.entries.map((e) => e.name)).toContain('src');
+      expect(tree.entries.map((e) => e.name)).not.toContain('.git');
+      expect(await (await studio.handle('code-file', post({ path: 'src/a.ts' }))).json()).toMatchObject({ content: 'export const a = 1;\n' });
+      expect((await studio.handle('code-file', post({ path: '../x' }))).status).toBe(404);
+      expect((await studio.handle('code-file', post({ path: '/etc/passwd' }))).status).toBe(400);
+      if (process.platform !== 'win32') expect((await studio.handle('code-tree', post({ path: 'etc-link' }))).status).toBe(403);
+      const wts = await (await studio.handle('code-worktrees', new Request('http://127.0.0.1/'))).json() as { worktrees: { path: string; branch?: string; changedFiles: number }[] };
+      const wt = wts.worktrees.find((w) => w.branch === 'fury/r1/impl')!;
+      expect(wt.changedFiles).toBe(1);
+      const diff = await (await studio.handle('code-diff', post({ worktree: wt.path }))).json() as { files: { file: string; added: number; removed: number }[]; patch: string };
+      expect(diff.files).toEqual([{ file: 'src/a.ts', added: 1, removed: 1 }]);
+      expect(diff.patch).toContain('+export const a = 2;');
+      expect((await studio.handle('code-diff', post({ worktree: '/tmp' }))).status).toBe(404);
+      expect((await studio.handle('code-diff', post({ worktree: wt.path, base: 'HEAD; rm -rf /' }))).status).toBe(400);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

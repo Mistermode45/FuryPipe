@@ -36,6 +36,7 @@ import { createFurySearxngAdapter, furyWebCrawl, furyWebExtract, furyWebFetch, f
 import { studioMemoryFromEnv, studioMemoryList, studioMemoryRemember, studioMemoryScopes, studioMemorySearch, type StudioMemory } from './studio-memory.js';
 import { buildFuryIntegrationRegistry } from '../fury-integrations.js';
 import { createStudioChats, StudioChatError, type StudioChats } from './studio-chats.js';
+import { createStudioCode, StudioCodeError } from './studio-code.js';
 import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy } from '../fury-mcp-hub.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
@@ -50,7 +51,8 @@ export type StudioRoute =
   | 'web'
   | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act'
   | 'integrations'
-  | 'chats' | 'chat-get' | 'chat-save' | 'chat-branch' | 'chat-delete';
+  | 'chats' | 'chat-get' | 'chat-save' | 'chat-branch' | 'chat-delete'
+  | 'code-tree' | 'code-file' | 'code-worktrees' | 'code-diff';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
@@ -88,6 +90,10 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/chats/save': { route: 'chat-save', method: 'POST' },
   '/api/studio/chats/branch': { route: 'chat-branch', method: 'POST' },
   '/api/studio/chats/delete': { route: 'chat-delete', method: 'POST' },
+  '/api/studio/code/tree': { route: 'code-tree', method: 'POST' },
+  '/api/studio/code/file': { route: 'code-file', method: 'POST' },
+  '/api/studio/code/worktrees.json': { route: 'code-worktrees', method: 'GET' },
+  '/api/studio/code/diff': { route: 'code-diff', method: 'POST' },
 });
 
 export function studioApiRoute(pathname: string): { route: StudioRoute; method: 'GET' | 'POST' } | null {
@@ -239,6 +245,7 @@ export function createStudioApi(options: StudioApiOptions) {
   };
 
   const chats: StudioChats = createStudioChats({ stateDir: options.chatsDir ?? path.join(os.homedir(), '.furypipe', 'studio', 'chats', projectKey), now });
+  const code = createStudioCode(options.projectRoot);
   let memoryState: StudioMemory | undefined = options.memory;
   const memory = () => (memoryState ??= studioMemoryFromEnv());
   const memoryStore = () => {
@@ -467,6 +474,20 @@ export function createStudioApi(options: StudioApiOptions) {
               default: return problem(400, 'invalid-input', 'action must be FETCH, MAP, CRAWL or SEARCH (browser actions go through the governed browser runtime)');
             }
           }
+          case 'code-tree':
+            return json(await code.tree(((await readJson(request)) as { path?: unknown })?.path ?? ''));
+          case 'code-file':
+            return json(await code.file(((await readJson(request)) as { path?: unknown })?.path));
+          case 'code-worktrees': {
+            // Attach the Mission Control workers (and their receipts) that ran in each worktree.
+            const workers = [...runs.values()].flatMap((r) => (r.mission?.workers() ?? []).map((w) => ({ runId: r.runId, verdict: r.result?.judgement.verdict ?? null, taskId: w.taskId, role: w.role, state: w.state, worktree: w.worktree, receipts: w.receiptIds.length, harnessId: w.binding.harnessId })));
+            const list = await code.worktrees();
+            return json({ worktrees: list.map((w) => ({ ...w, workers: workers.filter((x) => x.worktree && path.resolve(x.worktree) === path.resolve(w.path)) })) });
+          }
+          case 'code-diff': {
+            const body = await readJson(request) as { worktree?: unknown; base?: unknown };
+            return json(await code.diff(body?.worktree, body?.base));
+          }
           case 'chats':
             return json({ conversations: await chats.list() });
           case 'chat-get':
@@ -544,6 +565,7 @@ export function createStudioApi(options: StudioApiOptions) {
         if (error instanceof FuryIrError) return problem(422, 'invalid-ir', error.message);
         if (error instanceof FuryDispatchError) return problem(422, 'dispatch-rejected', error.message);
         if (['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'ETIMEDOUT', 'EHOSTUNREACH', 'EPROTO'].includes((error as NodeJS.ErrnoException).code ?? '')) return problem(502, 'upstream-unreachable', `upstream unreachable (${(error as NodeJS.ErrnoException).code})`);
+        if (error instanceof StudioCodeError) return problem(error.status, 'code-rejected', error.message);
         if (error instanceof StudioChatError) return problem(error.status, 'chat-rejected', error.message);
         if (error instanceof FuryWebError) return problem(error.code === 'blocked' ? 403 : error.code === 'not-configured' ? 409 : 502, `web-${error.code}`, error.message);
         if (error instanceof FuryKnowledgeError) return problem(422, 'knowledge-rejected', error.message);
