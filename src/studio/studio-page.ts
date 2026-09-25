@@ -98,7 +98,7 @@ const SCRIPT = String.raw`
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const el = (tag, props = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'text') n.textContent = v; else if (k === 'class') n.className = v; else n.setAttribute(k, v); } for (const k of kids) n.append(k); return n; };
-  const views = ['chat','cowork','code','agents','automations','models','runtimes','settings'];
+  const views = ['chat','cowork','code','agents','mission','automations','models','runtimes','settings'];
   const state = { local: null, harnesses: null, model: null, history: [] };
   async function getJson(url, init) {
     const res = await fetch(url, init);
@@ -127,6 +127,8 @@ const SCRIPT = String.raw`
     if (name === 'chat' || name === 'models') loadLocal();
     if (name === 'runtimes') loadHarnesses();
     if (name === 'code') loadGraph();
+    if (name === 'mission') loadRuns();
+    clearInterval(state.poll); if (name === 'mission') state.poll = setInterval(loadRuns, 2000);
   }
   function route() { show((location.hash.replace(/^#\/?/, '') || 'chat').split('/')[0]); }
   addEventListener('hashchange', route);
@@ -231,6 +233,31 @@ const SCRIPT = String.raw`
     ir.intent = $('#cowork-intent').value.trim() || ir.intent;
     $('#dispatch-ir').value = JSON.stringify(ir, null, 2); location.hash = '#/agents';
   });
+  async function loadRuns() {
+    try { const r = await getJson('/api/studio/runs.json'); const box = $('#runs'); box.replaceChildren();
+      if (!r.runs.length) { box.append(el('p', { class: 'empty', text: 'No run yet. Start one above; only local runtimes are used unless you allow cloud runtimes.' })); return; }
+      for (const run of r.runs) {
+        const card = el('div', { class: 'card' }); card.append(el('h2', { text: run.runId + ' — ' + run.status + (run.verdict ? ' · FuryJudge ' + run.verdict : '') }), el('p', { class: 'muted', text: run.intent }));
+        if (run.error) card.append(el('p', { class: 'bad', text: run.error }));
+        const t = el('table'); t.append(el('thead', {}, el('tr', {}, ...['Worker','Role','Runtime','Model','Locality','State','Tokens','Receipts',''].map(h => el('th', { scope: 'col', text: h })))));
+        const tb = el('tbody');
+        for (const w of run.workers) { const stop = el('button', { type: 'button', class: 'secondary', text: 'Stop' }); stop.disabled = !['queued','running','paused','awaiting-approval'].includes(w.state);
+          stop.setAttribute('aria-label', 'Stop worker ' + w.workerId);
+          stop.addEventListener('click', async () => { try { await getJson('/api/studio/runs/act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ runId: run.runId, workerId: w.workerId, action: 'STOP' }) }); loadRuns(); } catch (e) { $('#run-status').textContent = e.message; } });
+          tb.append(el('tr', {}, el('td', { text: w.workerId }), el('td', { text: w.role }), el('td', { text: w.harnessId }), el('td', { text: w.model }), el('td', { text: w.locality }), el('td', { text: w.state }), el('td', { text: String(w.usage.tokens) }), el('td', { text: String(w.receipts) }), el('td', {}, stop))); }
+        t.append(tb); card.append(t);
+        if (run.requirements) { const ul = el('ul', { class: 'reasons' }); for (const q of run.requirements) ul.append(el('li', { text: q.id + ': ' + q.status })); card.append(ul); }
+        box.append(card);
+      }
+    } catch (e) { $('#run-status').textContent = 'Runs unavailable: ' + e.message; }
+  }
+  $('#run-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault(); const status = $('#run-status');
+    const files = $('#run-files').value.split(/\n/).map(s => s.trim()).filter(Boolean);
+    try { const r = await getJson('/api/studio/runs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ intent: $('#run-intent').value, plannedFiles: files, allowCloud: $('#run-cloud').checked, confirm: $('#run-confirm').checked }) });
+      status.textContent = 'Started ' + r.runId + ' · ' + r.dispatch.mode + ' · dispatch benefit ' + r.dispatch.benefit; loadRuns();
+    } catch (e) { status.textContent = 'Not started: ' + e.message; }
+  });
   const LEVELS = ['simple', 'power', 'engineer', 'expert'];
   function applyMode(mode) {
     if (!LEVELS.includes(mode)) mode = 'simple';
@@ -291,7 +318,7 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
 <div class="app">
 <nav class="side" aria-label="Studio">
   <div class="brand">Fury<span>Pipe</span> Studio</div>
-  <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('automations', 'expert', 'Automations')}</ul></div>
+  <div><h2 id="nav-work">Work</h2><ul aria-labelledby="nav-work">${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'engineer', 'Mission Control')}${nav('automations', 'expert', 'Automations')}</ul></div>
   <div><h2 id="nav-system">System</h2><ul aria-labelledby="nav-system">${nav('models', 'simple', 'Models')}${nav('runtimes', 'power', 'Runtimes')}${nav('settings', 'simple', 'Settings')}</ul></div>
 </nav>
 <div>
@@ -324,6 +351,13 @@ export function renderStudioHtml(): { readonly html: string; readonly nonce: str
     <div class="row"><div><label for="dispatch-mode">Mode</label><select id="dispatch-mode">${['AUTO', 'SINGLE', 'SPECIALISTS', 'PARALLEL', 'PIPELINE', 'REVIEW_CHAIN', 'COUNCIL', 'RACE', 'LOCAL_CLOUD_HYBRID', 'LOCAL_ONLY', 'OFF'].map((m) => `<option>${m}</option>`).join('')}</select></div>
     <div><label for="dispatch-graph"><input id="dispatch-graph" type="checkbox"> Graph-aware</label></div><button type="submit">Preview plan</button></div></form>
     <p id="dispatch-status" class="status" role="status"></p><div id="dispatch-out"></div></div></section>
+<section data-view="mission" aria-labelledby="h-mission" hidden><h1 id="h-mission">Mission Control</h1><p class="lead">Run a planned task with real agents in isolated worktrees and watch every worker. Results are accepted only by FuryJudge with receipts.</p>
+  <div class="card"><form id="run-form"><label for="run-intent">Task</label><textarea id="run-intent" required placeholder="e.g. Fix the login bug and add a test"></textarea>
+  <label for="run-files">Files expected to change (one per line)</label><textarea id="run-files" placeholder="src/auth/login.ts"></textarea>
+  <div class="row"><label for="run-cloud"><input id="run-cloud" type="checkbox"> Allow cloud runtimes (may incur provider cost)</label>
+  <label for="run-confirm"><input id="run-confirm" type="checkbox" required> I confirm starting agents on this repository</label><button type="submit">Start run</button></div></form>
+  <p id="run-status" class="status" role="status"></p></div>
+  <div id="runs" aria-live="polite"></div></section>
 <section data-view="automations" aria-labelledby="h-automations" hidden><h1 id="h-automations">Automations</h1><p class="lead">FuryFlow: build a workflow and see where non-determinism lives. Validation and dry-run only here; scheduled runs use the Gateway automation scheduler.</p>
   <div class="card"><form id="flow-form"><label for="flow-json">Flow (FuryFlow JSON)</label><textarea id="flow-json" class="code" spellcheck="false">${escapeHtml(JSON.stringify(STUDIO_EXAMPLE_FLOW, null, 2))}</textarea>
   <div class="row"><button type="submit">Validate &amp; draw</button><button id="flow-dry" type="button" class="secondary">Dry-run (refund branch)</button></div></form>

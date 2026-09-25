@@ -173,6 +173,15 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.locator('#blast-form button').click();
     await page.locator('#blast-out li').filter({ hasText: 'tests/login.test.ts' }).waitFor();
 
+    await page.goto(`${origins.normal}/#/mission`);
+    await page.locator('#runs .empty').waitFor();
+    await page.locator('#run-intent').fill('Fix login');
+    await page.locator('#run-files').fill('src/auth/login.ts');
+    await page.locator('#run-confirm').check();
+    await page.locator('#run-form button[type=submit]').click();
+    // The QA project is not a git repository: the run must be refused, visibly.
+    await page.waitForFunction(() => /Not started: project root is not a git repository/u.test(document.querySelector('#run-status')?.textContent ?? ''));
+
     await page.goto(`${origins.normal}/#/automations`);
     await page.locator('#flow-form button[type=submit]').click();
     await page.locator('#flow-canvas svg g.node').first().waitFor();
@@ -199,8 +208,8 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert(overflow <= 1, `${name}: horizontal overflow ${overflow}px at 390px`);
 
-    // The error-state server deliberately answers 503 discovery-failed.
-    const unexpected = errors.filter((e) => !/Failed to load resource: the server responded with a status of 503/u.test(e));
+    // Expected: 503 discovery-failed (error-state server) and 409 not-runnable (Mission Control on a non-git project).
+    const unexpected = errors.filter((e) => !/Failed to load resource: the server responded with a status of (503|409)/u.test(e));
     assert(unexpected.length === 0, `${name}: console errors: ${unexpected.join(' | ')}`);
     return { engine: name, status: 'PASS', dispatchRows: rows, consoleErrors: 0 };
   } finally {

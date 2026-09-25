@@ -137,3 +137,56 @@ describe('Studio page', () => {
     expect(a.html).toContain('&quot;format&quot;: &quot;furypipe-ir/v1&quot;');
   });
 });
+
+describe('Studio runs (Mission Control)', () => {
+  it('requires confirmation, refuses cloud by default and runs a local plan to a judged result', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-studio-run-'));
+    const repo = join(root, 'repo');
+    mkdirSync(join(repo, 'src', 'auth'), { recursive: true });
+    const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+    execFileSync('git', ['init', '-q'], { cwd: repo, env });
+    execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: repo, env });
+    writeFileSync(join(repo, 'src', 'auth', 'login.ts'), 'export const x = 1;\n');
+    execFileSync('git', ['add', '.'], { cwd: repo, env });
+    execFileSync('git', ['commit', '-q', '-m', 'base'], { cwd: repo, env });
+    try {
+      const seen: string[] = [];
+      const studio = createStudioApi({
+        projectRoot: repo, worktreeRoot: join(root, 'wt'),
+        discoverHarnesses: async () => harnesses,
+        discoverLocal: async () => ({ backends: local('http://127.0.0.1:11434') }),
+        discoverHardware: async () => ({ platform: 'linux', arch: 'x64', cpuModel: 't', cpuCount: 1, totalMemoryBytes: 1, freeMemoryBytes: 1, unifiedMemory: false, gpus: [] }),
+        loadGraph: async () => { throw new Error('no graph'); },
+        executor: async ({ assignment, binding, worktree }) => {
+          seen.push(`${assignment.taskId}@${binding.locality}`);
+          if (assignment.role === 'implementer') writeFileSync(join(worktree, 'src', 'auth', 'login.ts'), 'export const x = 2;\n');
+          return { ok: true, receipts: [] };
+        },
+      });
+      expect((await studio.handle('run-start', post({ intent: 'Fix login', plannedFiles: ['src/auth/login.ts'] }))).status).toBe(400);
+      const started = await studio.handle('run-start', post({ intent: 'Fix login', plannedFiles: ['src/auth/login.ts'], confirm: true }));
+      expect(started.status).toBe(202);
+      const { runId } = await started.json() as { runId: string };
+      let snapshot: { status: string; verdict?: string; workers: { locality: string }[] } | undefined;
+      for (let i = 0; i < 200; i += 1) {
+        const list = await (await studio.handle('runs', new Request('http://127.0.0.1/x'))).json() as { runs: typeof snapshot[] };
+        snapshot = list.runs.find((r) => (r as { runId: string }).runId === runId)!;
+        if (snapshot.status !== 'running') break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(snapshot?.status).toBe('COMPLETED');
+      // No test/review receipt was produced by the fake executor: never ACCEPT.
+      expect(snapshot?.verdict).toBe('UNPROVEN');
+      expect(seen.every((s) => s.endsWith('@local'))).toBe(true);
+      expect(snapshot?.workers.every((w) => w.locality === 'local')).toBe(true);
+      expect((await studio.handle('run-act', post({ runId, workerId: 'x', action: 'DELETE' }))).status).toBe(400);
+      expect((await studio.handle('run-act', post({ runId: 'nope', workerId: 'x', action: 'STOP' }))).status).toBe(404);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 60_000);
+});

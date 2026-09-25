@@ -17,7 +17,7 @@ import type { FuryDispatchAssignment, FuryDispatchPlan } from './fury-dispatcher
 import { furyImpactDelta, furyImpactRequirements, type FuryGraph } from './fury-graph.js';
 import { integrateFuryBranches, type FuryIntegrationResult, type FuryIntegrationVerifier } from './fury-integrator.js';
 import { furyIrRequirements, type FuryIrDocument } from './fury-ir.js';
-import { createFuryMissionControl, type FuryReplayLog, type FuryWorkerBinding } from './fury-mission-control.js';
+import { createFuryMissionControl, type FuryMissionControl, type FuryReplayLog, type FuryWorkerBinding } from './fury-mission-control.js';
 import { sealFuryProofBundle, type FuryJudgement, type FuryProofBundle, type FuryProofLedger, type FuryReceipt } from './fury-proof.js';
 import { createFuryWriterPool } from './fury-writer-pool.js';
 
@@ -64,9 +64,12 @@ export async function runFuryTask(input: {
   readonly graph?: FuryGraph;
   readonly approvedGates?: readonly string[];
   readonly now?: () => number;
+  /** Receives the live Mission Control (Studio polls it and can STOP workers). */
+  readonly onMission?: (mission: FuryMissionControl) => void;
 }): Promise<FuryRunResult> {
   const { ir, plan, ledger } = input;
   const mc = createFuryMissionControl({ ir, plan, bindings: input.bindings, replayId: input.runId, ...(input.now ? { now: input.now } : {}) });
+  input.onMission?.(mc);
   const pool = createFuryWriterPool({ manager: input.manager, repository: input.repository, baseSha: input.baseSha, writableRoot: input.writableRoot, runId: input.runId });
   const byTask = new Map(ir.tasks.map((t) => [t.id, t]));
   const bindingOf = new Map(input.bindings.map((b) => [b.bindingId, b]));
@@ -81,12 +84,25 @@ export async function runFuryTask(input: {
     const workerId = a.bindingIds.length > 1 ? `${a.taskId}#1` : a.taskId;
     const binding = bindingOf.get(a.bindingIds[0]!)!;
     const capsule = compileFuryContextCapsule({ ir, taskId: a.taskId, candidates: input.contextFor?.(a.taskId) ?? [], budgetBytes: 256 * 1024 });
+    if (mc.worker(workerId).state !== 'queued') {
+      failures.push(`${a.taskId}: ${mc.worker(workerId).state} before start`);
+      return false;
+    }
     mc.act(workerId, 'START');
     commands.push(`${binding.harnessId}:${a.taskId}`);
     const out = await input.execute({ assignment: a, binding, worktree, capsule }).catch((error: unknown) => ({ ok: false, receipts: [] as FuryReceipt[], error: error instanceof Error ? error.message : 'executor failed' }));
     receipts.push(...out.receipts);
+    // The operator (or the budget) may have stopped the worker meanwhile:
+    // keep its receipts as evidence but do not complete it.
+    if (mc.worker(workerId).state !== 'running') {
+      failures.push(`${a.taskId}: stopped (${mc.worker(workerId).state})`);
+      return false;
+    }
     mc.report(workerId, { ...(('usage' in out && out.usage) ? { usage: out.usage } : {}), ...(out.receipts.length ? { receiptId: out.receipts[0]!.receiptId } : {}), ...(out.error ? { error: out.error } : {}) });
-    if (mc.worker(workerId).state !== 'running') return false; // stopped by budget
+    if (mc.worker(workerId).state !== 'running') {
+      failures.push(`${a.taskId}: stopped by budget`);
+      return false;
+    }
     mc.act(workerId, out.ok ? 'COMPLETE' : 'FAIL', out.ok ? {} : { reason: out.error ?? 'task failed' });
     if (!out.ok) failures.push(`${a.taskId}: ${out.error ?? 'failed'}`);
     return out.ok;

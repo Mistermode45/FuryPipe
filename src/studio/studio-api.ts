@@ -19,13 +19,24 @@ import { compileFuryIr, FuryIrError } from '../fury-ir.js';
 import { FuryDispatchError, FURY_DISPATCH_MODES, planFuryDispatch, type FuryDispatchMode, type FuryRuntimeBinding } from '../fury-dispatcher.js';
 import { furyBlastRadius, furyScopeCoupling, loadFuryGraph, type FuryGraph } from '../fury-graph.js';
 import { compileFuryFlow, dryRunFuryFlow, FuryFlowError } from '../fury-flow.js';
+import { execFile } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createCodingWorktreeManager, createNodeGitWorktreeProvider, discoverCodingRepository } from '../coding-runtime.js';
+import { runFuryHarnessTask } from '../fury-harness-runner.js';
+import type { FuryMissionControl, FuryWorkerBinding } from '../fury-mission-control.js';
+import { planFuryTask } from '../fury-planner.js';
+import { createFuryProofLedger } from '../fury-proof.js';
+import { runFuryTask, type FuryRunResult, type FuryTaskExecutor } from '../fury-run.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
 const CACHE_MS = 10_000;
 
 export type StudioRoute =
-  | 'harnesses' | 'local' | 'hardware' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview';
+  | 'harnesses' | 'local' | 'hardware' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
+  | 'runs' | 'run-start' | 'run-act';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
@@ -37,6 +48,9 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/dispatch-preview': { route: 'dispatch-preview', method: 'POST' },
   '/api/studio/chat': { route: 'chat', method: 'POST' },
   '/api/studio/flow-preview': { route: 'flow-preview', method: 'POST' },
+  '/api/studio/runs.json': { route: 'runs', method: 'GET' },
+  '/api/studio/runs': { route: 'run-start', method: 'POST' },
+  '/api/studio/runs/act': { route: 'run-act', method: 'POST' },
 });
 
 export function studioApiRoute(pathname: string): { route: StudioRoute; method: 'GET' | 'POST' } | null {
@@ -51,6 +65,20 @@ export interface StudioApiOptions {
   readonly discoverHardware?: () => Promise<FuryHardwareProfile>;
   readonly loadGraph?: (root: string) => Promise<{ readonly graph: FuryGraph }>;
   readonly now?: () => number;
+  /** Task executor for real runs; defaults to the structured-CLI harness runner. */
+  readonly executor?: FuryTaskExecutor;
+  /** Where writer and integration worktrees are created (default: OS temp dir). */
+  readonly worktreeRoot?: string;
+}
+
+interface StudioRun {
+  readonly runId: string;
+  readonly intent: string;
+  readonly startedAt: number;
+  status: 'running' | FuryRunResult['status'] | 'ERROR';
+  mission?: FuryMissionControl;
+  result?: FuryRunResult;
+  error?: string;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -118,6 +146,10 @@ export function studioBindings(harnesses: FuryHarnessDiscovery, local: readonly 
   return bindings;
 }
 
+function gitHead(cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => execFile('git', ['rev-parse', 'HEAD'], { cwd, shell: false, windowsHide: true }, (e, out) => (e ? reject(Object.assign(new Error('project root is not a git repository with a commit'), { status: 409 })) : resolve(String(out).trim()))));
+}
+
 export function createStudioApi(options: StudioApiOptions) {
   const now = options.now ?? Date.now;
   const cache = new Map<string, { at: number; value: Promise<unknown> }>();
@@ -136,6 +168,17 @@ export function createStudioApi(options: StudioApiOptions) {
   const local = () => cached('local', discovery(options.discoverLocal ?? (() => discoverFuryLocalBackends())));
   const hardware = () => cached('hardware', discovery(options.discoverHardware ?? (() => discoverFuryHardware())));
   const graph = () => cached('graph', async () => (await (options.loadGraph ?? loadFuryGraph)(options.projectRoot)).graph);
+
+  const runs = new Map<string, StudioRun>();
+  const ledger = createFuryProofLedger();
+  const runSnapshot = (r: StudioRun) => ({
+    runId: r.runId, intent: r.intent, startedAt: r.startedAt, status: r.status,
+    ...(r.error ? { error: r.error } : {}),
+    workers: (r.mission?.workers() ?? []).map((w) => ({ workerId: w.workerId, taskId: w.taskId, role: w.role, state: w.state, progress: w.progress, harnessId: w.binding.harnessId, provider: w.binding.provider, model: w.binding.model, locality: w.binding.locality, worktree: w.worktree, usage: w.usage, errors: w.errors.slice(-3), receipts: w.receiptIds.length })),
+    totals: r.mission?.totals() ?? null,
+    replayEntries: r.mission?.replay().entries.length ?? 0,
+    ...(r.result ? { verdict: r.result.judgement.verdict, pendingGates: r.result.pendingGates, bundleDigest: r.result.bundle.bundleDigest, requirements: r.result.judgement.requirements.map((q) => ({ id: q.id, status: q.status })) } : {}),
+  });
 
   return Object.freeze({
     async handle(route: StudioRoute, request: Request): Promise<Response> {
@@ -196,6 +239,63 @@ export function createStudioApi(options: StudioApiOptions) {
             }
             return json({ flow, ...(run ? { run } : {}), execution: 'DRY_RUN: deterministic handlers are pass-through, agentic nodes use fixtures; no side effect' });
           }
+          case 'runs':
+            return json({ runs: [...runs.values()].map(runSnapshot).reverse() });
+          case 'run-act': {
+            const body = await readJson(request) as { runId?: unknown; workerId?: unknown; action?: unknown };
+            const run = typeof body?.runId === 'string' ? runs.get(body.runId) : undefined;
+            if (!run?.mission) return problem(404, 'unknown-run', 'run not found');
+            if (body.action !== 'STOP') return problem(400, 'invalid-input', 'only STOP is available on a live run');
+            run.mission.act(String(body.workerId), 'STOP', { reason: 'stopped by operator' });
+            return json(runSnapshot(run));
+          }
+          case 'run-start': {
+            const body = await readJson(request) as { intent?: unknown; plannedFiles?: unknown; mode?: unknown; profile?: unknown; allowCloud?: unknown; confirm?: unknown };
+            if (body?.confirm !== true) return problem(400, 'confirmation-required', 'starting agents requires confirm: true');
+            if (typeof body.intent !== 'string' || !body.intent.trim() || body.intent.length > 4_000) return problem(400, 'invalid-input', 'intent is required');
+            if (!Array.isArray(body.plannedFiles) || body.plannedFiles.length > 200 || !body.plannedFiles.every((f) => typeof f === 'string')) return problem(400, 'invalid-input', 'plannedFiles must be an array of relative paths');
+            if ([...runs.values()].filter((r) => r.status === 'running').length >= 2) return problem(429, 'too-many-runs', 'two runs are already active');
+            const runId = `run-${now().toString(36)}-${runs.size + 1}`;
+            const graphValue = await graph().catch(() => undefined);
+            const plan = planFuryTask({ runId, intent: body.intent, plannedFiles: body.plannedFiles as string[], ...(graphValue ? { graph: graphValue } : {}) });
+            const [h, l] = await Promise.all([harnesses(), local()]);
+            const all = studioBindings(h, l.backends);
+            // Paid-call guard: cloud runtimes only on explicit request.
+            const candidates = body.allowCloud === true ? all : all.filter((c) => c.locality === 'local');
+            const mode = typeof body.mode === 'string' && (FURY_DISPATCH_MODES as readonly string[]).includes(body.mode) ? body.mode as FuryDispatchMode : 'AUTO';
+            const dispatch = planFuryDispatch({ ir: plan.ir, candidates, mode, ...(typeof body.profile === 'string' ? { profile: body.profile as never } : {}), ...(graphValue ? { coupling: (a, b) => furyScopeCoupling(graphValue, a, b) } : {}) });
+            if (dispatch.status !== 'PLANNED') return problem(409, 'dispatch-blocked', dispatch.reasons.join('; ') || 'dispatch blocked');
+            const repoRoot = options.projectRoot;
+            const baseSha = await gitHead(repoRoot);
+            const root = path.join(options.worktreeRoot ?? path.join(os.tmpdir(), 'furypipe-studio-runs'), runId);
+            await mkdir(path.join(root, 'writers'), { recursive: true });
+            const bindingsById = new Map(candidates.map((c) => [c.id, c]));
+            const workerBindings: FuryWorkerBinding[] = candidates.map((c) => ({ bindingId: c.id, harnessId: c.harnessId, provider: c.provider, model: c.model, locality: c.locality }));
+            const executor: FuryTaskExecutor = options.executor ?? (async ({ assignment, binding, worktree, capsule }) => {
+              const status = h.harnesses.find((x) => x.id === binding.harnessId);
+              if (!status?.installed || !status.executable) return { ok: false, receipts: [], error: `${binding.harnessId} has no executable adapter on this machine` };
+              const b = bindingsById.get(binding.bindingId)!;
+              const localBackend = b.locality === 'local' ? l.backends.find((x) => x.kind === b.provider && x.reachable) : undefined;
+              const res = await runFuryHarnessTask({
+                harnessId: binding.harnessId, executable: status.executable, worktree, taskId: assignment.taskId, runId, capsule,
+                authority: assignment.authority, timeoutMs: plan.ir.budget.maxWallTimeMs,
+                ...(b.model !== 'harness-default' ? { model: b.model } : {}),
+                ...(localBackend ? { local: { kind: localBackend.kind as 'ollama' | 'lmstudio', baseUrl: localBackend.baseUrl } } : {}),
+              }, ledger);
+              return { ok: res.exitCode === 0 && !res.timedOut, receipts: res.receipts, ...(res.exitCode !== 0 ? { error: `harness exited ${res.exitCode ?? 'by timeout'}` } : {}) };
+            });
+            const run: StudioRun = { runId, intent: body.intent, startedAt: now(), status: 'running' };
+            runs.set(runId, run);
+            const repository = await discoverCodingRepository(repoRoot);
+            void runFuryTask({
+              runId, ir: plan.ir, plan: dispatch, bindings: workerBindings, repository, repoRoot, baseSha,
+              manager: createCodingWorktreeManager({ provider: createNodeGitWorktreeProvider() }),
+              writableRoot: path.join(root, 'writers'), integrationRoot: path.join(root, 'integration'), ledger, execute: executor,
+              ...(graphValue ? { graph: graphValue } : {}),
+              onMission: (m) => { run.mission = m; },
+            }).then((result) => { run.result = result; run.status = result.status; }, (error: unknown) => { run.status = 'ERROR'; run.error = error instanceof Error ? error.message.slice(0, 300) : 'run failed'; });
+            return json({ runId, status: 'running', dispatch: { mode: dispatch.mode, benefit: dispatch.dispatchBenefit, reasons: dispatch.reasons, agents: dispatch.agents } }, 202);
+          }
           case 'chat': {
             const body = await readJson(request) as { kind?: unknown; baseUrl?: unknown; model?: unknown; messages?: unknown };
             if (typeof body?.baseUrl !== 'string' || typeof body.model !== 'string' || body.model.length > 256 || !Array.isArray(body.messages) || body.messages.length === 0 || body.messages.length > 64) {
@@ -225,7 +325,7 @@ export function createStudioApi(options: StudioApiOptions) {
         }
       } catch (error) {
         const status = (error as { status?: number }).status;
-        if (status) return problem(status, status === 503 ? 'discovery-failed' : 'invalid-request', (error as Error).message);
+        if (status) return problem(status, status === 503 ? 'discovery-failed' : status === 409 ? 'not-runnable' : 'invalid-request', (error as Error).message);
         if (error instanceof FuryIrError) return problem(422, 'invalid-ir', error.message);
         if (error instanceof FuryDispatchError) return problem(422, 'dispatch-rejected', error.message);
         if (error instanceof FuryFlowError) return problem(422, 'invalid-flow', error.message);
