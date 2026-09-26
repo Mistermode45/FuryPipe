@@ -58,6 +58,53 @@ describe('Studio Fury Autopilot',()=>{
     }finally{rmSync(root,{recursive:true,force:true});}
   });
 
+  it('resolves an explicitly selected safe harness as an agent capability without granting execution',async()=>{
+    const root=mkdtempSync(join(tmpdir(),'furypipe-autopilot-agent-'));
+    try{
+      const project=join(root,'project'); const home=join(root,'home');
+      mkdirSync(project,{recursive:true}); mkdirSync(home,{recursive:true});
+      const skills=createFurySkillHub({projectRoot:project,homeDir:home,stateDir:join(root,'skill-state')});
+      const mcp=createFuryMcpHub({projectRoot:project,homeDir:home,stateDir:join(root,'mcp-state')});
+      const plan=await planStudioAutopilot({
+        objective:'Use FuryPipe Native to review this repository',
+        projectRoot:project,
+        skills,
+        mcp,
+        harnessId:'furypipe-native',
+        harnesses:{
+          format:'furypipe-harness-discovery/v1',
+          platform:'linux',
+          harnesses:[{
+            id:'furypipe-native',
+            displayName:'FuryPipe Native',
+            installed:true,
+            versionStatus:'builtin',
+            authentication:'not-probed',
+            definition:{
+              id:'furypipe-native',
+              displayName:'FuryPipe Native',
+              executables:[],
+              versionArgs:[],
+              integrations:['native'],
+              protocols:['mcp','acp','a2a'],
+              skillsDirectories:['.furypipe/skills'],
+              localModel:{mechanism:'native',note:'native'},
+              capabilities:{streaming:true,resume:true,subagents:true},
+              evidence:'BUILTIN',
+            },
+          }],
+        },
+      });
+      expect(plan.capabilities.selected).toContainEqual(expect.objectContaining({
+        kind:'agent',
+        id:'furypipe-native',
+        executionAuthorized:false,
+      }));
+      expect(plan.blueprint.unresolved).not.toContain('agent');
+      expect(plan.executionAuthorized).toBe(false);
+    }finally{rmSync(root,{recursive:true,force:true});}
+  });
+
   it('keeps research responses balanced by default and validates style',async()=>{
     const root=mkdtempSync(join(tmpdir(),'furypipe-autopilot-empty-'));
     try{
