@@ -332,7 +332,15 @@ export function createFuryArtifactRepository(options: {
   };
 
   return Object.freeze({
-    create(input) {
+    create(input: {
+      readonly id: string;
+      readonly kind: FuryArtifactKind;
+      readonly title: string;
+      readonly content: string;
+      readonly mediaType?: string;
+      readonly metadata?: Readonly<Record<string, string>>;
+      readonly now: string;
+    }) {
       return enqueue(async () => {
         const current = await ensureLoaded();
         const artifact = current.create({ ...input, projectId });
@@ -347,7 +355,13 @@ export function createFuryArtifactRepository(options: {
       });
     },
 
-    appendVersion(input) {
+    appendVersion(input: {
+      readonly artifactId: string;
+      readonly content: string;
+      readonly mediaType?: string;
+      readonly metadata?: Readonly<Record<string, string>>;
+      readonly now: string;
+    }) {
       return enqueue(async () => {
         const current = await ensureLoaded();
         const artifact = current.appendVersion(input);
@@ -362,7 +376,7 @@ export function createFuryArtifactRepository(options: {
       });
     },
 
-    async get(id) {
+    async get(id: string) {
       await writeChain;
       return (await ensureLoaded()).get(id);
     },
@@ -372,17 +386,21 @@ export function createFuryArtifactRepository(options: {
       return (await ensureLoaded()).list();
     },
 
-    async search(query) {
+    async search(query: string) {
       await writeChain;
       return (await ensureLoaded()).search(query, projectId);
     },
 
-    async planRestore(artifactId, sourceVersion) {
+    async planRestore(artifactId: string, sourceVersion: number) {
       await writeChain;
       return (await ensureLoaded()).planRestore(artifactId, sourceVersion);
     },
 
-    executeRestore(input) {
+    executeRestore(input: {
+      readonly plan: FuryArtifactRestorePlan;
+      readonly confirm: true;
+      readonly now: string;
+    }) {
       return enqueue(async () => {
         if (input.confirm !== true) throw new Error('artifact restore requires explicit confirmation');
         const current = await ensureLoaded();
