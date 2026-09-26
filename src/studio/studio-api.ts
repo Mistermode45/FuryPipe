@@ -57,7 +57,7 @@ const CACHE_MS = 10_000;
 
 export type StudioRoute =
   | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'autopilot-preview' | 'extensions' | 'chat' | 'flow-preview'
-  | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
+  | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-create' | 'skill-compare'
   | 'mcp' | 'mcp-add' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
   | 'web' | 'visual-render'
@@ -90,6 +90,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/skills/act': { route: 'skill-act', method: 'POST' },
   '/api/studio/skills/select': { route: 'skill-select', method: 'POST' },
   '/api/studio/skills/install': { route: 'skill-install', method: 'POST' },
+  '/api/studio/skills/create': { route: 'skill-create', method: 'POST' },
   '/api/studio/skills/compare': { route: 'skill-compare', method: 'POST' },
   '/api/studio/mcp.json': { route: 'mcp', method: 'GET' },
   '/api/studio/mcp/add': { route: 'mcp-add', method: 'POST' },
@@ -647,6 +648,32 @@ export function createStudioApi(options: StudioApiOptions) {
             if (body?.confirm !== true) return problem(400, 'confirmation-required', 'installing a skill requires confirm: true');
             if (typeof body.sourceDir !== 'string' || !path.isAbsolute(body.sourceDir) || body.sourceDir.length > 1_024) return problem(400, 'invalid-input', 'sourceDir must be an absolute local directory');
             return json(await skills.install(body.sourceDir), 201);
+          }
+          case 'skill-create': {
+            const body = await readJson(request) as {
+              name?: unknown; description?: unknown; instructions?: unknown; version?: unknown; author?: unknown; license?: unknown;
+              harnesses?: unknown; allowedTools?: unknown; type?: unknown; triggers?: unknown; examples?: unknown; tests?: unknown; confirm?: unknown;
+            };
+            if (body?.confirm !== true) return problem(400, 'confirmation-required', 'creating a skill requires confirm: true');
+            const arrayOfStrings = (value: unknown): string[] | undefined => {
+              if (value === undefined) return undefined;
+              if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) throw Object.assign(new Error('skill list fields must contain only strings'), { status: 400 });
+              return value as string[];
+            };
+            return json(await skills.create({
+              name: String(body.name ?? ''),
+              description: String(body.description ?? ''),
+              instructions: String(body.instructions ?? ''),
+              ...(typeof body.version === 'string' ? { version: body.version } : {}),
+              ...(typeof body.author === 'string' ? { author: body.author } : {}),
+              ...(typeof body.license === 'string' ? { license: body.license } : {}),
+              ...(typeof body.type === 'string' ? { type: body.type as never } : {}),
+              ...(body.harnesses !== undefined ? { harnesses: arrayOfStrings(body.harnesses)! } : {}),
+              ...(body.allowedTools !== undefined ? { allowedTools: arrayOfStrings(body.allowedTools)! } : {}),
+              ...(body.triggers !== undefined ? { triggers: arrayOfStrings(body.triggers)! } : {}),
+              ...(body.examples !== undefined ? { examples: arrayOfStrings(body.examples)! } : {}),
+              ...(body.tests !== undefined ? { tests: arrayOfStrings(body.tests)! } : {}),
+            }), 201);
           }
           case 'skill-compare': {
             const body = await readJson(request) as { name?: unknown; a?: unknown; b?: unknown };
