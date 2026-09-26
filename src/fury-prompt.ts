@@ -72,7 +72,7 @@ function objectiveTokens(value: string): readonly string[] {
 }
 
 function promptAnalysisExpectedOutput(value: string): FuryPromptAnalysis['expectedOutput'] {
-  if (/\b(code|typescript|javascript|python|java|rust|golang|repository|repo|bug|refactor|compile|build|test)\b/iu.test(value)) return 'CODE';
+  if (/\b(code|coding|typescript|javascript|python|java|rust|golang|repository|repo|github|api|bug|fix|implement|implementation|refactor|compile|build|test|tests|testing)\b/iu.test(value)) return 'CODE';
   if (/\b(research|recherche|sources?|benchmark|compare|latest|current|evidence|citation)\b/iu.test(value)) return 'RESEARCH';
   if (/\b(csv|sql|dataset|analytics|analyse|analysis|metrics?|spreadsheet|table)\b/iu.test(value)) return 'DATA';
   if (/\b(image|video|audio|voice|design|render|media)\b/iu.test(value)) return 'MEDIA';
