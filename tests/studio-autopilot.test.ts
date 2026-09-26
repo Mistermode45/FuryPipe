@@ -67,6 +67,22 @@ describe('Studio Fury Autopilot',()=>{
       expect(plan.routing.executionAuthorized).toBe(false);
       expect(plan.mcp.suggested[0]).toMatchObject({ name: 'github', executionAuthorized: false });
       expect(plan.style.resolved).toBe('caveman');
+      expect(plan.instructionPrecedence).toMatchObject({
+        format:'furypipe-instruction-precedence/v1',
+        status:'resolved',
+        authority:'instruction-resolution-only',
+        executionAuthority:false,
+      });
+      expect(plan.instructionPrecedence.effective).toContainEqual(expect.objectContaining({
+        channel:'communication.style',
+        layer:'runtime',
+        value:'caveman',
+      }));
+      expect(plan.instructionPrecedence.effective).toContainEqual(expect.objectContaining({
+        channel:'execution.authority',
+        layer:'security',
+        mode:'deny',
+      }));
       expect(plan.executionAuthorized).toBe(false);
     }finally{rmSync(root,{recursive:true,force:true});}
   });
