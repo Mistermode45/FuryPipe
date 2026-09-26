@@ -1872,6 +1872,45 @@ const SCRIPT = String.raw`
       out.append(instructionCard);
     }
 
+    if (result.prompt && result.prompt.analysis) {
+      const analysis = result.prompt.analysis;
+      const promptCard = el('div', { class: 'card' }, el('h2', { text: 'Prompt analysis' }));
+      promptCard.append(
+        el('p', { text: 'Mode: ' + result.prompt.mode + ' · Complexity: ' + analysis.taskComplexity + ' · Ambiguity: ' + analysis.ambiguity + ' · Security: ' + analysis.securityRisk }),
+        el('p', { class: 'muted', text: 'Expected output: ' + analysis.expectedOutput + (analysis.clarificationRecommended ? ' · clarification recommended' : ' · no clarification required') }),
+      );
+      if (analysis.missingContext && analysis.missingContext.length) {
+        promptCard.append(el('p', { class: 'muted', text: 'Missing context: ' + analysis.missingContext.join(', ') }));
+      }
+      if (analysis.conflictingConstraints && analysis.conflictingConstraints.length) {
+        promptCard.append(el('p', { class: 'bad', text: 'Constraint conflicts: ' + analysis.conflictingConstraints.join(', ') }));
+      }
+      promptCard.append(el('p', { class: 'muted', text: 'Analysis only. The recommended mode does not change permissions or execute capabilities.' }));
+      out.append(promptCard);
+    }
+
+    if (result.contextInspector) {
+      const inspector = result.contextInspector;
+      const contextCard = el('div', { class: 'card' }, el('h2', { text: 'Context inspector' }));
+      contextCard.append(el('p', {
+        text: inspector.budget.usedBytes + ' / ' + inspector.budget.budgetBytes + ' bytes · ~' + inspector.budget.estimatedUsedTokens + ' tokens (' + inspector.budget.tokenEstimateBasis + ')',
+      }));
+      const contextList = el('ul', { class: 'reasons' });
+      for (const source of inspector.sources) {
+        contextList.append(el('li', {
+          text: source.category + ' · ' + source.status
+            + (source.count !== null ? ' · ' + source.count + ' item(s)' : '')
+            + (source.bytes !== null ? ' · ' + source.bytes + ' bytes' : '')
+            + ' · ' + source.reason,
+        }));
+      }
+      contextCard.append(
+        contextList,
+        el('p', { class: 'muted', text: 'Secret values are never exposed. Token counts are estimates unless a model-specific tokenizer is used.' }),
+      );
+      out.append(contextCard);
+    }
+
     out.append(el('div', { class: 'card' }, el('h2', { text: 'Prompt pipeline' }), el('p', { text: plan.promptPipeline.join(' → ') }), el('p', { class: 'muted', text: 'Preview only. This route does not authorize tools, writes, network calls or external actions.' })));
   }
 
