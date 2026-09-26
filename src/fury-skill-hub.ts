@@ -18,6 +18,7 @@ import * as path from 'node:path';
 import { selectAgentSkillsForTask, type AgentSkillSelectionPlan } from './agent-skill-selector.js';
 import { discoverAgentSkillsNode, type AgentSkillDiscoveryOptions, type DiscoveredAgentSkill } from './agent-skills-node.js';
 import { parseAgentSkillManifest } from './agent-skills-standard.js';
+import { createAgentSkillActivationReceipt, type AgentSkillActivationReceipt } from './agent-skill-activation.js';
 import { FURY_HARNESS_REGISTRY } from './fury-harness-hub.js';
 
 export const FURY_SKILL_GOVERNANCE = Object.freeze(['DRAFT_ONLY', 'ASK_BEFORE_WRITE', 'AUTO_APPLY_LOW_RISK', 'LOCKED'] as const);
@@ -83,6 +84,15 @@ export interface FurySkillCompare {
   readonly added: readonly string[];
   readonly removed: readonly string[];
   readonly changed: readonly string[];
+}
+
+export interface FurySkillActivation {
+  readonly name: string;
+  readonly instructions: string;
+  readonly checksum: string;
+  readonly allowedTools?: string;
+  readonly receipt: AgentSkillActivationReceipt;
+  readonly executionAuthorized: false;
 }
 
 interface FileSet {
@@ -313,6 +323,44 @@ export function createFurySkillHub(options: {
       const removed = [...x.files.keys()].filter((f) => !y.files.has(f)).sort();
       const changed = [...x.files.keys()].filter((f) => y.files.has(f) && !x.files.get(f)!.equals(y.files.get(f)!)).sort();
       return Object.freeze({ added, removed, changed });
+    },
+    /**
+     * Load only the validated SKILL.md bodies selected for one turn.
+     *
+     * This is progressive instruction activation, not capability activation:
+     * allowed-tools remains metadata and executionAuthorized stays false.
+     */
+    async activateSelection(names: readonly string[], select: { readonly harnessId?: string } = {}): Promise<readonly FurySkillActivation[]> {
+      if (!Array.isArray(names) || names.length > 8) throw new FurySkillHubError('at most 8 skills may be activated for one turn');
+      const requested = [...new Set(names.map((name) => assertName(name)))];
+      const entries = (await list()).skills;
+      const activated: FurySkillActivation[] = [];
+      let totalBytes = 0;
+      for (const name of requested) {
+        const entry = entries.find((candidate) => candidate.name === name);
+        if (!entry) throw new FurySkillHubError(`unknown skill: ${name}`);
+        if (!entry.enabled) throw new FurySkillHubError(`skill ${name} is disabled`);
+        if (entry.pinMismatch) throw new FurySkillHubError(`skill ${name} changed after it was pinned`);
+        if (entry.trust !== 'trusted-instructions') throw new FurySkillHubError(`skill ${name} is not trusted for instruction activation`);
+        if (select.harnessId && entry.compatibleHarnesses.length && !entry.compatibleHarnesses.includes(select.harnessId)) {
+          throw new FurySkillHubError(`skill ${name} is not compatible with runtime ${select.harnessId}`);
+        }
+        const raw = await readFile(entry.location, 'utf8');
+        const manifest = parseAgentSkillManifest(raw, name);
+        const bytes = Buffer.byteLength(manifest.instructions, 'utf8');
+        totalBytes += bytes;
+        if (totalBytes > 512 * 1024) throw new FurySkillHubError('activated skill instructions exceed the per-turn bound');
+        const receipt = await createAgentSkillActivationReceipt(manifest.metadata, manifest.instructions);
+        activated.push(Object.freeze({
+          name,
+          instructions: manifest.instructions,
+          checksum: entry.checksum,
+          ...(manifest.metadata.allowedTools ? { allowedTools: manifest.metadata.allowedTools } : {}),
+          receipt,
+          executionAuthorized: false,
+        }));
+      }
+      return Object.freeze(activated);
     },
     /** Route an objective to skills that are enabled, trusted, pin-consistent and runtime-compatible. */
     async autoSelect(objective: string, select: { readonly harnessId?: string; readonly maxActive?: number } = {}): Promise<FurySkillSelection> {
