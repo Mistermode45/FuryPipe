@@ -557,7 +557,7 @@ const SCRIPT = String.raw`
   const VIEW_TITLES = { chat: 'Chat', autopilot: 'Fury Autopilot', cowork: 'Cowork', code: 'Code', agents: 'Agents', mission: 'Mission Control', automations: 'Automations', models: 'Models', connections: 'Connections', runtimes: 'Runtimes', skills: 'Skills', mcp: 'MCP servers', extensions: 'Extensions', knowledge: 'Knowledge', web: 'Web', memory: 'Memory', integrations: 'Integrations', support: 'Support FuryPipe', settings: 'Settings' };
   const PROVIDER = { ollama: 'Ollama', lmstudio: 'LM Studio', llamacpp: 'llama.cpp', vllm: 'vLLM', sglang: 'SGLang', localai: 'LocalAI', jan: 'Jan', 'openai-compatible': 'OpenAI-compatible', 'anthropic-compatible': 'Anthropic-compatible' };
   const SETUP = { ollama: 'https://ollama.com/download', lmstudio: 'https://lmstudio.ai', llamacpp: 'https://github.com/ggml-org/llama.cpp', vllm: 'https://docs.vllm.ai', sglang: 'https://docs.sglang.ai', localai: 'https://localai.io', jan: 'https://jan.ai' };
-  const state = { local: null, hw: null, harnesses: null, connections: null, conv: null, pick: 'auto', lastRoute: null, autopilot: null, autopilotMessages: [], files: [], pastes: [], web: false, kb: false, busy: null, activity: new Map() };
+  const state = { local: null, hw: null, modelHub: null, harnesses: null, connections: null, conv: null, pick: 'auto', lastRoute: null, autopilot: null, autopilotMessages: [], files: [], pastes: [], web: false, kb: false, busy: null, activity: new Map() };
   /* ---------- Locale / i18n ---------- */
   const SUPPORTED_LANGUAGES = Object.freeze(['en', 'fr']);
   const FR = Object.freeze({
@@ -1168,8 +1168,12 @@ const SCRIPT = String.raw`
   async function loadLocal() {
     const status = $('#models-status'); status.textContent = 'Looking for local AI on this machine…';
     try {
-      const [local, hw] = await Promise.all([getJson('/api/studio/local.json'), getJson('/api/studio/hardware.json')]);
-      state.local = local; state.hw = hw;
+      const [local, hw, modelHub] = await Promise.all([
+        getJson('/api/studio/local.json'),
+        getJson('/api/studio/hardware.json'),
+        getJson('/api/studio/models.json'),
+      ]);
+      state.local = local; state.hw = hw; state.modelHub = modelHub;
       renderModels(); renderChatAvailability();
     } catch (e) { status.textContent = 'Local discovery failed: ' + e.message; renderChatAvailability(); }
   }
@@ -1192,6 +1196,31 @@ const SCRIPT = String.raw`
       $('#hw-rec').textContent = candidates().length ? fits + ' of ' + candidates().length + ' local model' + (candidates().length === 1 ? '' : 's') + ' fit this machine comfortably.' : 'Start a local runtime to see which models fit.';
     }
     const grid = $('#backends'); grid.replaceChildren(); const table = $('#models-body'); table.replaceChildren();
+    const providerGrid = $('#model-providers'); providerGrid.replaceChildren();
+    for (const provider of (state.modelHub && state.modelHub.providers) || []) {
+      const verified = provider.state === 'AVAILABLE_VERIFIED';
+      const configured = provider.state === 'CONFIGURED_UNVERIFIED';
+      const runtimeOnly = provider.state === 'RUNTIME_DETECTED';
+      const stateLabel = verified ? 'Verified available'
+        : configured ? 'Configured · not live-verified'
+          : runtimeOnly ? 'Runtime detected'
+            : provider.registration === 'unregistered' ? 'No adapter registered'
+              : provider.state === 'NOT_CONFIGURED' ? 'Not configured' : 'Availability unknown';
+      const stateClass = verified ? 'ok' : configured || runtimeOnly ? 'warn' : 'muted';
+      const card = el('div', { class: 'backend' + (verified ? ' up' : '') });
+      card.append(el('div', { class: 'backend-h' },
+        el('span', { class: 'dot' + (verified ? ' on' : '') }),
+        el('b', { text: provider.displayName }),
+        el('span', { class: 'state' }, badge(stateLabel, stateClass)),
+      ));
+      const facts = [];
+      if (provider.registration === 'registered') facts.push('Adapter registered');
+      else facts.push('Adapter not registered');
+      if (provider.configuredVia && provider.configuredVia.length) facts.push('Credential source detected: ' + provider.configuredVia.join(', '));
+      if (provider.runtimes && provider.runtimes.length) facts.push('Runtime: ' + provider.runtimes.join(', '));
+      card.append(el('p', { text: facts.join(' · ') + '. Selection never grants execution authority.' }));
+      providerGrid.append(card);
+    }
     let models = 0;
     for (const b of (state.local && state.local.backends) || []) {
       const name = PROVIDER[b.kind] || b.kind;
@@ -2516,7 +2545,7 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
   </div>
   <div id="model-catalog-results" class="catalog-results" aria-live="polite"></div><p id="model-catalog-status" class="status muted" role="status"></p>
   <h2 class="sec-h">Local runtimes</h2><div id="backends" class="backend-grid"></div>
-  <h2 class="sec-h">Cloud</h2><div class="card"><p>Cloud providers are managed in FuryPipe Connections. Studio will progressively unify local and cloud routing behind Fury Auto.</p><a class="btn" href="#/connections">${icon('connections')}View connections</a></div>
+  <h2 class="sec-h">Providers</h2><div id="model-providers" class="backend-grid" aria-live="polite"></div>
   <details class="adv"><summary>Advanced · endpoints</summary><div><table><thead><tr><th scope="col">Backend</th><th scope="col">Endpoint</th><th scope="col">State</th><th scope="col">Model</th><th scope="col">Fit</th></tr></thead><tbody id="models-body"></tbody></table></div></details>
   <p id="models-status" class="status muted" role="status"></p></section>
 <section data-view="connections" aria-labelledby="h-connections" hidden><h1 id="h-connections">Connections</h1><p class="lead">FuryPipe automatically detects AI runtimes and safe credential hints on this machine. It never reads browser cookies, OAuth stores or secret values.</p>
