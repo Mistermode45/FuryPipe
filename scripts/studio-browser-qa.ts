@@ -163,6 +163,12 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     assert(widthAfter > widthBefore, `${name}: keyboard sidebar resize did not increase width`);
     assert(await page.evaluate(() => localStorage.getItem('furypipe.studio.sidebarWidth')) === String(widthAfter), `${name}: sidebar width was not persisted`);
     await page.locator('#chat-input').fill('Say hello');
+    // Local runtime discovery is asynchronous. Wait for the composer to become
+    // sendable instead of racing the discovery request on slower CI engines.
+    await page.waitForFunction(() => {
+      const send = document.querySelector('#chat-send');
+      return send instanceof HTMLButtonElement && !send.disabled;
+    });
     await page.locator('#chat-send').click();
     await page.locator('#chat-log .msg:not(.user)').filter({ hasText: 'Hello from a local model.' }).waitFor();
     assert(!(await page.locator('#chat').evaluate((n) => n.classList.contains('is-empty'))), `${name}: hero did not collapse into the conversation`);
