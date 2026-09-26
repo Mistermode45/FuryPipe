@@ -43,13 +43,15 @@ import { inspectHuggingFaceGguf, recommendHuggingFaceGguf } from '../fury-huggin
 import { installFuryLocalRuntime, type FuryRuntimeSetupId, type FuryRuntimeSetupRunner } from '../fury-runtime-setup.js';
 import { launchFuryAccountLogin, type FuryAccountLoginLauncher, type FuryAccountProvider } from '../fury-account-connect.js';
 import { probeFuryAccountStatuses, type FuryAccountStatusRunner } from '../fury-account-status.js';
+import { FURY_AUTOPILOT_EFFORTS, planFuryAutopilot, type FuryAutopilotEffort } from '../fury-autopilot.js';
+import { FURY_EXTENSION_KINDS, listFuryExtensions, type FuryExtensionKind } from '../fury-extension-catalog.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
 const CACHE_MS = 10_000;
 
 export type StudioRoute =
-  | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
+  | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'autopilot-preview' | 'extensions' | 'chat' | 'flow-preview'
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
   | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
@@ -71,6 +73,8 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/graph.json': { route: 'graph', method: 'GET' },
   '/api/studio/blast-radius': { route: 'blast-radius', method: 'POST' },
   '/api/studio/dispatch-preview': { route: 'dispatch-preview', method: 'POST' },
+  '/api/studio/autopilot/preview': { route: 'autopilot-preview', method: 'POST' },
+  '/api/studio/extensions.json': { route: 'extensions', method: 'GET' },
   '/api/studio/chat': { route: 'chat', method: 'POST' },
   '/api/studio/flow-preview': { route: 'flow-preview', method: 'POST' },
   '/api/studio/runs.json': { route: 'runs', method: 'GET' },
@@ -418,6 +422,54 @@ export function createStudioApi(options: StudioApiOptions) {
             }
             const plan = planFuryDispatch({ ir, candidates, mode, ...(coupling ? { coupling } : {}) });
             return json({ plan, candidates: candidates.map((c) => ({ id: c.id, harnessId: c.harnessId, provider: c.provider, model: c.model, locality: c.locality })), execution: 'NOT_EXECUTED: preview only' });
+          }
+          case 'autopilot-preview': {
+            const body = await readJson(request) as { objective?: unknown; harnessId?: unknown; effort?: unknown };
+            if (typeof body?.objective !== 'string' || !body.objective.trim() || body.objective.length > 16_000) {
+              return problem(400, 'invalid-input', 'objective is required');
+            }
+            const effort = typeof body.effort === 'string' && (FURY_AUTOPILOT_EFFORTS as readonly string[]).includes(body.effort)
+              ? body.effort as FuryAutopilotEffort
+              : 'auto';
+            const [skillSelection, mcpState] = await Promise.all([
+              skills.autoSelect(body.objective, typeof body.harnessId === 'string' && body.harnessId
+                ? { harnessId: body.harnessId }
+                : {}),
+              mcp.list(),
+            ]);
+            const plan = planFuryAutopilot({
+              objective: body.objective,
+              effort,
+              selectedSkills: skillSelection.plan.selected,
+              mcpSources: mcpState.sources.map((source) => ({
+                sourceId: source.sourceId,
+                name: source.name,
+                enabled: source.enabled,
+                trusted: source.trusted,
+                defaultPolicy: source.defaultPolicy,
+                ...(source.health ? { health: { ok: source.health.ok, tools: source.health.tools } } : {}),
+              })),
+            });
+            return json({
+              plan,
+              excludedSkills: skillSelection.excluded,
+              execution: 'NOT_EXECUTED: selection and instruction routing only',
+            });
+          }
+          case 'extensions': {
+            const params = new URL(request.url).searchParams;
+            const rawKind = params.get('kind');
+            const kind = rawKind && (FURY_EXTENSION_KINDS as readonly string[]).includes(rawKind)
+              ? rawKind as FuryExtensionKind
+              : undefined;
+            return json({
+              extensions: listFuryExtensions({
+                ...(params.get('q') ? { query: params.get('q')! } : {}),
+                ...(kind ? { kind } : {}),
+                includeRestricted: params.get('restricted') === '1',
+              }),
+              installation: 'LOCAL_REVIEW_REQUIRED: catalog entries are never downloaded or activated automatically',
+            });
           }
           case 'flow-preview': {
             const body = await readJson(request) as { flow?: unknown; fixtures?: unknown; approvals?: unknown };
