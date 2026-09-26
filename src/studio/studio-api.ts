@@ -44,6 +44,7 @@ import { installFuryLocalRuntime, type FuryRuntimeSetupId, type FuryRuntimeSetup
 import { launchFuryAccountLogin, type FuryAccountLoginLauncher, type FuryAccountProvider } from '../fury-account-connect.js';
 import { probeFuryAccountStatuses, type FuryAccountStatusRunner } from '../fury-account-status.js';
 import { FURY_AUTOPILOT_EFFORTS, planFuryAutopilot, type FuryAutopilotEffort } from '../fury-autopilot.js';
+import { STUDIO_RESPONSE_STYLES, planStudioAutopilot, type StudioResponseStyle } from './studio-autopilot.js';
 import { FURY_EXTENSION_KINDS, listFuryExtensions, type FuryExtensionKind } from '../fury-extension-catalog.js';
 import { renderTextToImages } from '../core/library.js';
 
@@ -428,9 +429,15 @@ export function createStudioApi(options: StudioApiOptions) {
             return json({ plan, candidates: candidates.map((c) => ({ id: c.id, harnessId: c.harnessId, provider: c.provider, model: c.model, locality: c.locality })), execution: 'NOT_EXECUTED: preview only' });
           }
           case 'autopilot-preview': {
-            const body = await readJson(request) as { objective?: unknown; harnessId?: unknown; effort?: unknown };
-            if (typeof body?.objective !== 'string' || !body.objective.trim() || body.objective.length > 16_000) {
-              return problem(400, 'invalid-input', 'objective is required');
+            const body = await readJson(request) as { objective?: unknown; harnessId?: unknown; effort?: unknown; responseStyle?: unknown; customInstructions?: unknown };
+            if (typeof body.objective !== 'string' || !body.objective.trim() || body.objective.length > 32_768 || body.objective.includes('\0')) {
+              return problem(400, 'invalid-input', 'objective is required (max 32768 characters)');
+            }
+            if (body.harnessId !== undefined && (typeof body.harnessId !== 'string' || body.harnessId.length > 128 || body.harnessId.includes('\0'))) {
+              return problem(400, 'invalid-input', 'harnessId must be bounded text');
+            }
+            if (body.customInstructions !== undefined && (typeof body.customInstructions !== 'string' || body.customInstructions.length > 4_000 || body.customInstructions.includes('\0'))) {
+              return problem(400, 'invalid-input', 'customInstructions must be bounded text');
             }
             const effort = typeof body.effort === 'string' && (FURY_AUTOPILOT_EFFORTS as readonly string[]).includes(body.effort)
               ? body.effort as FuryAutopilotEffort
@@ -454,16 +461,31 @@ export function createStudioApi(options: StudioApiOptions) {
                 ...(source.health ? { health: { ok: source.health.ok, tools: source.health.tools } } : {}),
               })),
             });
+            let responseStyle: StudioResponseStyle = plan.communicationStyle === 'CAVEMAN' ? 'caveman' : 'balanced';
+            if (body.responseStyle !== undefined) {
+              if (typeof body.responseStyle !== 'string' || !(STUDIO_RESPONSE_STYLES as readonly string[]).includes(body.responseStyle)) {
+                return problem(400, 'invalid-input', 'responseStyle is unsupported');
+              }
+              responseStyle = body.responseStyle as StudioResponseStyle;
+            }
             const harnessId = typeof body.harnessId === 'string' && body.harnessId ? body.harnessId : undefined;
-            const activatedSkills = await skills.activateSelection(
-              skillSelection.plan.selected.map((skill) => skill.name),
-              harnessId ? { harnessId } : {},
-            );
+            const compiled = await planStudioAutopilot({
+              objective: body.objective,
+              projectRoot: options.projectRoot,
+              skills,
+              mcp,
+              ...(harnessId ? { harnessId } : {}),
+              responseStyle,
+              ...(typeof body.customInstructions === 'string' && body.customInstructions.trim()
+                ? { customInstructions: body.customInstructions.trim() }
+                : {}),
+            });
             return json({
+              ...compiled,
               plan,
-              activatedSkills,
+              compiled,
               excludedSkills: skillSelection.excluded,
-              execution: 'NOT_EXECUTED: instructions activated; tools, scripts and MCP execution remain separately governed',
+              execution: 'NOT_EXECUTED: instructions compiled; tools, scripts and MCP execution remain separately governed',
             });
           }
           case 'extensions': {

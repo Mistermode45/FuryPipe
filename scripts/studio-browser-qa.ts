@@ -140,6 +140,12 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 860 } });
     const page = await context.newPage();
+    const chatPayloads: Array<{ messages?: Array<{ role?: string; content?: string }> }> = [];
+    page.on('request', (request) => {
+      if (request.url().endsWith('/api/studio/chat') && request.method() === 'POST') {
+        try { chatPayloads.push(JSON.parse(request.postData() ?? '{}') as { messages?: Array<{ role?: string; content?: string }> }); } catch {}
+      }
+    });
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('pageerror', (e) => errors.push(e.message));
 
@@ -171,6 +177,10 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     });
     await page.locator('#chat-send').click();
     await page.locator('#chat-log .msg:not(.user)').filter({ hasText: 'Hello from a local model.' }).waitFor();
+    assert(chatPayloads.length > 0, `${name}: chat request was not captured`);
+    assert(chatPayloads[0]?.messages?.[0]?.role === 'system', `${name}: Fury Autopilot system prompt was not injected`);
+    assert((chatPayloads[0]?.messages?.[0]?.content ?? '').includes('FuryPipe routed assistant'), `${name}: compiled Autopilot instructions missing from chat payload`);
+    await page.locator('.activity summary').filter({ hasText: 'Fury Autopilot' }).waitFor();
     assert(!(await page.locator('#chat').evaluate((n) => n.classList.contains('is-empty'))), `${name}: hero did not collapse into the conversation`);
     // A general prompt is routed to the general model, not the coder model.
     await page.locator('#chat-log .msg .who').filter({ hasText: 'llama3.2:3b · ollama · local' }).waitFor();
@@ -222,6 +232,7 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.goto(`${origins.normal}/#/cowork`);
     // Cowork run: ASK permissions raise an approval before anything starts.
     await page.locator('#cowork-intent').fill('Tidy the docs folder');
+    await page.locator('.work-advanced > summary').click();
     await page.locator('#cowork-files').fill('docs/');
     await page.locator('#cowork-confirm').check();
     let approvalPrompt = '';

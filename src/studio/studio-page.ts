@@ -1037,7 +1037,7 @@ const SCRIPT = String.raw`
   function show(name) {
     if (!views.includes(name)) name = 'notfound';
     for (const s of $$('main > section')) s.hidden = s.dataset.view !== name;
-    for (const a of $('.side-nav a[data-view]')) { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); }
+    for (const a of $$('.side-nav a[data-view]')) { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); }
     const activeNav = $('.side-nav a[data-view="' + name + '"]');
     const more = $('#nav-more');
     if (activeNav && activeNav.closest('.nav-more') && more) more.open = true;
@@ -1308,7 +1308,7 @@ const SCRIPT = String.raw`
     voiceBtn.addEventListener('click', () => { try { recognition.start(); } catch {} });
   }
 
-  for (const b of $('.chip-btn[data-prompt]')) b.addEventListener('click', () => { input.value = b.dataset.prompt; autosize(); input.focus(); input.setSelectionRange(input.value.length, input.value.length); });
+  for (const b of $$('.chip-btn[data-prompt]')) b.addEventListener('click', () => { input.value = b.dataset.prompt; autosize(); input.focus(); input.setSelectionRange(input.value.length, input.value.length); });
   function setStatus(text, stage) {
     const s = $('#chat-status'); s.replaceChildren();
     if (stage) s.append(el('span', { class: 'stage-line' }, el('span', { class: 'pulse', 'aria-hidden': 'true' }), el('span', { text })));
@@ -1317,6 +1317,11 @@ const SCRIPT = String.raw`
 
   /* ---------- Fury Autopilot ---------- */
   function autopilotSystemMessages(result) {
+    // The server compiler is authoritative. The browser only falls back to the
+    // legacy display composition for compatibility with older runtimes.
+    if (result.compiled && result.compiled.prompt && typeof result.compiled.prompt.text === 'string') {
+      return [{ role: 'system', content: result.compiled.prompt.text }];
+    }
     const plan = result.plan;
     const lines = [
       'FuryPipe turn instructions. The user request remains authoritative.',
@@ -1342,6 +1347,7 @@ const SCRIPT = String.raw`
       objective: text.slice(0, 16000),
       effort,
       harnessId: harnessId || 'studio-local',
+      customInstructions: store.get('customInstructions', '').trim().slice(0, 4000),
     });
     state.autopilot = result;
     state.autopilotMessages = autopilotSystemMessages(result);
