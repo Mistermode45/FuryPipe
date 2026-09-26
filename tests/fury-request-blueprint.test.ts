@@ -76,6 +76,24 @@ describe('Fury Request Blueprint', () => {
       needsApproval: true,
     });
     expect(blueprint.unresolved).toEqual(['model', 'agent', 'tool']);
+    expect(blueprint.decisions).toContainEqual(expect.objectContaining({
+      family: 'skills',
+      status: 'selected',
+      ids: ['repository-review'],
+      executionAuthority: false,
+    }));
+    expect(blueprint.decisions).toContainEqual(expect.objectContaining({
+      family: 'mcp',
+      status: 'advisory',
+      ids: ['github'],
+      executionAuthority: false,
+    }));
+    expect(blueprint.decisions).toContainEqual(expect.objectContaining({
+      family: 'context',
+      status: 'configured',
+      ids: ['TEXT_FIRST'],
+      executionAuthority: false,
+    }));
     expect(blueprint.capabilities.executionAuthority).toBe(false);
     expect(blueprint.mcp.executionAuthority).toBe(false);
     expect(blueprint.executionAuthorized).toBe(false);
@@ -152,6 +170,24 @@ describe('Fury Request Blueprint', () => {
 
     expect(blueprint.capabilities.selected.map((item) => item.kind)).toEqual(expect.arrayContaining(['agent','tool','model']));
     expect(blueprint.unresolved).toEqual([]);
+    expect(blueprint.decisions).toContainEqual(expect.objectContaining({
+      family: 'agents',
+      status: 'selected',
+      ids: ['review-agent'],
+      executionAuthority: false,
+    }));
+    expect(blueprint.decisions).toContainEqual(expect.objectContaining({
+      family: 'tools',
+      status: 'selected',
+      ids: ['native/repo-read'],
+      executionAuthority: false,
+    }));
+    expect(blueprint.decisions).toContainEqual(expect.objectContaining({
+      family: 'model',
+      status: 'selected',
+      ids: ['model/review'],
+      executionAuthority: false,
+    }));
     expect(blueprint.executionAuthorized).toBe(false);
   });
 
