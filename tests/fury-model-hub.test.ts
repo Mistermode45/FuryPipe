@@ -76,6 +76,37 @@ describe('Fury Model Hub', () => {
     }));
   });
 
+  it('surfaces detected connections without adapters as explicitly unregistered', () => {
+    const snapshot = buildFuryModelHubSnapshot({
+      providers: createProviderRegistry(),
+      models: createModelFabricRegistry(),
+      connections: {
+        format: 'furypipe-ai-connections/v1',
+        connections: [{
+          id: 'openrouter',
+          displayName: 'OpenRouter',
+          state: 'credential-configured',
+          configuredVia: ['OPENROUTER_API_KEY'],
+          runtimes: [],
+          accountVerification: 'not-probed',
+        }],
+        policy: {
+          browserSessions: 'not-inspected',
+          credentialStores: 'not-inspected',
+          secretValues: 'never-returned',
+          accountStatus: 'official-cli-only',
+        },
+      },
+    });
+
+    expect(snapshot.providers.find((provider) => provider.id === 'openrouter')).toMatchObject({
+      registration: 'unregistered',
+      availability: 'unknown',
+      state: 'CONFIGURED_UNVERIFIED',
+      executionAuthorized: false,
+    });
+  });
+
   it('does not convert runtime detection into provider availability', () => {
     const snapshot = buildFuryModelHubSnapshot({
       providers: createProviderRegistry(),
