@@ -39,6 +39,24 @@ export interface FuryRequestBlueprintInput {
   };
 }
 
+export type FuryRequestDecisionFamily =
+  | 'model'
+  | 'skills'
+  | 'instructions'
+  | 'mcp'
+  | 'tools'
+  | 'agents'
+  | 'context'
+  | 'budget';
+
+export interface FuryRequestDecision {
+  readonly family: FuryRequestDecisionFamily;
+  readonly status: 'selected' | 'advisory' | 'configured' | 'unresolved';
+  readonly ids: readonly string[];
+  readonly reason: string;
+  readonly executionAuthority: false;
+}
+
 export interface FuryRequestBlueprint {
   readonly format: typeof FURY_REQUEST_BLUEPRINT_FORMAT;
   readonly objectiveDigestSha256: string;
@@ -70,6 +88,7 @@ export interface FuryRequestBlueprint {
     readonly executionAuthority: false;
   };
   readonly budgets: FuryRequestBlueprintInput['budgets'];
+  readonly decisions: readonly FuryRequestDecision[];
   readonly unresolved: readonly ('model' | 'agent' | 'tool')[];
   readonly authority: 'planning-only';
   readonly executionAuthorized: false;
@@ -148,6 +167,77 @@ export function createFuryRequestBlueprint(
   const systemPromptBytes = boundedBytes(input.budgets.systemPromptBytes, 'systemPromptBytes');
 
   const selected = input.capabilitySelection.selected;
+  const idsByKind = (kinds: readonly FurySelectedCapability['kind'][]): readonly string[] =>
+    Object.freeze(selected.filter((item) => kinds.includes(item.kind)).map((item) => item.id));
+  const modelIds = idsByKind(['model']);
+  const skillIds = idsByKind(['skill']);
+  const agentIds = idsByKind(['agent']);
+  const toolIds = idsByKind(['tool', 'mcp-tool']);
+  const selectedMcpIds = idsByKind(['mcp', 'mcp-server', 'mcp-tool']);
+  const advisoryMcpIds = Object.freeze([...new Set(input.mcpSuggestions.map((item) => item.sourceId))]);
+  const instructionIds = Object.freeze([...new Set([...facetIds, ...profileIds])]);
+  const decisions: FuryRequestDecision[] = [
+    Object.freeze({
+      family: 'model',
+      status: modelIds.length ? 'selected' : 'unresolved',
+      ids: modelIds,
+      reason: modelIds.length ? 'Selected by Capability Autopilot.' : 'No eligible model capability selected on this surface.',
+      executionAuthority: false,
+    }),
+    Object.freeze({
+      family: 'skills',
+      status: skillIds.length ? 'selected' : 'unresolved',
+      ids: skillIds,
+      reason: skillIds.length ? 'Selected by Capability Autopilot and still subject to activation governance.' : 'No eligible skill selected.',
+      executionAuthority: false,
+    }),
+    Object.freeze({
+      family: 'instructions',
+      status: instructionIds.length ? 'configured' : 'unresolved',
+      ids: instructionIds,
+      reason: instructionIds.length ? 'Resolved by the deterministic instruction fabric.' : 'No additional instruction facet or profile resolved.',
+      executionAuthority: false,
+    }),
+    Object.freeze({
+      family: 'mcp',
+      status: selectedMcpIds.length ? 'selected' : advisoryMcpIds.length ? 'advisory' : 'unresolved',
+      ids: selectedMcpIds.length ? selectedMcpIds : advisoryMcpIds,
+      reason: selectedMcpIds.length
+        ? 'Selected by Capability Autopilot; connection and execution remain separately governed.'
+        : advisoryMcpIds.length
+          ? 'Advisory MCP candidates matched the request but did not pass selection/exposure as executable capabilities.'
+          : 'No MCP capability or advisory source matched.',
+      executionAuthority: false,
+    }),
+    Object.freeze({
+      family: 'tools',
+      status: toolIds.length ? 'selected' : 'unresolved',
+      ids: toolIds,
+      reason: toolIds.length ? 'Selected tool metadata; invocation remains separately governed.' : 'No eligible tool capability selected.',
+      executionAuthority: false,
+    }),
+    Object.freeze({
+      family: 'agents',
+      status: agentIds.length ? 'selected' : 'unresolved',
+      ids: agentIds,
+      reason: agentIds.length ? 'Selected agent runtime metadata; dispatch remains separately governed.' : 'No eligible agent runtime selected.',
+      executionAuthority: false,
+    }),
+    Object.freeze({
+      family: 'context',
+      status: 'configured',
+      ids: Object.freeze([input.contextMode]),
+      reason: 'Context strategy selected by request routing.',
+      executionAuthority: false,
+    }),
+    Object.freeze({
+      family: 'budget',
+      status: 'configured',
+      ids: Object.freeze(['skill-instruction-bytes', 'system-prompt-bytes']),
+      reason: 'Bounded request budgets are enforced by the Studio compiler.',
+      executionAuthority: false,
+    }),
+  ];
   const unresolved: Array<'model' | 'agent' | 'tool'> = [];
   if (!selected.some((item) => item.kind === 'model')) unresolved.push('model');
   if (!selected.some((item) => item.kind === 'agent')) unresolved.push('agent');
@@ -183,6 +273,7 @@ export function createFuryRequestBlueprint(
       skillInstructionBytes,
       systemPromptBytes,
     }),
+    decisions: Object.freeze(decisions),
     unresolved: Object.freeze(unresolved),
     authority: 'planning-only' as const,
     executionAuthorized: false as const,
