@@ -71,6 +71,7 @@ export interface FuryRequestBlueprint {
     readonly selectionDigestSha256: string;
     readonly selected: readonly FurySelectedCapability[];
     readonly blocked: readonly FuryBlockedCapability[];
+    readonly missingExplicitRequests: FuryCapabilitySelectionPlan['missingExplicitRequests'];
     readonly authority: 'selection-only';
     readonly executionAuthority: false;
   };
@@ -257,6 +258,7 @@ export function createFuryRequestBlueprint(
       selectionDigestSha256: input.capabilitySelection.selectionDigestSha256,
       selected,
       blocked: input.capabilitySelection.blocked,
+      missingExplicitRequests: input.capabilitySelection.missingExplicitRequests,
       authority: 'selection-only' as const,
       executionAuthority: false as const,
     }),
