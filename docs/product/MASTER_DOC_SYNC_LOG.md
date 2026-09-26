@@ -53,3 +53,15 @@ Conflict rule: technical state → GitHub wins; product intent → master doc wi
 - Remaining work: curated production datasets, longitudinal effectiveness history and UI visualization.
 - Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
 - No merge, release, tag, npm publish or deploy performed.
+
+
+## 2026-09-26 — Graphify lifecycle recommendation
+
+- Added non-executing Graphify lifecycle planning.
+- Stale graph or relevant code changes → `RECOMMEND_REFRESH`.
+- Missing Graphify output → `USE_NATIVE_FALLBACK`.
+- Path traversal inputs are discarded from changed-file consideration.
+- Existing explicit `refreshGraphify()` remains the only subprocess boundary.
+- No automatic refresh, merge hook, checkout hook or hidden subprocess was introduced.
+- Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
+- No merge, release, tag, npm publish or deploy performed.
