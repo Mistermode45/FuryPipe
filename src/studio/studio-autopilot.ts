@@ -90,6 +90,15 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     },
   });
   const selectedSkillCapabilities=capabilitySelection.selected.filter((item)=>item.kind==='skill');
+  const governedModelCandidates=Object.freeze(capabilitySelection.blocked
+    .filter((item)=>item.kind==='model'&&item.relevanceScore>0)
+    .sort((a,b)=>Number(b.requestedExplicitly)-Number(a.requestedExplicitly)||b.score-a.score||a.id.localeCompare(b.id))
+    .slice(0,4)
+    .map((item)=>Object.freeze({
+      id:item.id,
+      score:item.score,
+      reason:`Model Fabric ranked this model but executable selection was blocked: ${item.reason}.`,
+    })));
   const mcpSourceById=new Map(mcpView.sources.map((source)=>[source.sourceId,source] as const));
   const governedMcpCandidates=Object.freeze(capabilitySelection.blocked
     .filter((item)=>item.kind==='mcp-server'&&item.relevanceScore>0)
@@ -237,6 +246,7 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     instructionProfileIds:instructionPlan.appliedProfiles,
     qualityGates:instructionPlan.qualityGates,
     mcpSuggestions:routing.mcp.slice(0,MAX_MCP_SUGGESTIONS),
+    modelSuggestions:governedModelCandidates,
     budgets:{
       skillInstructionBytes:MAX_SKILL_PROMPT_BYTES,
       systemPromptBytes:MAX_SYSTEM_PROMPT_BYTES,
@@ -294,6 +304,10 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
         ...promptBudgetBlocked.map((name)=>Object.freeze({name,reason:'prompt-budget' as const,detail:'skill prompt exceeded the per-turn activation budget'})),
       ]),
       instructionBudgetBytes:MAX_SKILL_PROMPT_BYTES,
+      executionAuthorized:false as const,
+    }),
+    models:Object.freeze({
+      suggested:governedModelCandidates,
       executionAuthorized:false as const,
     }),
     mcp:Object.freeze({
