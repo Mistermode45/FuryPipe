@@ -3,7 +3,7 @@
 Status: ACTIVE PRODUCT GAP LEDGER  
 Repository: `Mistermode45/FuryPipe`  
 Track: PR #233 — `claude/furypipe-studio-autopilot-extensions`  
-Audit input HEAD: `3b2b79ce368088ee1f10308bc23e7f71fecb6bba`  
+Audit input HEAD: `746f926e4ebc44d6face01b01ce66532cef19ec0`  
 Product source: `docs/product/FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md`
 
 ## Scope and evidence rule
@@ -44,10 +44,10 @@ Primary evidence:
 | Universal Capability Registry | DONE CORE | One registry for MODEL/PROVIDER/SKILL/SKILL_PACK/INSTRUCTION/PLUGIN/MCP/CONNECTOR/TOOL/AGENT/WORKFLOW/AUTOMATION/media/runtime providers | Master taxonomy is represented by the existing catalog + Capability Index projection path; runtime stores remain authoritative and the index remains routing-metadata-only | P1 | capability catalog, trust, score | High | schema/index/adapters tests + exact-head CI |
 | Capability Router + Fury Autopilot | DONE CORE | One explainable request router selecting model, skills, instructions, MCP, plugins, tools, agents and budgets | Studio consumes the shared Capability Index/Autopilot and emits an attested Request Blueprint. MCP/model candidates blocked by missing runtime authority remain advisory-only; executable selection stays in the governed runtime instead of being widened by routing metadata. | P1 | registry, prompt, dispatcher | High | routing/index/blueprint tests + exact-head CI |
 | Capability Graph / Mesh | DONE CORE / PARTIAL FRONTIER | Request→Agent→Skill→MCP→Tool→Provider→Model plus Project→Repository→Files→Memory→Decision→Artifact | Capability Graph projects request decisions; Workspace Graph composes project/repository/files/memory/decisions/artifacts while FuryGraph/Memory/artifact stores remain authoritative. Advanced cross-workspace mesh remains a later frontier layer. | P1/P4 | registry, FuryGraph | Medium | capability/workspace graph tests + Studio browser QA |
-| Skills | DONE core / PARTIAL target | Auto routing, composition, packs, creator, registry, SDK, effectiveness analytics | Skills Hub and auto-select exist; creator/SDK/effectiveness/pack governance require reconciliation | P1/P2 | registry, trust, eval | Medium | unit + import security + browser QA + eval |
+| Skills | DONE CORE / PARTIAL EXTENDED | Auto routing, composition, packs, creator, registry, SDK, effectiveness analytics | Shared Capability Autopilot routes skills; Skill Hub supports discovery/import/enable/disable/pin/governance/version snapshots/rollback/compare and now a validated project-local Skill Creator. Creator emits bounded SKILL.md only; declared tools remain metadata with executionAuthorized=false. Public SDK, richer pack lifecycle and effectiveness analytics remain P2. | P1/P2 | registry, trust, eval | Medium | skill hub/API/security tests + browser QA + eval |
 | Instructions | DONE CORE / PARTIAL UX | Registry + router + deterministic conflict resolver + layered precedence | Instruction Fabric + explicit Base→User→Workspace→Project→Domain→Task→Skill→Security→Runtime precedence now resolve deterministically and fail closed on same-precedence scalar conflicts; broader instruction-library UX remains | P1/P2 | FuryPrompt, registry | High | precedence/conflict tests + Studio rendering |
-| FuryPrompt Engine | IMPLEMENTED_PENDING_EXACT_HEAD | Raw/Auto/Enhanced/Professional/Coding/Research/Creative/Strict/Fast + analyzer + compiled-prompt inspection | Nine official modes and deterministic prompt analysis are implemented; Studio exposes recommended mode, ambiguity, risk, expected output and complexity without silently changing authority | P1 | instruction fabric | Medium | prompt analyzer/compiler tests + Studio/browser QA + exact-head CI |
-| FuryContext | IMPLEMENTED_PENDING_EXACT_HEAD | Retrieval + budget + inspector + compaction + diff-aware context | Context compiler remains core; bounded Context Inspector now exposes loaded/not-loaded/unknown categories and explicit byte/token-estimate basis; deterministic Context Diff compares capsules. Advanced semantic compaction UX remains P2. | P1/P2 | memory, graph | High | context compiler/inspector/diff tests + FuryBench + Studio/browser QA + exact-head CI |
+| FuryPrompt Engine | IMPLEMENTED_PENDING_EXACT_HEAD | Raw/Auto/Enhanced/Professional/Coding/Research/Creative/Strict/Fast + analyzer + compiled-prompt inspection | Nine official modes and deterministic prompt analysis are implemented; Studio renders recommended mode, ambiguity, missing context, conflict indicators, risk, expected output and complexity without silently changing authority | P1 | instruction fabric | Medium | prompt analyzer/compiler tests + Studio/browser QA + exact-head CI |
+| FuryContext | IMPLEMENTED_PENDING_EXACT_HEAD | Retrieval + budget + inspector + compaction + diff-aware context | Context compiler remains core; bounded Context Inspector exposes loaded/available-not-loaded/not-present/unknown categories and explicit byte/token-estimate basis; deterministic Context Diff compares added/removed/changed entries and hard constraints. Advanced semantic compaction/history UX remains P2. | P1/P2 | memory, graph | High | context compiler/inspector/diff tests + FuryBench + Studio/browser QA + exact-head CI |
 | FuryMemory | DONE core / PARTIAL target | Multi-layer memory graph, provenance, management, time machine | Memory VNext + Studio memory exist; advanced management/time-machine/cross-project graph remain broader | P2 | graph, storage | High | recall/false-memory eval + migration tests |
 | Model Hub | PARTIAL | Unified local/cloud providers with real capability detection and per-model power controls | Local fabric DONE; cloud models remain outside Studio per current spec | P1 | provider adapters, budget, secrets | High | provider contract tests + live opt-in verification |
 | Provider architecture | PARTIAL | Stable ProviderAdapter/SDK, health routing, retries/fallback/circuit breakers | Foundation has governed providers, but complete new Studio/provider-SDK target is not reconciled | P1/P2 | model hub, observability | High | adapter conformance + failure/chaos tests |
@@ -136,3 +136,19 @@ Implemented on the continuation branch and pending final exact-head evidence:
 - deterministic Context Diff for added/removed/changed context and hard-constraint changes.
 
 No merge, tag, release, npm publish or deploy is authorized by this checkpoint.
+
+## Skills Creator checkpoint — 2026-09-26
+
+Implemented on the continuation branch:
+
+- project-local creator writes only a validated `SKILL.md` under `.furypipe/skills/<name>`;
+- bounded name/description/instructions/version/author/license/runtime/tool/trigger/example/test fields;
+- known-runtime allowlist for compatibility metadata;
+- `allowed-tools` remains routing metadata and never grants tool authority;
+- existing snapshots/version history are reused on replacement;
+- Studio API requires explicit `confirm:true`;
+- Studio UI exposes creation separately from local-folder import and states the no-authority boundary;
+- unit/API tests cover successful creation, activation-as-instructions, confirmation, invalid names, unknown runtimes and oversized instructions.
+
+Status remains `IMPLEMENTED_PENDING_EXACT_HEAD` until the final documentation/code SHA has all hosted gates green.
+
