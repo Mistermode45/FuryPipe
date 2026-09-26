@@ -41,3 +41,15 @@ Conflict rule: technical state → GitHub wins; product intent → master doc wi
 - Gap ledger updated from Marketplace NOT_STARTED → PARTIAL FOUNDATION and Supply Chain PARTIAL → DONE CORE / PARTIAL DISTRIBUTION.
 - Documentation synchronization commit is newer than the validated implementation SHA and therefore requires its own exact-head hosted evidence before being treated as the final PR checkpoint.
 - No merge, tag, release, npm publish or deploy performed.
+
+
+## 2026-09-26 — FuryEval core
+
+- Added deterministic FuryEval datasets/reports/comparisons for routing, skills, memory and agents.
+- Metrics: success rate, precision, recall, F1, optional latency/cost when supplied by observed evidence.
+- Dataset identity/version gates comparability; non-comparable reports are not ranked against each other.
+- Studio evaluation endpoint is analysis-only and never grants runtime authority.
+- Public package export: `furypipe/fury-eval`.
+- Remaining work: curated production datasets, longitudinal effectiveness history and UI visualization.
+- Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
+- No merge, release, tag, npm publish or deploy performed.
