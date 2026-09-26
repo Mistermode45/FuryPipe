@@ -8,6 +8,7 @@ import {
   selectFuryCapabilitiesForTask,
 } from '../src/capability-autopilot.js';
 import {
+  projectHarnessesIntoCapabilityIndex,
   projectMcpHubIntoCapabilityIndex,
   projectMcpIntoCapabilityIndex,
   projectModelsIntoCapabilityIndex,
@@ -260,6 +261,75 @@ describe('Capability Autopilot source-of-truth adapters', () => {
     expect(serialized).not.toContain('CONTEXT7_API_KEY');
     expect(serialized).not.toContain('bearerEnv');
     expect(serialized).not.toContain('enabled":true');
+  });
+
+  it('projects harness discovery as agent capabilities without executing discovery', () => {
+    const index = createFuryCapabilityIndex();
+    const report = projectHarnessesIntoCapabilityIndex(index, {
+      format: 'furypipe-harness-discovery/v1',
+      platform: 'linux',
+      harnesses: [{
+        id: 'furypipe-native',
+        displayName: 'FuryPipe Native',
+        installed: true,
+        versionStatus: 'builtin',
+        authentication: 'not-probed',
+        definition: {
+          id: 'furypipe-native',
+          displayName: 'FuryPipe Native',
+          executables: [],
+          versionArgs: [],
+          integrations: ['native'],
+          protocols: ['mcp','acp','a2a'],
+          skillsDirectories: ['.furypipe/skills'],
+          localModel: { mechanism: 'native', note: 'native' },
+          capabilities: { streaming: true, resume: true, subagents: true },
+          evidence: 'BUILTIN',
+        },
+      },{
+        id: 'claude-code',
+        displayName: 'Claude Code',
+        installed: true,
+        executable: '/usr/bin/claude',
+        version: '2.1.282',
+        versionStatus: 'ok',
+        authentication: 'not-probed',
+        definition: {
+          id: 'claude-code',
+          displayName: 'Claude Code',
+          executables: ['claude'],
+          versionArgs: ['--version'],
+          integrations: ['official-sdk','structured-cli'],
+          protocols: ['mcp'],
+          skillsDirectories: ['.claude/skills'],
+          localModel: { mechanism: 'anthropic-compatible-base-url', note: 'local compatible' },
+          capabilities: { streaming: true, resume: true, subagents: true },
+          evidence: 'OFFICIAL_FACT',
+        },
+      }],
+    });
+
+    expect(report).toEqual({
+      indexed: 2,
+      skipped: 0,
+      source: 'harness-hub',
+      authority: 'projection-only',
+      executionAuthority: false,
+    });
+    expect(index.get('agent','furypipe-native')).toMatchObject({
+      trust: 'verified',
+      health: 'ready',
+      requiredPermissions: [],
+      executionAuthority: false,
+    });
+    expect(index.get('agent','claude-code')).toMatchObject({
+      trust: 'verified',
+      health: 'ready',
+      requiredPermissions: ['process'],
+      source: { sourceRevision: '2.1.282' },
+      executionAuthority: false,
+    });
+    expect(JSON.stringify(index.snapshot())).not.toContain('/usr/bin/claude');
   });
 
   it('projects Provider Fabric metadata without probing or inventing availability', () => {
