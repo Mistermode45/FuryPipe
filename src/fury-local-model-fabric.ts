@@ -76,7 +76,7 @@ export function observeFuryLocalModelsInModelFabric(
       if (model.modality === 'embeddings') continue;
       const entry = modelEntry(backend, model);
       registry.upsert(entry);
-      health[entry.id] = 'ready';
+      health[localModelCapabilityId(backend.kind, model.id)] = 'ready';
     }
   }
   return Object.freeze(health);
