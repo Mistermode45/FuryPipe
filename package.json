@@ -281,6 +281,10 @@
       "types": "./dist/plugin-bundles.d.ts",
       "import": "./dist/plugin-bundles.js"
     },
+    "./fury-plugin-sdk": {
+      "types": "./dist/fury-plugin-sdk.d.ts",
+      "import": "./dist/fury-plugin-sdk.js"
+    },
     "./external-references": {
       "types": "./dist/external-reference-catalog.d.ts",
       "import": "./dist/external-reference-catalog.js"
