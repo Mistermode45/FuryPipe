@@ -227,6 +227,9 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.goto(`${origins.normal}/#/cowork`);
     // Cowork run: ASK permissions raise an approval before anything starts.
     await page.locator('#cowork-intent').fill('Tidy the docs folder');
+    // The mutation scope lives under progressive disclosure. Open the advanced
+    // section before interacting with controls that are intentionally hidden by default.
+    await page.locator('.work-advanced > summary').click();
     await page.locator('#cowork-files').fill('docs/');
     await page.locator('#cowork-confirm').check();
     let approvalPrompt = '';
