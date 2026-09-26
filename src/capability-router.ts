@@ -1064,7 +1064,7 @@ function validateDynamicAnalysis(
       || !['explicit-request','family-match','task-relevance'].includes(entry.reason)
       || !Array.isArray(entry.requiredPermissions)
       || entry.requiredPermissions.length > 32
-      || entry.requiredPermissions.some((permission) => typeof permission !== 'string' || permission.length < 1 || permission.length > 128 || permission.includes('\0'))
+      || entry.requiredPermissions.some((permission: unknown) => typeof permission !== 'string' || permission.length < 1 || permission.length > 128 || permission.includes('\0'))
       || entry.executionAuthorized !== false) {
       throw new Error('universal selectionTrace entry is invalid');
     }
@@ -1076,7 +1076,7 @@ function validateDynamicAnalysis(
       id: entry.id,
       score: entry.score,
       reason: entry.reason,
-      requiredPermissions: Object.freeze([...new Set(entry.requiredPermissions)]),
+      requiredPermissions: Object.freeze([...new Set(entry.requiredPermissions as readonly string[])]),
       executionAuthorized: false,
     }));
   }
