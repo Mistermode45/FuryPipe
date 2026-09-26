@@ -11,6 +11,7 @@ import {
   projectMcpHubIntoCapabilityIndex,
   projectMcpIntoCapabilityIndex,
   projectModelsIntoCapabilityIndex,
+  projectProvidersIntoCapabilityIndex,
   projectPluginsIntoCapabilityIndex,
   projectSkillHubIntoCapabilityIndex,
   projectSkillsIntoCapabilityIndex,
@@ -24,6 +25,7 @@ import {
   normalizeOpenAIModelsPayload,
   createModelFabricRegistry,
 } from '../src/core/model-fabric.js';
+import { createProviderRegistry } from '../src/core/provider-fabric.js';
 import type {
   FuryKernelToolBridge,
   FuryKernelToolSourceInspection,
@@ -258,6 +260,59 @@ describe('Capability Autopilot source-of-truth adapters', () => {
     expect(serialized).not.toContain('CONTEXT7_API_KEY');
     expect(serialized).not.toContain('bearerEnv');
     expect(serialized).not.toContain('enabled":true');
+  });
+
+  it('projects Provider Fabric metadata without probing or inventing availability', () => {
+    const registry = createProviderRegistry([{
+      id: 'example',
+      protocol: 'openai',
+      aliases: ['example-ai'],
+      routePrefix: '/providers/example',
+      status: 'registered',
+      availability: 'unknown',
+      evidence: [{ kind: 'local-contract', source: 'test registration' }],
+      cache: {
+        status: 'unknown',
+        cost: { status: 'COST_UNKNOWN' },
+      },
+    }]);
+    const index = createFuryCapabilityIndex();
+
+    const report = projectProvidersIntoCapabilityIndex(index, registry);
+    expect(report).toEqual({
+      indexed: 1,
+      skipped: 0,
+      source: 'provider-fabric',
+      authority: 'projection-only',
+      executionAuthority: false,
+    });
+    expect(index.get('provider', 'example')).toMatchObject({
+      kind: 'provider',
+      trust: 'verified',
+      health: 'unknown',
+      requiredPermissions: ['provider-inference'],
+      executionAuthority: false,
+    });
+
+    const selected = selectFuryCapabilitiesForTask({
+      objective: 'Use the example provider.',
+      index,
+      explicitRequests: [{ kind: 'provider', id: 'example' }],
+      availablePermissions: ['provider-inference'],
+      options: { maxSelectedByKind: { provider: 1 } },
+    });
+    expect(selected.selected).toHaveLength(0);
+    expect(selected.blockedCounts).toMatchObject({ 'health-unknown': 1 });
+
+    const healthyIndex = createFuryCapabilityIndex();
+    projectProvidersIntoCapabilityIndex(healthyIndex, registry, { example: 'ready' });
+    expect(selectFuryCapabilitiesForTask({
+      objective: 'Use the example provider.',
+      index: healthyIndex,
+      explicitRequests: [{ kind: 'provider', id: 'example' }],
+      availablePermissions: ['provider-inference'],
+      options: { maxSelectedByKind: { provider: 1 } },
+    }).selected).toHaveLength(1);
   });
 
   it('projects Model Fabric metadata without making a provider request or claiming route health', () => {
