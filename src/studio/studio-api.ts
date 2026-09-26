@@ -47,6 +47,8 @@ import { FURY_AUTOPILOT_EFFORTS, type FuryAutopilotEffort } from '../fury-autopi
 import { STUDIO_RESPONSE_STYLES, planStudioAutopilot, type StudioResponseStyle } from './studio-autopilot.js';
 import { FURY_EXTENSION_KINDS, listFuryExtensions, type FuryExtensionKind } from '../fury-extension-catalog.js';
 import { renderTextToImages } from '../core/library.js';
+import { createModelFabricRegistry } from '../core/model-fabric.js';
+import { localModelCapabilityId, observeFuryLocalModelsInModelFabric } from '../fury-local-model-fabric.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
@@ -429,7 +431,7 @@ export function createStudioApi(options: StudioApiOptions) {
             return json({ plan, candidates: candidates.map((c) => ({ id: c.id, harnessId: c.harnessId, provider: c.provider, model: c.model, locality: c.locality })), execution: 'NOT_EXECUTED: preview only' });
           }
           case 'autopilot-preview': {
-            const body = await readJson(request) as { objective?: unknown; harnessId?: unknown; effort?: unknown; responseStyle?: unknown; customInstructions?: unknown };
+            const body = await readJson(request) as { objective?: unknown; harnessId?: unknown; effort?: unknown; responseStyle?: unknown; customInstructions?: unknown; localModel?: unknown; localBackend?: unknown };
             if (typeof body.objective !== 'string' || !body.objective.trim() || body.objective.length > 32_768 || body.objective.includes('\0')) {
               return problem(400, 'invalid-input', 'objective is required (max 32768 characters)');
             }
@@ -450,13 +452,32 @@ export function createStudioApi(options: StudioApiOptions) {
               responseStyle = body.responseStyle as StudioResponseStyle;
             }
             const harnessId = typeof body.harnessId === 'string' && body.harnessId ? body.harnessId : undefined;
-            const harnessDiscovery = await harnesses();
+            const localBackend = typeof body.localBackend === 'string' ? body.localBackend : undefined;
+            const localModel = typeof body.localModel === 'string' ? body.localModel : undefined;
+            if ((localBackend === undefined) !== (localModel === undefined)) {
+              return problem(400, 'invalid-input', 'localBackend and localModel must be supplied together');
+            }
+            if (localBackend !== undefined && (!['ollama','lmstudio','llamacpp','vllm','sglang','localai','jan','openai-compatible','anthropic-compatible'].includes(localBackend) || !localModel || localModel.length > 512 || localModel.includes('\0'))) {
+              return problem(400, 'invalid-input', 'local model selection is invalid');
+            }
+            const [harnessDiscovery, localDiscovery] = await Promise.all([harnesses(), local()]);
+            const modelFabric = createModelFabricRegistry();
+            const modelHealth = observeFuryLocalModelsInModelFabric(modelFabric, localDiscovery.backends);
+            const selectedModelCapabilityId = localBackend && localModel
+              ? localModelCapabilityId(localBackend as FuryLocalBackendKind, localModel)
+              : undefined;
+            if (selectedModelCapabilityId && !modelFabric.list().some((model) => `custom/${model.id}` === selectedModelCapabilityId)) {
+              return problem(409, 'model-unavailable', 'selected local model is not present in the current discovery snapshot');
+            }
             const compiled = await planStudioAutopilot({
               objective: body.objective,
               projectRoot: options.projectRoot,
               skills,
               mcp,
               harnesses: harnessDiscovery,
+              modelFabric,
+              modelHealth,
+              ...(selectedModelCapabilityId ? { selectedModelCapabilityId } : {}),
               effort,
               ...(harnessId ? { harnessId } : {}),
               responseStyle,
