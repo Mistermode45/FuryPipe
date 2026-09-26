@@ -373,6 +373,10 @@
       "types": "./dist/capability-router.d.ts",
       "import": "./dist/capability-router.js"
     },
+    "./capability-router-autopilot": {
+      "types": "./dist/capability-router-autopilot.d.ts",
+      "import": "./dist/capability-router-autopilot.js"
+    },
     "./capability-index": {
       "types": "./dist/capability-index.d.ts",
       "import": "./dist/capability-index.js"
