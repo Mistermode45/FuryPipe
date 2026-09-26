@@ -52,13 +52,14 @@ import { DEFAULT_PROVIDER_REGISTRY } from '../core/provider-fabric.js';
 import { buildFuryModelHubSnapshot } from '../fury-model-hub.js';
 import { localModelCapabilityId, observeFuryLocalModelsInModelFabric } from '../fury-local-model-fabric.js';
 import { buildFuryWorkspaceGraph } from '../fury-workspace-graph.js';
+import { evaluateFuryDataset, type FuryEvalDataset } from '../fury-eval.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
 const CACHE_MS = 10_000;
 
 export type StudioRoute =
-  | 'harnesses' | 'local' | 'models' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'autopilot-preview' | 'extensions' | 'chat' | 'flow-preview'
+  | 'harnesses' | 'local' | 'models' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'autopilot-preview' | 'eval' | 'extensions' | 'chat' | 'flow-preview'
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-create' | 'skill-compare'
   | 'mcp' | 'mcp-add' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
@@ -82,6 +83,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/blast-radius': { route: 'blast-radius', method: 'POST' },
   '/api/studio/dispatch-preview': { route: 'dispatch-preview', method: 'POST' },
   '/api/studio/autopilot/preview': { route: 'autopilot-preview', method: 'POST' },
+  '/api/studio/eval': { route: 'eval', method: 'POST' },
   '/api/studio/extensions.json': { route: 'extensions', method: 'GET' },
   '/api/studio/support.json': { route: 'support', method: 'GET' },
   '/api/studio/chat': { route: 'chat', method: 'POST' },
@@ -522,6 +524,22 @@ export function createStudioApi(options: StudioApiOptions) {
               excludedSkills: compiled.skills.excluded,
               execution: 'NOT_EXECUTED: instructions compiled; tools, scripts and MCP execution remain separately governed',
             });
+          }
+          case 'eval': {
+            const body = await readJson(request) as { dataset?: unknown };
+            if (!body || typeof body !== 'object' || body.dataset === undefined) {
+              return problem(400, 'invalid-input', 'dataset is required');
+            }
+            try {
+              const report = evaluateFuryDataset(body.dataset as FuryEvalDataset);
+              return json({
+                ...report,
+                authority: 'evaluation-only',
+                execution: 'NOT_EXECUTED: FuryEval evaluates supplied observations only',
+              });
+            } catch (error) {
+              return problem(422, 'eval-rejected', (error as Error).message);
+            }
           }
           case 'extensions': {
             const params = new URL(request.url).searchParams;
