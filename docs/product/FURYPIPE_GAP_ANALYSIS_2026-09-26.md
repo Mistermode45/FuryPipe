@@ -63,9 +63,9 @@ Primary evidence:
 | Workflows / automations | DONE core / PARTIAL target | richer builder, schedules/events/webhooks, reusable workflows | FuryFlow Studio exists; full automation breadth requires reconciliation | P2 | execution engine | Medium | DAG + persistence + E2E |
 | Artifacts | PARTIAL | first-class artifact graph, versioning, restore/export/search | Current master sync already records Artifact Graph as a gap | P2 | storage, graph | Medium | history/diff/restore tests |
 | Graphify lifecycle | PARTIAL | safe automatic recommendation/refresh after relevant changes | Explicit bounded `refreshGraphify` exists; auto refresh after merge/checkout not wired | P2 | FuryGraph, integrator | Medium | incremental integrity tests + fallback behavior |
-| Marketplace | NOT_STARTED | signed metadata, trust levels, install/update/rollback | Explicitly NOT_STARTED in Completion Spec | P2 | registry, trust, signatures | High | signature/tamper tests |
+| Marketplace | PARTIAL FOUNDATION | signed metadata, trust levels, install/update/rollback | Signed deterministic manifests, Ed25519 trust verification and approval-only INSTALL/UPDATE/ROLLBACK transition plans now exist. Network/filesystem/execution authority remains false. Actual downloader/installer, persistent catalog, UI lifecycle and rollback executor remain P2. | P2 | registry, trust, signatures | High | signature/tamper tests + future installer isolation tests |
 | Security / Zero Trust | DONE core / PARTIAL target | zero-trust extension/runtime policy across every new capability | Strong current controls; each new media/plugin/provider surface must inherit them | P0 continuous | FuryProof, trust | Critical | negative tests + SAST/dependency/secret scans |
-| Supply chain | PARTIAL | scanner, hashes/signatures, SBOM, license/dependency ledger | Registry already tracks provenance/license/checksums; signed marketplace/SBOM breadth not fully proven | P1/P2 | registry | High | tamper/license/security fixtures |
+| Supply chain | DONE CORE / PARTIAL DISTRIBUTION | scanner, hashes/signatures, SBOM, license/dependency ledger | Exact candidate produces deterministic dependency evidence + CycloneDX 1.6 SBOM bound to package/lockfile hashes; detached Ed25519 attestations verify exact evidence digests and reject tampering/non-Ed25519 keys. Distribution key management/transparency and marketplace installer enforcement remain P2. | P1/P2 | registry | High | tamper/license/security fixtures + RC Preparation exact-head evidence |
 | Observability / diagnostics | PARTIAL | trace tree, provider/tool/MCP latency, health, self-diagnostics | Existing control plane/evidence exists; unified FuryObservability target not audited complete | P2 | execution/provider layers | Medium | telemetry contract tests, no-secret logging |
 | Cost / budgets | DONE core / PARTIAL UX | per-request/daily/monthly/workspace costs and budgets | Dispatch budget profiles DONE; complete cost accounting/display not in Studio | P2 | providers, observability | Medium | accounting tests + UI QA |
 | Performance / recovery | DONE foundation / PARTIAL expanded | startup, streaming, queues, cancellation, backpressure, recovery, large-scale budgets | Many gates exist; new media/indexing/background workloads add unverified scale paths | P2/P3 | queue/storage | Medium | perf/chaos/restart suites |
@@ -204,3 +204,43 @@ Evidence already observed on the code checkpoint:
 - Local Contracts including MCP/Gateway/durability: PASS.
 
 Full hosted exact-head closure remains required on the final documentation SHA. No merge, release, tag, npm publish or deploy is authorized.
+
+
+## Supply Chain + Marketplace foundation checkpoint — 2026-09-26
+
+Validated implementation HEAD:
+
+`effbf0312bab129c4940bab3bce7f5d38bb1d5d3`
+
+Supply Chain:
+
+- deterministic dependency inventory bound to exact `package.json` and `pnpm-lock.yaml` SHA-256 digests;
+- CycloneDX 1.6 SBOM generation with explicit resolver-observation completeness rather than a fabricated completeness claim;
+- exact source commit binding in RC Preparation;
+- detached Ed25519 attestation over the immutable evidence digest;
+- private keys are never embedded in evidence/signature records;
+- changed evidence digests invalidate signatures;
+- non-Ed25519 signing/trusted keys fail closed;
+- public package subpath: `furypipe/fury-supply-chain`.
+
+Marketplace foundation:
+
+- deterministic `furypipe-marketplace-manifest/v1` contract;
+- runtime validation of capability type, permission schema, HTTPS source, SHA-256 source digest, metadata bounds and trust state;
+- detached Ed25519 signed manifest verification against an explicit trusted key set;
+- trust states remain explicit and `RESTRICTED` manifests are rejected;
+- INSTALL / UPDATE / ROLLBACK are planning-only;
+- every transition requires operator approval;
+- marketplace planning never grants network, filesystem or execution authority;
+- public package subpath: `furypipe/fury-marketplace`;
+- no downloader, installer, network fetch, filesystem mutation or plugin execution was introduced by this foundation.
+
+Exact-head evidence observed for `effbf0312bab129c4940bab3bce7f5d38bb1d5d3`:
+
+- **13/13 hosted workflows SUCCESS**;
+- **CI 9/9 SUCCESS** — Windows/macOS/Linux × Node 22/24/26;
+- **Clean Room 9/9 SUCCESS**;
+- Secret Scan, Benchmark Contract, Local Contracts, RC Preparation Evidence, Dashboard Browser QA, Web Studio Browser QA, Cross-Browser QA, Accessibility/Frontend Resilience, Upgrade/Rollback, Recovery/Restart and FuryBench: **SUCCESS**;
+- RC Preparation explicitly executed build, upgrade/rollback evidence and deterministic Supply Chain / CycloneDX generation successfully.
+
+Governance remains unchanged: PR #233 is OPEN + DRAFT; no merge, tag, release, npm publish or deploy is authorized or performed.
