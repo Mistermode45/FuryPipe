@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 
 import { planFuryAutopilot } from '../fury-autopilot.js';
+import { createFuryCapabilityIndex } from '../capability-index.js';
+import { selectFuryCapabilitiesForTask } from '../capability-autopilot.js';
+import { projectSkillHubIntoCapabilityIndex } from '../capability-index-adapters.js';
+import type { AgentSkillSelectionPlan } from '../agent-skill-selector.js';
 import { compileFuryPrompt } from '../fury-prompt.js';
 import { resolveInstructionPlan } from '../instruction-fabric.js';
 import type { FuryMcpHub, FuryMcpSourceView } from '../fury-mcp-hub.js';
@@ -51,14 +55,37 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     throw Object.assign(new Error('customInstructions must be at most 4000 characters'),{status:400});
   }
 
-  const [skillSelection,mcpView]=await Promise.all([
-    input.skills.autoSelect(objective,{...(input.harnessId?{harnessId:input.harnessId}:{}),maxActive:4}),
+  const capabilityIndex=createFuryCapabilityIndex();
+  const [,mcpView]=await Promise.all([
+    projectSkillHubIntoCapabilityIndex(capabilityIndex,input.skills),
     input.mcp.list(),
   ]);
+  const capabilitySelection=selectFuryCapabilitiesForTask({
+    objective,
+    index:capabilityIndex,
+    ...(input.harnessId?{hostCompatibility:[input.harnessId]}:{}),
+    availablePermissions:[],
+    options:{
+      maxSelected:4,
+      maxSelectedByKind:{skill:4,plugin:0,'mcp-server':0,'mcp-tool':0,model:0},
+    },
+  });
+  const selectedSkillCapabilities=capabilitySelection.selected.filter((item)=>item.kind==='skill');
+  const skillSelectionPlan:AgentSkillSelectionPlan=Object.freeze({
+    format:'furypipe-agent-skill-selection/v1',
+    selected:Object.freeze(selectedSkillCapabilities.map((skill)=>Object.freeze({
+      name:skill.id,
+      score:skill.score,
+      reason:skill.reason==='explicit-request'?'explicit_user_activation' as const:'description_relevance' as const,
+    }))),
+    blocked:Object.freeze([]),
+    candidatesConsidered:capabilitySelection.candidatesConsidered,
+    executionAuthorized:false,
+  });
   const routing=planFuryAutopilot({
     objective,
-    selectedSkills:skillSelection.plan.selected.map((skill)=>({
-      name:skill.name,
+    selectedSkills:selectedSkillCapabilities.map((skill)=>({
+      name:skill.id,
       score:skill.score,
       reason:skill.reason,
     })),
@@ -81,7 +108,7 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   const style:Exclude<StudioResponseStyle,'auto'>=requestedStyle==='auto'
     ? routing.communicationStyle==='CAVEMAN'?'caveman':'balanced'
     : requestedStyle;
-  const activation=await input.skills.activatePlan(skillSelection.plan);
+  const activation=await input.skills.activatePlan(skillSelectionPlan);
 
   let skillBytes=0;
   const activeSkillBlocks:string[]=[];
@@ -175,7 +202,7 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     throw Object.assign(new Error('compiled autopilot prompt exceeds the bounded chat system-prompt budget'),{status:422});
   }
 
-  const selectedByName=new Map(skillSelection.plan.selected.map((item)=>[item.name,item]));
+  const selectedByName=new Map(skillSelectionPlan.selected.map((item)=>[item.name,item]));
   return Object.freeze({
     format:STUDIO_AUTOPILOT_FORMAT,
     objectiveDigest:createHash('sha256').update(objective,'utf8').digest('hex'),
@@ -186,6 +213,21 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
       communicationStyle:routing.communicationStyle,
       contextMode:routing.contextMode,
       promptPipeline:routing.promptPipeline,
+      executionAuthorized:false as const,
+    }),
+    capabilities:Object.freeze({
+      indexDigestSha256:capabilitySelection.indexDigestSha256,
+      selectionDigestSha256:capabilitySelection.selectionDigestSha256,
+      selected:Object.freeze(capabilitySelection.selected.map((item)=>Object.freeze({
+        kind:item.kind,
+        id:item.id,
+        score:item.score,
+        reason:item.reason,
+        requiredPermissions:item.requiredPermissions,
+        executionAuthorized:false as const,
+      }))),
+      blocked:capabilitySelection.blocked,
+      authority:capabilitySelection.authority,
       executionAuthorized:false as const,
     }),
     style:Object.freeze({requested:requestedStyle,resolved:style}),
@@ -201,7 +243,9 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
         score:selectedByName.get(item.name)?.score??0,
         reason:selectedByName.get(item.name)?.reason??'description_relevance',
       }))),
-      excluded:skillSelection.excluded,
+      excluded:Object.freeze(capabilitySelection.blocked
+        .filter((item)=>item.kind==='skill')
+        .map((item)=>Object.freeze({name:item.id,reason:item.reason}))),
       blocked:Object.freeze([
         ...activation.blocked.map((item)=>Object.freeze({name:item.name,reason:item.reason,detail:item.detail})),
         ...promptBudgetBlocked.map((name)=>Object.freeze({name,reason:'prompt-budget' as const,detail:'skill prompt exceeded the per-turn activation budget'})),
