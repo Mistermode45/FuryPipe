@@ -327,7 +327,12 @@ async function createDefaultFactory(): Promise<McpDirectSdkFactory> {
       });
     },
 
-    createSseTransport(config: Parameters<McpDirectSdkFactory['createSseTransport']>[0]) {
+    createSseTransport(config: {
+      readonly url: URL;
+      readonly headers: Readonly<Record<string, string>>;
+      readonly authProvider?: OAuthClientProvider;
+      readonly maxResponseBytes: number;
+    }) {
       return new SSEClientTransport(config.url, {
         fetch: (input: string | URL | Request, init?: RequestInit) =>
           fetchWithResponseLimit(input, init, config.maxResponseBytes),
