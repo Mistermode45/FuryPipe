@@ -138,7 +138,16 @@ export function createFuryArtifactStore(initial: readonly FuryArtifact[] = []): 
   for (const artifact of initial) putInitial(artifact);
 
   return Object.freeze({
-    create(input) {
+    create(input: {
+      readonly id: string;
+      readonly kind: FuryArtifactKind;
+      readonly title: string;
+      readonly projectId: string;
+      readonly content: string;
+      readonly mediaType?: string;
+      readonly metadata?: Readonly<Record<string, string>>;
+      readonly now: string;
+    }) {
       if (!ID.test(input.id)) throw new Error('artifact id is invalid');
       if (!KINDS.has(input.kind)) throw new Error('artifact kind is invalid');
       if (artifacts.has(input.id)) throw new Error(`artifact already exists: ${input.id}`);
@@ -157,7 +166,13 @@ export function createFuryArtifactStore(initial: readonly FuryArtifact[] = []): 
       return artifact;
     },
 
-    appendVersion(input) {
+    appendVersion(input: {
+      readonly artifactId: string;
+      readonly content: string;
+      readonly mediaType?: string;
+      readonly metadata?: Readonly<Record<string, string>>;
+      readonly now: string;
+    }) {
       const current = artifacts.get(input.artifactId);
       if (!current) throw new Error(`unknown artifact: ${input.artifactId}`);
       if (current.versions.length >= 256) throw new Error('artifact version history limit reached');
@@ -171,7 +186,7 @@ export function createFuryArtifactStore(initial: readonly FuryArtifact[] = []): 
       return updated;
     },
 
-    get(id) {
+    get(id: string) {
       return artifacts.get(id);
     },
 
@@ -179,7 +194,7 @@ export function createFuryArtifactStore(initial: readonly FuryArtifact[] = []): 
       return Object.freeze([...artifacts.values()].sort((a, b) => a.id.localeCompare(b.id)));
     },
 
-    search(query, projectId) {
+    search(query: string, projectId?: string) {
       const needle = printable(query.trim(), 'artifact search query', 512).toLowerCase();
       return Object.freeze([...artifacts.values()]
         .filter((artifact) => projectId === undefined || artifact.projectId === projectId)
@@ -194,7 +209,7 @@ export function createFuryArtifactStore(initial: readonly FuryArtifact[] = []): 
         .sort((a, b) => a.id.localeCompare(b.id)));
     },
 
-    planRestore(artifactId, sourceVersion) {
+    planRestore(artifactId: string, sourceVersion: number) {
       const artifact = artifacts.get(artifactId);
       if (!artifact) throw new Error(`unknown artifact: ${artifactId}`);
       if (!Number.isInteger(sourceVersion) || sourceVersion < 1 || sourceVersion > artifact.versions.length) {
