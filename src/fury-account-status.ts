@@ -99,8 +99,8 @@ function claudeVerification(result: FuryAccountStatusCommandResult): FuryAccount
         return Object.freeze({
           provider:'anthropic',
           state:'authenticated',
-          method: typeof body.authMethod === 'string' ? body.authMethod.slice(0,80) : undefined,
-          subscription: typeof body.subscriptionType === 'string' && body.subscriptionType ? body.subscriptionType.slice(0,80) : undefined,
+          ...(typeof body.authMethod === 'string' ? { method:body.authMethod.slice(0,80) } : {}),
+          ...(typeof body.subscriptionType === 'string' && body.subscriptionType ? { subscription:body.subscriptionType.slice(0,80) } : {}),
           runtime:'Claude Code',
         });
       }
