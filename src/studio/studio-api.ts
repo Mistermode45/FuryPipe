@@ -37,6 +37,9 @@ import { studioMemoryFromEnv, studioMemoryList, studioMemoryRemember, studioMemo
 import { buildFuryIntegrationRegistry } from '../fury-integrations.js';
 import { createStudioChats, StudioChatError, type StudioChats } from './studio-chats.js';
 import { createStudioCode, StudioCodeError } from './studio-code.js';
+import { createStudioCodeIntelligence, StudioCodeIntelligenceError } from './studio-code-intelligence.js';
+import { createStudioBrowserController, StudioBrowserControllerError, type StudioBrowserActionInput } from './studio-browser-controller.js';
+import type { BrowserRuntime } from '../browser-runtime.js';
 import { createFuryMcpHub, FuryMcpHubError, type FuryMcpHub, type FuryMcpPolicy } from '../fury-mcp-hub.js';
 import { discoverFuryAiConnections, type FuryAiConnections } from '../fury-ai-connections.js';
 import { inspectHuggingFaceGguf, recommendHuggingFaceGguf } from '../fury-huggingface-models.js';
@@ -67,7 +70,8 @@ export type StudioRoute =
   | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act'
   | 'integrations' | 'connections' | 'connection-login' | 'support'
   | 'chats' | 'chat-get' | 'chat-save' | 'chat-branch' | 'chat-delete'
-  | 'code-tree' | 'code-file' | 'code-worktrees' | 'code-diff';
+  | 'code-tree' | 'code-file' | 'code-worktrees' | 'code-diff' | 'code-intelligence' | 'code-symbol'
+  | 'browser-status' | 'browser-session-create' | 'browser-session-close' | 'browser-page-create' | 'browser-page-close' | 'browser-action';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
@@ -123,6 +127,14 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/code/file': { route: 'code-file', method: 'POST' },
   '/api/studio/code/worktrees.json': { route: 'code-worktrees', method: 'GET' },
   '/api/studio/code/diff': { route: 'code-diff', method: 'POST' },
+  '/api/studio/code/intelligence': { route: 'code-intelligence', method: 'POST' },
+  '/api/studio/code/symbol': { route: 'code-symbol', method: 'POST' },
+  '/api/studio/browser/status.json': { route: 'browser-status', method: 'GET' },
+  '/api/studio/browser/sessions': { route: 'browser-session-create', method: 'POST' },
+  '/api/studio/browser/sessions/close': { route: 'browser-session-close', method: 'POST' },
+  '/api/studio/browser/pages': { route: 'browser-page-create', method: 'POST' },
+  '/api/studio/browser/pages/close': { route: 'browser-page-close', method: 'POST' },
+  '/api/studio/browser/action': { route: 'browser-action', method: 'POST' },
 });
 
 export function studioApiRoute(pathname: string): { route: StudioRoute; method: 'GET' | 'POST' } | null {
@@ -168,6 +180,8 @@ export interface StudioApiOptions {
   readonly memory?: StudioMemory;
   /** Conversation store directory (default ~/.furypipe/studio/chats/<project>). */
   readonly chatsDir?: string;
+  /** Optional governed managed-browser runtime. Browser actions stay unavailable when omitted. */
+  readonly browserRuntime?: BrowserRuntime;
 }
 
 interface StudioRun {
@@ -296,6 +310,8 @@ export function createStudioApi(options: StudioApiOptions) {
 
   const chats: StudioChats = createStudioChats({ stateDir: options.chatsDir ?? path.join(os.homedir(), '.furypipe', 'studio', 'chats', projectKey), now });
   const code = createStudioCode(options.projectRoot);
+  const codeIntelligence = createStudioCodeIntelligence(options.projectRoot);
+  const browser = createStudioBrowserController(options.browserRuntime);
   let memoryState: StudioMemory | undefined = options.memory;
   const memory = () => (memoryState ??= studioMemoryFromEnv());
   const memoryStore = () => {
@@ -800,6 +816,47 @@ export function createStudioApi(options: StudioApiOptions) {
             const body = await readJson(request) as { worktree?: unknown; base?: unknown };
             return json(await code.diff(body?.worktree, body?.base));
           }
+          case 'code-intelligence': {
+            const body = await readJson(request) as { query?: unknown; limit?: unknown; refresh?: unknown };
+            if (body.query === undefined) return json(await codeIntelligence.summary(body.refresh === true));
+            return json(await codeIntelligence.search(body.query, body.limit, body.refresh === true));
+          }
+          case 'code-symbol': {
+            const body = await readJson(request) as { identifier?: unknown; limit?: unknown; refresh?: unknown };
+            return json(await codeIntelligence.symbol(body.identifier, body.limit, body.refresh === true));
+          }
+          case 'browser-status':
+            return json(browser.status());
+          case 'browser-session-create': {
+            const body = await readJson(request) as { principalId?: unknown; confirm?: unknown };
+            if (body.confirm !== true) return problem(400, 'confirmation-required', 'opening a managed browser session requires confirm: true');
+            return json(await browser.createSession(body.principalId), 201);
+          }
+          case 'browser-session-close': {
+            const body = await readJson(request) as { sessionId?: unknown; confirm?: unknown };
+            if (body.confirm !== true) return problem(400, 'confirmation-required', 'closing a managed browser session requires confirm: true');
+            await browser.closeSession(body.sessionId);
+            return json({ closed: true, executionAuthority: false });
+          }
+          case 'browser-page-create': {
+            const body = await readJson(request) as { sessionId?: unknown; confirm?: unknown };
+            if (body.confirm !== true) return problem(400, 'confirmation-required', 'opening a managed browser page requires confirm: true');
+            return json(await browser.createPage(body.sessionId), 201);
+          }
+          case 'browser-page-close': {
+            const body = await readJson(request) as { sessionId?: unknown; pageId?: unknown; confirm?: unknown };
+            if (body.confirm !== true) return problem(400, 'confirmation-required', 'closing a managed browser page requires confirm: true');
+            await browser.closePage(body.sessionId, body.pageId);
+            return json({ closed: true, executionAuthority: false });
+          }
+          case 'browser-action': {
+            const body = await readJson(request) as { sessionId?: unknown; pageId?: unknown; confirm?: unknown; action?: unknown; url?: unknown; selector?: unknown; value?: unknown; key?: unknown; formScope?: unknown; condition?: unknown };
+            if (body.confirm !== true) return problem(400, 'confirmation-required', 'managed browser actions require confirm: true');
+            const allowed = ['navigate','click','fill','select','keyboard','submit','download','screenshot','extract_text','accessibility_snapshot','wait','inspect_url'] as const;
+            if (typeof body.action !== 'string' || !(allowed as readonly string[]).includes(body.action)) return problem(400, 'invalid-input', 'browser action is not supported by Studio');
+            const action = { action: body.action, ...(body.url!==undefined?{url:body.url}:{}), ...(body.selector!==undefined?{selector:body.selector}:{}), ...(body.value!==undefined?{value:body.value}:{}), ...(body.key!==undefined?{key:body.key}:{}), ...(body.formScope!==undefined?{formScope:body.formScope}:{}), ...(body.condition!==undefined?{condition:body.condition}:{}) } as unknown as StudioBrowserActionInput;
+            return json(await browser.action(body.sessionId, body.pageId, action));
+          }
           case 'chats':
             return json({ conversations: await chats.list() });
           case 'chat-get':
@@ -920,6 +977,13 @@ export function createStudioApi(options: StudioApiOptions) {
         if (error instanceof FuryDispatchError) return problem(422, 'dispatch-rejected', error.message);
         if (['ECONNREFUSED', 'ECONNRESET', 'ENOTFOUND', 'ETIMEDOUT', 'EHOSTUNREACH', 'EPROTO'].includes((error as NodeJS.ErrnoException).code ?? '')) return problem(502, 'upstream-unreachable', `upstream unreachable (${(error as NodeJS.ErrnoException).code})`);
         if (error instanceof StudioCodeError) return problem(error.status, 'code-rejected', error.message);
+        if (error instanceof StudioCodeIntelligenceError) return problem(error.status, 'code-intelligence-rejected', error.message);
+        if (error instanceof StudioBrowserControllerError) return problem(error.status, 'browser-rejected', error.message);
+        if ((error as Error).name === 'BrowserRuntimeError') {
+          const code = (error as { code?: string }).code ?? 'runtime-error';
+          const status = code === 'policy-denied' || code === 'url-private' || code === 'url-not-allowed' ? 403 : code === 'invalid-session' || code === 'invalid-page' ? 404 : code === 'timeout' ? 504 : 422;
+          return problem(status, `browser-${code}`, (error as Error).message);
+        }
         if (error instanceof StudioChatError) return problem(error.status, 'chat-rejected', error.message);
         if (error instanceof FuryWebError) return problem(error.code === 'blocked' ? 403 : error.code === 'not-configured' ? 409 : 502, `web-${error.code}`, error.message);
         if (error instanceof FuryKnowledgeError) return problem(422, 'knowledge-rejected', error.message);
