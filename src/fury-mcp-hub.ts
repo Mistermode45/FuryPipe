@@ -71,7 +71,7 @@ export interface FuryMcpDecision {
 
 export type FuryMcpProjectSourceInput =
   | { readonly name: string; readonly transport: 'stdio'; readonly command: string; readonly args?: readonly string[] }
-  | { readonly name: string; readonly transport: 'streamable_http'; readonly url: string };
+  | { readonly name: string; readonly transport: 'streamable_http' | 'sse'; readonly url: string };
 
 const MAX_CONFIG_BYTES = 1024 * 1024;
 const MAX_SOURCES = 256;
@@ -273,14 +273,14 @@ function validateProjectSourceInput(input: FuryMcpProjectSourceInput): Record<st
     }
     return { command: input.command.trim(), args: [...args] };
   }
-  if (input.transport === 'streamable_http') {
+  if (input.transport === 'streamable_http' || input.transport === 'sse') {
     if (typeof input.url !== 'string' || input.url.length > 2048) throw new FuryMcpHubError('MCP URL is invalid');
     let url: URL;
     try { url = new URL(input.url); } catch { throw new FuryMcpHubError('MCP URL is invalid'); }
     const loopback = isLoopback(url.toString());
     if (url.protocol !== 'https:' && !(loopback && url.protocol === 'http:')) throw new FuryMcpHubError('remote MCP URLs must use HTTPS');
     if (url.username || url.password || url.search || url.hash) throw new FuryMcpHubError('MCP URL credentials, query strings and fragments are refused in Studio');
-    return { type: 'http', url: url.toString() };
+    return { type: input.transport === 'sse' ? 'sse' : 'http', url: url.toString() };
   }
   throw new FuryMcpHubError('unsupported MCP transport');
 }
@@ -428,7 +428,7 @@ export function createFuryMcpHub(options: {
       const state = await load();
       const st = stateOf(state, sourceId);
       if (!st.enabled) throw new FuryMcpHubError('source is disabled');
-      if (source.transport === 'sse' || source.transport === 'unknown') throw new FuryMcpHubError(`${source.transport} transport is not probed (MCP Direct supports stdio and streamable HTTP)`);
+      if (source.transport === 'unknown') throw new FuryMcpHubError('unknown transport is not probed');
       // A project config comes from the repository: launching its command runs repository-chosen code.
       if (source.scope === 'project' && source.transport === 'stdio' && !st.trusted) throw new FuryMcpHubError('project MCP servers start a command chosen by the repository; mark the source trusted before probing it');
       if (source.locality === 'remote' && request.allowRemote !== true) throw new FuryMcpHubError('remote MCP servers are probed only with allowRemote: true');
@@ -443,7 +443,7 @@ export function createFuryMcpHub(options: {
         url.password = '';
         url.search = '';
         url.hash = '';
-        provisional = { source: { sourceId, transport: 'streamable_http', endpointFingerprint: '0'.repeat(64), trust }, url: url.toString(), ...(source.locality === 'remote' ? { allowedHosts: [url.hostname] } : {}) };
+        provisional = { source: { sourceId, transport: source.transport, endpointFingerprint: '0'.repeat(64), trust }, url: url.toString(), ...(source.locality === 'remote' ? { allowedHosts: [url.hostname] } : {}) } as McpDirectRuntimeConfig;
       }
       const config = { ...provisional, source: { ...provisional.source, endpointFingerprint: deriveMcpDirectEndpointFingerprint(provisional) } } as McpDirectRuntimeConfig;
       try {
