@@ -12,6 +12,10 @@ import type {
   ModelFabricRegistry,
 } from './core/model-fabric.js';
 import type {
+  ProviderDefinition,
+  ProviderRegistry,
+} from './core/provider-fabric.js';
+import type {
   FuryKernelToolBridge,
   FuryKernelToolSourceInspection,
   FuryKernelToolSourceSummary,
@@ -42,13 +46,14 @@ export interface FuryCapabilityIndexHealthOverrides {
   readonly skills?: Readonly<Record<string, FuryCapabilityIndexHealthState>>;
   readonly plugins?: Readonly<Record<string, FuryCapabilityIndexHealthState>>;
   readonly models?: Readonly<Record<string, FuryCapabilityIndexHealthState>>;
+  readonly providers?: Readonly<Record<string, FuryCapabilityIndexHealthState>>;
   readonly mcpServers?: Readonly<Record<string, FuryCapabilityIndexHealthState>>;
 }
 
 export interface FuryCapabilityIndexProjectionReport {
   readonly indexed: number;
   readonly skipped: number;
-  readonly source: 'skill-registry' | 'skill-hub' | 'plugin-registry' | 'model-fabric' | 'mcp-host' | 'mcp-hub';
+  readonly source: 'skill-registry' | 'skill-hub' | 'plugin-registry' | 'model-fabric' | 'provider-fabric' | 'mcp-host' | 'mcp-hub';
   readonly authority: 'projection-only';
   readonly executionAuthority: false;
 }
@@ -244,6 +249,26 @@ function latestModelObservedAt(entry: ModelFabricEntry): string | undefined {
     return undefined;
   }
   return new Date(Date.parse(selected)).toISOString();
+}
+
+function providerHealth(
+  provider: ProviderDefinition,
+  overrides: Readonly<Record<string, FuryCapabilityIndexHealthState>>,
+): FuryCapabilityIndexHealthState {
+  if (provider.status !== 'registered') return 'blocked';
+  if (provider.availability === 'available') return 'ready';
+  if (provider.availability === 'unavailable') return 'unavailable';
+  return healthOverride(overrides, provider.id);
+}
+
+function providerTrust(provider: ProviderDefinition): FuryCapabilityIndexTrustState {
+  if (provider.evidence.some((item) => item.kind === 'live-probe' || item.kind === 'transport-result')) {
+    return 'trusted';
+  }
+  if (provider.evidence.some((item) => item.kind === 'local-contract' || item.kind === 'operator-config')) {
+    return 'verified';
+  }
+  return 'unverified';
 }
 
 function mcpRisk(risk: McpToolRiskClass): FuryCapabilityIndexRiskClass {
@@ -594,6 +619,57 @@ export function projectPluginsIntoCapabilityIndex(
     indexed: inspections.length,
     skipped: 0,
     source: 'plugin-registry' as const,
+    authority: 'projection-only' as const,
+    executionAuthority: false as const,
+  });
+}
+
+export function projectProvidersIntoCapabilityIndex(
+  index: FuryCapabilityIndex,
+  registry: ProviderRegistry,
+  health: FuryCapabilityIndexHealthOverrides['providers'] = {},
+): FuryCapabilityIndexProjectionReport {
+  requireIndex(index);
+  const entries = registry.list();
+  const validatedHealth = validateHealthOverrides(health, 'provider health overrides');
+  let indexed = 0;
+  let skipped = 0;
+  for (const provider of entries) {
+    if (!indexableIdentity(provider.id)) {
+      skipped += 1;
+      continue;
+    }
+    put(index, {
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind: 'provider',
+      id: provider.id,
+      name: provider.id,
+      description:
+        `Registered provider ${provider.id}; protocol ${provider.protocol}; availability ${provider.availability}. No provider call is performed by capability projection.`,
+      families: uniqueMetadata(['provider', provider.protocol]),
+      tags: uniqueMetadata([
+        `status-${provider.status}`,
+        `availability-${provider.availability}`,
+        ...provider.aliases.map((alias) => `alias-${alias}`),
+      ]),
+      keywords: uniqueMetadata([provider.id, provider.protocol, ...provider.aliases]),
+      trust: providerTrust(provider),
+      license: 'not-applicable',
+      health: providerHealth(provider, validatedHealth),
+      riskClass: 'process',
+      requiredPermissions: ['provider-inference'],
+      compatibility: uniqueMetadata([provider.protocol]),
+      source: {
+        system: 'host',
+        sourceId: provider.id,
+      },
+    });
+    indexed += 1;
+  }
+  return Object.freeze({
+    indexed,
+    skipped,
+    source: 'provider-fabric' as const,
     authority: 'projection-only' as const,
     executionAuthority: false as const,
   });
