@@ -445,6 +445,10 @@
       "types": "./dist/fury-eval.d.ts",
       "import": "./dist/fury-eval.js"
     },
+    "./fury-plugin-sdk": {
+      "types": "./dist/fury-plugin-sdk.d.ts",
+      "import": "./dist/fury-plugin-sdk.js"
+    },
     "./benchmark-claim-gate": {
       "types": "./dist/benchmark-claim-gate.d.ts",
       "import": "./dist/benchmark-claim-gate.js"
