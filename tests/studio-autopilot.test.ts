@@ -18,11 +18,21 @@ describe('Studio Fury Autopilot',()=>{
       mkdirSync(join(project,'.furypipe'),{recursive:true});
       writeFileSync(join(project,'.furypipe','mcp.json'),JSON.stringify({mcpServers:{github:{command:'npx',args:['server-github']}}}));
       const skills=createFurySkillHub({projectRoot:project,homeDir:home,stateDir:join(root,'skill-state')});
+      const routedSkills={...skills,autoSelect:async()=>{throw new Error('LEGACY_SKILL_SELECTOR_MUST_NOT_RUN');}} as typeof skills;
       const mcp=createFuryMcpHub({projectRoot:project,homeDir:home,stateDir:join(root,'mcp-state')});
-      const plan=await planStudioAutopilot({objective:'Implement and review the GitHub API integration with tests',projectRoot:project,skills,mcp,responseStyle:'auto'});
+      const plan=await planStudioAutopilot({objective:'Implement and review the GitHub API integration with tests',projectRoot:project,skills:routedSkills,mcp,responseStyle:'auto'});
       expect(plan.instructions.profiles).toContain('karpathy-coding-discipline');
       expect(plan.instructions.facets.map((x)=>x.id)).toContain('production-engineering');
       expect(plan.skills.selected.map((x)=>x.name)).toContain('api-review');
+      expect(plan.capabilities.selected).toContainEqual(expect.objectContaining({
+        kind:'skill',
+        id:'api-review',
+        executionAuthorized:false,
+      }));
+      expect(plan.capabilities).toMatchObject({
+        authority:'selection-only',
+        executionAuthorized:false,
+      });
       expect(plan.mcp.suggested.map((x)=>x.name)).toContain('github');
       expect(plan.mcp.executionAuthorized).toBe(false);
       expect(plan.prompt.text).toContain('Check API behavior and tests before claiming done.');
