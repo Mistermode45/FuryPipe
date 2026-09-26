@@ -167,11 +167,31 @@ const MAX_FACT_CHARS = 128;
 
 const DEFAULT_KIND_CAPS: Readonly<Record<FuryCapabilityIndexKind, number>> =
   Object.freeze({
+    model: 2,
+    provider: 0,
     skill: 3,
+    'skill-pack': 0,
+    instruction: 0,
     plugin: 1,
+    mcp: 0,
     'mcp-server': 2,
     'mcp-tool': 4,
-    model: 2,
+    connector: 0,
+    tool: 0,
+    agent: 0,
+    workflow: 0,
+    automation: 0,
+    'memory-provider': 0,
+    'search-provider': 0,
+    'browser-provider': 0,
+    'image-provider': 0,
+    'video-provider': 0,
+    'audio-provider': 0,
+    'voice-provider': 0,
+    'embedding-provider': 0,
+    reranker: 0,
+    'code-runtime': 0,
+    sandbox: 0,
   });
 
 const RISK_PENALTIES: Readonly<Record<FuryCapabilityIndexRecord['riskClass'], number>> =
