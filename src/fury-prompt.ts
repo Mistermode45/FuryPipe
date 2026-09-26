@@ -35,6 +35,129 @@ export type FuryPromptLevel =
 
 export type FuryPromptSectionValue = string | readonly string[];
 
+
+export const FURY_PROMPT_MODES = Object.freeze([
+  'RAW',
+  'AUTO',
+  'ENHANCED',
+  'PROFESSIONAL',
+  'CODING',
+  'RESEARCH',
+  'CREATIVE',
+  'STRICT',
+  'FAST',
+] as const);
+export type FuryPromptMode = typeof FURY_PROMPT_MODES[number];
+
+export interface FuryPromptAnalysis {
+  readonly format: 'furypipe-prompt-analysis/v1';
+  readonly objectiveDigest: string;
+  readonly ambiguity: 'LOW' | 'MEDIUM' | 'HIGH';
+  readonly missingContext: readonly string[];
+  readonly conflictingConstraints: readonly string[];
+  readonly securityRisk: 'LOW' | 'MEDIUM' | 'HIGH';
+  readonly expectedOutput: 'TEXT' | 'CODE' | 'RESEARCH' | 'DATA' | 'MEDIA' | 'OPERATIONAL' | 'UNKNOWN';
+  readonly taskComplexity: 'LOW' | 'MEDIUM' | 'HIGH';
+  readonly recommendedMode: FuryPromptMode;
+  readonly clarificationRecommended: boolean;
+  readonly reasons: readonly string[];
+  readonly executionAuthority: false;
+}
+
+const PROMPT_ANALYSIS_MAX_OBJECTIVE_CHARS = 64_000;
+const VAGUE_OBJECTIVE_RE = /^\s*(improve|amelior(?:e|er)|fix|corrige(?:r)?|do it|fais(?:-le| le)?|help|aide(?:-moi)?)\s*(it|ça|ca|this|that)?[.!?\s]*$/iu;
+
+function objectiveTokens(value: string): readonly string[] {
+  return Object.freeze(value.normalize('NFKC').toLocaleLowerCase('en-US').match(/[\p{L}\p{N}][\p{L}\p{N}._+-]*/gu) ?? []);
+}
+
+function promptAnalysisExpectedOutput(value: string): FuryPromptAnalysis['expectedOutput'] {
+  if (/\b(code|typescript|javascript|python|java|rust|golang|repository|repo|bug|refactor|compile|build|test)\b/iu.test(value)) return 'CODE';
+  if (/\b(research|recherche|sources?|benchmark|compare|latest|current|evidence|citation)\b/iu.test(value)) return 'RESEARCH';
+  if (/\b(csv|sql|dataset|analytics|analyse|analysis|metrics?|spreadsheet|table)\b/iu.test(value)) return 'DATA';
+  if (/\b(image|video|audio|voice|design|render|media)\b/iu.test(value)) return 'MEDIA';
+  if (/\b(install|deploy|server|terminal|powershell|shell|config|runtime|docker|ci|workflow)\b/iu.test(value)) return 'OPERATIONAL';
+  if (value.trim().length > 0) return 'TEXT';
+  return 'UNKNOWN';
+}
+
+export function analyzeFuryPromptRequest(input: {
+  readonly objective: string;
+  readonly sections?: FuryPromptSections;
+}): FuryPromptAnalysis {
+  if (!input || typeof input !== 'object' || typeof input.objective !== 'string') {
+    throw new TypeError('FuryPrompt analysis objective is required');
+  }
+  const objective = input.objective.normalize('NFKC').trim();
+  if (!objective || objective.length > PROMPT_ANALYSIS_MAX_OBJECTIVE_CHARS || objective.includes('\0')) {
+    throw new RangeError('FuryPrompt analysis objective must be bounded non-empty text');
+  }
+  const tokens = objectiveTokens(objective);
+  const sections = input.sections ?? {};
+  const missingContext: string[] = [];
+  const conflictingConstraints: string[] = [];
+  const reasons: string[] = [];
+  const vague = VAGUE_OBJECTIVE_RE.test(objective) || tokens.length <= 2;
+  const hasContext = sections.context !== undefined || sections.inputs !== undefined;
+  if (vague && !hasContext) missingContext.push('task-context');
+  if (/\b(this|that|it|ça|ca|ceci|cela)\b/iu.test(objective) && !hasContext) missingContext.push('referent');
+
+  const constraints = sections.constraints === undefined ? [] : valuesFor(sections.constraints, 'constraints');
+  const normalizedConstraints = constraints.map((value) => value.normalize('NFKC').trim().toLocaleLowerCase('en-US'));
+  for (let i = 0; i < normalizedConstraints.length; i += 1) {
+    for (let j = i + 1; j < normalizedConstraints.length; j += 1) {
+      const a = normalizedConstraints[i]!;
+      const b = normalizedConstraints[j]!;
+      if ((a === `not ${b}`) || (b === `not ${a}`) || (a === `do not ${b}`) || (b === `do not ${a}`)) {
+        conflictingConstraints.push(`${i}:${j}`);
+      }
+    }
+  }
+
+  const securityRisk: FuryPromptAnalysis['securityRisk'] =
+    /\b(exploit|pentest|red[ -]?team|credential|secret|token|password|malware|ransomware|ssrf|sqli|xss|cve|admin|production database)\b/iu.test(objective)
+      ? 'HIGH'
+      : /\b(auth|security|secure|permission|network|deploy|production|payment|database)\b/iu.test(objective)
+        ? 'MEDIUM'
+        : 'LOW';
+  const multiStep = /\b(and|then|also|plus|et|puis|ensuite|aussi)\b/iu.test(objective);
+  const taskComplexity: FuryPromptAnalysis['taskComplexity'] =
+    tokens.length > 80 || (multiStep && tokens.length > 35) || securityRisk === 'HIGH'
+      ? 'HIGH'
+      : tokens.length > 15 || multiStep
+        ? 'MEDIUM'
+        : 'LOW';
+  const ambiguity: FuryPromptAnalysis['ambiguity'] =
+    vague || missingContext.length > 1 ? 'HIGH' : missingContext.length > 0 ? 'MEDIUM' : 'LOW';
+  const expectedOutput = promptAnalysisExpectedOutput(objective);
+  const recommendedMode: FuryPromptMode =
+    securityRisk === 'HIGH' ? 'STRICT'
+      : expectedOutput === 'CODE' ? 'CODING'
+        : expectedOutput === 'RESEARCH' ? 'RESEARCH'
+          : expectedOutput === 'MEDIA' ? 'CREATIVE'
+            : taskComplexity === 'LOW' ? 'FAST'
+              : 'PROFESSIONAL';
+  if (vague) reasons.push('objective is underspecified');
+  if (securityRisk !== 'LOW') reasons.push(`security risk classified ${securityRisk.toLowerCase()}`);
+  reasons.push(`expected output ${expectedOutput.toLowerCase()}`);
+  reasons.push(`task complexity ${taskComplexity.toLowerCase()}`);
+  const clarificationRecommended = ambiguity === 'HIGH' && missingContext.length > 0 && tokens.length <= 4;
+  return Object.freeze({
+    format: 'furypipe-prompt-analysis/v1',
+    objectiveDigest: `fpa_${digest(objective)}`,
+    ambiguity,
+    missingContext: Object.freeze([...new Set(missingContext)]),
+    conflictingConstraints: Object.freeze(conflictingConstraints),
+    securityRisk,
+    expectedOutput,
+    taskComplexity,
+    recommendedMode,
+    clarificationRecommended,
+    reasons: Object.freeze(reasons),
+    executionAuthority: false,
+  });
+}
+
 const FURY_PROMPT_LEVELS: readonly FuryPromptLevel[] = [
   'TRIVIAL',
   'STANDARD',
