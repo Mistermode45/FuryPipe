@@ -65,7 +65,7 @@ export interface FuryKernelToolBridgeOptions {
 
 export interface FuryKernelToolSourceSummary {
   readonly sourceId: string;
-  readonly transport: 'stdio' | 'streamable_http';
+  readonly transport: 'stdio' | 'streamable_http' | 'sse';
   readonly endpointFingerprint: string;
   readonly trust: 'trusted' | 'untrusted';
   readonly executionAuthority: false;
@@ -172,7 +172,7 @@ export interface FuryKernelToolBridge {
   execute(proposalId: string): Promise<FuryKernelToolExecutionResult>;
   proposalTransport(
     proposalId: string,
-  ): 'stdio' | 'streamable_http' | undefined;
+  ): 'stdio' | 'streamable_http' | 'sse' | undefined;
   discard(proposalId: string): boolean;
   pendingProposalCount(): number;
   activeProbeCount(): number;
@@ -1176,7 +1176,7 @@ export function createFuryKernelToolBridge(
 
     proposalTransport(
       proposalId: string,
-    ): 'stdio' | 'streamable_http' | undefined {
+    ): 'stdio' | 'streamable_http' | 'sse' | undefined {
       if (typeof proposalId !== 'string' || !SAFE_ID.test(proposalId)) return undefined;
       pruneExpired(safeNow(clock));
       return pending.get(proposalId)?.source.config.source.transport;
