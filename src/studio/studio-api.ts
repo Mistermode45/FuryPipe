@@ -451,10 +451,16 @@ export function createStudioApi(options: StudioApiOptions) {
                 ...(source.health ? { health: { ok: source.health.ok, tools: source.health.tools } } : {}),
               })),
             });
+            const harnessId = typeof body.harnessId === 'string' && body.harnessId ? body.harnessId : undefined;
+            const activatedSkills = await skills.activateSelection(
+              skillSelection.plan.selected.map((skill) => skill.name),
+              harnessId ? { harnessId } : {},
+            );
             return json({
               plan,
+              activatedSkills,
               excludedSkills: skillSelection.excluded,
-              execution: 'NOT_EXECUTED: selection and instruction routing only',
+              execution: 'NOT_EXECUTED: instructions activated; tools, scripts and MCP execution remain separately governed',
             });
           }
           case 'extensions': {
