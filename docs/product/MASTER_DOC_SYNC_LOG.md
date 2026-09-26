@@ -29,3 +29,15 @@ Conflict rule: technical state → GitHub wins; product intent → master doc wi
 
 | 2026-09-26 | Capability Convergence closed at the code-contract level: shared Capability Index/Autopilot drives Studio skill/agent/model advisories; MCP/model candidates without runtime authority remain advisory-only; Workspace Graph composes project/repository/files/memory/decisions/artifacts; instruction precedence is deterministic and fail-closed. The next P1 milestone adds FuryPrompt modes/analyzer plus Context Inspector/Context Diff. | This preserves the master continuation rule that selection is not execution, reuses authoritative stores instead of parallel registries, and exposes truth states rather than fabricated capability availability. | continuation checkpoint `808c556d91d06f6af32575c161bf08515e1965c5` | Capability Registry / Router / Graph / FuryPrompt / FuryContext | PENDING_EXACT_HEAD_EVIDENCE |
 | 2026-09-26 | P1 Prompt/Context + Skill Creator checkpoint: FuryPrompt exposes nine bounded modes and deterministic analysis; FuryContext exposes truth-state inspection plus deterministic capsule diff; Skill Hub can create validated project-local SKILL.md files from Studio/API with explicit confirmation. Tool declarations remain metadata-only and never widen runtime authority. | Implements the continuation specification without creating parallel prompt/context/skill authority systems. Existing compiler, context capsule, Skill Hub snapshots and runtime policy remain authoritative. | checkpoint `4ab955841ee9e6bc98b0caea6b91d11a7c4a71a4` | FuryPrompt / FuryContext / Skills | PENDING_EXACT_HEAD_EVIDENCE |
+
+
+## 2026-09-26 — Supply Chain + Marketplace foundation
+
+- Validated implementation SHA: `effbf0312bab129c4940bab3bce7f5d38bb1d5d3`.
+- Exact-head evidence on that SHA: 13/13 hosted workflows SUCCESS; CI 9/9; Clean Room 9/9.
+- Added detached Ed25519 Supply Chain attestations and public `furypipe/fury-supply-chain` export.
+- Added deterministic signed Marketplace manifest/trust/approval-only transition foundation and public `furypipe/fury-marketplace` export.
+- Marketplace remains non-executing: no automatic download/install/network/filesystem authority.
+- Gap ledger updated from Marketplace NOT_STARTED → PARTIAL FOUNDATION and Supply Chain PARTIAL → DONE CORE / PARTIAL DISTRIBUTION.
+- Documentation synchronization commit is newer than the validated implementation SHA and therefore requires its own exact-head hosted evidence before being treated as the final PR checkpoint.
+- No merge, tag, release, npm publish or deploy performed.
