@@ -281,7 +281,7 @@ describe('Capability Autopilot V2 local index', () => {
   it('rejects malformed enums, duplicate metadata and invalid source timestamps', () => {
     const index = createFuryCapabilityIndex();
 
-    expect(() => index.upsert(entry({ kind: 'agent' as FuryCapabilityIndexKind })))
+    expect(() => index.upsert(entry({ kind: 'not-a-capability-kind' as FuryCapabilityIndexKind })))
       .toThrow(/kind is unsupported/u);
     expect(() => index.upsert(entry({ trust: 'super-trusted' as never })))
       .toThrow(/trust is unsupported/u);
