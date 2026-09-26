@@ -27,6 +27,10 @@ describe('Studio Fury Autopilot',()=>{
       expect(plan.mcp.executionAuthorized).toBe(false);
       expect(plan.prompt.text).toContain('Check API behavior and tests before claiming done.');
       expect(plan.prompt.bytes).toBeLessThanOrEqual(plan.prompt.budgetBytes);
+      expect(plan.routing.profile.id).toBe('coding');
+      expect(plan.routing.communicationStyle).toBe('CAVEMAN');
+      expect(plan.routing.executionAuthorized).toBe(false);
+      expect(plan.mcp.suggested[0]).toMatchObject({ name: 'github', executionAuthorized: false });
       expect(plan.style.resolved).toBe('caveman');
       expect(plan.executionAuthorized).toBe(false);
     }finally{rmSync(root,{recursive:true,force:true});}
@@ -47,6 +51,8 @@ describe('Studio Fury Autopilot',()=>{
         customInstructions:'Prefer primary sources and state uncertainty explicitly.',
       });
       expect(plan.instructions.facets.map((x)=>x.id)).toContain('research-evidence');
+      expect(plan.routing.profile.id).toBe('research');
+      expect(plan.routing.communicationStyle).toBe('STANDARD');
       expect(plan.style.resolved).toBe('balanced');
       expect(plan.prompt.text).toContain('Prefer primary sources and state uncertainty explicitly.');
       await expect(planStudioAutopilot({objective:'x',projectRoot:project,skills,mcp,responseStyle:'invalid' as never})).rejects.toThrow(/unsupported/u);
