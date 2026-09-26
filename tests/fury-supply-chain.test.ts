@@ -1,9 +1,14 @@
+import { generateKeyPairSync } from 'node:crypto';
+
 import { describe, expect, it } from 'vitest';
 
 import {
   createFuryCycloneDxBom,
   createFurySupplyChainEvidence,
+  createFurySupplyChainSignedAttestation,
   normalizeFurySupplyChainComponents,
+  signFurySupplyChainEvidence,
+  verifyFurySupplyChainEvidenceSignature,
 } from '../src/fury-supply-chain.js';
 
 const sha = (char: string) => char.repeat(64);
@@ -162,6 +167,96 @@ describe('Fury supply-chain evidence', () => {
       name: 'furypipe:signingStatus',
       value: 'UNSIGNED',
     });
+  });
+
+
+  it('signs and verifies exact supply-chain evidence with detached Ed25519 attestations', () => {
+    const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+    const evidence = createFurySupplyChainEvidence({
+      sourceCommit: 'f'.repeat(40),
+      packageName: 'furypipe',
+      packageVersion: '0.16.0',
+      packageJsonSha256: sha('6'),
+      lockfileSha256: sha('7'),
+      resolvedPackages: [{ name: 'zod', version: '4.6.2', direct: true, license: 'MIT' }],
+      resolver: { tool: 'pnpm', version: '10.21.0', command: ['pnpm', 'list'] },
+    });
+
+    const signature = signFurySupplyChainEvidence(
+      evidence,
+      privateKey.export({ format: 'pem', type: 'pkcs8' }),
+      'release-key-2026',
+    );
+    expect(signature).toMatchObject({
+      format: 'furypipe-supply-chain-signature/v1',
+      algorithm: 'Ed25519',
+      keyId: 'release-key-2026',
+      evidenceDigestSha256: evidence.evidenceDigestSha256,
+      authority: 'detached-integrity-attestation-only',
+      executionAuthorized: false,
+    });
+    expect(verifyFurySupplyChainEvidenceSignature(
+      evidence,
+      signature,
+      publicKey.export({ format: 'pem', type: 'spki' }),
+    )).toBe(true);
+
+    const changed = createFurySupplyChainEvidence({
+      sourceCommit: 'f'.repeat(40),
+      packageName: 'furypipe',
+      packageVersion: '0.16.0',
+      packageJsonSha256: sha('6'),
+      lockfileSha256: sha('8'),
+      resolvedPackages: [{ name: 'zod', version: '4.6.2', direct: true, license: 'MIT' }],
+      resolver: { tool: 'pnpm', version: '10.21.0', command: ['pnpm', 'list'] },
+    });
+    expect(verifyFurySupplyChainEvidenceSignature(
+      changed,
+      signature,
+      publicKey.export({ format: 'pem', type: 'spki' }),
+    )).toBe(false);
+
+    const attestation = createFurySupplyChainSignedAttestation(
+      evidence,
+      privateKey.export({ format: 'pem', type: 'pkcs8' }),
+      'release-key-2026',
+    );
+    expect(attestation.evidence).toBe(evidence);
+    expect(verifyFurySupplyChainEvidenceSignature(
+      attestation.evidence,
+      attestation.signature,
+      publicKey.export({ format: 'pem', type: 'spki' }),
+    )).toBe(true);
+  });
+
+  it('rejects non-Ed25519 signing keys and malformed detached signatures', () => {
+    const evidence = createFurySupplyChainEvidence({
+      sourceCommit: 'a'.repeat(40),
+      packageName: 'furypipe',
+      packageVersion: '0.16.0',
+      packageJsonSha256: sha('9'),
+      lockfileSha256: sha('0'),
+      resolvedPackages: [],
+      resolver: { tool: 'pnpm', version: '10.21.0', command: ['pnpm', 'list'] },
+    });
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    expect(() => signFurySupplyChainEvidence(
+      evidence,
+      rsa.privateKey.export({ format: 'pem', type: 'pkcs8' }),
+      'rsa-key',
+    )).toThrow(/Ed25519/u);
+
+    const ed = generateKeyPairSync('ed25519');
+    const signature = signFurySupplyChainEvidence(
+      evidence,
+      ed.privateKey.export({ format: 'pem', type: 'pkcs8' }),
+      'release-key',
+    );
+    expect(verifyFurySupplyChainEvidenceSignature(
+      evidence,
+      { ...signature, signatureBase64: 'not-a-signature' },
+      ed.publicKey.export({ format: 'pem', type: 'spki' }),
+    )).toBe(false);
   });
 
   it('rejects malformed package and digest evidence fail closed', () => {
