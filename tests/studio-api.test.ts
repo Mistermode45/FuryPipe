@@ -67,6 +67,7 @@ describe('Studio API', () => {
     expect(studioApiRoute('/api/studio/setup/runtime')).toEqual({ route: 'runtime-setup', method: 'POST' });
     expect(studioApiRoute('/api/studio/setup/runtime/status')).toEqual({ route: 'runtime-setup-status', method: 'GET' });
     expect(studioApiRoute('/api/studio/autopilot/preview')).toEqual({ route: 'autopilot-preview', method: 'POST' });
+    expect(studioApiRoute('/api/studio/eval')).toEqual({ route: 'eval', method: 'POST' });
     expect(studioApiRoute('/api/studio/connections/login')).toEqual({ route: 'connection-login', method: 'POST' });
     expect(studioApiRoute('/api/studio/../control-room.json')).toBeNull();
   });
@@ -196,6 +197,38 @@ describe('Studio API', () => {
     expect(body.plan.executionAuthorized).toBe(false);
     expect(body.executionAuthorized).toBe(false);
     expect((await api('http://127.0.0.1:11434').handle('autopilot-preview', post({ objective: '' }))).status).toBe(400);
+  });
+
+  it('evaluates bounded datasets without executing capabilities', async () => {
+    const studio = api('http://127.0.0.1:11434');
+    const response = await studio.handle('eval', post({
+      dataset: {
+        format: 'furypipe-eval-dataset/v1',
+        id: 'studio-routing',
+        version: '1.0.0',
+        cases: [{
+          id: 'case-1',
+          domain: 'routing',
+          objective: 'Review repository security.',
+          expected: ['security-skill'],
+          observed: ['security-skill'],
+          success: true,
+        }],
+      },
+    }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      authority:string;
+      execution:string;
+      executionAuthorized:boolean;
+      overall:{f1:number;successRate:number};
+    };
+    expect(body.authority).toBe('evaluation-only');
+    expect(body.execution).toMatch(/^NOT_EXECUTED/u);
+    expect(body.executionAuthorized).toBe(false);
+    expect(body.overall).toMatchObject({ f1:1, successRate:1 });
+
+    expect((await studio.handle('eval', post({ dataset:{ format:'wrong' } }))).status).toBe(422);
   });
 
   it('reports local models with hardware fit', async () => {
