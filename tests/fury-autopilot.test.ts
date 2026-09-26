@@ -26,6 +26,7 @@ describe('Fury Autopilot', () => {
     expect(plan.skills.map((skill) => skill.name)).toContain('systematic-debugging');
     expect(plan.mcp[0]).toMatchObject({ source: 'github', policy: 'READ_ONLY', trusted: true });
     expect(plan.effort.effective).toMatch(/medium|high/u);
+    expect(plan.communicationStyle).toBe('CAVEMAN');
     expect(plan.executionAuthorized).toBe(false);
   });
 
