@@ -57,7 +57,7 @@ Primary evidence:
 | Studio shell / adaptive UX | HUMAN_GATE | Professional adaptive workspace with progressive disclosure | Fury Lux automated QA exists; human visual/screen-reader retest remains | P0 gate | UX-01 | Medium | human retest + a11y |
 | FuryCode | DONE read-only / PARTIAL target | repo/editor/terminal/diff/problems/tests/git/GitHub/Graphify | Current Code view intentionally excludes editing/terminal; master target is broader | P2 | sandbox, permissions | High | browser QA + terminal security E2E |
 | Browser / Research | DONE core / PARTIAL target | search/fetch/extract/crawl/browser interaction with citations and provenance | FuryWeb core DONE; full browser-agent interaction breadth not reconciled | P2 | browser runtime, security | High | SSRF/injection + browser E2E |
-| MCP | DONE core / PARTIAL target | auto router, manager, stdio/HTTP/SSE/streamable HTTP/OAuth, security | MCP Hub DONE; full transport/manager/new registry target requires capability-level audit | P1/P2 | trust, secrets | High | protocol conformance + malicious MCP tests |
+| MCP | DONE CORE / PARTIAL OAUTH UX/LIVE | auto router, manager, stdio/HTTP/SSE/streamable HTTP/OAuth, security | MCP Hub + Direct already provide multi-harness discovery, redaction, trust/policy, inventory probing, exact tool/schema binding, operator/governed approval, bounded execution receipts and durable replay. 2026 reconciliation adds explicit deprecated SSE compatibility and host-owned OAuthClientProvider support without token persistence. Remaining gap is interactive OAuth account UX/live certification, not transport authority. | P1/P2 | trust, secrets | High | protocol conformance + malicious MCP tests + optional OAuth live verification |
 | Plugins / SDK | NOT_VERIFIED | FuryPlugin architecture + manifest + SDK + UI extensions/providers/connectors | Existing plugin bundles exist; new public SDK/manifest lifecycle target not proven | P2 | registry, permissions | High | extension compatibility + crash isolation tests |
 | Agents / execution | DONE core / PARTIAL target | specialized agents, graph, message bus, parallel coordination, replay | Dispatcher/Run/Mission Control/Replay DONE; universal agent graph/message bus UX broader | P2 | FuryIR, registry | Medium | deterministic DAG tests + replay verification |
 | Workflows / automations | DONE core / PARTIAL target | richer builder, schedules/events/webhooks, reusable workflows | FuryFlow Studio exists; full automation breadth requires reconciliation | P2 | execution engine | Medium | DAG + persistence + E2E |
@@ -179,3 +179,28 @@ Hosted evidence observed for the code checkpoint before this documentation updat
 Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
 
 No merge, tag, release, npm publish or deploy is authorized by this checkpoint.
+
+
+## MCP transport / OAuth reconciliation checkpoint — 2026-09-26
+
+Code checkpoint: `472ea62043e83cd9e2c28aa5194677849efaa925`.
+
+Reconciled implementation:
+
+- MCP Direct lifecycle now represents explicit `sse` sources in addition to `stdio` and `streamable_http`;
+- legacy SSE is compatibility-only and is not silently preferred over Streamable HTTP;
+- the installed MCP TypeScript SDK v2 transport is used rather than a custom wire implementation;
+- Streamable HTTP and SSE may receive a host-owned `OAuthClientProvider`;
+- OAuth/header credentials require a stable non-secret `principalId` binding;
+- raw OAuth provider state, tokens, PKCE material and credential values remain outside endpoint fingerprints and serialized evidence;
+- an OAuth provider and a static Authorization header cannot be combined ambiguously;
+- remote URL HTTPS/allowlist/query/credential restrictions remain unchanged;
+- FuryMcpHub can register/probe explicit SSE sources; new sources remain disabled + untrusted;
+- Gateway `.http` commands treat Streamable HTTP and legacy SSE as the same governed network command family while `.stdio` remains strict;
+- existing policy, proposal, approval, single-use execution and durable-replay boundaries remain authoritative.
+
+Evidence already observed on the code checkpoint:
+- exact-candidate build: PASS;
+- Local Contracts including MCP/Gateway/durability: PASS.
+
+Full hosted exact-head closure remains required on the final documentation SHA. No merge, release, tag, npm publish or deploy is authorized.
