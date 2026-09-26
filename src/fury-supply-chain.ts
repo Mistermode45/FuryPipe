@@ -8,6 +8,7 @@ export interface FuryResolvedPackageInput {
   readonly version: string;
   readonly dependencies?: readonly string[];
   readonly license?: string | null;
+  readonly direct?: boolean;
   readonly dev?: boolean;
   readonly optional?: boolean;
 }
@@ -18,6 +19,7 @@ export interface FurySupplyChainComponent {
   readonly name: string;
   readonly version: string;
   readonly license: string | null;
+  readonly direct: boolean;
   readonly dev: boolean;
   readonly optional: boolean;
   readonly dependencies: readonly string[];
@@ -52,6 +54,7 @@ export interface FurySupplyChainEvidence {
     readonly dependencyEdges: number;
     readonly withLicense: number;
     readonly unknownLicense: number;
+    readonly directComponents: number;
     readonly devComponents: number;
     readonly optionalComponents: number;
   };
@@ -157,6 +160,7 @@ export function normalizeFurySupplyChainComponents(
       name,
       version,
       license: normalizeLicense(item.license),
+      direct: item.direct === true,
       dev: item.dev === true,
       optional: item.optional === true,
       dependencies,
@@ -166,6 +170,7 @@ export function normalizeFurySupplyChainComponents(
       const merged = Object.freeze({
         ...existing,
         license: existing.license ?? normalized.license,
+        direct: existing.direct || normalized.direct,
         dev: existing.dev && normalized.dev,
         optional: existing.optional && normalized.optional,
         dependencies: Object.freeze([...new Set([...existing.dependencies, ...normalized.dependencies])].sort((a, b) => a.localeCompare(b))),
@@ -219,6 +224,7 @@ export function createFurySupplyChainEvidence(input: FurySupplyChainEvidenceInpu
       dependencyEdges,
       withLicense: components.filter((component) => component.license !== null).length,
       unknownLicense: components.filter((component) => component.license === null).length,
+      directComponents: components.filter((component) => component.direct).length,
       devComponents: components.filter((component) => component.dev).length,
       optionalComponents: components.filter((component) => component.optional).length,
     }),
@@ -246,10 +252,7 @@ export function createFuryCycloneDxBom(evidence: FurySupplyChainEvidence): FuryC
   }
   const applicationRef = `urn:furypipe:application:${sha256(`${evidence.package.name}@${evidence.package.version}`)}`;
   const refByKey = new Map(evidence.components.map((component) => [component.key, component.bomRef] as const));
-  const directNames = new Set<string>();
-  for (const component of evidence.components) {
-    if (!component.dev) directNames.add(component.key);
-  }
+  const directNames = new Set(evidence.components.filter((component) => component.direct).map((component) => component.key));
   return Object.freeze({
     bomFormat: 'CycloneDX',
     specVersion: FURY_CYCLONEDX_SPEC_VERSION,
@@ -275,6 +278,7 @@ export function createFuryCycloneDxBom(evidence: FurySupplyChainEvidence): FuryC
       version: component.version,
       ...(cycloneLicense(component.license) === undefined ? {} : { licenses: cycloneLicense(component.license)! }),
       properties: Object.freeze([
+        Object.freeze({ name: 'furypipe:direct', value: String(component.direct) }),
         Object.freeze({ name: 'furypipe:dev', value: String(component.dev) }),
         Object.freeze({ name: 'furypipe:optional', value: String(component.optional) }),
       ]),
