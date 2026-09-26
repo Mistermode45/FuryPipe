@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { ModelFabricEntry, ModelFabricRegistry } from './core/model-fabric.js';
 import type { FuryLocalBackendKind, FuryLocalBackendStatus, FuryLocalModel } from './fury-local-fabric.js';
 
@@ -13,7 +14,10 @@ const EMPTY_UNKNOWN_MODALITIES = Object.freeze({
 });
 
 function modelFabricId(backend: FuryLocalBackendKind, id: string): string {
-  return `local:${backend}:${id}`;
+  const safe = /^[A-Za-z0-9][A-Za-z0-9._:/@+~-]{0,179}$/u.test(id)
+    ? id
+    : `sha256-${createHash('sha256').update(id,'utf8').digest('hex')}`;
+  return `local:${backend}:${safe}`;
 }
 
 export function localModelCapabilityId(
