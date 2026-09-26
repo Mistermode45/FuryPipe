@@ -43,7 +43,7 @@ import { inspectHuggingFaceGguf, recommendHuggingFaceGguf } from '../fury-huggin
 import { installFuryLocalRuntime, type FuryRuntimeSetupId, type FuryRuntimeSetupRunner } from '../fury-runtime-setup.js';
 import { launchFuryAccountLogin, type FuryAccountLoginLauncher, type FuryAccountProvider } from '../fury-account-connect.js';
 import { probeFuryAccountStatuses, type FuryAccountStatusRunner } from '../fury-account-status.js';
-import { FURY_AUTOPILOT_EFFORTS, planFuryAutopilot, type FuryAutopilotEffort } from '../fury-autopilot.js';
+import { FURY_AUTOPILOT_EFFORTS, type FuryAutopilotEffort } from '../fury-autopilot.js';
 import { STUDIO_RESPONSE_STYLES, planStudioAutopilot, type StudioResponseStyle } from './studio-autopilot.js';
 import { FURY_EXTENSION_KINDS, listFuryExtensions, type FuryExtensionKind } from '../fury-extension-catalog.js';
 import { renderTextToImages } from '../core/library.js';
@@ -442,26 +442,7 @@ export function createStudioApi(options: StudioApiOptions) {
             const effort = typeof body.effort === 'string' && (FURY_AUTOPILOT_EFFORTS as readonly string[]).includes(body.effort)
               ? body.effort as FuryAutopilotEffort
               : 'auto';
-            const [skillSelection, mcpState] = await Promise.all([
-              skills.autoSelect(body.objective, typeof body.harnessId === 'string' && body.harnessId
-                ? { harnessId: body.harnessId }
-                : {}),
-              mcp.list(),
-            ]);
-            const plan = planFuryAutopilot({
-              objective: body.objective,
-              effort,
-              selectedSkills: skillSelection.plan.selected,
-              mcpSources: mcpState.sources.map((source) => ({
-                sourceId: source.sourceId,
-                name: source.name,
-                enabled: source.enabled,
-                trusted: source.trusted,
-                defaultPolicy: source.defaultPolicy,
-                ...(source.health ? { health: { ok: source.health.ok, tools: source.health.tools } } : {}),
-              })),
-            });
-            let responseStyle: StudioResponseStyle = plan.communicationStyle === 'CAVEMAN' ? 'caveman' : 'balanced';
+            let responseStyle: StudioResponseStyle = 'auto';
             if (body.responseStyle !== undefined) {
               if (typeof body.responseStyle !== 'string' || !(STUDIO_RESPONSE_STYLES as readonly string[]).includes(body.responseStyle)) {
                 return problem(400, 'invalid-input', 'responseStyle is unsupported');
@@ -474,6 +455,7 @@ export function createStudioApi(options: StudioApiOptions) {
               projectRoot: options.projectRoot,
               skills,
               mcp,
+              effort,
               ...(harnessId ? { harnessId } : {}),
               responseStyle,
               ...(typeof body.customInstructions === 'string' && body.customInstructions.trim()
@@ -482,9 +464,9 @@ export function createStudioApi(options: StudioApiOptions) {
             });
             return json({
               ...compiled,
-              plan,
+              plan: compiled.plan,
               compiled,
-              excludedSkills: skillSelection.excluded,
+              excludedSkills: compiled.skills.excluded,
               execution: 'NOT_EXECUTED: instructions compiled; tools, scripts and MCP execution remain separately governed',
             });
           }
