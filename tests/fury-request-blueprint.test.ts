@@ -1,0 +1,108 @@
+import { describe, expect, it } from 'vitest';
+
+import { selectFuryCapabilitiesForTask } from '../src/capability-autopilot.js';
+import {
+  createFuryCapabilityIndex,
+  FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+} from '../src/capability-index.js';
+import {
+  createFuryRequestBlueprint,
+  FURY_REQUEST_BLUEPRINT_FORMAT,
+} from '../src/fury-request-blueprint.js';
+
+describe('Fury Request Blueprint', () => {
+  it('separates selected capabilities, advisory MCP and unresolved decisions without granting authority', () => {
+    const index = createFuryCapabilityIndex();
+    index.upsert({
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind: 'skill',
+      id: 'repository-review',
+      name: 'Repository review',
+      description: 'Review repository code and tests.',
+      families: ['repository'],
+      tags: ['review'],
+      keywords: ['repository', 'review', 'tests'],
+      trust: 'verified',
+      license: 'not-applicable',
+      health: 'ready',
+      riskClass: 'none',
+      requiredPermissions: [],
+      compatibility: [],
+      source: { system: 'skill-registry', sourceId: 'repository-review' },
+    });
+    const selection = selectFuryCapabilitiesForTask({
+      objective: 'Review repository code and tests.',
+      index,
+    });
+    const blueprint = createFuryRequestBlueprint({
+      objective: 'Review repository code and tests.',
+      profile: { id: 'coding', label: 'Engineering' },
+      effort: {
+        requested: 'auto',
+        recommended: 'medium',
+        effective: 'medium',
+        reason: 'test',
+      },
+      communicationStyle: 'CAVEMAN',
+      contextMode: 'TEXT_FIRST',
+      capabilitySelection: selection,
+      instructionFacetIds: ['production-engineering'],
+      instructionProfileIds: ['karpathy-coding-discipline'],
+      qualityGates: ['tests'],
+      mcpSuggestions: [{
+        sourceId: 'github',
+        source: 'github',
+        tool: 'pull_request.read',
+        score: 5,
+        policy: 'ASK',
+        trusted: false,
+        needsApproval: true,
+        reason: 'advisory only',
+      }],
+      budgets: {
+        skillInstructionBytes: 12 * 1024,
+        systemPromptBytes: 28 * 1024,
+      },
+    });
+
+    expect(blueprint.format).toBe(FURY_REQUEST_BLUEPRINT_FORMAT);
+    expect(blueprint.capabilities.selected).toHaveLength(1);
+    expect(blueprint.capabilities.selected[0]).toMatchObject({
+      kind: 'skill',
+      id: 'repository-review',
+    });
+    expect(blueprint.mcp.advisory[0]).toMatchObject({
+      sourceId: 'github',
+      needsApproval: true,
+    });
+    expect(blueprint.unresolved).toEqual(['model', 'agent', 'tool']);
+    expect(blueprint.capabilities.executionAuthority).toBe(false);
+    expect(blueprint.mcp.executionAuthority).toBe(false);
+    expect(blueprint.executionAuthorized).toBe(false);
+    expect(JSON.stringify(blueprint)).not.toContain('Review repository code and tests.');
+  });
+
+  it('rejects forged selection data', () => {
+    expect(() => createFuryRequestBlueprint({
+      objective: 'x',
+      profile: { id: 'general', label: 'General' },
+      effort: {
+        requested: 'low',
+        recommended: 'low',
+        effective: 'low',
+        reason: 'test',
+      },
+      communicationStyle: 'STANDARD',
+      contextMode: 'TEXT_FIRST',
+      capabilitySelection: {
+        format: 'furypipe-capability-selection/v1',
+        executionAuthority: false,
+      } as never,
+      instructionFacetIds: [],
+      instructionProfileIds: [],
+      qualityGates: [],
+      mcpSuggestions: [],
+      budgets: { skillInstructionBytes: 0, systemPromptBytes: 0 },
+    })).toThrow(/process-local/u);
+  });
+});
