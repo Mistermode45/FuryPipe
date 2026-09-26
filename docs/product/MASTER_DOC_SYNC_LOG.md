@@ -95,3 +95,21 @@ Truth boundary:
 - plugin code execution or UI mounting is not authorized;
 - no network/filesystem/subprocess authority was introduced;
 - final status requires exact-head hosted CI evidence.
+
+
+## 2026-09-26 — FuryCode + Browser Advanced Studio track
+
+Base authority: PR #235 exact green HEAD `9111dc144fde1872e47a2e5a53787bb4d0a28e47`.
+
+Added:
+- `src/studio/studio-code-intelligence.ts`: bounded CodeGraph-backed repository/symbol intelligence;
+- `src/studio/studio-browser-controller.ts`: opt-in governed BrowserRuntime bridge retaining authority objects server-side;
+- Studio API routes for code intelligence and managed browser lifecycle/actions;
+- unit and route-registry tests;
+- checkpoint doc `docs/product/FURYPIPE_CODE_BROWSER_ADVANCED_CHECKPOINT_2026-09-26.md`.
+
+Truth boundary:
+- no production browser host is claimed;
+- browser permits are never serialized;
+- no editor/terminal/write action is added by this checkpoint;
+- exact-head hosted evidence remains required.

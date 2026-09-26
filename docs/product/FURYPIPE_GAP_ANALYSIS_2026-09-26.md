@@ -55,7 +55,7 @@ Primary evidence:
 | Video Studio | NOT_VERIFIED | provider-backed generation + storyboard/timeline | Helios is cataloged; production Studio integration not proven | P2 | queue, media providers, GPU | Medium | provider-optional E2E + queue recovery |
 | Audio / Voice | PARTIAL | STT/TTS/realtime duplex with interruption and permissions | Current spec records media-realtime-voice primitive; Studio adds progressive dictation | P2 | permissions, model fabric | High | microphone/STT/TTS/realtime E2E |
 | Studio shell / adaptive UX | HUMAN_GATE | Professional adaptive workspace with progressive disclosure | Fury Lux automated QA exists; human visual/screen-reader retest remains | P0 gate | UX-01 | Medium | human retest + a11y |
-| FuryCode | DONE read-only / PARTIAL target | repo/editor/terminal/diff/problems/tests/git/GitHub/Graphify | Current Code view intentionally excludes editing/terminal; master target is broader | P2 | sandbox, permissions | High | browser QA + terminal security E2E |
+| FuryCode | DONE read-only + CODEGRAPH INTELLIGENCE / PARTIAL target | repo/editor/terminal/diff/problems/tests/git/GitHub/Graphify | Existing read-only tree/file/diff now gains bounded CodeGraph-backed file/symbol search plus references/imports/test relations. Editor writes, governed terminal/process UX, problems/test panels and Git/GitHub action UX remain open. | P2 | sandbox, permissions | High | code-intelligence tests + future terminal/write browser QA/security E2E |
 | Browser / Research | DONE core / PARTIAL target | search/fetch/extract/crawl/browser interaction with citations and provenance | FuryWeb core DONE; full browser-agent interaction breadth not reconciled | P2 | browser runtime, security | High | SSRF/injection + browser E2E |
 | MCP | DONE CORE / PARTIAL OAUTH UX/LIVE | auto router, manager, stdio/HTTP/SSE/streamable HTTP/OAuth, security | MCP Hub + Direct already provide multi-harness discovery, redaction, trust/policy, inventory probing, exact tool/schema binding, operator/governed approval, bounded execution receipts and durable replay. 2026 reconciliation adds explicit deprecated SSE compatibility and host-owned OAuthClientProvider support without token persistence. Remaining gap is interactive OAuth account UX/live certification, not transport authority. | P1/P2 | trust, secrets | High | protocol conformance + malicious MCP tests + optional OAuth live verification |
 | Plugins / SDK | PARTIAL — SDK + ADMISSION FOUNDATION | FuryPlugin architecture + manifest + SDK + UI extensions/providers/connectors | Existing opt-in Plugin Bundle registry remains authoritative. The public SDK remains authoring-only; a new operator-gated runtime admission contract now enforces permission subsets and projects package-relative UI extensions into a no-network/no-filesystem/no-host-DOM sandbox profile. It still grants no execution or mount authority. Remaining gap is a real isolated executable host, lifecycle/rollback and compatibility/browser evidence. | P2 | registry, permissions | High | plugin SDK + admission tests + future isolated-host/browser tests |
@@ -324,3 +324,17 @@ Implemented on a dedicated track stacked from PR #233 exact HEAD:
 - no plugin execution, mount, filesystem or network authority is granted by these new contracts.
 
 State remains **PARTIAL / pending exact-head evidence**. Durable artifact persistence and a real executable isolated plugin host remain open.
+
+
+## FuryCode + Browser Advanced Studio checkpoint — 2026-09-26
+
+Implemented on a dedicated track stacked from PR #235 exact green HEAD `9111dc144fde1872e47a2e5a53787bb4d0a28e47`:
+
+- CodeGraph-backed Studio repository summary, file/symbol search, references, imports and related-test inspection;
+- opt-in Studio Browser controller backed only by canonical `BrowserRuntime`;
+- generated browser session/page/permit authority stays server-side;
+- every browser lifecycle/action route requires explicit confirmation;
+- upload is deliberately excluded from this first Studio bridge;
+- no editor write, terminal, commit, push, merge or alternative browser authority is introduced.
+
+State remains **PARTIAL / pending exact-head evidence**. A production browser host and governed code write/terminal UX remain open.
