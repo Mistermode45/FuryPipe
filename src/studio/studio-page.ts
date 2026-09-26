@@ -1017,7 +1017,7 @@ const SCRIPT = String.raw`
   function show(name) {
     if (!views.includes(name)) name = 'notfound';
     for (const s of $$('main > section')) s.hidden = s.dataset.view !== name;
-    for (const a of $('.side-nav a[data-view]')) { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); }
+    for (const a of $$('.side-nav a[data-view]')) { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); }
     const activeNav = $('.side-nav a[data-view="' + name + '"]');
     const more = $('#nav-more');
     if (activeNav && activeNav.closest('.nav-more') && more) more.open = true;
@@ -1258,7 +1258,7 @@ const SCRIPT = String.raw`
     store.set('autopilot', state.autopilot ? 'on' : 'off');
     $('#tool-autopilot').setAttribute('aria-pressed', String(state.autopilot));
   });
-  for (const r of $('input[name="pref-response-style"]')) {
+  for (const r of $$('input[name="pref-response-style"]')) {
     r.checked = r.value === state.responseStyle;
     r.addEventListener('change', () => {
       state.responseStyle = r.value;
