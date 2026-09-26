@@ -1467,7 +1467,9 @@ const SCRIPT = String.raw`
   async function streamReply(route) {
     state.lastRoute = route; renderRouteChip();
     const reply = { role: 'assistant', content: '', model: { kind: route.kind, model: route.model, locality: 'local' } };
-    const history = [...state.autopilotMessages, ...state.conv.messages.map(m => ({ role: m.role, content: m.content }))].slice(-64);
+    const maxConversationMessages = Math.max(1, 64 - state.autopilotMessages.length);
+    const recentConversation = state.conv.messages.slice(-maxConversationMessages).map(m => ({ role: m.role, content: m.content }));
+    const history = [...state.autopilotMessages, ...recentConversation];
     state.conv.messages.push(reply); renderConversation();
     const body = $('#chat-log').lastElementChild.querySelector('.body'); const caret = el('span', { class: 'caret', 'aria-hidden': 'true' }); body.replaceChildren(caret);
     const ctrl = new AbortController(); state.busy = ctrl; stopBtn(true);
