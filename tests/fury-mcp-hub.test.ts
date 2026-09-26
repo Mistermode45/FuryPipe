@@ -96,6 +96,14 @@ describe('FuryMcpHub policy and health', () => {
     const remote = await hub.addProjectSource({ name: 'docs', transport: 'streamable_http', url: 'https://mcp.example.com/v1' });
     expect(remote).toMatchObject({ enabled: false, trusted: false, locality: 'remote' });
 
+    const legacy = await hub.addProjectSource({ name: 'legacy-docs', transport: 'sse', url: 'https://mcp.example.com/sse' });
+    expect(legacy).toMatchObject({
+      transport: 'sse',
+      enabled: false,
+      trusted: false,
+      locality: 'remote',
+    });
+
     await expect(hub.addProjectSource({ name: 'secret', transport: 'stdio', command: 'tool', args: ['--api-key=abc'] })).rejects.toThrow(/secret-looking/u);
     await expect(hub.addProjectSource({ name: 'unsafe', transport: 'streamable_http', url: 'http://example.com/mcp' })).rejects.toThrow(/HTTPS/u);
     await expect(hub.addProjectSource({ name: 'query', transport: 'streamable_http', url: 'https://mcp.example.com/mcp?token=x' })).rejects.toThrow(/query strings/u);
