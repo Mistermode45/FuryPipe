@@ -39,10 +39,18 @@ describe('Studio Fury Autopilot',()=>{
       mkdirSync(project,{recursive:true}); mkdirSync(home,{recursive:true});
       const skills=createFurySkillHub({projectRoot:project,homeDir:home,stateDir:join(root,'skill-state')});
       const mcp=createFuryMcpHub({projectRoot:project,homeDir:home,stateDir:join(root,'mcp-state')});
-      const plan=await planStudioAutopilot({objective:'Research current evidence and compare sources',projectRoot:project,skills,mcp});
+      const plan=await planStudioAutopilot({
+        objective:'Research current evidence and compare sources',
+        projectRoot:project,
+        skills,
+        mcp,
+        customInstructions:'Prefer primary sources and state uncertainty explicitly.',
+      });
       expect(plan.instructions.facets.map((x)=>x.id)).toContain('research-evidence');
       expect(plan.style.resolved).toBe('balanced');
+      expect(plan.prompt.text).toContain('Prefer primary sources and state uncertainty explicitly.');
       await expect(planStudioAutopilot({objective:'x',projectRoot:project,skills,mcp,responseStyle:'invalid' as never})).rejects.toThrow(/unsupported/u);
+      await expect(planStudioAutopilot({objective:'x',projectRoot:project,skills,mcp,customInstructions:'x'.repeat(4_001)})).rejects.toThrow(/4000/u);
     }finally{rmSync(root,{recursive:true,force:true});}
   });
 });
