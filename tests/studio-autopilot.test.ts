@@ -51,6 +51,19 @@ describe('Studio Fury Autopilot',()=>{
         authority:'visualization-only',
         executionAuthorized:false,
       });
+      expect(plan.contextInspector).toMatchObject({
+        format:'furypipe-context-inspector/v1',
+        authority:'inspection-only',
+        executionAuthority:false,
+      });
+      expect(plan.contextInspector.sources).toContainEqual(expect.objectContaining({
+        category:'skills',
+        status:'loaded',
+      }));
+      expect(plan.contextInspector.sources).toContainEqual(expect.objectContaining({
+        category:'memory',
+        status:'available-not-loaded',
+      }));
       expect(plan.capabilityGraph.nodes).toContainEqual(expect.objectContaining({
         kind:'capability',
         capabilityId:'api-review',
