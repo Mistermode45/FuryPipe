@@ -162,11 +162,11 @@ function isExecutionCommand(
   return (FURY_GATEWAY_TOOL_EXECUTION_COMMAND_NAMES as readonly string[]).includes(value);
 }
 
-function expectedTransport(
+function expectedTransportFamily(
   commandName: FuryGatewayToolExecutionCommandName,
-): 'stdio' | 'streamable_http' | undefined {
+): 'stdio' | 'http' | undefined {
   if (commandName.endsWith('.stdio')) return 'stdio';
-  if (commandName.endsWith('.http')) return 'streamable_http';
+  if (commandName.endsWith('.http')) return 'http';
   return undefined;
 }
 
@@ -199,17 +199,20 @@ export function createFuryGatewayToolBridgeAdapter(
 
   const transportForSource = (
     sourceId: string,
-  ): 'stdio' | 'streamable_http' | undefined =>
+  ): 'stdio' | 'streamable_http' | 'sse' | undefined =>
     options.bridge.inspectSources()
       .find((source) => source.sourceId === sourceId)
       ?.transport;
 
   const requireCommandTransport = (
     commandName: FuryGatewayToolExecutionCommandName,
-    actual: 'stdio' | 'streamable_http' | undefined,
+    actual: 'stdio' | 'streamable_http' | 'sse' | undefined,
   ): void => {
-    const expected = expectedTransport(commandName);
-    if (expected !== undefined && actual !== expected) {
+    const expected = expectedTransportFamily(commandName);
+    if (expected === 'stdio' && actual !== 'stdio') {
+      throw new Error('tool source transport does not match admitted command');
+    }
+    if (expected === 'http' && actual !== 'streamable_http' && actual !== 'sse') {
       throw new Error('tool source transport does not match admitted command');
     }
   };
