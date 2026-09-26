@@ -84,6 +84,28 @@ export function buildFuryModelHubSnapshot(input: {
     })
     .sort((a, b) => a.id.localeCompare(b.id));
 
+  for (const connection of input.connections.connections) {
+    if (providers.some((provider) => provider.id === connection.id)) continue;
+    const state: FuryModelHubProviderState = connection.state === 'authenticated' || connection.state === 'credential-configured'
+      ? 'CONFIGURED_UNVERIFIED'
+      : connection.state === 'runtime-detected'
+        ? 'RUNTIME_DETECTED'
+        : 'NOT_CONFIGURED';
+    providers.push(Object.freeze({
+      id: connection.id,
+      protocol: 'unknown',
+      displayName: connection.displayName,
+      state,
+      registration: 'unregistered',
+      availability: 'unknown',
+      configuredVia: Object.freeze([...connection.configuredVia]),
+      runtimes: Object.freeze(connection.runtimes.map((runtime) => runtime.id)),
+      evidence: Object.freeze(['AI connection discovery only; no provider adapter is registered.']),
+      executionAuthorized: false,
+    }));
+  }
+  providers.sort((a, b) => a.id.localeCompare(b.id));
+
   const models = input.models.list()
     .map((model): FuryModelHubModel => Object.freeze({
       provider: model.provider,
