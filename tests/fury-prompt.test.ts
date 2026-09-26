@@ -1,10 +1,53 @@
 import { describe, expect, it } from 'vitest';
-import { compileFuryPrompt } from '../src/fury-prompt.js';
+import { analyzeFuryPromptRequest, compileFuryPrompt, FURY_PROMPT_MODES } from '../src/fury-prompt.js';
 import { transformRequest } from '../src/core/transform.js';
 
 function requestBytes(value: Record<string, unknown>): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(value));
 }
+
+describe('FuryPrompt analyzer', () => {
+  it('exposes the nine product modes and recommends coding/research/strict profiles deterministically', () => {
+    expect(FURY_PROMPT_MODES).toEqual([
+      'RAW','AUTO','ENHANCED','PROFESSIONAL','CODING','RESEARCH','CREATIVE','STRICT','FAST',
+    ]);
+    expect(analyzeFuryPromptRequest({ objective:'Review this TypeScript repository and fix the failing tests.' })).toMatchObject({
+      expectedOutput:'CODE',
+      recommendedMode:'CODING',
+      clarificationRecommended:false,
+      executionAuthority:false,
+    });
+    expect(analyzeFuryPromptRequest({ objective:'Research current AI agent benchmarks and compare primary sources.' })).toMatchObject({
+      expectedOutput:'RESEARCH',
+      recommendedMode:'RESEARCH',
+    });
+    expect(analyzeFuryPromptRequest({ objective:'Audit authentication tokens and production database permissions for security vulnerabilities.' })).toMatchObject({
+      securityRisk:'HIGH',
+      recommendedMode:'STRICT',
+    });
+  });
+
+  it('recommends clarification only for genuinely underspecified tiny requests', () => {
+    const vague=analyzeFuryPromptRequest({ objective:'Improve it' });
+    expect(vague).toMatchObject({
+      ambiguity:'HIGH',
+      clarificationRecommended:true,
+    });
+    expect(vague.missingContext).toContain('task-context');
+
+    const resolvable=analyzeFuryPromptRequest({
+      objective:'Improve this',
+      sections:{ context:'The current TypeScript API module supplied by the workspace.' },
+    });
+    expect(resolvable.clarificationRecommended).toBe(false);
+  });
+
+  it('keeps prompt analysis bounded and non-authoritative', () => {
+    expect(()=>analyzeFuryPromptRequest({ objective:'' })).toThrow(/bounded non-empty/u);
+    expect(()=>analyzeFuryPromptRequest({ objective:'x'.repeat(64_001) })).toThrow(/bounded non-empty/u);
+    expect(analyzeFuryPromptRequest({objective:'Summarize this release note.'}).executionAuthority).toBe(false);
+  });
+});
 
 describe('FuryPrompt compiler', () => {
   it('keeps a short task compact instead of adding a structured wrapper', () => {
