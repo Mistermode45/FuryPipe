@@ -441,6 +441,10 @@
       "types": "./dist/fury-supply-chain.d.ts",
       "import": "./dist/fury-supply-chain.js"
     },
+    "./fury-eval": {
+      "types": "./dist/fury-eval.d.ts",
+      "import": "./dist/fury-eval.js"
+    },
     "./benchmark-claim-gate": {
       "types": "./dist/benchmark-claim-gate.d.ts",
       "import": "./dist/benchmark-claim-gate.js"
