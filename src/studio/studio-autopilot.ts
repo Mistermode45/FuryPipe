@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { planFuryAutopilot } from '../fury-autopilot.js';
+import { planFuryAutopilot, type FuryAutopilotEffort } from '../fury-autopilot.js';
 import { createFuryCapabilityIndex } from '../capability-index.js';
 import { selectFuryCapabilitiesForTask } from '../capability-autopilot.js';
 import { projectSkillHubIntoCapabilityIndex } from '../capability-index-adapters.js';
@@ -20,6 +20,7 @@ export interface StudioAutopilotInput {
   readonly skills: FurySkillHub;
   readonly mcp: FuryMcpHub;
   readonly harnessId?: string;
+  readonly effort?: FuryAutopilotEffort;
   readonly responseStyle?: StudioResponseStyle;
   readonly customInstructions?: string;
 }
@@ -84,6 +85,7 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   });
   const routing=planFuryAutopilot({
     objective,
+    ...(input.effort?{effort:input.effort}:{}),
     selectedSkills:selectedSkillCapabilities.map((skill)=>({
       name:skill.id,
       score:skill.score,
@@ -206,6 +208,7 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   return Object.freeze({
     format:STUDIO_AUTOPILOT_FORMAT,
     objectiveDigest:createHash('sha256').update(objective,'utf8').digest('hex'),
+    plan:routing,
     routing:Object.freeze({
       format:routing.format,
       profile:routing.profile,
