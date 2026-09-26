@@ -450,11 +450,13 @@ export function createStudioApi(options: StudioApiOptions) {
               responseStyle = body.responseStyle as StudioResponseStyle;
             }
             const harnessId = typeof body.harnessId === 'string' && body.harnessId ? body.harnessId : undefined;
+            const harnessDiscovery = await harnesses();
             const compiled = await planStudioAutopilot({
               objective: body.objective,
               projectRoot: options.projectRoot,
               skills,
               mcp,
+              harnesses: harnessDiscovery,
               effort,
               ...(harnessId ? { harnessId } : {}),
               responseStyle,
