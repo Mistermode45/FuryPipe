@@ -12,6 +12,7 @@ import type { FurySkillHub } from '../fury-skill-hub.js';
 import type { FuryHarnessDiscovery } from '../fury-harness-hub.js';
 import { DEFAULT_PROVIDER_REGISTRY } from '../core/provider-fabric.js';
 import { createFuryRequestBlueprint } from '../fury-request-blueprint.js';
+import { buildFuryCapabilityGraph } from '../fury-capability-graph.js';
 
 export const STUDIO_AUTOPILOT_FORMAT = 'furypipe-studio-autopilot/v1' as const;
 export const STUDIO_RESPONSE_STYLES = Object.freeze(['auto','balanced','caveman','detailed'] as const);
@@ -231,11 +232,13 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
       systemPromptBytes:MAX_SYSTEM_PROMPT_BYTES,
     },
   });
+  const capabilityGraph=buildFuryCapabilityGraph(blueprint);
   return Object.freeze({
     format:STUDIO_AUTOPILOT_FORMAT,
     objectiveDigest:createHash('sha256').update(objective,'utf8').digest('hex'),
     plan:routing,
     blueprint,
+    capabilityGraph,
     routing:Object.freeze({
       format:routing.format,
       profile:routing.profile,
