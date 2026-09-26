@@ -17,3 +17,4 @@ export * from './fury-trust.js';
 export * from './fury-score.js';
 export * from './capability-catalog-resolver.js';
 export * from './capability-activation.js';
+export * from './universal-capability.js';
