@@ -64,6 +64,7 @@ describe('Studio API', () => {
     expect(studioApiRoute('/api/studio/local.json')).toEqual({ route: 'local', method: 'GET' });
     expect(studioApiRoute('/api/studio/chat')).toEqual({ route: 'chat', method: 'POST' });
     expect(studioApiRoute('/api/studio/setup/runtime')).toEqual({ route: 'runtime-setup', method: 'POST' });
+    expect(studioApiRoute('/api/studio/setup/runtime/status')).toEqual({ route: 'runtime-setup-status', method: 'GET' });
     expect(studioApiRoute('/api/studio/connections/login')).toEqual({ route: 'connection-login', method: 'POST' });
     expect(studioApiRoute('/api/studio/../control-room.json')).toBeNull();
   });
@@ -94,8 +95,20 @@ describe('Studio API', () => {
     });
     expect((await studio.handle('runtime-setup', post({ runtime:'ollama' }))).status).toBe(400);
     const response = await studio.handle('runtime-setup', post({ runtime:'ollama', confirm:true }));
-    expect(response.status).toBe(201);
+    expect(response.status).toBe(202);
+    const started = await response.json() as { id:string; state:string };
+    expect(started.state).toBe('running');
+    for (let i=0;i<20 && calls.length===0;i++) await new Promise((resolve)=>setTimeout(resolve,1));
     expect(calls[0]).toContain('Ollama.Ollama');
+    let statusResponse:Response | undefined;
+    for (let i=0;i<20;i++) {
+      statusResponse = await studio.handle('runtime-setup-status', new Request('http://127.0.0.1/api/studio/setup/runtime/status?id='+encodeURIComponent(started.id)));
+      const status = await statusResponse.clone().json() as { state:string };
+      if (status.state !== 'running') break;
+      await new Promise((resolve)=>setTimeout(resolve,1));
+    }
+    expect(statusResponse?.status).toBe(200);
+    expect(await statusResponse?.json()).toMatchObject({ state:'installed', runtime:'ollama' });
   });
 
   it('launches account sign-in only with confirmation and a known installed provider runtime', async () => {

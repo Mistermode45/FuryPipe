@@ -16,6 +16,8 @@ describe('Fury local runtime setup', () => {
     expect(calls[0]?.executable).toBe('winget');
     expect(calls[0]?.args).toContain('Ollama.Ollama');
     expect(calls[0]?.args).toContain('--disable-interactivity');
+    expect(calls[0]?.args).toContain('--source');
+    expect(calls[0]?.args).not.toContain('--scope');
   });
 
   it('uses the verified LM Studio winget package id', async () => {

@@ -30,7 +30,7 @@ import { planFuryTask } from '../fury-planner.js';
 import { createFuryProofLedger } from '../fury-proof.js';
 import { runFuryTask, type FuryRunResult, type FuryTaskExecutor } from '../fury-run.js';
 import { createFurySkillHub, FurySkillHubError, FURY_SKILL_GOVERNANCE, type FurySkillGovernance, type FurySkillHub } from '../fury-skill-hub.js';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createFuryKnowledgeBase, FuryKnowledgeError, type FuryEmbedder, type FuryRetrievalMode } from '../fury-knowledge.js';
 import { createFurySearxngAdapter, furyWebCrawl, furyWebExtract, furyWebFetch, furyWebMap, furyWebSearch, FuryWebError, type FuryWebFetchOptions } from '../fury-web.js';
 import { studioMemoryFromEnv, studioMemoryList, studioMemoryRemember, studioMemoryScopes, studioMemorySearch, type StudioMemory } from './studio-memory.js';
@@ -49,7 +49,7 @@ const MAX_POST_BYTES = 256 * 1024;
 const CACHE_MS = 10_000;
 
 export type StudioRoute =
-  | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
+  | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
   | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
@@ -66,6 +66,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/local-model/inspect': { route: 'local-model-inspect', method: 'POST' },
   '/api/studio/local-model/recommend': { route: 'local-model-recommend', method: 'POST' },
   '/api/studio/setup/runtime': { route: 'runtime-setup', method: 'POST' },
+  '/api/studio/setup/runtime/status': { route: 'runtime-setup-status', method: 'GET' },
   '/api/studio/bindings.json': { route: 'bindings', method: 'GET' },
   '/api/studio/graph.json': { route: 'graph', method: 'GET' },
   '/api/studio/blast-radius': { route: 'blast-radius', method: 'POST' },
@@ -286,6 +287,22 @@ export function createStudioApi(options: StudioApiOptions) {
   };
 
   const runs = new Map<string, StudioRun>();
+  type RuntimeSetupJob = {
+    readonly id:string;
+    readonly runtime:FuryRuntimeSetupId;
+    readonly startedAt:number;
+    state:'running'|'installed'|'failed'|'unsupported';
+    next:string;
+    error?:string;
+  };
+  const runtimeSetupJobs = new Map<string, RuntimeSetupJob>();
+  const cleanRuntimeSetupJobs = () => {
+    const cutoff = now() - 30 * 60_000;
+    for (const [id, job] of runtimeSetupJobs) if (job.startedAt < cutoff && job.state !== 'running') runtimeSetupJobs.delete(id);
+  };
+  const runtimeSetupSnapshot = (job:RuntimeSetupJob) => Object.freeze({
+    id:job.id, runtime:job.runtime, state:job.state, startedAt:job.startedAt, next:job.next, ...(job.error ? { error:job.error } : {}),
+  });
   const ledger = createFuryProofLedger();
   const runSnapshot = (r: StudioRun) => ({
     runId: r.runId, intent: r.intent, startedAt: r.startedAt, status: r.status,
@@ -330,12 +347,37 @@ export function createStudioApi(options: StudioApiOptions) {
             const body = await readJson(request) as { runtime?: unknown; confirm?: unknown };
             if (body.confirm !== true) return problem(400, 'confirmation-required', 'installing local AI requires confirm: true');
             if (body.runtime !== 'ollama' && body.runtime !== 'lmstudio') return problem(400, 'invalid-input', 'runtime must be ollama or lmstudio');
-            const result = await installFuryLocalRuntime(body.runtime as FuryRuntimeSetupId, {
+            cleanRuntimeSetupJobs();
+            const existing = [...runtimeSetupJobs.values()].find((job) => job.runtime === body.runtime && job.state === 'running');
+            if (existing) return json(runtimeSetupSnapshot(existing), 202);
+            const job:RuntimeSetupJob = {
+              id:randomUUID(),
+              runtime:body.runtime,
+              startedAt:now(),
+              state:'running',
+              next:'Installing with Windows Package Manager…',
+            };
+            runtimeSetupJobs.set(job.id, job);
+            void installFuryLocalRuntime(body.runtime as FuryRuntimeSetupId, {
               ...(options.runtimeSetupRunner ? { runner: options.runtimeSetupRunner } : {}),
               ...(options.runtimeSetupPlatform ? { platform: options.runtimeSetupPlatform } : {}),
+            }).then((result) => {
+              job.state = result.status;
+              job.next = result.next;
+              cache.delete('local');
+            }).catch((error:unknown) => {
+              job.state = 'failed';
+              job.error = error instanceof Error ? error.message.slice(0,500) : 'runtime installation failed';
+              job.next = 'Installation failed.';
             });
-            cache.delete('local');
-            return json(result, result.status === 'installed' ? 201 : 409);
+            return json(runtimeSetupSnapshot(job), 202);
+          }
+          case 'runtime-setup-status': {
+            cleanRuntimeSetupJobs();
+            const id = new URL(request.url).searchParams.get('id');
+            if (!id || id.length > 100) return problem(400, 'invalid-input', 'setup job id is required');
+            const job = runtimeSetupJobs.get(id);
+            return job ? json(runtimeSetupSnapshot(job)) : problem(404, 'not-found', 'setup job not found');
           }
           case 'local': {
             const [status, hw] = await Promise.all([local(), hardware()]);

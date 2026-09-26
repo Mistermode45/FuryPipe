@@ -249,7 +249,7 @@ body.paused .orbit,body.paused .flow{animation-play-state:paused}
 .setup{max-width:900px;margin:0 auto 18px;padding:18px 20px;border-radius:var(--r-lg);border:1px solid var(--line-2);background:linear-gradient(180deg,var(--b3),var(--b2));position:relative;z-index:1}
 .setup h3{margin:0 0 6px;font:650 17px/1.3 var(--display);letter-spacing:-.015em}
 .setup p{margin:0 0 14px;color:var(--ink-2);font-size:14px}
-.setup .row{gap:8px}.setup-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}.setup-choice{min-width:0;display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.012));color:var(--ink);text-decoration:none;text-align:left;cursor:pointer;transition:border-color .18s,background .18s,transform .18s var(--ease-out),box-shadow .18s}.setup-choice:hover{border-color:rgba(255,122,40,.28);background:linear-gradient(180deg,rgba(255,106,26,.075),rgba(255,255,255,.018));transform:translateY(-1px);box-shadow:0 18px 34px -30px rgba(255,90,0,.65)}.setup-choice.primary{border-color:var(--o-line);background:linear-gradient(135deg,rgba(255,106,26,.17),rgba(255,106,26,.035))}.setup-choice .setup-icon{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex:none;background:rgba(255,106,26,.09);border:1px solid rgba(255,122,40,.14);color:var(--o-hot)}.setup-choice .setup-icon .i{width:18px;height:18px}.setup-choice>span:last-child{display:flex;min-width:0;flex-direction:column;gap:3px}.setup-choice b{font:620 13.5px/1.25 var(--font)}.setup-choice small{color:var(--muted);font:450 11.5px/1.35 var(--font)}.setup-choice[disabled]{opacity:.55;cursor:wait;transform:none}.setup #setup-status{margin:10px 0 0}
+.setup .row{gap:8px}.setup-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}.setup-choice{min-width:0;display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.012));color:var(--ink);text-decoration:none;text-align:left;cursor:pointer;transition:border-color .18s,background .18s,transform .18s var(--ease-out),box-shadow .18s}.setup-choice:hover{border-color:rgba(255,122,40,.28);background:linear-gradient(180deg,rgba(255,106,26,.075),rgba(255,255,255,.018));transform:translateY(-1px);box-shadow:0 18px 34px -30px rgba(255,90,0,.65)}.setup-choice.primary{border-color:var(--o-line);background:linear-gradient(135deg,rgba(255,106,26,.17),rgba(255,106,26,.035))}.setup-choice .setup-icon{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex:none;background:rgba(255,106,26,.09);border:1px solid rgba(255,122,40,.14);color:var(--o-hot)}.setup-choice .setup-icon .i{width:18px;height:18px}.setup-choice>span:last-child{display:flex;min-width:0;flex-direction:column;gap:3px}.setup-choice b{font:620 13.5px/1.25 var(--font)}.setup-choice small{color:var(--muted);font:450 11.5px/1.35 var(--font)}.setup-choice[disabled]{opacity:.55;cursor:wait;transform:none}.setup #setup-status{margin:10px 0 0}.setup-overlay{z-index:130}.setup-progress{width:min(460px,calc(100vw - 32px));padding:26px;border-radius:20px;border:1px solid rgba(255,255,255,.1);background:linear-gradient(180deg,#17171b,#0c0c0f);box-shadow:0 30px 100px rgba(0,0,0,.65);text-align:center}.setup-progress-icon{width:52px;height:52px;margin:0 auto 16px;border-radius:16px;display:grid;place-items:center;background:rgba(255,106,26,.1);border:1px solid rgba(255,122,40,.22);color:var(--o-hot)}.setup-progress h2{margin:0 0 8px;font:650 20px/1.2 var(--display)}.setup-progress p{min-height:40px;margin:0 0 18px}.setup-progress .row{justify-content:center}.setup-spinner{width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.16);border-top-color:var(--o-hot);animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 
 /* Composer */
 .composer{position:relative;z-index:2;background:linear-gradient(180deg,rgba(31,31,38,.96) 0%,rgba(20,20,25,.985) 100%);border:1px solid var(--line-2);border-radius:var(--r-xl);box-shadow:0 1px 0 rgba(255,255,255,.065) inset,0 -1px 0 rgba(0,0,0,.4) inset,0 22px 60px -24px rgba(0,0,0,.9);transition:border-color .22s var(--ease),box-shadow .22s var(--ease),transform .22s var(--ease-out);overflow:visible}
@@ -730,7 +730,9 @@ const SCRIPT = String.raw`
     'Not signed in': 'Non connecté',
     'Sign-in state is not available for this runtime': 'L’état de connexion n’est pas disponible pour ce runtime',
     'Account connected successfully.': 'Compte connecté avec succès.',
-    'Sign-in window finished. Use Refresh after completing authentication.': 'La fenêtre de connexion est terminée. Cliquez sur Actualiser après avoir terminé l’authentification.'
+    'Sign-in window finished. Use Refresh after completing authentication.': 'La fenêtre de connexion est terminée. Cliquez sur Actualiser après avoir terminé l’authentification.',
+    'Preparing local AI': 'Préparation de l’IA locale',
+    'Close': 'Fermer'
   });
   function detectedLanguage() {
     const langs = [...(Array.isArray(navigator.languages) ? navigator.languages : []), navigator.language, Intl.DateTimeFormat().resolvedOptions().locale, SERVER_LANGUAGE].filter(Boolean);
@@ -791,6 +793,46 @@ const SCRIPT = String.raw`
     return body;
   }
   const post = (url, payload) => getJson(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  function showSetupProgress(title, detail, running) {
+    $('#setup-progress-title').textContent = title;
+    $('#setup-progress-detail').textContent = detail || '';
+    $('#setup-progress-spin').hidden = !running;
+    $('#setup-progress-done').hidden = running;
+    $('#setup-overlay').hidden = false;
+  }
+  async function waitForRuntime(kind) {
+    for (let attempt=0; attempt<12; attempt++) {
+      await loadLocal();
+      const backend = state.local && state.local.backends && state.local.backends.find((item) => item.kind === kind);
+      if (backend && backend.reachable) return true;
+      await sleep(1000);
+    }
+    return false;
+  }
+  async function pollRuntimeSetup(job, label) {
+    for (let attempt=0; attempt<900; attempt++) {
+      const current = await getJson('/api/studio/setup/runtime/status?id=' + encodeURIComponent(job.id));
+      if (current.state === 'running') {
+        showSetupProgress(activeLanguage === 'fr' ? 'Installation de ' + label : 'Installing ' + label, current.next, true);
+        await sleep(1000);
+        continue;
+      }
+      if (current.state === 'installed') {
+        showSetupProgress(activeLanguage === 'fr' ? label + ' est installé' : label + ' is installed', activeLanguage === 'fr' ? 'FuryPipe vérifie maintenant le runtime local…' : 'FuryPipe is checking the local runtime now…', true);
+        const ready = await waitForRuntime(job.runtime);
+        showSetupProgress(
+          ready ? (activeLanguage === 'fr' ? label + ' est prêt' : label + ' is ready') : (activeLanguage === 'fr' ? label + ' est installé' : label + ' is installed'),
+          ready ? (activeLanguage === 'fr' ? 'Le runtime local a été détecté automatiquement.' : 'The local runtime was detected automatically.') : current.next,
+          false,
+        );
+        return;
+      }
+      showSetupProgress(activeLanguage === 'fr' ? 'Installation impossible' : 'Installation failed', current.error || current.next, false);
+      return;
+    }
+    showSetupProgress(activeLanguage === 'fr' ? 'Installation toujours en cours' : 'Installation is still running', activeLanguage === 'fr' ? 'Vous pouvez fermer cette fenêtre et revenir plus tard.' : 'You can close this window and come back later.', false);
+  }
   async function installRuntime(runtime) {
     const label = runtime === 'ollama' ? 'Ollama' : 'LM Studio';
     const question = activeLanguage === 'fr'
@@ -798,16 +840,18 @@ const SCRIPT = String.raw`
       : 'Install ' + label + ' directly on this PC using Windows Package Manager?';
     if (!confirm(question)) return;
     const status = $('#setup-status') || $('#models-status');
-    const controls = $('[data-install-runtime="' + runtime + '"]');
+    const controls = $$('[data-install-runtime="' + runtime + '"]');
     for (const control of controls) control.disabled = true;
+    showSetupProgress(activeLanguage === 'fr' ? 'Préparation de ' + label : 'Preparing ' + label, activeLanguage === 'fr' ? 'Démarrage du gestionnaire de paquets Windows…' : 'Starting Windows Package Manager…', true);
     if (status) status.textContent = translated('Installing local AI…');
     try {
-      const result = await post('/api/studio/setup/runtime', { runtime, confirm: true });
-      if (status) status.textContent = result.next || translated('Installation complete. FuryPipe is checking the runtime…');
-      await new Promise((resolve) => setTimeout(resolve, 1800));
-      await loadLocal();
+      const job = await post('/api/studio/setup/runtime', { runtime, confirm: true });
+      await pollRuntimeSetup(job, label);
+      if (status) status.textContent = translated('Installation complete. FuryPipe is checking the runtime…');
     } catch (error) {
-      if (status) status.textContent = (activeLanguage === 'fr' ? 'Échec de l’installation : ' : 'Installation failed: ') + error.message;
+      const message = (activeLanguage === 'fr' ? 'Échec de l’installation : ' : 'Installation failed: ') + error.message;
+      if (status) status.textContent = message;
+      showSetupProgress(activeLanguage === 'fr' ? 'Installation impossible' : 'Installation failed', message, false);
     } finally {
       for (const control of controls) control.disabled = false;
     }
@@ -1344,6 +1388,9 @@ const SCRIPT = String.raw`
   }
   function newChat() { state.conv = null; state.activity = new Map(); state.lastRoute = null; renderConversation(); renderRouteChip(); loadConversations(); if (location.hash !== '#/chat' && location.hash !== '') location.hash = '#/chat'; setTimeout(() => input.focus(), 0); }
   $('#new-chat').addEventListener('click', () => { newChat(); setDrawer(false); });
+
+  $('#setup-progress-close').addEventListener('click', () => { $('#setup-overlay').hidden = true; });
+  $('#setup-overlay').addEventListener('mousedown', (event) => { if (event.target === $('#setup-overlay') && $('#setup-progress-spin').hidden) $('#setup-overlay').hidden = true; });
 
   /* ---------- Command palette ---------- */
   let palItems = []; let palIndex = 0;
@@ -1996,6 +2043,11 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
   ${modeItem('simple', 'Simple', 'Chat and models. Nothing else in the way.')}${modeItem('power', 'Power', 'Adds Cowork, Knowledge, Web, Memory, Skills and MCP.')}${modeItem('engineer', 'Engineer', 'Adds Code, Agents, Automations, Runtimes and Integrations.')}${modeItem('expert', 'Expert', 'Adds Mission Control: live agents, receipts and replay.')}
 </div>
 <div class="pop menu" id="conv-menu" role="menu" aria-label="Conversation options" hidden><button type="button" class="opt" role="menuitem" id="conv-rename"><span class="t"><span class="n">Rename</span></span></button><button type="button" class="opt" role="menuitem" id="conv-delete"><span class="t"><span class="n">Delete</span></span></button></div>
+<div class="overlay setup-overlay" id="setup-overlay" hidden><div class="setup-progress" role="dialog" aria-modal="true" aria-labelledby="setup-progress-title">
+  <div class="setup-progress-icon"><span id="setup-progress-spin" class="setup-spinner" aria-hidden="true"></span><span id="setup-progress-done" hidden>${icon('check')}</span></div>
+  <h2 id="setup-progress-title">Preparing local AI</h2><p id="setup-progress-detail" class="muted"></p>
+  <div class="row"><button type="button" class="btn secondary" id="setup-progress-close">Close</button></div>
+</div></div>
 <div class="overlay" id="palette-overlay" hidden><div class="palette" role="dialog" aria-modal="true" aria-label="Search and commands">
   <div class="palette-in">${icon('search')}<input id="palette-input" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list" placeholder="Search conversations, pages and commands…" autocomplete="off"><kbd>Esc</kbd></div>
   <ul id="palette-list" role="listbox" aria-label="Results"></ul></div></div>

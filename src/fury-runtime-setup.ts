@@ -76,7 +76,7 @@ export async function installFuryLocalRuntime(
 
   const pkg = WINDOWS_PACKAGES[runtime];
   const command = Object.freeze([
-    'winget', 'install', '--id', pkg, '--exact', '--silent', '--scope', 'user',
+    'winget', 'install', '--id', pkg, '--exact', '--source', 'winget', '--silent',
     '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity',
   ]);
   const result = await (options.runner ?? defaultRunner)(
