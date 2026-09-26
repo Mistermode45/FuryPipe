@@ -139,7 +139,7 @@ describe('Studio API', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { instructions:{profiles:string[]}; prompt:{text:string}; executionAuthorized:boolean };
     expect(body.instructions.profiles).toContain('karpathy-coding-discipline');
-    expect(body.prompt.text).toContain('Production');
+    expect(body.prompt.text).toContain('Define observable success criteria before implementation');
     expect(body.executionAuthorized).toBe(false);
     expect((await api('http://127.0.0.1:11434').handle('autopilot-preview', post({ objective: '' }))).status).toBe(400);
   });

@@ -16,6 +16,7 @@ import { cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node
 import * as path from 'node:path';
 
 import { selectAgentSkillsForTask, type AgentSkillSelectionPlan } from './agent-skill-selector.js';
+import { activateSelectedAgentSkillsNode, type AgentSkillActivationBatch } from './agent-skill-activation-node.js';
 import { discoverAgentSkillsNode, type AgentSkillDiscoveryOptions, type DiscoveredAgentSkill } from './agent-skills-node.js';
 import { parseAgentSkillManifest } from './agent-skills-standard.js';
 import { FURY_HARNESS_REGISTRY } from './fury-harness-hub.js';
@@ -313,6 +314,17 @@ export function createFurySkillHub(options: {
       const removed = [...x.files.keys()].filter((f) => !y.files.has(f)).sort();
       const changed = [...x.files.keys()].filter((f) => y.files.has(f) && !x.files.get(f)!.equals(y.files.get(f)!)).sort();
       return Object.freeze({ added, removed, changed });
+    },
+    /**
+     * Re-discover and activate a previously selected instruction-skill plan
+     * using the exact same trust roots configured for this hub.
+     *
+     * Activation loads SKILL.md instructions only. It never executes scripts,
+     * tools, MCP methods or other bundled resources.
+     */
+    async activateSelection(plan: AgentSkillSelectionPlan): Promise<AgentSkillActivationBatch> {
+      const discovery = await discover();
+      return activateSelectedAgentSkillsNode(plan, discovery.skills);
     },
     /** Route an objective to skills that are enabled, trusted, pin-consistent and runtime-compatible. */
     async autoSelect(objective: string, select: { readonly harnessId?: string; readonly maxActive?: number } = {}): Promise<FurySkillSelection> {

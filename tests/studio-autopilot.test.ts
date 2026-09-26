@@ -26,6 +26,7 @@ describe('Studio Fury Autopilot',()=>{
       expect(plan.mcp.suggested.map((x)=>x.name)).toContain('github');
       expect(plan.mcp.executionAuthorized).toBe(false);
       expect(plan.prompt.text).toContain('Check API behavior and tests before claiming done.');
+      expect(plan.prompt.bytes).toBeLessThanOrEqual(plan.prompt.budgetBytes);
       expect(plan.style.resolved).toBe('caveman');
       expect(plan.executionAuthorized).toBe(false);
     }finally{rmSync(root,{recursive:true,force:true});}

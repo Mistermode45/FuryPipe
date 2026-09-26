@@ -1,7 +1,5 @@
 import { createHash } from 'node:crypto';
 
-import { activateSelectedAgentSkillsNode } from '../agent-skill-activation-node.js';
-import { discoverAgentSkillsNode } from '../agent-skills-node.js';
 import { compileFuryPrompt } from '../fury-prompt.js';
 import { resolveInstructionPlan } from '../instruction-fabric.js';
 import type { FuryMcpHub, FuryMcpSourceView } from '../fury-mcp-hub.js';
@@ -18,12 +16,12 @@ export interface StudioAutopilotInput {
   readonly mcp: FuryMcpHub;
   readonly harnessId?: string;
   readonly responseStyle?: StudioResponseStyle;
-  readonly projectTrustedForInstructions?: boolean;
 }
 
 const MAX_OBJECTIVE_CHARS = 32_768;
 const MAX_SKILL_PROMPT_BYTES = 12 * 1024;
 const MAX_MCP_SUGGESTIONS = 3;
+const MAX_SYSTEM_PROMPT_BYTES = 28 * 1024;
 const encoder = new TextEncoder();
 
 function boundedObjective(value:string):string{
@@ -92,15 +90,11 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   }
   const style=resolvedStyle(requestedStyle,objective);
 
-  const [skillSelection,mcpView,discovery]=await Promise.all([
+  const [skillSelection,mcpView]=await Promise.all([
     input.skills.autoSelect(objective,{...(input.harnessId?{harnessId:input.harnessId}:{}),maxActive:4}),
     input.mcp.list(),
-    discoverAgentSkillsNode({
-      projectRoot:input.projectRoot,
-      ...(input.projectTrustedForInstructions===true?{projectTrustedForInstructions:true}:{}),
-    }),
   ]);
-  const activation=await activateSelectedAgentSkillsNode(skillSelection.plan,discovery.skills);
+  const activation=await input.skills.activateSelection(skillSelection.plan);
 
   let skillBytes=0;
   const activeSkillBlocks:string[]=[];
@@ -140,16 +134,40 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     exactGuardMode:'coding-safe' as const,
   };
 
-  const instructionPlan=resolveInstructionPlan({
+  let instructionPlan=resolveInstructionPlan({
     objective,
     prompt:basePrompt,
     maxFacets:8,
     maxAddedBytes:16_384,
   });
-  const compilation=compileFuryPrompt({
+  let compilation=compileFuryPrompt({
     ...instructionPlan.input,
     securityCritical:instructionPlan.recommendedSecurityCritical,
   });
+  let promptBudgetDegraded=false;
+  if(compilation.promptBytes>MAX_SYSTEM_PROMPT_BYTES){
+    promptBudgetDegraded=true;
+    const summaryPrompt={
+      ...basePrompt,
+      sections:{
+        ...basePrompt.sections,
+        ...(activeSkills.length?{skills:activeSkills.map((skill)=>`Selected instruction skill ${skill.name}; full body omitted from the chat system prompt because the bounded per-turn prompt budget was reached.`)}:{}),
+      },
+    };
+    instructionPlan=resolveInstructionPlan({
+      objective,
+      prompt:summaryPrompt,
+      maxFacets:6,
+      maxAddedBytes:8_192,
+    });
+    compilation=compileFuryPrompt({
+      ...instructionPlan.input,
+      securityCritical:instructionPlan.recommendedSecurityCritical,
+    });
+  }
+  if(compilation.promptBytes>MAX_SYSTEM_PROMPT_BYTES){
+    throw Object.assign(new Error('compiled autopilot prompt exceeds the bounded chat system-prompt budget'),{status:422});
+  }
 
   const selectedByName=new Map(skillSelection.plan.selected.map((item)=>[item.name,item]));
   return Object.freeze({
@@ -186,6 +204,8 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
       bytes:compilation.promptBytes,
       digest:compilation.promptDigest,
       exactGuardMode:compilation.exactGuard.mode,
+      budgetBytes:MAX_SYSTEM_PROMPT_BYTES,
+      budgetDegraded:promptBudgetDegraded,
     }),
     authority:'planning-and-instruction-only' as const,
     executionAuthorized:false as const,
