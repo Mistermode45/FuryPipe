@@ -62,7 +62,7 @@ Primary evidence:
 | Agents / execution | DONE core / PARTIAL target | specialized agents, graph, message bus, parallel coordination, replay | Dispatcher/Run/Mission Control/Replay DONE; universal agent graph/message bus UX broader | P2 | FuryIR, registry | Medium | deterministic DAG tests + replay verification |
 | Workflows / automations | DONE core / PARTIAL target | richer builder, schedules/events/webhooks, reusable workflows | FuryFlow Studio exists; full automation breadth requires reconciliation | P2 | execution engine | Medium | DAG + persistence + E2E |
 | Artifacts | PARTIAL | first-class artifact graph, versioning, restore/export/search | Current master sync already records Artifact Graph as a gap | P2 | storage, graph | Medium | history/diff/restore tests |
-| Graphify lifecycle | PARTIAL | safe automatic recommendation/refresh after relevant changes | Explicit bounded `refreshGraphify` exists; auto refresh after merge/checkout not wired | P2 | FuryGraph, integrator | Medium | incremental integrity tests + fallback behavior |
+| Graphify lifecycle | PARTIAL — RECOMMENDATION WIRED | safe automatic recommendation/refresh after relevant changes | Explicit bounded `refreshGraphify` remains operator-triggered. New lifecycle planner detects stale Graphify output and relevant source-file changes, recommends refresh, and explicitly preserves native fallback without granting execution authority. Automatic post-merge/checkout execution remains intentionally unimplemented pending an approval-bearing runtime hook. | P2 | FuryGraph, integrator | Medium | lifecycle planner tests + future approved post-integration hook |
 | Marketplace | PARTIAL FOUNDATION | signed metadata, trust levels, install/update/rollback | Signed deterministic manifests, Ed25519 trust verification and approval-only INSTALL/UPDATE/ROLLBACK transition plans now exist. Network/filesystem/execution authority remains false. Actual downloader/installer, persistent catalog, UI lifecycle and rollback executor remain P2. | P2 | registry, trust, signatures | High | signature/tamper tests + future installer isolation tests |
 | Security / Zero Trust | DONE core / PARTIAL target | zero-trust extension/runtime policy across every new capability | Strong current controls; each new media/plugin/provider surface must inherit them | P0 continuous | FuryProof, trust | Critical | negative tests + SAST/dependency/secret scans |
 | Supply chain | DONE CORE / PARTIAL DISTRIBUTION | scanner, hashes/signatures, SBOM, license/dependency ledger | Exact candidate produces deterministic dependency evidence + CycloneDX 1.6 SBOM bound to package/lockfile hashes; detached Ed25519 attestations verify exact evidence digests and reject tampering/non-Ed25519 keys. Distribution key management/transparency and marketplace installer enforcement remain P2. | P1/P2 | registry | High | tamper/license/security fixtures + RC Preparation exact-head evidence |
@@ -264,5 +264,26 @@ Implemented on the continuation branch:
 - no model/tool/MCP/agent execution is introduced by FuryEval.
 
 Status: `IMPLEMENTED_PENDING_EXACT_HEAD` until the final code/documentation SHA completes all hosted gates. Curated production datasets and longitudinal effectiveness history remain a later P2 extension.
+
+No merge, tag, release, npm publish or deploy performed.
+
+
+## Graphify lifecycle recommendation checkpoint — 2026-09-26
+
+Implemented on the continuation branch:
+
+- deterministic `furypipe-graph-lifecycle/v1` planning;
+- source-file change filtering with path traversal rejection;
+- stale Graphify snapshots produce `RECOMMEND_REFRESH`;
+- relevant repository code changes produce `RECOMMEND_REFRESH`;
+- absent Graphify output produces explicit `USE_NATIVE_FALLBACK`;
+- documentation-only changes do not independently force graph refresh;
+- every lifecycle plan carries `executionAuthorized:false`;
+- existing `refreshGraphify()` remains explicit and operator-triggered;
+- no automatic subprocess execution was added after merge/checkout.
+
+This deliberately closes the recommendation half of the lifecycle gap without weakening the existing execution boundary. A future integration hook may request an approved refresh after successful repository mutations, but it must not silently execute Graphify.
+
+Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
 
 No merge, tag, release, npm publish or deploy performed.
