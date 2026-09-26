@@ -191,6 +191,38 @@ describe('Fury Request Blueprint', () => {
     expect(blueprint.executionAuthorized).toBe(false);
   });
 
+  it('preserves missing explicit capability requests for explainability', () => {
+    const index = createFuryCapabilityIndex();
+    const selection = selectFuryCapabilitiesForTask({
+      objective: 'Use the requested agent.',
+      index,
+      explicitRequests: [{ kind: 'agent', id: 'missing-agent' }],
+      options: { maxSelectedByKind: { agent: 1 } },
+    });
+    const blueprint = createFuryRequestBlueprint({
+      objective: 'Use the requested agent.',
+      profile: { id: 'general', label: 'General' },
+      effort: { requested: 'auto', recommended: 'low', effective: 'low', reason: 'test' },
+      communicationStyle: 'STANDARD',
+      contextMode: 'TEXT_FIRST',
+      capabilitySelection: selection,
+      instructionFacetIds: [],
+      instructionProfileIds: [],
+      qualityGates: [],
+      mcpSuggestions: [],
+      budgets: { skillInstructionBytes: 0, systemPromptBytes: 0 },
+    });
+
+    expect(blueprint.capabilities.missingExplicitRequests).toEqual([
+      { kind: 'agent', id: 'missing-agent' },
+    ]);
+    expect(blueprint.decisions).toContainEqual(expect.objectContaining({
+      family: 'agents',
+      status: 'unresolved',
+      executionAuthority: false,
+    }));
+  });
+
   it('rejects forged selection data', () => {
     expect(() => createFuryRequestBlueprint({
       objective: 'x',
