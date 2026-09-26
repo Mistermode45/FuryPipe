@@ -616,6 +616,14 @@
     "./fury-plugin-runtime": {
       "types": "./dist/fury-plugin-runtime.d.ts",
       "import": "./dist/fury-plugin-runtime.js"
+    },
+    "./fury-artifact-repository-node": {
+      "types": "./dist/fury-artifact-repository-node.d.ts",
+      "import": "./dist/fury-artifact-repository-node.js"
+    },
+    "./fury-plugin-sandbox-node": {
+      "types": "./dist/fury-plugin-sandbox-node.d.ts",
+      "import": "./dist/fury-plugin-sandbox-node.js"
     }
   },
   "files": [
