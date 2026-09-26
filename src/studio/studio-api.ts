@@ -49,6 +49,7 @@ import { FURY_EXTENSION_KINDS, listFuryExtensions, type FuryExtensionKind } from
 import { renderTextToImages } from '../core/library.js';
 import { createModelFabricRegistry } from '../core/model-fabric.js';
 import { localModelCapabilityId, observeFuryLocalModelsInModelFabric } from '../fury-local-model-fabric.js';
+import { buildFuryWorkspaceGraph } from '../fury-workspace-graph.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
@@ -431,7 +432,7 @@ export function createStudioApi(options: StudioApiOptions) {
             return json({ plan, candidates: candidates.map((c) => ({ id: c.id, harnessId: c.harnessId, provider: c.provider, model: c.model, locality: c.locality })), execution: 'NOT_EXECUTED: preview only' });
           }
           case 'autopilot-preview': {
-            const body = await readJson(request) as { objective?: unknown; harnessId?: unknown; effort?: unknown; responseStyle?: unknown; customInstructions?: unknown; localModel?: unknown; localBackend?: unknown };
+            const body = await readJson(request) as { objective?: unknown; harnessId?: unknown; effort?: unknown; responseStyle?: unknown; customInstructions?: unknown; localModel?: unknown; localBackend?: unknown; includeWorkspaceGraph?: unknown };
             if (typeof body.objective !== 'string' || !body.objective.trim() || body.objective.length > 32_768 || body.objective.includes('\0')) {
               return problem(400, 'invalid-input', 'objective is required (max 32768 characters)');
             }
@@ -485,8 +486,23 @@ export function createStudioApi(options: StudioApiOptions) {
                 ? { customInstructions: body.customInstructions.trim() }
                 : {}),
             });
+            let workspaceGraph:ReturnType<typeof buildFuryWorkspaceGraph>|undefined;
+            if(body.includeWorkspaceGraph===true){
+              const repositoryGraph=await graph().catch(()=>undefined);
+              const m=memory();
+              const memories=m.enabled&&m.store
+                ? await studioMemoryList(m.store,options.projectRoot,now()).catch(()=>[])
+                : [];
+              workspaceGraph=buildFuryWorkspaceGraph({
+                projectRoot:options.projectRoot,
+                ...(repositoryGraph?{repositoryGraph}:{}),
+                capabilityGraph:compiled.capabilityGraph,
+                memories,
+              });
+            }
             return json({
               ...compiled,
+              ...(workspaceGraph?{workspaceGraph}:{}),
               plan: compiled.plan,
               compiled,
               excludedSkills: compiled.skills.excluded,
