@@ -37,10 +37,14 @@ describe('Capability Router + Capability Autopilot V2 convergence', () => {
     registerSecuritySkill(skills, 'oauth-token-review', 50);
 
     const index = createFuryCapabilityIndex();
-    projectSkillsIntoCapabilityIndex(index, skills);
+    projectSkillsIntoCapabilityIndex(index, skills, {
+      'generic-security-review': 'ready',
+      'oauth-token-review': 'ready',
+    });
 
     const analyzer = createFuryCapabilityRouterAutopilot({
       index,
+      availablePermissions: ['read'],
       selectionOptions: {
         maxSelected: 1,
         maxSelectedByKind: { skill: 1 },
