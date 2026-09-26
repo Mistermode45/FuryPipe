@@ -321,6 +321,49 @@ describe('Studio Skills Hub', () => {
       expect((await studio.handle('skill-install', post({ sourceDir: 'relative/dir', confirm: true }))).status).toBe(400);
       expect((await studio.handle('skill-install', post({ sourceDir: join(root, 'missing'), confirm: true }))).status).toBe(404);
       expect((await studio.handle('skill-install', post({ sourceDir: src, confirm: true }))).status).toBe(201);
+      expect((await studio.handle('skill-create', post({
+        name:'release-review',
+        description:'Review release changes before publishing.',
+        instructions:'Inspect the diff, verify tests, and report evidence.',
+      }))).status).toBe(400);
+      const createdResponse = await studio.handle('skill-create', post({
+        name:'release-review',
+        description:'Review release changes before publishing.',
+        instructions:'Inspect the diff, verify tests, and report evidence.',
+        version:'1.0.0',
+        author:'LégendeUrbaine',
+        license:'MIT',
+        harnesses:['codex'],
+        allowedTools:['read_file'],
+        type:'GENERATED',
+        triggers:['release review requested'],
+        examples:['Review this release.'],
+        tests:['No execution authority is granted.'],
+        confirm:true,
+      }));
+      expect(createdResponse.status).toBe(201);
+      expect(await createdResponse.json()).toMatchObject({
+        name:'release-review',
+        author:'LégendeUrbaine',
+        compatibleHarnesses:['codex'],
+        type:'GENERATED',
+        executionAuthorized:false,
+      });
+      const afterCreate = await (await studio.handle('skills', new Request('http://127.0.0.1/'))).json() as { skills:{name:string}[] };
+      expect(afterCreate.skills.map((skill)=>skill.name)).toContain('release-review');
+      expect((await studio.handle('skill-create', post({
+        name:'bad skill',
+        description:'x',
+        instructions:'y',
+        confirm:true,
+      }))).status).toBe(422);
+      expect((await studio.handle('skill-create', post({
+        name:'safe-skill',
+        description:'x',
+        instructions:'y',
+        harnesses:['unknown-runtime'],
+        confirm:true,
+      }))).status).toBe(422);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
