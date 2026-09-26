@@ -53,7 +53,7 @@ const CACHE_MS = 10_000;
 export type StudioRoute =
   | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'autopilot-preview' | 'extensions' | 'chat' | 'flow-preview'
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
-  | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
+  | 'mcp' | 'mcp-add' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
   | 'web'
   | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act'
@@ -87,6 +87,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/skills/install': { route: 'skill-install', method: 'POST' },
   '/api/studio/skills/compare': { route: 'skill-compare', method: 'POST' },
   '/api/studio/mcp.json': { route: 'mcp', method: 'GET' },
+  '/api/studio/mcp/add': { route: 'mcp-add', method: 'POST' },
   '/api/studio/mcp/act': { route: 'mcp-act', method: 'POST' },
   '/api/studio/mcp/probe': { route: 'mcp-probe', method: 'POST' },
   '/api/studio/mcp/decide': { route: 'mcp-decide', method: 'POST' },
@@ -608,6 +609,21 @@ export function createStudioApi(options: StudioApiOptions) {
           }
           case 'mcp':
             return json(await mcp.list());
+          case 'mcp-add': {
+            const body = await readJson(request) as { name?: unknown; transport?: unknown; command?: unknown; args?: unknown; url?: unknown; confirm?: unknown };
+            if (body.confirm !== true) return problem(400, 'confirmation-required', 'adding an MCP source requires confirm: true');
+            if (typeof body.name !== 'string') return problem(400, 'invalid-input', 'MCP source name is required');
+            if (body.transport === 'stdio') {
+              if (typeof body.command !== 'string') return problem(400, 'invalid-input', 'stdio MCP command is required');
+              if (body.args !== undefined && (!Array.isArray(body.args) || !body.args.every((arg) => typeof arg === 'string'))) return problem(400, 'invalid-input', 'MCP args must be strings');
+              return json(await mcp.addProjectSource({ name: body.name, transport: 'stdio', command: body.command, ...(Array.isArray(body.args) ? { args: body.args as string[] } : {}) }), 201);
+            }
+            if (body.transport === 'streamable_http') {
+              if (typeof body.url !== 'string') return problem(400, 'invalid-input', 'HTTP MCP URL is required');
+              return json(await mcp.addProjectSource({ name: body.name, transport: 'streamable_http', url: body.url }), 201);
+            }
+            return problem(400, 'invalid-input', 'transport must be stdio or streamable_http');
+          }
           case 'mcp-act': {
             const body = await readJson(request) as { sourceId?: unknown; action?: unknown; tool?: unknown; value?: unknown };
             const id = String(body?.sourceId ?? '');
