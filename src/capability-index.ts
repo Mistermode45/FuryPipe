@@ -6,11 +6,31 @@ export const FURY_CAPABILITY_INDEX_SNAPSHOT_FORMAT =
   'furypipe-capability-index-snapshot/v1' as const;
 
 export const FURY_CAPABILITY_INDEX_KINDS = Object.freeze([
+  'model',
+  'provider',
   'skill',
+  'skill-pack',
+  'instruction',
   'plugin',
+  'mcp',
   'mcp-server',
   'mcp-tool',
-  'model',
+  'connector',
+  'tool',
+  'agent',
+  'workflow',
+  'automation',
+  'memory-provider',
+  'search-provider',
+  'browser-provider',
+  'image-provider',
+  'video-provider',
+  'audio-provider',
+  'voice-provider',
+  'embedding-provider',
+  'reranker',
+  'code-runtime',
+  'sandbox',
 ] as const);
 
 export const FURY_CAPABILITY_INDEX_SOURCE_SYSTEMS = Object.freeze([
