@@ -1,12 +1,18 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   selectFuryCapabilitiesForTask,
 } from '../src/capability-autopilot.js';
 import {
+  projectMcpHubIntoCapabilityIndex,
   projectMcpIntoCapabilityIndex,
   projectModelsIntoCapabilityIndex,
   projectPluginsIntoCapabilityIndex,
+  projectSkillHubIntoCapabilityIndex,
   projectSkillsIntoCapabilityIndex,
   revalidateFuryCapabilitySelection,
 } from '../src/capability-index-adapters.js';
@@ -29,6 +35,8 @@ import {
 import {
   createAgentSkillRegistry,
 } from '../src/skill-registry.js';
+import { createFurySkillHub } from '../src/fury-skill-hub.js';
+import { createFuryMcpHub } from '../src/fury-mcp-hub.js';
 
 describe('Capability Autopilot source-of-truth adapters', () => {
   it('projects skill inspection metadata without executing or health-checking the skill', () => {
@@ -86,6 +94,101 @@ describe('Capability Autopilot source-of-truth adapters', () => {
       },
       executionAuthority: false,
     });
+  });
+
+  it('projects Studio Skill Hub metadata without loading skill instructions into the capability index', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-capability-skill-hub-'));
+    try {
+      const project = join(root, 'project');
+      const home = join(root, 'home');
+      mkdirSync(join(project, '.furypipe'), { recursive: true });
+      mkdirSync(join(home, '.claude', 'skills', 'repo-review'), { recursive: true });
+      writeFileSync(
+        join(home, '.claude', 'skills', 'repo-review', 'SKILL.md'),
+        '---\nname: repo-review\ndescription: Review repository code, tests and security.\n---\nPRIVATE-INSTRUCTION-BODY-MUST-NOT-BE-INDEXED\n',
+      );
+
+      const hub = createFurySkillHub({
+        projectRoot: project,
+        homeDir: home,
+        stateDir: join(root, 'skill-state'),
+      });
+      const index = createFuryCapabilityIndex();
+      const report = await projectSkillHubIntoCapabilityIndex(index, hub);
+
+      expect(report).toEqual({
+        indexed: 1,
+        skipped: 0,
+        source: 'skill-hub',
+        authority: 'projection-only',
+        executionAuthority: false,
+      });
+      expect(index.get('skill', 'repo-review')).toMatchObject({
+        kind: 'skill',
+        id: 'repo-review',
+        trust: 'verified',
+        license: 'not-applicable',
+        health: 'ready',
+        riskClass: 'none',
+        requiredPermissions: [],
+        source: {
+          system: 'skill-registry',
+          sourceId: 'repo-review',
+        },
+        executionAuthority: false,
+      });
+      expect(JSON.stringify(index.snapshot())).not.toContain('PRIVATE-INSTRUCTION-BODY-MUST-NOT-BE-INDEXED');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('projects Studio MCP Hub configuration without starting or probing the configured server', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-capability-mcp-hub-'));
+    try {
+      const project = join(root, 'project');
+      const home = join(root, 'home');
+      mkdirSync(join(project, '.furypipe'), { recursive: true });
+      mkdirSync(home, { recursive: true });
+      writeFileSync(
+        join(project, '.furypipe', 'mcp.json'),
+        JSON.stringify({ mcpServers: { github: { command: 'npx', args: ['server-github'] } } }),
+      );
+      const probe = vi.fn(async () => {
+        throw new Error('PROJECTION_MUST_NOT_PROBE');
+      });
+      const hub = createFuryMcpHub({
+        projectRoot: project,
+        homeDir: home,
+        stateDir: join(root, 'mcp-state'),
+        probe,
+      });
+      const index = createFuryCapabilityIndex();
+      const report = await projectMcpHubIntoCapabilityIndex(index, hub);
+
+      expect(probe).not.toHaveBeenCalled();
+      expect(report).toEqual({
+        indexed: 1,
+        skipped: 0,
+        source: 'mcp-hub',
+        authority: 'projection-only',
+        executionAuthority: false,
+      });
+      const source = index.list('mcp-server')[0];
+      expect(source).toMatchObject({
+        kind: 'mcp-server',
+        trust: 'unverified',
+        health: 'unknown',
+        riskClass: 'process',
+        requiredPermissions: ['process'],
+        source: { system: 'mcp-host' },
+        executionAuthority: false,
+      });
+      expect(index.list('mcp-tool')).toHaveLength(0);
+      expect(JSON.stringify(index.snapshot())).not.toContain('server-github');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('keeps reference-only skills blocked even when a host says health is ready', () => {
