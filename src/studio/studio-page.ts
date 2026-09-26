@@ -1114,8 +1114,8 @@ const SCRIPT = String.raw`
     const r = state.lastRoute; const chip = $('#route-chip');
     if (!r) { chip.hidden = true; $('#privacy').hidden = true; return; }
     const ap = r.autopilot;
-    chip.hidden = false; chip.replaceChildren(ic('route'), el('span', { text: r.model }), el('span', { class: 'sep', text: '·' }), el('span', { text: PROVIDER[r.kind] || r.kind }), el('span', { class: 'sep', text: '·' }), el('span', { text: ap ? ap.profile.label + ' · ' + ap.effort.effective : 'Local' }));
-    chip.setAttribute('aria-label', 'Route: ' + r.model + ', ' + (PROVIDER[r.kind] || r.kind) + (ap ? ', ' + ap.profile.label + ', effort ' + ap.effort.effective : ', local') + '. Why this route?');
+    chip.hidden = false; chip.replaceChildren(ic('route'), el('span', { text: r.model }), el('span', { class: 'sep', text: '·' }), el('span', { text: PROVIDER[r.kind] || r.kind }), el('span', { class: 'sep', text: '·' }), el('span', { text: 'Local' + (ap ? ' · ' + ap.profile.label + ' · ' + ap.effort.effective : '') }));
+    chip.setAttribute('aria-label', 'Route: ' + r.model + ', ' + (PROVIDER[r.kind] || r.kind) + ', local' + (ap ? ', ' + ap.profile.label + ', effort ' + ap.effort.effective : '') + '. Why this route?');
     $('#privacy').hidden = document.body.dataset.view !== 'chat';
   }
   function fitPill(fit) { const cls = fit === 'FITS' ? 'ok' : fit === 'MAY_BE_SLOW' ? 'warn' : fit === 'DOES_NOT_FIT' ? 'bad' : 'muted'; return el('span', { class: 'fit ' + cls, text: fit === 'MAY_BE_SLOW' ? 'SLOW' : fit === 'DOES_NOT_FIT' ? 'TOO BIG' : (fit || 'UNKNOWN') }); }
