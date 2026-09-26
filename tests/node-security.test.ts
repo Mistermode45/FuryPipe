@@ -536,3 +536,38 @@ describe('Node dashboard security', () => {
     await removeTempTree(dumpDir);
   });
 });
+
+describe('Node host serves FuryPipe Studio', () => {
+  it('serves Studio at / with a nonce CSP and the dashboard at /control-plane', async () => {
+    const { base } = await startNode();
+    const studio = await fetch(`${base}/`);
+    expect(studio.status).toBe(200);
+    const csp = studio.headers.get('content-security-policy') ?? '';
+    expect(csp).toMatch(/script-src 'nonce-[A-Za-z0-9+/=]+'/u);
+    expect(csp).toContain("default-src 'none'");
+    const html = await studio.text();
+    expect(html).toContain('FuryPipe Studio');
+    for (const view of ['chat', 'cowork', 'code', 'agents', 'automations']) expect(html).toContain(`data-view="${view}"`);
+    expect(html).toContain('href="/control-plane"');
+    const controlPlane = await fetch(`${base}/control-plane`);
+    expect(controlPlane.status).toBe(200);
+    expect(await controlPlane.text()).not.toContain('FuryPipe Studio</title>');
+    expect((await fetch(`${base}/`, { method: 'POST' })).status).toBe(405);
+  });
+
+  it('guards the Studio API: method, same-origin POST, JSON only and preview-only dispatch', async () => {
+    const { base } = await startNode();
+    const harnesses = await fetch(`${base}/api/studio/harnesses.json`);
+    expect(harnesses.status).toBe(200);
+    expect(((await harnesses.json()) as { harnesses: { id: string }[] }).harnesses.map((h) => h.id)).toContain('furypipe-native');
+    expect((await fetch(`${base}/api/studio/harnesses.json`, { method: 'POST' })).status).toBe(405);
+    const crossOrigin = await fetch(`${base}/api/studio/dispatch-preview`, { method: 'POST', headers: { origin: 'https://evil.example', 'content-type': 'application/json' }, body: '{}' });
+    expect(crossOrigin.status).toBe(403);
+    const notJson = await fetch(`${base}/api/studio/dispatch-preview`, { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{}' });
+    expect(notJson.status).toBe(415);
+    const badIr = await fetch(`${base}/api/studio/dispatch-preview`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ir: { format: 'x' } }) });
+    expect(badIr.status).toBe(422);
+    const chatToCloud = await fetch(`${base}/api/studio/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ baseUrl: 'https://api.openai.com', model: 'm', messages: [{ role: 'user', content: 'hi' }] }) });
+    expect(chatToCloud.status).toBe(403);
+  });
+});

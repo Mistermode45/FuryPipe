@@ -143,7 +143,8 @@ afterEach(() => {
 
 describe('dashboardPath()', () => {
   it('matches the main HTML routes', () => {
-    expect(dashboardPath('/')?.kind).toBe('html');
+    expect(dashboardPath('/')).toBeNull();
+    expect(dashboardPath('/control-plane')?.kind).toBe('html');
     expect(dashboardPath('/dashboard')?.kind).toBe('html');
   });
 

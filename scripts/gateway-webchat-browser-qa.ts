@@ -579,9 +579,10 @@ async function runCase(
   const name = `${engine}-${viewport.id}`;
   try {
     const response = await page.goto(harness.origin + FURY_GATEWAY_WEBCHAT_PATH, {
-      waitUntil: 'load',
+      waitUntil: 'domcontentloaded',
     });
     assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+    await page.locator('#bootstrap-form').waitFor({ state: 'visible', timeout: 15_000 });
     const headers = response.headers();
     const csp = headers['content-security-policy'] ?? '';
     assert(csp.includes("default-src 'none'"), `${name}: CSP default-src is not deny-by-default`);
@@ -782,9 +783,10 @@ async function runModelEnabledCase(
   try {
     const response = await page.goto(
       harness.origin + FURY_GATEWAY_WEBCHAT_PATH,
-      { waitUntil: 'load' },
+      { waitUntil: 'domcontentloaded' },
     );
     assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+    await page.locator('#bootstrap-form').waitFor({ state: 'visible', timeout: 15_000 });
 
     const config = await page.evaluate(async () => {
       const response = await fetch('/gateway/webchat/config.json', {
@@ -893,9 +895,10 @@ async function runToolEnabledCase(
   try {
     const response = await page.goto(
       harness.origin + FURY_GATEWAY_WEBCHAT_PATH,
-      { waitUntil: 'load' },
+      { waitUntil: 'domcontentloaded' },
     );
     assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+    await page.locator('#bootstrap-form').waitFor({ state: 'visible', timeout: 15_000 });
 
     const config = await page.evaluate(async () => {
       const response = await fetch('/gateway/webchat/config.json', {
@@ -1045,9 +1048,10 @@ async function runMemoryEnabledCase(
   try {
     const response = await page.goto(
       harness.origin + FURY_GATEWAY_WEBCHAT_PATH,
-      { waitUntil: 'load' },
+      { waitUntil: 'domcontentloaded' },
     );
     assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+    await page.locator('#bootstrap-form').waitFor({ state: 'visible', timeout: 15_000 });
 
     const config = await page.evaluate(async () => {
       const response = await fetch('/gateway/webchat/config.json', {
@@ -1167,6 +1171,16 @@ async function runMemoryEnabledCase(
   }
 }
 
+/** Name the engine and case in any failure, so CI logs say which browser and scenario broke. */
+async function labelled<T>(label: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`[${label}] ${message}`, { cause: error });
+  }
+}
+
 async function main(): Promise<void> {
   await mkdir(REPORT_DIR, { recursive: true });
   const harness = await startHarness();
@@ -1175,16 +1189,16 @@ async function main(): Promise<void> {
   const memoryHarness = await startHarness(true, false, true);
   try {
     const observations: QaObservation[] = [];
-    observations.push(...await runEngine('chromium', chromium, harness));
-    observations.push(...await runEngine('firefox', firefox, harness));
-    observations.push(...await runEngine('webkit', webkit, harness));
+    observations.push(...await labelled('chromium lifecycle', () => runEngine('chromium', chromium, harness)));
+    observations.push(...await labelled('firefox lifecycle', () => runEngine('firefox', firefox, harness)));
+    observations.push(...await labelled('webkit lifecycle', () => runEngine('webkit', webkit, harness)));
     assert(observations.length === 6, `expected 6 WebChat browser cases, got ${observations.length}`);
     assert(observations.every((item) => item.resynchronized && item.loggedOut), 'WebChat lifecycle evidence is incomplete');
 
     const modelCases: ModelQaObservation[] = [];
-    modelCases.push(await runModelEnabledCase('chromium', chromium, modelHarness));
-    modelCases.push(await runModelEnabledCase('firefox', firefox, modelHarness));
-    modelCases.push(await runModelEnabledCase('webkit', webkit, modelHarness));
+    modelCases.push(await labelled('chromium model-enabled', () => runModelEnabledCase('chromium', chromium, modelHarness)));
+    modelCases.push(await labelled('firefox model-enabled', () => runModelEnabledCase('firefox', firefox, modelHarness)));
+    modelCases.push(await labelled('webkit model-enabled', () => runModelEnabledCase('webkit', webkit, modelHarness)));
     assert(
       modelCases.every((item) =>
         item.assistantRendered
@@ -1197,9 +1211,9 @@ async function main(): Promise<void> {
     );
 
     const toolCases: ToolQaObservation[] = [];
-    toolCases.push(await runToolEnabledCase('chromium', chromium, toolHarness));
-    toolCases.push(await runToolEnabledCase('firefox', firefox, toolHarness));
-    toolCases.push(await runToolEnabledCase('webkit', webkit, toolHarness));
+    toolCases.push(await labelled('chromium tool-enabled', () => runToolEnabledCase('chromium', chromium, toolHarness)));
+    toolCases.push(await labelled('firefox tool-enabled', () => runToolEnabledCase('firefox', firefox, toolHarness)));
+    toolCases.push(await labelled('webkit tool-enabled', () => runToolEnabledCase('webkit', webkit, toolHarness)));
     assert(
       toolCases.every((item) =>
         item.proposalRequiredApproval
@@ -1215,9 +1229,9 @@ async function main(): Promise<void> {
     );
 
     const memoryCases: MemoryQaObservation[] = [];
-    memoryCases.push(await runMemoryEnabledCase('chromium', chromium, memoryHarness));
-    memoryCases.push(await runMemoryEnabledCase('firefox', firefox, memoryHarness));
-    memoryCases.push(await runMemoryEnabledCase('webkit', webkit, memoryHarness));
+    memoryCases.push(await labelled('chromium memory-enabled', () => runMemoryEnabledCase('chromium', chromium, memoryHarness)));
+    memoryCases.push(await labelled('firefox memory-enabled', () => runMemoryEnabledCase('firefox', firefox, memoryHarness)));
+    memoryCases.push(await labelled('webkit memory-enabled', () => runMemoryEnabledCase('webkit', webkit, memoryHarness)));
     assert(
       memoryCases.every((item) =>
         item.configRedacted
