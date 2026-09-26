@@ -150,9 +150,8 @@ export function createFuryRequestBlueprint(
   const selected = input.capabilitySelection.selected;
   const unresolved: Array<'model' | 'agent' | 'tool'> = [];
   if (!selected.some((item) => item.kind === 'model')) unresolved.push('model');
-  // Agent capabilities are not represented in capability-index/v1 yet.
-  unresolved.push('agent');
-  if (!selected.some((item) => item.kind === 'mcp-tool')) unresolved.push('tool');
+  if (!selected.some((item) => item.kind === 'agent')) unresolved.push('agent');
+  if (!selected.some((item) => item.kind === 'tool' || item.kind === 'mcp-tool')) unresolved.push('tool');
 
   return Object.freeze({
     format: FURY_REQUEST_BLUEPRINT_FORMAT,
