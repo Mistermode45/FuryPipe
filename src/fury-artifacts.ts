@@ -172,7 +172,7 @@ export function createFuryArtifactStore(): FuryArtifactStore {
     return metadata;
   };
 
-  return Object.freeze({
+  const store: FuryArtifactStore = {
     format: FURY_ARTIFACT_STORE_FORMAT,
     authority: 'process-local-artifact-store',
     persistenceAuthorized: false,
@@ -276,5 +276,6 @@ export function createFuryArtifactStore(): FuryArtifactStore {
         executionAuthorized: false,
       });
     },
-  });
+  };
+  return Object.freeze(store);
 }
