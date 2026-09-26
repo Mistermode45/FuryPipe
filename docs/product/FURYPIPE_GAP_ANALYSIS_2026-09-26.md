@@ -3,7 +3,7 @@
 Status: ACTIVE PRODUCT GAP LEDGER  
 Repository: `Mistermode45/FuryPipe`  
 Track: PR #233 — `claude/furypipe-studio-autopilot-extensions`  
-Audit input HEAD: `fa17b3244201527350eeebacee99a4e8fad1989e`  
+Audit input HEAD: `42d33f472eaa590bf399521a167c13c5adc96ed6`  
 Product source: `docs/product/FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md`
 
 ## Scope and evidence rule
@@ -42,8 +42,8 @@ Primary evidence:
 |---|---|---|---|---|---|---|---|
 | Evidence kernel / FuryJudge / FuryIR | DONE | Evidence-first kernel for all new surfaces | Extend receipts/contracts only when new surfaces require it | P0 guardrail | CORE-01/02/03 | High if bypassed | Existing unit/property tests + new contract tests |
 | Universal Capability Registry | PARTIAL | One registry for MODEL/PROVIDER/SKILL/SKILL_PACK/INSTRUCTION/PLUGIN/MCP/CONNECTOR/TOOL/AGENT/WORKFLOW/AUTOMATION/media/runtime providers | Existing registry is strong but taxonomy/metadata do not yet map the full 2026-09-26 schema | P1 | capability catalog, trust, score | High | schema tests, migration/compat tests, registry round-trip |
-| Capability Router + Fury Autopilot | PARTIAL | One explainable request router selecting model, skills, instructions, MCP, plugins, tools, agents and budgets | Existing `capability-router` and newer `fury-autopilot` overlap and can diverge | P1 | registry, prompt, dispatcher | High | golden routing tests + differential tests proving one decision path |
-| Capability Graph / Mesh | PARTIAL | Request→Agent→Skill→MCP→Tool→Provider→Model plus Project→Repository→Files→Memory→Decision→Artifact | FuryGraph covers repository/code relationships; universal runtime capability graph is not proven | P1 | registry, FuryGraph | Medium | graph schema/unit tests + Studio browser QA |
+| Capability Router + Fury Autopilot | PARTIAL — CONVERGED CORE | One explainable request router selecting model, skills, instructions, MCP, plugins, tools, agents and budgets | Studio skill/agent selection now consumes the shared Capability Index/Autopilot and emits an attested Request Blueprint; legacy SkillHub autoSelect is bypassed. MCP advisory matching remains separate from executable selection and must still be converged or explicitly retained as advisory-only. | P1 | registry, prompt, dispatcher | High | golden routing tests + differential tests proving one decision path |
+| Capability Graph / Mesh | PARTIAL — RUNTIME GRAPH ADDED | Request→Agent→Skill→MCP→Tool→Provider→Model plus Project→Repository→Files→Memory→Decision→Artifact | `fury-capability-graph` now projects attested request decisions/capabilities/advisories/blocks and Studio renders the route. Project→Repository→Files→Memory→Decision→Artifact unification is still incomplete; FuryGraph remains the code-relationship authority. | P1 | registry, FuryGraph | Medium | graph schema/unit tests + Studio browser QA |
 | Skills | DONE core / PARTIAL target | Auto routing, composition, packs, creator, registry, SDK, effectiveness analytics | Skills Hub and auto-select exist; creator/SDK/effectiveness/pack governance require reconciliation | P1/P2 | registry, trust, eval | Medium | unit + import security + browser QA + eval |
 | Instructions | PARTIAL | Registry + router + deterministic conflict resolver + layered precedence | Instruction Fabric exists; full registry UX and explicit conflict surface not proven | P1 | FuryPrompt, registry | High | precedence/conflict property tests |
 | FuryPrompt Engine | PARTIAL | Raw/Auto/Enhanced/Professional/Coding/Research/Creative/Strict/Fast + analyzer + compiled-prompt inspection | Compiler exists and Autopilot uses it; mode breadth/inspector/analyzer target is broader | P1 | instruction fabric | Medium | compiler snapshots, injection/security tests, UI QA |
@@ -97,3 +97,29 @@ Acceptance criteria:
 - UX-01 human visual/screen-reader retest cannot be self-certified by automated tests.
 - Live paid/cloud provider checks require explicit credentials/authorization and are not implied by contract tests.
 - Merge/release/tag/publish/deploy remain forbidden without explicit operator authorization.
+
+
+## P1 convergence checkpoint — 2026-09-26
+
+Implementation checkpoint audited at `42d33f472eaa590bf399521a167c13c5adc96ed6`.
+
+Observed changes:
+
+- Capability Index taxonomy covers the master capability families and projects Skill Hub, MCP Hub, harnesses, providers, Model Fabric and the catalog through bounded adapters.
+- Capability Autopilot emits process-local, selection-only plans with deterministic digests, trust/license/health/permission gates and no execution authority.
+- Studio bypasses the legacy Skill Hub semantic selector for routed skill choice and derives skill activation from Capability Autopilot output.
+- Fury Request Blueprint records model/skills/instructions/MCP/tools/agents/context/budget decisions and explicitly marks unresolved families.
+- Request blueprints are process-local attested objects; serialized/forged blueprints are rejected by the runtime capability graph.
+- Fury Capability Graph projects Request → Decision → Capability/Advisory/Blocked relationships, is bounded/deterministic and remains visualization-only.
+- Studio Autopilot renders the capability graph and blocked/unresolved capability families.
+- Repository/code dependency relationships remain owned by FuryGraph; no parallel code graph was introduced.
+
+Remaining before declaring the full master P1 target complete:
+
+1. decide and test the final MCP advisory-vs-selection convergence contract;
+2. connect real Model Fabric availability into Studio request selection without granting provider invocation implicitly;
+3. extend the capability graph across Project → Repository → Files → Memory → Decision → Artifact using existing stores rather than duplicating them;
+4. add explicit instruction precedence/conflict reporting;
+5. re-run all exact-head gates after the final P1 documentation/code head.
+
+No merge, tag, release, npm publish or deploy is authorized by this checkpoint.
