@@ -532,6 +532,7 @@ details.adv>div{padding:0 18px 16px}
   .disclaimer{display:none}
   .model-btn{max-width:170px}
 }
+.memory-graph-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px;background:var(--surface-2);min-height:220px}.memory-graph-wrap svg{display:block;width:100%;min-width:620px;height:auto}.memory-edge{stroke:var(--line-strong);stroke-width:1.2}.memory-node{fill:var(--surface-3);stroke:var(--line-strong);stroke-width:1.2}.memory-node.active{stroke:var(--accent)}.memory-node.scope{fill:var(--surface)}.memory-label{fill:var(--text);font-size:11px}.memory-small{fill:var(--muted);font-size:9px}
 .set-row-stack{align-items:flex-start}.set-row-stack>div:last-child{min-width:min(520px,100%);flex:1}.set-row-stack textarea{min-height:92px}
 .effort-select{width:auto;min-width:96px;max-width:132px;height:34px;padding:0 9px;border-radius:9px;font-size:12px;background:var(--surface-2);border:1px solid var(--line);color:var(--text)}
 .autopilot-grid{align-items:start}.autopilot-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:14px 0}.autopilot-stat{padding:13px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}.autopilot-stat b{display:block;margin-bottom:4px}.autopilot-stat span{font-size:12px;color:var(--muted)}
@@ -2019,11 +2020,65 @@ const SCRIPT = String.raw`
     } catch (e) { status.textContent = 'Refused: ' + e.message; }
   });
   const age = (ms) => ms < 60000 ? 'just now' : ms < 3600000 ? Math.round(ms / 60000) + ' min ago' : ms < 86400000 ? Math.round(ms / 3600000) + ' h ago' : Math.round(ms / 86400000) + ' d ago';
+  function renderMemoryGraph(records) {
+    const svg = $('#memory-graph'); const status = $('#memory-graph-status');
+    if (!svg || !status) return;
+    svg.replaceChildren();
+    const NS = 'http://www.w3.org/2000/svg';
+    const node = (tag, attrs, text) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, String(v)); if (text !== undefined) n.textContent = text; return n; };
+    const shown = records.slice(0, 36);
+    if (!shown.length) {
+      svg.append(node('text', { x: 380, y: 180, 'text-anchor': 'middle', class: 'memory-label' }, 'No memory records yet'));
+      status.textContent = 'Graph will appear when memory records exist.';
+      return;
+    }
+    const cx = 380, cy = 180;
+    const scopes = ['project', 'user'].filter((scope) => shown.some((m) => m.scope === scope));
+    const positions = new Map();
+    positions.set('root', { x: cx, y: cy });
+    scopes.forEach((scope, index) => positions.set('scope:' + scope, { x: index === 0 ? 185 : 575, y: cy }));
+    const byScope = new Map(scopes.map((scope) => [scope, shown.filter((m) => m.scope === scope)]));
+    for (const scope of scopes) {
+      const base = positions.get('scope:' + scope); const items = byScope.get(scope);
+      items.forEach((m, index) => {
+        const angle = -Math.PI / 2 + (Math.PI * 2 * index / Math.max(items.length, 1));
+        const radius = Math.min(135, 80 + items.length * 2);
+        const direction = scope === 'project' ? -1 : 1;
+        const x = Math.max(38, Math.min(722, base.x + Math.cos(angle) * radius * .72 + direction * 42));
+        const y = Math.max(28, Math.min(332, base.y + Math.sin(angle) * radius));
+        positions.set('mem:' + m.memoryId, { x, y });
+      });
+    }
+    for (const scope of scopes) {
+      const sp = positions.get('scope:' + scope);
+      svg.append(node('line', { x1: cx, y1: cy, x2: sp.x, y2: sp.y, class: 'memory-edge' }));
+      for (const m of byScope.get(scope)) {
+        const mp = positions.get('mem:' + m.memoryId);
+        svg.append(node('line', { x1: sp.x, y1: sp.y, x2: mp.x, y2: mp.y, class: 'memory-edge' }));
+      }
+    }
+    const draw = (x, y, radius, klass, label, sub) => {
+      svg.append(node('circle', { cx: x, cy: y, r: radius, class: klass }));
+      svg.append(node('text', { x, y: y + 3, 'text-anchor': 'middle', class: 'memory-label' }, label));
+      if (sub) svg.append(node('text', { x, y: y + radius + 12, 'text-anchor': 'middle', class: 'memory-small' }, sub));
+    };
+    draw(cx, cy, 35, 'memory-node active', 'Memory', shown.length + ' records');
+    for (const scope of scopes) {
+      const p = positions.get('scope:' + scope); draw(p.x, p.y, 28, 'memory-node scope active', scope, byScope.get(scope).length + ' items');
+      for (const m of byScope.get(scope)) {
+        const q = positions.get('mem:' + m.memoryId);
+        draw(q.x, q.y, 17, 'memory-node' + (m.state === 'active' ? ' active' : ''), m.memoryId.slice(0, 5), m.memoryClass);
+      }
+    }
+    status.textContent = shown.length + ' of ' + records.length + ' memory record(s) visualized' + (records.length > shown.length ? ' · graph capped for readability' : '') + '.';
+  }
+
   async function loadMemory() {
     const status = $('#mem-status'); const body = $('#mem-body');
     try { const r = await getJson('/api/studio/memory.json'); body.replaceChildren();
       $('#mem-forms').hidden = !r.enabled;
       if (!r.enabled) { status.textContent = r.reason; return; }
+      renderMemoryGraph(r.records);
       for (const m of r.records) {
         const toggle = el('button', { type: 'button', class: 'secondary', text: m.state === 'active' ? 'Disable' : 'Enable' }); toggle.setAttribute('aria-label', toggle.textContent + ' memory ' + m.memoryId.slice(0, 8));
         toggle.addEventListener('click', () => memAct(m, m.state === 'active' ? 'DISABLE' : 'ACTIVATE'));
@@ -2349,7 +2404,7 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
   <p id="web-status" class="status" role="status"></p><div id="web-out" aria-live="polite"></div></div></section>
 <section data-view="memory" aria-labelledby="h-memory" hidden><h1 id="h-memory">Memory</h1><p class="lead">What FuryPipe remembers for this project and for you. Stored encrypted on this machine; you can disable or forget any item.</p>
   <p id="mem-status" class="status muted" role="status"></p>
-  <div id="mem-forms" hidden><div class="card"><form id="mem-add-form"><label for="mem-text">Remember</label><textarea id="mem-text" required placeholder="e.g. We deploy on Tuesdays only"></textarea>
+  <div id="mem-forms" hidden><div class="card"><h2>Persistent memory graph</h2><p class="muted">A local visual map of active/inactive memory records grouped by scope. The graph is derived from memory metadata; recalled text remains governed as data, never instructions.</p><div class="memory-graph-wrap"><svg id="memory-graph" viewBox="0 0 760 360" role="img" aria-label="Persistent memory graph"></svg></div><p id="memory-graph-status" class="status muted"></p></div><div class="card"><form id="mem-add-form"><label for="mem-text">Remember</label><textarea id="mem-text" required placeholder="e.g. We deploy on Tuesdays only"></textarea>
   <div class="row"><div><label for="mem-scope">For</label><select id="mem-scope"><option value="project">This project</option><option value="user">Me, everywhere</option></select></div><button type="submit">Save</button></div></form></div>
   <div class="card"><form id="mem-search-form"><label for="mem-query">Recall</label><input id="mem-query" required autocomplete="off"><div class="row"><button type="submit">Recall</button></div></form><div id="mem-results" aria-live="polite"></div></div>
   <div class="card"><table><thead><tr><th scope="col">ID</th><th scope="col">State</th><th scope="col">Kind</th><th scope="col">Scope</th><th scope="col">Source</th><th scope="col">Confidence</th><th scope="col">Age</th><th scope="col">Actions</th></tr></thead><tbody id="mem-body"></tbody></table></div></div></section>
