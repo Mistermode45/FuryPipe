@@ -7,7 +7,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   selectFuryCapabilitiesForTask,
 } from '../src/capability-autopilot.js';
+import { createCapabilityRegistry } from '../src/ecosystem/registry.js';
+import { makeCapabilityCandidate } from './helpers/ecosystem-candidate.js';
 import {
+  projectCapabilityRegistryIntoIndex,
   projectHarnessesIntoCapabilityIndex,
   projectMcpHubIntoCapabilityIndex,
   projectMcpIntoCapabilityIndex,
@@ -42,6 +45,68 @@ import { createFurySkillHub } from '../src/fury-skill-hub.js';
 import { createFuryMcpHub } from '../src/fury-mcp-hub.js';
 
 describe('Capability Autopilot source-of-truth adapters', () => {
+  it('projects the canonical capability registry without weakening trust requirements', () => {
+    const registry = createCapabilityRegistry([
+      makeCapabilityCandidate({
+        name: 'Image Provider',
+        type: 'image-provider',
+        description: 'Generate and edit images.',
+        source: {
+          kind: 'git',
+          url: 'https://github.com/fury-example/image-provider',
+          repositoryUrl: 'https://github.com/fury-example/image-provider',
+          version: '2.0.0',
+          commitSha: 'b'.repeat(40),
+        },
+        decision: 'ADOPT',
+        health: { status: 'HEALTHY', observedAt: '2026-09-26T00:00:00Z' },
+        categories: ['media'],
+        capabilities: ['text-to-image','image-edit'],
+        domains: ['creative'],
+        supportedPlatforms: ['linux'],
+      }),
+      makeCapabilityCandidate({
+        name: 'Reference Framework',
+        type: 'framework',
+        description: 'Reference-only framework that has no routing index kind.',
+        source: {
+          kind: 'git',
+          url: 'https://github.com/fury-example/reference-framework',
+          repositoryUrl: 'https://github.com/fury-example/reference-framework',
+          version: '1.0.0',
+          commitSha: 'c'.repeat(40),
+        },
+        decision: 'ADOPT',
+      }),
+    ]);
+    const index = createFuryCapabilityIndex();
+
+    const report = projectCapabilityRegistryIntoIndex(index, registry);
+    expect(report).toMatchObject({
+      indexed: 1,
+      skipped: 1,
+      source: 'capability-registry',
+      executionAuthority: false,
+    });
+    const image = index.list('image-provider')[0];
+    expect(image).toMatchObject({
+      kind: 'image-provider',
+      trust: 'unknown',
+      license: 'verified',
+      health: 'ready',
+      executionAuthority: false,
+    });
+
+    const selection = selectFuryCapabilitiesForTask({
+      objective: 'Generate an image with the image provider.',
+      index,
+      explicitRequests: [{ kind: 'image-provider', id: image!.id }],
+      options: { maxSelectedByKind: { 'image-provider': 1 } },
+    });
+    expect(selection.selected).toHaveLength(0);
+    expect(selection.blockedCounts).toMatchObject({ 'trust-unknown': 1 });
+  });
+
   it('projects skill inspection metadata without executing or health-checking the skill', () => {
     const execute = vi.fn(async () => ({
       evidence: ['never-called'],
