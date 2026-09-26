@@ -579,9 +579,10 @@ async function runCase(
   const name = `${engine}-${viewport.id}`;
   try {
     const response = await page.goto(harness.origin + FURY_GATEWAY_WEBCHAT_PATH, {
-      waitUntil: 'load',
+      waitUntil: 'domcontentloaded',
     });
     assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+    await page.locator('#bootstrap-form').waitFor({ state: 'visible', timeout: 15_000 });
     const headers = response.headers();
     const csp = headers['content-security-policy'] ?? '';
     assert(csp.includes("default-src 'none'"), `${name}: CSP default-src is not deny-by-default`);
@@ -782,9 +783,10 @@ async function runModelEnabledCase(
   try {
     const response = await page.goto(
       harness.origin + FURY_GATEWAY_WEBCHAT_PATH,
-      { waitUntil: 'load' },
+      { waitUntil: 'domcontentloaded' },
     );
     assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+    await page.locator('#bootstrap-form').waitFor({ state: 'visible', timeout: 15_000 });
 
     const config = await page.evaluate(async () => {
       const response = await fetch('/gateway/webchat/config.json', {
@@ -893,9 +895,10 @@ async function runToolEnabledCase(
   try {
     const response = await page.goto(
       harness.origin + FURY_GATEWAY_WEBCHAT_PATH,
-      { waitUntil: 'load' },
+      { waitUntil: 'domcontentloaded' },
     );
     assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+    await page.locator('#bootstrap-form').waitFor({ state: 'visible', timeout: 15_000 });
 
     const config = await page.evaluate(async () => {
       const response = await fetch('/gateway/webchat/config.json', {
@@ -1045,9 +1048,10 @@ async function runMemoryEnabledCase(
   try {
     const response = await page.goto(
       harness.origin + FURY_GATEWAY_WEBCHAT_PATH,
-      { waitUntil: 'load' },
+      { waitUntil: 'domcontentloaded' },
     );
     assert(response?.status() === 200, `${name}: WebChat HTTP status was not 200`);
+    await page.locator('#bootstrap-form').waitFor({ state: 'visible', timeout: 15_000 });
 
     const config = await page.evaluate(async () => {
       const response = await fetch('/gateway/webchat/config.json', {
