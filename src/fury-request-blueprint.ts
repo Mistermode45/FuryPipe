@@ -33,6 +33,11 @@ export interface FuryRequestBlueprintInput {
   readonly instructionProfileIds: readonly string[];
   readonly qualityGates: readonly string[];
   readonly mcpSuggestions: readonly FuryAutopilotMcpCandidate[];
+  readonly modelSuggestions?: readonly {
+    readonly id: string;
+    readonly score: number;
+    readonly reason: string;
+  }[];
   readonly budgets: {
     readonly skillInstructionBytes: number;
     readonly systemPromptBytes: number;
@@ -79,6 +84,14 @@ export interface FuryRequestBlueprint {
     readonly facetIds: readonly string[];
     readonly profileIds: readonly string[];
     readonly qualityGates: readonly string[];
+  };
+  readonly models: {
+    readonly advisory: readonly {
+      readonly id: string;
+      readonly score: number;
+      readonly reason: string;
+    }[];
+    readonly executionAuthority: false;
   };
   readonly mcp: {
     /**
@@ -181,6 +194,14 @@ export function createFuryRequestBlueprint(
   const idsByKind = (kinds: readonly FurySelectedCapability['kind'][]): readonly string[] =>
     Object.freeze(selected.filter((item) => kinds.includes(item.kind)).map((item) => item.id));
   const modelIds = idsByKind(['model']);
+  const advisoryModels = Object.freeze([...(input.modelSuggestions ?? [])]
+    .slice(0, 8)
+    .map((item) => Object.freeze({
+      id: item.id,
+      score: item.score,
+      reason: item.reason,
+    })));
+  const advisoryModelIds = Object.freeze([...new Set(advisoryModels.map((item) => item.id))]);
   const skillIds = idsByKind(['skill']);
   const agentIds = idsByKind(['agent']);
   const toolIds = idsByKind(['tool', 'mcp-tool']);
@@ -190,9 +211,13 @@ export function createFuryRequestBlueprint(
   const decisions: FuryRequestDecision[] = [
     Object.freeze({
       family: 'model',
-      status: modelIds.length ? 'selected' : 'unresolved',
-      ids: modelIds,
-      reason: modelIds.length ? 'Selected by Capability Autopilot.' : 'No eligible model capability selected on this surface.',
+      status: modelIds.length ? 'selected' : advisoryModelIds.length ? 'advisory' : 'unresolved',
+      ids: modelIds.length ? modelIds : advisoryModelIds,
+      reason: modelIds.length
+        ? 'Selected by Capability Autopilot.'
+        : advisoryModelIds.length
+          ? 'Model Fabric candidate is available for planning but provider invocation authority is not granted.'
+          : 'No eligible model capability selected on this surface.',
       executionAuthority: false,
     }),
     Object.freeze({
@@ -250,7 +275,7 @@ export function createFuryRequestBlueprint(
     }),
   ];
   const unresolved: Array<'model' | 'agent' | 'tool'> = [];
-  if (!selected.some((item) => item.kind === 'model')) unresolved.push('model');
+  if (!selected.some((item) => item.kind === 'model') && advisoryModelIds.length === 0) unresolved.push('model');
   if (!selected.some((item) => item.kind === 'agent')) unresolved.push('agent');
   if (!selected.some((item) => item.kind === 'tool' || item.kind === 'mcp-tool')) unresolved.push('tool');
 
@@ -276,6 +301,10 @@ export function createFuryRequestBlueprint(
       facetIds,
       profileIds,
       qualityGates,
+    }),
+    models: Object.freeze({
+      advisory: advisoryModels,
+      executionAuthority: false as const,
     }),
     mcp: Object.freeze({
       advisory: Object.freeze([...input.mcpSuggestions]),
