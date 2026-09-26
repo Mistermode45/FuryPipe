@@ -22,6 +22,7 @@ import type {
 } from './fury-kernel-tool-bridge-node.js';
 import type { McpToolRiskClass } from './mcp-tool-risk.js';
 import type { FurySkillEntry, FurySkillHub } from './fury-skill-hub.js';
+import type { FuryHarnessDiscovery, FuryHarnessStatus } from './fury-harness-hub.js';
 import type { FuryMcpHub, FuryMcpSourceView } from './fury-mcp-hub.js';
 import {
   FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
@@ -53,7 +54,7 @@ export interface FuryCapabilityIndexHealthOverrides {
 export interface FuryCapabilityIndexProjectionReport {
   readonly indexed: number;
   readonly skipped: number;
-  readonly source: 'skill-registry' | 'skill-hub' | 'plugin-registry' | 'model-fabric' | 'provider-fabric' | 'mcp-host' | 'mcp-hub';
+  readonly source: 'skill-registry' | 'skill-hub' | 'plugin-registry' | 'model-fabric' | 'provider-fabric' | 'harness-hub' | 'mcp-host' | 'mcp-hub';
   readonly authority: 'projection-only';
   readonly executionAuthority: false;
 }
@@ -269,6 +270,32 @@ function providerTrust(provider: ProviderDefinition): FuryCapabilityIndexTrustSt
     return 'verified';
   }
   return 'unverified';
+}
+
+function harnessHealth(status: FuryHarnessStatus): FuryCapabilityIndexHealthState {
+  if (status.versionStatus === 'builtin' || status.versionStatus === 'ok') return 'ready';
+  if (status.versionStatus === 'failed' || status.versionStatus === 'timeout') return 'degraded';
+  if (status.versionStatus === 'not-installed') return 'unavailable';
+  return 'unknown';
+}
+
+function harnessTrust(status: FuryHarnessStatus): FuryCapabilityIndexTrustState {
+  if (status.definition.evidence === 'BUILTIN' || status.definition.evidence === 'OFFICIAL_FACT') {
+    return 'verified';
+  }
+  if (status.definition.evidence === 'COMMUNITY') return 'unverified';
+  return 'unknown';
+}
+
+function harnessPermissions(status: FuryHarnessStatus): readonly string[] {
+  const permissions = new Set<string>();
+  if (status.definition.integrations.includes('native')) return Object.freeze([]);
+  if (status.definition.executables.length > 0) permissions.add('process');
+  if (status.definition.integrations.includes('a2a')) permissions.add('network');
+  if (status.definition.integrations.includes('acp') && status.definition.executables.length === 0) {
+    permissions.add('process');
+  }
+  return Object.freeze([...permissions]);
 }
 
 function mcpRisk(risk: McpToolRiskClass): FuryCapabilityIndexRiskClass {
@@ -619,6 +646,65 @@ export function projectPluginsIntoCapabilityIndex(
     indexed: inspections.length,
     skipped: 0,
     source: 'plugin-registry' as const,
+    authority: 'projection-only' as const,
+    executionAuthority: false as const,
+  });
+}
+
+export function projectHarnessesIntoCapabilityIndex(
+  index: FuryCapabilityIndex,
+  discovery: FuryHarnessDiscovery,
+): FuryCapabilityIndexProjectionReport {
+  requireIndex(index);
+  if (
+    !discovery
+    || discovery.format !== 'furypipe-harness-discovery/v1'
+    || !Array.isArray(discovery.harnesses)
+  ) {
+    throw new TypeError('harness projection requires FuryPipe discovery evidence');
+  }
+  let indexed = 0;
+  let skipped = 0;
+  for (const status of discovery.harnesses) {
+    if (!indexableIdentity(status.id)) {
+      skipped += 1;
+      continue;
+    }
+    const permissions = harnessPermissions(status);
+    put(index, {
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind: 'agent',
+      id: status.id,
+      name: status.displayName,
+      description:
+        `Agent runtime ${status.displayName}; installed ${status.installed}; version status ${status.versionStatus}; authentication not probed.`,
+      families: uniqueMetadata(['agent', 'harness', ...status.definition.integrations, ...status.definition.protocols]),
+      tags: uniqueMetadata([
+        `evidence-${status.definition.evidence}`,
+        `version-${status.versionStatus}`,
+        ...Object.entries(status.definition.capabilities)
+          .filter(([, value]) => value === true)
+          .map(([key]) => `capability-${key}`),
+      ]),
+      keywords: uniqueMetadata([status.id, status.displayName, ...status.definition.integrations, ...status.definition.protocols]),
+      trust: harnessTrust(status),
+      license: 'not-applicable',
+      health: harnessHealth(status),
+      riskClass: permissions.length === 0 ? 'none' : 'process',
+      requiredPermissions: permissions,
+      compatibility: uniqueMetadata([discovery.platform, ...status.definition.protocols]),
+      source: {
+        system: 'host',
+        sourceId: status.id,
+        ...(status.version === undefined ? {} : { sourceRevision: status.version }),
+      },
+    });
+    indexed += 1;
+  }
+  return Object.freeze({
+    indexed,
+    skipped,
+    source: 'harness-hub' as const,
     authority: 'projection-only' as const,
     executionAuthority: false as const,
   });
