@@ -45,6 +45,7 @@ import { launchFuryAccountLogin, type FuryAccountLoginLauncher, type FuryAccount
 import { probeFuryAccountStatuses, type FuryAccountStatusRunner } from '../fury-account-status.js';
 import { FURY_AUTOPILOT_EFFORTS, planFuryAutopilot, type FuryAutopilotEffort } from '../fury-autopilot.js';
 import { FURY_EXTENSION_KINDS, listFuryExtensions, type FuryExtensionKind } from '../fury-extension-catalog.js';
+import { renderTextToImages } from '../core/library.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
@@ -55,7 +56,7 @@ export type StudioRoute =
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
   | 'mcp' | 'mcp-add' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
-  | 'web'
+  | 'web' | 'visual-render'
   | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act'
   | 'integrations' | 'connections' | 'connection-login' | 'support'
   | 'chats' | 'chat-get' | 'chat-save' | 'chat-branch' | 'chat-delete'
@@ -95,6 +96,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/knowledge/ingest': { route: 'knowledge-ingest', method: 'POST' },
   '/api/studio/knowledge/search': { route: 'knowledge-search', method: 'POST' },
   '/api/studio/web': { route: 'web', method: 'POST' },
+  '/api/studio/visual/render': { route: 'visual-render', method: 'POST' },
   '/api/studio/memory.json': { route: 'memory', method: 'GET' },
   '/api/studio/memory/remember': { route: 'memory-remember', method: 'POST' },
   '/api/studio/memory/search': { route: 'memory-search', method: 'POST' },
@@ -714,6 +716,48 @@ export function createStudioApi(options: StudioApiOptions) {
           case 'integrations': {
             const { sources } = await mcp.list();
             return json(await buildFuryIntegrationRegistry({ projectRoot: options.projectRoot, mcp: sources }));
+          }
+          case 'visual-render': {
+            const body = await readJson(request) as { text?: unknown; model?: unknown; reflow?: unknown };
+            if (typeof body.text !== 'string' || !body.text.trim()) {
+              return problem(400, 'invalid-input', 'visual render text is required');
+            }
+            if (body.text.length > 24_000) {
+              return problem(413, 'input-too-large', 'visual preview is limited to 24,000 characters');
+            }
+            if (body.model !== undefined && (typeof body.model !== 'string' || body.model.length > 256 || /[\u0000-\u001f]/u.test(body.model))) {
+              return problem(400, 'invalid-input', 'visual model identifier is invalid');
+            }
+            const result = await renderTextToImages(body.text, {
+              ...(typeof body.model === 'string' && body.model.trim() ? { model: body.model.trim() } : {}),
+              reflow: body.reflow !== false,
+              shrink: true,
+              maxCharsPerImage: 8_000,
+            });
+            if (result.pages.length > 4) {
+              return problem(413, 'render-too-large', 'visual preview produced too many pages');
+            }
+            const totalBytes = result.pages.reduce((sum, page) => sum + page.png.byteLength, 0);
+            if (totalBytes > 8 * 1024 * 1024) {
+              return problem(413, 'render-too-large', 'visual preview exceeds the 8 MiB output bound');
+            }
+            return json({
+              format: 'furypipe-studio-visual-preview/v1',
+              sourceChars: body.text.length,
+              model: typeof body.model === 'string' && body.model.trim() ? body.model.trim() : null,
+              reflow: body.reflow !== false,
+              droppedChars: result.droppedChars,
+              pixels: result.pixels,
+              totalBytes,
+              pages: result.pages.map((page, index) => ({
+                index,
+                width: page.width,
+                height: page.height,
+                bytes: page.png.byteLength,
+                dataUrl: `data:image/png;base64,${Buffer.from(page.png).toString('base64')}`,
+              })),
+              note: 'Preview uses FuryPipe native renderer only. Production provider transforms still apply ExactGuard, model capability, profitability, image-count and byte-budget gates.',
+            });
           }
           case 'memory': {
             const m = memory();
