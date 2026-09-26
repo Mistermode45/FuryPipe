@@ -132,6 +132,14 @@ export function createFuryCapabilityRouterAutopilot(
         requiredSkillCategories: unique(requiredSkillCategories),
         preferredSkillIds: unique(preferredSkillIds),
         pluginBundleIds: unique(pluginBundleIds),
+        selectionTrace: Object.freeze(selection.selected.map((selected) => Object.freeze({
+          kind: selected.kind,
+          id: selected.id,
+          score: selected.score,
+          reason: selected.reason,
+          requiredPermissions: Object.freeze([...selected.requiredPermissions]),
+          executionAuthorized: false as const,
+        }))),
       });
     },
   });
