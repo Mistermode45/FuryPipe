@@ -2150,8 +2150,8 @@ const SCRIPT = String.raw`
               const plan = await mcpPost('/api/studio/artifacts/restore/plan', { artifactId: artifact.id, sourceVersion: version.version });
               if (!confirm('Restore version ' + version.version + ' as new version ' + plan.plannedVersion + '? This never overwrites history.')) return;
               const receipt = await mcpPost('/api/studio/artifacts/restore', { plan, confirm: true });
-              $('#artifact-status').textContent = 'Restored v' + receipt.sourceVersion + ' as v' + receipt.restoredVersion + ' · persisted ' + receipt.persistedDigestSha256.slice(0, 12) + '…';
               await loadArtifacts(); await openArtifact(artifact.id);
+              $('#artifact-status').textContent = 'Restored v' + receipt.sourceVersion + ' as v' + receipt.restoredVersion + ' · persisted ' + receipt.persistedDigestSha256.slice(0, 12) + '…';
             } catch (e) { $('#artifact-status').textContent = 'Restore rejected: ' + e.message; }
           });
           controls.append(restore);
