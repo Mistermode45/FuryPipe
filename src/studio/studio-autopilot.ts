@@ -83,6 +83,24 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     },
   });
   const selectedSkillCapabilities=capabilitySelection.selected.filter((item)=>item.kind==='skill');
+  const mcpSourceById=new Map(mcpView.sources.map((source)=>[source.sourceId,source] as const));
+  const governedMcpCandidates=Object.freeze(capabilitySelection.blocked
+    .filter((item)=>item.kind==='mcp-server'&&item.relevanceScore>0)
+    .sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id))
+    .slice(0,MAX_MCP_SUGGESTIONS)
+    .flatMap((item)=>{
+      const source=mcpSourceById.get(item.id);
+      if(!source||!source.enabled||source.defaultPolicy==='DENY') return [];
+      return [Object.freeze({
+        sourceId:source.sourceId,
+        source:source.name,
+        score:item.score,
+        policy:source.defaultPolicy,
+        trusted:source.trusted,
+        needsApproval:true,
+        reason:`Capability Autopilot ranked this MCP source but blocked executable selection: ${item.reason}.`,
+      })];
+    }));
   const skillSelectionPlan:AgentSkillSelectionPlan=Object.freeze({
     format:'furypipe-agent-skill-selection/v1',
     selected:Object.freeze(selectedSkillCapabilities.map((skill)=>Object.freeze({
@@ -102,21 +120,7 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
       score:skill.score,
       reason:skill.reason,
     })),
-    mcpSources:mcpView.sources.map((source)=>({
-      sourceId:source.sourceId,
-      name:source.name,
-      enabled:source.enabled,
-      trusted:source.trusted,
-      defaultPolicy:source.defaultPolicy,
-      ...(source.health?{health:{
-        ok:source.health.ok,
-        tools:source.health.tools.map((tool)=>({
-          name:tool.name,
-          riskClass:tool.riskClass,
-          readOnly:tool.readOnly,
-        })),
-      }}:{}),
-    })),
+    mcpCandidates:governedMcpCandidates,
   });
   const style:Exclude<StudioResponseStyle,'auto'>=requestedStyle==='auto'
     ? routing.communicationStyle==='CAVEMAN'?'caveman':'balanced'
@@ -142,7 +146,6 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     }));
   }
 
-  const mcpSourceById=new Map(mcpView.sources.map((source)=>[source.sourceId,source] as const));
   const mcpSuggestions=Object.freeze(routing.mcp.slice(0,MAX_MCP_SUGGESTIONS).flatMap((candidate)=>{
     const source=mcpSourceById.get(candidate.sourceId);
     if(!source) return [];
