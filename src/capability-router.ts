@@ -1,4 +1,8 @@
 import type { AgentFabricPermission, AgentFabricStageId } from './agent-fabric.js';
+import {
+  FURY_CAPABILITY_INDEX_KINDS,
+  type FuryCapabilityIndexKind,
+} from './capability-index.js';
 import type {
   AgentMcpPlannedCall,
   AgentMcpServerDefinition,
@@ -62,7 +66,7 @@ export interface FuryCapabilityPack {
 }
 
 export interface FuryExplainableCapabilitySelection {
-  readonly kind: 'skill' | 'plugin' | 'mcp-server' | 'mcp-tool' | 'model';
+  readonly kind: FuryCapabilityIndexKind;
   readonly id: string;
   readonly score: number;
   readonly reason: 'explicit-request' | 'family-match' | 'task-relevance';
@@ -1053,7 +1057,7 @@ function validateDynamicAnalysis(
   const validatedSelectionTrace: FuryExplainableCapabilitySelection[] = [];
   for (const entry of selectionTrace) {
     if (!entry || typeof entry !== 'object') throw new Error('universal selectionTrace entry is invalid');
-    if (!['skill','plugin','mcp-server','mcp-tool','model'].includes(entry.kind)
+    if (!(FURY_CAPABILITY_INDEX_KINDS as readonly unknown[]).includes(entry.kind)
       || typeof entry.id !== 'string'
       || entry.id.length < 1
       || entry.id.length > 256
