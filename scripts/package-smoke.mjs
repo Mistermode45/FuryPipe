@@ -435,6 +435,13 @@ try {
   ], installDir);
   assert(capabilityAutopilotExport.stderr === '', `Capability Autopilot export wrote stderr: ${capabilityAutopilotExport.stderr}`);
 
+  const capabilityRouterAutopilotExport = await run(process.execPath, [
+    '--input-type=module',
+    '-e',
+    "const m = await import('furypipe/capability-router-autopilot'); if (typeof m.createFuryCapabilityRouterAutopilot !== 'function' || m.FURY_CAPABILITY_ROUTER_AUTOPILOT_DOMAIN !== 'capability-index-autopilot') process.exit(1);",
+  ], installDir);
+  assert(capabilityRouterAutopilotExport.stderr === '', `Capability Router Autopilot export wrote stderr: ${capabilityRouterAutopilotExport.stderr}`);
+
   const capabilityAdaptersExport = await run(process.execPath, [
     '--input-type=module',
     '-e',
