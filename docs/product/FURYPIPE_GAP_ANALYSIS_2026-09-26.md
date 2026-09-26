@@ -3,7 +3,7 @@
 Status: ACTIVE PRODUCT GAP LEDGER  
 Repository: `Mistermode45/FuryPipe`  
 Track: PR #233 — `claude/furypipe-studio-autopilot-extensions`  
-Audit input HEAD: `42d33f472eaa590bf399521a167c13c5adc96ed6`  
+Audit input HEAD: `3b2b79ce368088ee1f10308bc23e7f71fecb6bba`  
 Product source: `docs/product/FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md`
 
 ## Scope and evidence rule
@@ -41,13 +41,13 @@ Primary evidence:
 | Capability | Current state | Target state | Gap | Priority | Dependencies | Risk | Verification |
 |---|---|---|---|---|---|---|---|
 | Evidence kernel / FuryJudge / FuryIR | DONE | Evidence-first kernel for all new surfaces | Extend receipts/contracts only when new surfaces require it | P0 guardrail | CORE-01/02/03 | High if bypassed | Existing unit/property tests + new contract tests |
-| Universal Capability Registry | PARTIAL | One registry for MODEL/PROVIDER/SKILL/SKILL_PACK/INSTRUCTION/PLUGIN/MCP/CONNECTOR/TOOL/AGENT/WORKFLOW/AUTOMATION/media/runtime providers | Existing registry is strong but taxonomy/metadata do not yet map the full 2026-09-26 schema | P1 | capability catalog, trust, score | High | schema tests, migration/compat tests, registry round-trip |
-| Capability Router + Fury Autopilot | PARTIAL — CONVERGED CORE | One explainable request router selecting model, skills, instructions, MCP, plugins, tools, agents and budgets | Studio skill/agent selection now consumes the shared Capability Index/Autopilot and emits an attested Request Blueprint; legacy SkillHub autoSelect is bypassed. MCP advisory matching remains separate from executable selection and must still be converged or explicitly retained as advisory-only. | P1 | registry, prompt, dispatcher | High | golden routing tests + differential tests proving one decision path |
-| Capability Graph / Mesh | PARTIAL — RUNTIME GRAPH ADDED | Request→Agent→Skill→MCP→Tool→Provider→Model plus Project→Repository→Files→Memory→Decision→Artifact | `fury-capability-graph` now projects attested request decisions/capabilities/advisories/blocks and Studio renders the route. Project→Repository→Files→Memory→Decision→Artifact unification is still incomplete; FuryGraph remains the code-relationship authority. | P1 | registry, FuryGraph | Medium | graph schema/unit tests + Studio browser QA |
+| Universal Capability Registry | DONE CORE | One registry for MODEL/PROVIDER/SKILL/SKILL_PACK/INSTRUCTION/PLUGIN/MCP/CONNECTOR/TOOL/AGENT/WORKFLOW/AUTOMATION/media/runtime providers | Master taxonomy is represented by the existing catalog + Capability Index projection path; runtime stores remain authoritative and the index remains routing-metadata-only | P1 | capability catalog, trust, score | High | schema/index/adapters tests + exact-head CI |
+| Capability Router + Fury Autopilot | DONE CORE | One explainable request router selecting model, skills, instructions, MCP, plugins, tools, agents and budgets | Studio consumes the shared Capability Index/Autopilot and emits an attested Request Blueprint. MCP/model candidates blocked by missing runtime authority remain advisory-only; executable selection stays in the governed runtime instead of being widened by routing metadata. | P1 | registry, prompt, dispatcher | High | routing/index/blueprint tests + exact-head CI |
+| Capability Graph / Mesh | DONE CORE / PARTIAL FRONTIER | Request→Agent→Skill→MCP→Tool→Provider→Model plus Project→Repository→Files→Memory→Decision→Artifact | Capability Graph projects request decisions; Workspace Graph composes project/repository/files/memory/decisions/artifacts while FuryGraph/Memory/artifact stores remain authoritative. Advanced cross-workspace mesh remains a later frontier layer. | P1/P4 | registry, FuryGraph | Medium | capability/workspace graph tests + Studio browser QA |
 | Skills | DONE core / PARTIAL target | Auto routing, composition, packs, creator, registry, SDK, effectiveness analytics | Skills Hub and auto-select exist; creator/SDK/effectiveness/pack governance require reconciliation | P1/P2 | registry, trust, eval | Medium | unit + import security + browser QA + eval |
-| Instructions | PARTIAL | Registry + router + deterministic conflict resolver + layered precedence | Instruction Fabric exists; full registry UX and explicit conflict surface not proven | P1 | FuryPrompt, registry | High | precedence/conflict property tests |
-| FuryPrompt Engine | PARTIAL | Raw/Auto/Enhanced/Professional/Coding/Research/Creative/Strict/Fast + analyzer + compiled-prompt inspection | Compiler exists and Autopilot uses it; mode breadth/inspector/analyzer target is broader | P1 | instruction fabric | Medium | compiler snapshots, injection/security tests, UI QA |
-| FuryContext | DONE core / PARTIAL target | Retrieval + budget + inspector + compaction + diff-aware context | Context compiler is DONE; Inspector/budget UX/context-diff/full compaction target not proven | P1/P2 | memory, graph | High | FuryBench + retrieval correctness + UI QA |
+| Instructions | DONE CORE / PARTIAL UX | Registry + router + deterministic conflict resolver + layered precedence | Instruction Fabric + explicit Base→User→Workspace→Project→Domain→Task→Skill→Security→Runtime precedence now resolve deterministically and fail closed on same-precedence scalar conflicts; broader instruction-library UX remains | P1/P2 | FuryPrompt, registry | High | precedence/conflict tests + Studio rendering |
+| FuryPrompt Engine | IMPLEMENTED_PENDING_EXACT_HEAD | Raw/Auto/Enhanced/Professional/Coding/Research/Creative/Strict/Fast + analyzer + compiled-prompt inspection | Nine official modes and deterministic prompt analysis are implemented; Studio exposes recommended mode, ambiguity, risk, expected output and complexity without silently changing authority | P1 | instruction fabric | Medium | prompt analyzer/compiler tests + Studio/browser QA + exact-head CI |
+| FuryContext | IMPLEMENTED_PENDING_EXACT_HEAD | Retrieval + budget + inspector + compaction + diff-aware context | Context compiler remains core; bounded Context Inspector now exposes loaded/not-loaded/unknown categories and explicit byte/token-estimate basis; deterministic Context Diff compares capsules. Advanced semantic compaction UX remains P2. | P1/P2 | memory, graph | High | context compiler/inspector/diff tests + FuryBench + Studio/browser QA + exact-head CI |
 | FuryMemory | DONE core / PARTIAL target | Multi-layer memory graph, provenance, management, time machine | Memory VNext + Studio memory exist; advanced management/time-machine/cross-project graph remain broader | P2 | graph, storage | High | recall/false-memory eval + migration tests |
 | Model Hub | PARTIAL | Unified local/cloud providers with real capability detection and per-model power controls | Local fabric DONE; cloud models remain outside Studio per current spec | P1 | provider adapters, budget, secrets | High | provider contract tests + live opt-in verification |
 | Provider architecture | PARTIAL | Stable ProviderAdapter/SDK, health routing, retries/fallback/circuit breakers | Foundation has governed providers, but complete new Studio/provider-SDK target is not reconciled | P1/P2 | model hub, observability | High | adapter conformance + failure/chaos tests |
@@ -114,12 +114,25 @@ Observed changes:
 - Studio Autopilot renders the capability graph and blocked/unresolved capability families.
 - Repository/code dependency relationships remain owned by FuryGraph; no parallel code graph was introduced.
 
-Remaining before declaring the full master P1 target complete:
+P1 Capability Convergence closure state at this audit:
 
-1. decide and test the final MCP advisory-vs-selection convergence contract;
-2. connect real Model Fabric availability into Studio request selection without granting provider invocation implicitly;
-3. extend the capability graph across Project → Repository → Files → Memory → Decision → Artifact using existing stores rather than duplicating them;
-4. add explicit instruction precedence/conflict reporting;
-5. re-run all exact-head gates after the final P1 documentation/code head.
+1. MCP/model routing contract is explicit: candidates without runtime authority are advisory-only; routing metadata never widens permissions.
+2. Real local Model Fabric discovery feeds Studio selection and explicit model requests remain planning-only until provider authority exists.
+3. Workspace Graph composes Project → Repository → Files → Memory → Decision → Artifact using existing authoritative stores.
+4. Instruction precedence/conflict reporting is explicit, deterministic and fail-closed.
+5. Capability Convergence is therefore closed at the code-contract level; exact-head hosted evidence must still be attached to the final documentation SHA.
+
+## Next architectural milestone
+
+**P1-PROMPT-CONTEXT-INSPECTION**
+
+Implemented on the continuation branch and pending final exact-head evidence:
+
+- nine FuryPrompt modes: RAW / AUTO / ENHANCED / PROFESSIONAL / CODING / RESEARCH / CREATIVE / STRICT / FAST;
+- deterministic prompt analysis for ambiguity, missing context, constraint conflicts, security risk, expected output and complexity;
+- Studio prompt-analysis rendering;
+- bounded FuryContext Inspector with loaded / available-not-loaded / not-present / unknown truth states;
+- explicit byte budget and approximate token basis rather than fabricated exact token counts;
+- deterministic Context Diff for added/removed/changed context and hard-constraint changes.
 
 No merge, tag, release, npm publish or deploy is authorized by this checkpoint.
