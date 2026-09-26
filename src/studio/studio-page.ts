@@ -1807,7 +1807,38 @@ const SCRIPT = String.raw`
       mcpCard.append(ul);
     } else mcpCard.append(el('p', { class: 'muted', text: 'No enabled governed MCP source matched this request.' }));
     route.append(skillsCard, mcpCard);
-    out.append(route, el('div', { class: 'card' }, el('h2', { text: 'Prompt pipeline' }), el('p', { text: plan.promptPipeline.join(' → ') }), el('p', { class: 'muted', text: 'Preview only. This route does not authorize tools, writes, network calls or external actions.' })));
+    out.append(route);
+
+    if (result.capabilityGraph) {
+      const graph = result.capabilityGraph;
+      const graphCard = el('div', { class: 'card' }, el('h2', { text: 'Capability graph' }));
+      const graphMeta = el('p', { class: 'muted', text: graph.nodes.length + ' nodes · ' + graph.edges.length + ' edges · visualization only' });
+      graphCard.append(graphMeta);
+      const decisionNodes = graph.nodes.filter((node) => node.kind === 'decision');
+      const graphList = el('ul', { class: 'reasons' });
+      for (const decision of decisionNodes) {
+        const children = graph.edges
+          .filter((edge) => edge.from === decision.id && edge.kind !== 'blocks')
+          .map((edge) => graph.nodes.find((node) => node.id === edge.to))
+          .filter(Boolean);
+        graphList.append(el('li', {
+          text: 'Request → ' + decision.label + (children.length ? ' → ' + children.map((node) => node.label).join(', ') : ' → unresolved'),
+        }));
+      }
+      const blocked = graph.nodes.filter((node) => node.kind === 'blocked');
+      if (blocked.length) {
+        graphList.append(el('li', {
+          text: 'Blocked → ' + blocked.slice(0, 8).map((node) => node.label + ' (' + node.reason + ')').join(', '),
+        }));
+      }
+      graphCard.append(graphList);
+      if (graph.unresolved && graph.unresolved.length) {
+        graphCard.append(el('p', { class: 'muted', text: 'Unresolved families: ' + graph.unresolved.join(', ') + '. FuryPipe will not invent unavailable capabilities.' }));
+      }
+      out.append(graphCard);
+    }
+
+    out.append(el('div', { class: 'card' }, el('h2', { text: 'Prompt pipeline' }), el('p', { text: plan.promptPipeline.join(' → ') }), el('p', { class: 'muted', text: 'Preview only. This route does not authorize tools, writes, network calls or external actions.' })));
   }
 
   $('#autopilot-form').addEventListener('submit', async (ev) => {
