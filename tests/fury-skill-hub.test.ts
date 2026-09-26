@@ -90,6 +90,45 @@ describe('FurySkillHub', () => {
     await expect(hub.pin('nope')).rejects.toThrow(/unknown skill/u);
   });
 
+  it('creates a bounded project-local skill without granting tool authority', async () => {
+    const { hub, project } = setup();
+    const created = await hub.create({
+      name:'release-review',
+      description:'Review release changes before publishing.',
+      instructions:'Inspect the diff, verify tests, and report evidence before completion.',
+      version:'1.0.0',
+      author:'LégendeUrbaine',
+      license:'MIT',
+      harnesses:['claude-code','codex'],
+      allowedTools:['read_file','git_diff'],
+      type:'GENERATED',
+      triggers:['release review requested'],
+      examples:['Review the next FuryPipe release.'],
+      tests:['Must request no execution authority.'],
+    });
+    expect(created).toMatchObject({
+      name:'release-review',
+      version:'1.0.0',
+      author:'LégendeUrbaine',
+      license:'MIT',
+      compatibleHarnesses:['claude-code','codex'],
+      type:'GENERATED',
+      executionAuthorized:false,
+    });
+    const text=readFileSync(join(project,'.furypipe','skills','release-review','SKILL.md'),'utf8');
+    expect(text).toContain('allowed-tools: "read_file, git_diff"');
+    expect(text).toContain('## Trigger conditions');
+    const activated=await hub.activateSelection(['release-review'],{harnessId:'claude-code'}).catch(()=>[]);
+    expect(activated).toEqual([]);
+  });
+
+  it('rejects unsafe creator input and unknown harnesses', async () => {
+    const { hub } = setup();
+    await expect(hub.create({name:'Bad Name',description:'x',instructions:'y'})).rejects.toThrow(/invalid skill name/u);
+    await expect(hub.create({name:'safe-name',description:'x',instructions:'y',harnesses:['unknown-runtime']})).rejects.toThrow(/unknown harness/u);
+    await expect(hub.create({name:'safe-name',description:'x',instructions:'x'.repeat(30*1024)})).rejects.toThrow(/per-skill activation bound/u);
+  });
+
   it('installs from a local directory with snapshots, compares and rolls back', async () => {
     const { hub, root, project } = setup();
     const src = skill(join(root, 'incoming'), 'release-notes', 'Draft release notes from merged changes.');
