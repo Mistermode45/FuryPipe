@@ -1341,12 +1341,13 @@ const SCRIPT = String.raw`
     }
     return messages;
   }
-  async function prepareAutopilot(text, harnessId) {
+  async function prepareAutopilot(text, harnessId, route) {
     const effort = $('#effort-select').value || 'auto';
     const result = await post('/api/studio/autopilot/preview', {
       objective: text.slice(0, 16000),
       effort,
       harnessId: harnessId || 'studio-local',
+      ...(route && route.model && route.kind ? { localModel: route.model, localBackend: route.kind } : {}),
       customInstructions: store.get('customInstructions', '').trim().slice(0, 4000),
     });
     state.autopilot = result;
@@ -1357,10 +1358,12 @@ const SCRIPT = String.raw`
     const plan = result.plan;
     const skillNames = (plan.skills || []).map((x) => x.name);
     const mcpNames = (plan.mcp || []).map((x) => x.source + (x.tool ? '/' + x.tool : '') + (x.needsApproval ? ' [approval]' : ''));
+    const modelNames = (result.models && result.models.suggested ? result.models.suggested : []).map((x) => x.id);
     return {
       icon: 'autopilot',
       label: 'Fury Autopilot · ' + plan.profile.label + ' · ' + plan.effort.effective,
       detail: [
+        modelNames.length ? 'Model: ' + modelNames.join(', ') + ' [planning only]' : 'Model: unresolved',
         skillNames.length ? 'Skills: ' + skillNames.join(', ') : 'Skills: none',
         mcpNames.length ? 'MCP candidates: ' + mcpNames.join(', ') : 'MCP candidates: none',
         'Context: ' + plan.contextMode,
@@ -1534,7 +1537,7 @@ const SCRIPT = String.raw`
     const { content, acts } = await gatherContext(text);
     try {
       setStatus('Fury Autopilot is selecting instructions, skills and governed tools…', true);
-      const auto = await prepareAutopilot(text, 'studio-local');
+      const auto = await prepareAutopilot(text, 'studio-local', routeNow);
       routeNow.autopilot = auto.plan;
       acts.unshift(autopilotActivity(auto));
     } catch (error) {
@@ -1558,7 +1561,7 @@ const SCRIPT = String.raw`
     const objective = splitContext(lastUser.content).text;
     const r = currentRoute(objective); if (!r) return;
     try {
-      const auto = await prepareAutopilot(objective, 'studio-local').catch(() => null);
+      const auto = await prepareAutopilot(objective, 'studio-local', r).catch(() => null);
       if (auto) r.autopilot = auto.plan;
       state.conv = await post('/api/studio/chats/branch', { id: state.conv.id, atMessage: lastUser.id }); state.activity = new Map(); renderConversation(); await streamReply(r);
     }
