@@ -95,6 +95,16 @@ export interface FuryRequestBlueprint {
   readonly executionAuthorized: false;
 }
 
+const REQUEST_BLUEPRINT_EVIDENCE = new WeakSet<object>();
+
+export function isGeneratedFuryRequestBlueprint(
+  value: unknown,
+): value is FuryRequestBlueprint {
+  return typeof value === 'object'
+    && value !== null
+    && REQUEST_BLUEPRINT_EVIDENCE.has(value);
+}
+
 const MAX_OBJECTIVE_CHARS = 64_000;
 const MAX_LIST = 128;
 const MAX_TEXT = 256;
@@ -244,7 +254,7 @@ export function createFuryRequestBlueprint(
   if (!selected.some((item) => item.kind === 'agent')) unresolved.push('agent');
   if (!selected.some((item) => item.kind === 'tool' || item.kind === 'mcp-tool')) unresolved.push('tool');
 
-  return Object.freeze({
+  const blueprint: FuryRequestBlueprint = Object.freeze({
     format: FURY_REQUEST_BLUEPRINT_FORMAT,
     objectiveDigestSha256: objectiveDigest(input.objective),
     routing: Object.freeze({
@@ -280,4 +290,6 @@ export function createFuryRequestBlueprint(
     authority: 'planning-only' as const,
     executionAuthorized: false as const,
   });
+  REQUEST_BLUEPRINT_EVIDENCE.add(blueprint);
+  return blueprint;
 }
