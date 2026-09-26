@@ -1042,6 +1042,7 @@ const SCRIPT = String.raw`
     }
     firstRoute = false;
     if (name === 'chat' || name === 'models') loadLocal();
+    if (name === 'autopilot') $('#autopilot-effort').value = $('#effort-select').value;
     if (name === 'chat') autosize();
     if (name === 'connections') loadConnections();
     if (name === 'runtimes') loadHarnesses();
@@ -1754,6 +1755,57 @@ const SCRIPT = String.raw`
       status.textContent = 'Started ' + r.runId + ' · ' + r.dispatch.mode + ' · dispatch benefit ' + r.dispatch.benefit; loadRuns();
     } catch (e) { status.textContent = 'Not started: ' + e.message; }
   });
+  function renderAutopilot(result) {
+    const out = $('#autopilot-out'); out.replaceChildren();
+    const plan = result.plan;
+    const summary = el('div', { class: 'autopilot-summary' });
+    const stat = (title, value) => el('div', { class: 'autopilot-stat' }, el('b', { text: title }), el('span', { text: value }));
+    summary.append(
+      stat('Instruction profile', plan.profile.label),
+      stat('Reasoning', plan.effort.effective + (plan.effort.requested === 'auto' ? ' · auto' : ' · override')),
+      stat('Communication', plan.communicationStyle === 'CAVEMAN' ? 'Caveman' : 'Standard'),
+      stat('Context', plan.contextMode === 'VISUAL_COMPRESS_AUTO' ? 'Visual compression eligible' : 'Text first'),
+    );
+    out.append(summary);
+
+    const route = el('div', { class: 'grid' });
+    const skillsCard = el('div', { class: 'card' }, el('h2', { text: 'Selected skills' }));
+    if (plan.skills.length) {
+      const ul = el('ul', { class: 'reasons' });
+      for (const x of plan.skills) ul.append(el('li', { text: x.name + ' · ' + x.reason + ' · score ' + x.score }));
+      skillsCard.append(ul);
+    } else skillsCard.append(el('p', { class: 'muted', text: 'No trusted skill matched this request.' }));
+    if (result.activatedSkills && result.activatedSkills.length) {
+      skillsCard.append(el('p', { class: 'muted', text: result.activatedSkills.length + ' SKILL.md instruction body/bodies activated with receipts; execution authority remains false.' }));
+    }
+
+    const mcpCard = el('div', { class: 'card' }, el('h2', { text: 'MCP candidates' }));
+    if (plan.mcp.length) {
+      const ul = el('ul', { class: 'reasons' });
+      for (const x of plan.mcp) ul.append(el('li', { text: x.source + (x.tool ? '/' + x.tool : '') + ' · ' + x.policy + (x.needsApproval ? ' · approval required' : '') }));
+      mcpCard.append(ul);
+    } else mcpCard.append(el('p', { class: 'muted', text: 'No enabled governed MCP source matched this request.' }));
+    route.append(skillsCard, mcpCard);
+    out.append(route, el('div', { class: 'card' }, el('h2', { text: 'Prompt pipeline' }), el('p', { text: plan.promptPipeline.join(' → ') }), el('p', { class: 'muted', text: 'Preview only. This route does not authorize tools, writes, network calls or external actions.' })));
+  }
+
+  $('#autopilot-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const status = $('#autopilot-status'); const out = $('#autopilot-out');
+    status.textContent = 'Building governed route…'; out.replaceChildren();
+    try {
+      const result = await post('/api/studio/autopilot/preview', {
+        objective: $('#autopilot-objective').value,
+        effort: $('#autopilot-effort').value,
+        harnessId: $('#autopilot-harness').value || undefined,
+      });
+      renderAutopilot(result);
+      status.textContent = result.execution;
+    } catch (e) {
+      status.textContent = 'Autopilot unavailable: ' + e.message;
+    }
+  });
+
   async function skillAct(name, action, value) {
     try { await getJson('/api/studio/skills/act', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, action, value }) }); await loadSkills(); $('#skills-status').textContent = action + ' applied to ' + name + '.'; }
     catch (e) { $('#skills-status').textContent = e.message; }
@@ -1783,6 +1835,21 @@ const SCRIPT = String.raw`
       if (r.excluded.length) { const ul = el('ul', { class: 'reasons' }); for (const x of r.excluded) ul.append(el('li', { text: x.name + ': ' + x.reason })); out.append(ul); }
     } catch (e) { out.append(el('p', { class: 'bad', text: e.message })); }
   });
+  $('#skill-install-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const status = $('#skill-install-status');
+    if (!$('#skill-install-confirm').checked) { status.textContent = 'Review confirmation is required before importing a skill.'; return; }
+    status.textContent = 'Validating and importing local skill…';
+    try {
+      const imported = await post('/api/studio/skills/install', { sourceDir: $('#skill-source-dir').value, confirm: true });
+      status.textContent = 'Imported ' + imported.name + ' · checksum ' + imported.checksum.slice(0, 12) + '. Pin it after review if you want content-drift protection.';
+      $('#skill-install-confirm').checked = false;
+      await loadSkills();
+    } catch (e) {
+      status.textContent = 'Import refused: ' + e.message;
+    }
+  });
+
   async function mcpPost(url, payload) { return getJson(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); }
   async function loadMcp() {
     const box = $('#mcp-list'); const status = $('#mcp-status');
@@ -1820,6 +1887,57 @@ const SCRIPT = String.raw`
       status.textContent = r.sources.length + ' MCP server(s) across ' + r.configs.filter(c => c.status === 'found').length + ' config file(s).';
     } catch (e) { status.textContent = 'MCP discovery failed: ' + e.message; }
   }
+  async function loadExtensions() {
+    const grid = $('#extensions-grid'); const status = $('#extensions-status');
+    if (!grid || !status) return;
+    status.textContent = 'Loading governed extension catalog…';
+    try {
+      const params = new URLSearchParams();
+      const q = $('#extensions-query').value.trim(); const kind = $('#extensions-kind').value;
+      if (q) params.set('q', q); if (kind) params.set('kind', kind); if ($('#extensions-restricted').checked) params.set('restricted', '1');
+      const r = await getJson('/api/studio/extensions.json' + (params.toString() ? '?' + params.toString() : ''));
+      grid.replaceChildren();
+      for (const x of r.extensions) {
+        const riskClass = x.risk === 'LOW' ? 'ok' : x.risk === 'MEDIUM' ? 'muted' : x.risk === 'HIGH' ? 'warn' : 'bad';
+        const card = el('article', { class: 'card extension-card' });
+        card.append(
+          el('h2', { text: x.name }),
+          el('p', { class: 'muted', text: x.creator + ' · ' + x.kind.replaceAll('_', ' ') }),
+          el('div', { class: 'extension-meta' }, badge(x.trust.replaceAll('_', ' '), 'muted'), badge(x.risk, riskClass), badge(x.autoActivation.replaceAll('_', ' '), x.autoActivation === 'DENIED' ? 'bad' : 'muted')),
+          el('p', { text: x.description }),
+          el('p', { class: 'muted', text: x.integration }),
+          el('p', { class: x.risk === 'RESTRICTED' ? 'bad' : 'muted', text: x.safety }),
+          el('a', { class: 'btn secondary', href: x.sourceUrl, target: '_blank', rel: 'noopener noreferrer', text: 'Inspect source' }),
+        );
+        grid.append(card);
+      }
+      if (!r.extensions.length) grid.append(el('p', { class: 'empty', text: 'No extension matched this filter.' }));
+      status.textContent = r.extensions.length + ' extension(s). ' + r.installation;
+    } catch (e) {
+      status.textContent = 'Extension catalog unavailable: ' + e.message;
+    }
+  }
+  $('#extensions-form').addEventListener('submit', (ev) => { ev.preventDefault(); loadExtensions(); });
+
+  async function loadSupport() {
+    const copy = $('#support-copy'); const action = $('#support-action');
+    if (!copy || !action) return;
+    try {
+      const r = await getJson('/api/studio/support.json');
+      action.replaceChildren();
+      if (r.configured && r.supportUrl) {
+        copy.textContent = 'Support the continued development of FuryPipe.';
+        const a = el('a', { class: 'btn primary support-btn', href: r.supportUrl, target: '_blank', rel: 'noopener noreferrer' }, ic('support'), el('span', { text: 'Support FuryPipe' }));
+        action.append(a);
+      } else {
+        copy.textContent = 'No official support destination is configured in this build yet.';
+      }
+    } catch (e) {
+      copy.textContent = 'Support metadata unavailable: ' + e.message;
+      action.replaceChildren();
+    }
+  }
+
   async function loadKnowledge() {
     try { const k = await getJson('/api/studio/knowledge.json');
       $('#kb-stats').textContent = k.files + ' file(s), ' + k.chunks + ' passage(s), ' + k.embedded + ' with embeddings. Semantic search: ' + (k.availableEmbeddingModel ? 'available (' + k.availableEmbeddingModel + ')' : 'no local embeddings model found, keyword search only') + '.';
