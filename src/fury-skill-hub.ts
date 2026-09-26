@@ -29,6 +29,7 @@ export type FurySkillType = typeof FURY_SKILL_TYPES[number];
 const STATE_FORMAT = 'furypipe-skill-hub-state/v1';
 const MAX_FILES = 128;
 const MAX_TOTAL_BYTES = 4 * 1024 * 1024;
+const MAX_ACTIVE_INSTRUCTION_BYTES = 64 * 1024;
 const MAX_DEPTH = 6;
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const DIGEST = /^[0-9a-f]{64}$/u;
@@ -349,7 +350,7 @@ export function createFurySkillHub(options: {
         const manifest = parseAgentSkillManifest(raw, name);
         const bytes = Buffer.byteLength(manifest.instructions, 'utf8');
         totalBytes += bytes;
-        if (totalBytes > 512 * 1024) throw new FurySkillHubError('activated skill instructions exceed the per-turn bound');
+        if (totalBytes > MAX_ACTIVE_INSTRUCTION_BYTES) throw new FurySkillHubError('activated skill instructions exceed the per-turn bound');
         const receipt = await createAgentSkillActivationReceipt(manifest.metadata, manifest.instructions);
         activated.push(Object.freeze({
           name,
