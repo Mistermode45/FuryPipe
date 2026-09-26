@@ -43,13 +43,14 @@ import { inspectHuggingFaceGguf, recommendHuggingFaceGguf } from '../fury-huggin
 import { installFuryLocalRuntime, type FuryRuntimeSetupId, type FuryRuntimeSetupRunner } from '../fury-runtime-setup.js';
 import { launchFuryAccountLogin, type FuryAccountLoginLauncher, type FuryAccountProvider } from '../fury-account-connect.js';
 import { probeFuryAccountStatuses, type FuryAccountStatusRunner } from '../fury-account-status.js';
+import { planStudioAutopilot, type StudioResponseStyle } from './studio-autopilot.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
 const CACHE_MS = 10_000;
 
 export type StudioRoute =
-  | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
+  | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'autopilot-preview' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
   | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
@@ -67,6 +68,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/local-model/recommend': { route: 'local-model-recommend', method: 'POST' },
   '/api/studio/setup/runtime': { route: 'runtime-setup', method: 'POST' },
   '/api/studio/setup/runtime/status': { route: 'runtime-setup-status', method: 'GET' },
+  '/api/studio/autopilot/preview': { route: 'autopilot-preview', method: 'POST' },
   '/api/studio/bindings.json': { route: 'bindings', method: 'GET' },
   '/api/studio/graph.json': { route: 'graph', method: 'GET' },
   '/api/studio/blast-radius': { route: 'blast-radius', method: 'POST' },
@@ -387,6 +389,26 @@ export function createStudioApi(options: StudioApiOptions) {
                 models: b.models.map((m) => ({ ...m, fit: classifyFuryModelFit(m, hw) })),
               })),
             });
+          }
+          case 'autopilot-preview': {
+            const body = await readJson(request) as { objective?: unknown; harnessId?: unknown; responseStyle?: unknown };
+            if (typeof body.objective !== 'string' || !body.objective.trim() || body.objective.length > 32_768) {
+              return problem(400, 'invalid-input', 'objective is required (max 32768 characters)');
+            }
+            if (body.harnessId !== undefined && (typeof body.harnessId !== 'string' || body.harnessId.length > 128)) {
+              return problem(400, 'invalid-input', 'harnessId must be bounded text');
+            }
+            if (body.responseStyle !== undefined && typeof body.responseStyle !== 'string') {
+              return problem(400, 'invalid-input', 'responseStyle must be text');
+            }
+            return json(await planStudioAutopilot({
+              objective: body.objective,
+              projectRoot: options.projectRoot,
+              skills,
+              mcp,
+              ...(typeof body.harnessId === 'string' && body.harnessId ? { harnessId: body.harnessId } : {}),
+              ...(typeof body.responseStyle === 'string' ? { responseStyle: body.responseStyle as StudioResponseStyle } : {}),
+            }));
           }
           case 'bindings': {
             const [h, l] = await Promise.all([harnesses(), local()]);
