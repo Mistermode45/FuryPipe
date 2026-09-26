@@ -433,6 +433,14 @@
       "types": "./dist/capability-catalog.d.ts",
       "import": "./dist/capability-catalog.js"
     },
+    "./fury-marketplace": {
+      "types": "./dist/fury-marketplace.d.ts",
+      "import": "./dist/fury-marketplace.js"
+    },
+    "./fury-supply-chain": {
+      "types": "./dist/fury-supply-chain.d.ts",
+      "import": "./dist/fury-supply-chain.js"
+    },
     "./benchmark-claim-gate": {
       "types": "./dist/benchmark-claim-gate.d.ts",
       "import": "./dist/benchmark-claim-gate.js"
