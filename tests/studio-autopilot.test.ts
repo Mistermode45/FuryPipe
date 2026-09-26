@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { createFuryMcpHub } from '../src/fury-mcp-hub.js';
+import { createModelFabricRegistry } from '../src/core/model-fabric.js';
+import { localModelCapabilityId, observeFuryLocalModelsInModelFabric } from '../src/fury-local-model-fabric.js';
 import { createFurySkillHub } from '../src/fury-skill-hub.js';
 import { planStudioAutopilot } from '../src/studio/studio-autopilot.js';
 
@@ -65,6 +67,57 @@ describe('Studio Fury Autopilot',()=>{
       expect(plan.routing.executionAuthorized).toBe(false);
       expect(plan.mcp.suggested[0]).toMatchObject({ name: 'github', executionAuthorized: false });
       expect(plan.style.resolved).toBe('caveman');
+      expect(plan.executionAuthorized).toBe(false);
+    }finally{rmSync(root,{recursive:true,force:true});}
+  });
+
+  it('represents a discovered explicit local model as planning advice without provider authority',async()=>{
+    const root=mkdtempSync(join(tmpdir(),'furypipe-autopilot-model-'));
+    try{
+      const project=join(root,'project'); const home=join(root,'home');
+      mkdirSync(project,{recursive:true}); mkdirSync(home,{recursive:true});
+      const skills=createFurySkillHub({projectRoot:project,homeDir:home,stateDir:join(root,'skill-state')});
+      const mcp=createFuryMcpHub({projectRoot:project,homeDir:home,stateDir:join(root,'mcp-state')});
+      const modelFabric=createModelFabricRegistry();
+      const modelHealth=observeFuryLocalModelsInModelFabric(modelFabric,[{
+        kind:'ollama',
+        baseUrl:'http://127.0.0.1:11434',
+        reachable:true,
+        protocols:['native','openai-chat'],
+        models:[{backend:'ollama',baseUrl:'http://127.0.0.1:11434',id:'coder:latest',modality:'text'}],
+      }]);
+      const capabilityId=localModelCapabilityId('ollama','coder:latest');
+      const plan=await planStudioAutopilot({
+        objective:'Use coder latest to review this repository',
+        projectRoot:project,
+        skills,
+        mcp,
+        modelFabric,
+        modelHealth,
+        selectedModelCapabilityId:capabilityId,
+      });
+      expect(plan.models.suggested).toContainEqual(expect.objectContaining({
+        id:capabilityId,
+        reason:expect.stringMatching(/missing-permission/u),
+      }));
+      expect(plan.capabilities.blocked).toContainEqual(expect.objectContaining({
+        kind:'model',
+        id:capabilityId,
+        reason:'missing-permission',
+        requiredPermissions:['provider-inference'],
+      }));
+      expect(plan.blueprint.decisions).toContainEqual(expect.objectContaining({
+        family:'model',
+        status:'advisory',
+        ids:[capabilityId],
+        executionAuthority:false,
+      }));
+      expect(plan.blueprint.unresolved).not.toContain('model');
+      expect(plan.capabilityGraph.nodes).toContainEqual(expect.objectContaining({
+        family:'model',
+        capabilityId:capabilityId,
+        executionAuthority:false,
+      }));
       expect(plan.executionAuthorized).toBe(false);
     }finally{rmSync(root,{recursive:true,force:true});}
   });
