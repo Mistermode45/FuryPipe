@@ -20,7 +20,7 @@ describe('Studio Fury Autopilot',()=>{
       const skills=createFurySkillHub({projectRoot:project,homeDir:home,stateDir:join(root,'skill-state')});
       const routedSkills={...skills,autoSelect:async()=>{throw new Error('LEGACY_SKILL_SELECTOR_MUST_NOT_RUN');}} as typeof skills;
       const mcp=createFuryMcpHub({projectRoot:project,homeDir:home,stateDir:join(root,'mcp-state')});
-      const plan=await planStudioAutopilot({objective:'Implement and review the GitHub API integration with tests',projectRoot:project,skills:routedSkills,mcp,responseStyle:'auto'});
+      const plan=await planStudioAutopilot({objective:'Implement and review the GitHub API integration with tests',projectRoot:project,skills:routedSkills,mcp,effort:'xhigh',responseStyle:'auto'});
       expect(plan.instructions.profiles).toContain('karpathy-coding-discipline');
       expect(plan.instructions.facets.map((x)=>x.id)).toContain('production-engineering');
       expect(plan.skills.selected.map((x)=>x.name)).toContain('api-review');
@@ -37,6 +37,9 @@ describe('Studio Fury Autopilot',()=>{
       expect(plan.mcp.executionAuthorized).toBe(false);
       expect(plan.prompt.text).toContain('Check API behavior and tests before claiming done.');
       expect(plan.prompt.bytes).toBeLessThanOrEqual(plan.prompt.budgetBytes);
+      expect(plan.plan.skills.map((x)=>x.name)).toContain('api-review');
+      expect(plan.plan.effort).toMatchObject({requested:'xhigh',effective:'xhigh'});
+      expect(plan.routing.effort).toMatchObject({requested:'xhigh',effective:'xhigh'});
       expect(plan.routing.profile.id).toBe('coding');
       expect(plan.routing.communicationStyle).toBe('CAVEMAN');
       expect(plan.routing.executionAuthorized).toBe(false);
