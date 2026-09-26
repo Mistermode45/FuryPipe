@@ -56,4 +56,12 @@ describe('FuryLocal → Model Fabric bridge', () => {
     }));
     expect(plan.executionAuthority).toBe(false);
   });
+
+  it('hashes unsafe or oversized model ids into bounded capability identities', () => {
+    const longId='model name with spaces/'+'x'.repeat(400);
+    const capabilityId=localModelCapabilityId('ollama',longId);
+    expect(capabilityId.length).toBeLessThanOrEqual(256);
+    expect(capabilityId).toMatch(/^custom\/local:ollama:sha256-[a-f0-9]{64}$/u);
+    expect(localModelCapabilityId('ollama',longId)).toBe(capabilityId);
+  });
 });
