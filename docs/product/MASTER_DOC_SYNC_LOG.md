@@ -65,3 +65,15 @@ Conflict rule: technical state → GitHub wins; product intent → master doc wi
 - No automatic refresh, merge hook, checkout hook or hidden subprocess was introduced.
 - Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
 - No merge, release, tag, npm publish or deploy performed.
+
+
+## 2026-09-26 — Plugin SDK authoring foundation
+
+- Added public non-executing Plugin SDK.
+- Reuses the canonical FuryPluginBundle validator; no parallel plugin authority model.
+- Produces deterministic secret-redacted manifests with stable digest.
+- Environment variable names may be declared; credential values remain absent.
+- SDK cannot install packages, connect MCP, invoke providers, load plugin code or mutate the filesystem.
+- Remaining work: governed runtime isolation, UI extension lifecycle, compatibility/migration coverage.
+- Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
+- No merge, release, tag, npm publish or deploy performed.
