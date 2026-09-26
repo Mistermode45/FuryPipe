@@ -118,8 +118,13 @@ describe('FurySkillHub', () => {
     const text=readFileSync(join(project,'.furypipe','skills','release-review','SKILL.md'),'utf8');
     expect(text).toContain('allowed-tools: "read_file, git_diff"');
     expect(text).toContain('## Trigger conditions');
-    const activated=await hub.activateSelection(['release-review'],{harnessId:'claude-code'}).catch(()=>[]);
-    expect(activated).toEqual([]);
+    const activated=await hub.activateSelection(['release-review'],{harnessId:'claude-code'});
+    expect(activated).toHaveLength(1);
+    expect(activated[0]).toMatchObject({
+      name:'release-review',
+      allowedTools:'read_file, git_diff',
+      executionAuthorized:false,
+    });
   });
 
   it('rejects unsafe creator input and unknown harnesses', async () => {
