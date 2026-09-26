@@ -449,6 +449,14 @@
       "types": "./dist/fury-plugin-sdk.d.ts",
       "import": "./dist/fury-plugin-sdk.js"
     },
+    "./fury-artifacts": {
+      "types": "./dist/fury-artifacts.d.ts",
+      "import": "./dist/fury-artifacts.js"
+    },
+    "./fury-plugin-runtime": {
+      "types": "./dist/fury-plugin-runtime.d.ts",
+      "import": "./dist/fury-plugin-runtime.js"
+    },
     "./benchmark-claim-gate": {
       "types": "./dist/benchmark-claim-gate.d.ts",
       "import": "./dist/benchmark-claim-gate.js"
