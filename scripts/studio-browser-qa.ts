@@ -274,7 +274,9 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     let probePrompt = '';
     page.once('dialog', (d) => { probePrompt = d.message(); void d.accept(); });
     await page.getByRole('button', { name: 'Health check qa-fixture' }).click();
-    await page.locator('#mcp-list .badge.ok').filter({ hasText: 'healthy · 1 tool(s)' }).waitFor({ timeout: 20_000 });
+    // MCP Direct allows up to 10s connect + 10s inventory + 3s probe.
+    // Keep the browser assertion envelope above the governed transport budget.
+    await page.locator('#mcp-list .badge.ok').filter({ hasText: 'healthy · 1 tool(s)' }).waitFor({ timeout: 35_000 });
     await page.locator('#mcp-list td').filter({ hasText: 'inventory-proof' }).waitFor();
     assert(probePrompt.includes('mcp-direct-stdio-server.mjs') && probePrompt.includes('.mcp.json'), `${name}: probe confirmation must show the command: ${probePrompt}`);
     await page.goto(`${origins.normal}/#/knowledge`);
