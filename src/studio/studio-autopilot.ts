@@ -14,6 +14,7 @@ import { DEFAULT_PROVIDER_REGISTRY } from '../core/provider-fabric.js';
 import { createFuryRequestBlueprint } from '../fury-request-blueprint.js';
 import { buildFuryCapabilityGraph } from '../fury-capability-graph.js';
 import type { ModelFabricRegistry } from '../core/model-fabric.js';
+import { resolveFuryInstructionPrecedence } from '../instruction-precedence.js';
 
 export const STUDIO_AUTOPILOT_FORMAT = 'furypipe-studio-autopilot/v1' as const;
 export const STUDIO_RESPONSE_STYLES = Object.freeze(['auto','balanced','caveman','detailed'] as const);
@@ -235,6 +236,26 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   }
 
   const selectedByName=new Map(skillSelectionPlan.selected.map((item)=>[item.name,item]));
+  const instructionPrecedence=resolveFuryInstructionPrecedence([
+    {layer:'base',sourceId:'studio-base',channel:'communication.style',mode:'set',value:'balanced'},
+    ...(customInstructions?[{layer:'user' as const,sourceId:'operator-custom',channel:'prompt.custom',mode:'append' as const,value:customInstructions}]:[]),
+    {layer:'domain',sourceId:`profile:${routing.profile.id}`,channel:'routing.profile',mode:'set',value:routing.profile.id},
+    {layer:'task',sourceId:'task-effort',channel:'reasoning.effort',mode:'set',value:routing.effort.effective},
+    ...activeSkills.map((skill)=>({
+      layer:'skill' as const,
+      sourceId:`skill:${skill.name}`,
+      channel:'prompt.skill',
+      mode:'append' as const,
+      value:skill.name,
+    })),
+    {layer:'security',sourceId:'capability-policy',channel:'execution.authority',mode:'deny',value:'implicit-execution'},
+    {layer:'security',sourceId:'external-content-policy',channel:'external-content.authority',mode:'deny',value:'capability-grant'},
+    {layer:'runtime',sourceId:'studio-runtime',channel:'context.mode',mode:'set',value:routing.contextMode},
+    {layer:'runtime',sourceId:'studio-response-style',channel:'communication.style',mode:'set',value:style},
+  ]);
+  if(instructionPrecedence.status==='conflict'){
+    throw Object.assign(new Error('instruction precedence conflict must be resolved before prompt compilation'),{status:422});
+  }
   const blueprint=createFuryRequestBlueprint({
     objective,
     profile:routing.profile,
@@ -284,6 +305,7 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
       executionAuthorized:false as const,
     }),
     style:Object.freeze({requested:requestedStyle,resolved:style}),
+    instructionPrecedence,
     instructions:Object.freeze({
       facets:instructionPlan.selected,
       profiles:instructionPlan.appliedProfiles,
