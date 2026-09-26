@@ -58,6 +58,12 @@ describe('Studio Fury Autopilot',()=>{
         executionAuthority:false,
       }));
       expect(plan.prompt.text).toContain('Check API behavior and tests before claiming done.');
+      expect(plan.prompt.mode).toBe('CODING');
+      expect(plan.prompt.analysis).toMatchObject({
+        format:'furypipe-prompt-analysis/v1',
+        expectedOutput:'CODE',
+        executionAuthority:false,
+      });
       expect(plan.prompt.bytes).toBeLessThanOrEqual(plan.prompt.budgetBytes);
       expect(plan.plan.skills.map((x)=>x.name)).toContain('api-review');
       expect(plan.plan.effort).toMatchObject({requested:'xhigh',effective:'xhigh'});
@@ -204,6 +210,8 @@ describe('Studio Fury Autopilot',()=>{
       expect(plan.routing.communicationStyle).toBe('STANDARD');
       expect(plan.style.resolved).toBe('balanced');
       expect(plan.prompt.text).toContain('Prefer primary sources and state uncertainty explicitly.');
+      expect(plan.prompt.mode).toBe('RESEARCH');
+      expect(plan.prompt.analysis.expectedOutput).toBe('RESEARCH');
       await expect(planStudioAutopilot({objective:'x',projectRoot:project,skills,mcp,responseStyle:'invalid' as never})).rejects.toThrow(/unsupported/u);
       await expect(planStudioAutopilot({objective:'x',projectRoot:project,skills,mcp,customInstructions:'x'.repeat(4_001)})).rejects.toThrow(/4000/u);
     }finally{rmSync(root,{recursive:true,force:true});}
