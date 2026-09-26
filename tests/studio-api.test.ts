@@ -135,11 +135,20 @@ describe('Studio API', () => {
   });
 
   it('previews Fury Autopilot instructions without granting execution authority', async () => {
-    const res = await api('http://127.0.0.1:11434').handle('autopilot-preview', post({ objective: 'Implement a production API fix with tests', responseStyle: 'auto' }));
+    const res = await api('http://127.0.0.1:11434').handle('autopilot-preview', post({ objective: 'Implement a production API fix with tests', effort:'xhigh', responseStyle: 'auto' }));
     expect(res.status).toBe(200);
-    const body = await res.json() as { instructions:{profiles:string[]}; prompt:{text:string}; executionAuthorized:boolean };
+    const body = await res.json() as {
+      instructions:{profiles:string[]};
+      prompt:{text:string};
+      plan:{effort:{requested:string;effective:string};executionAuthorized:boolean};
+      compiled:{plan:{effort:{requested:string;effective:string}}};
+      executionAuthorized:boolean;
+    };
     expect(body.instructions.profiles).toContain('karpathy-coding-discipline');
     expect(body.prompt.text).toContain('Define observable success criteria before implementation');
+    expect(body.plan.effort).toMatchObject({requested:'xhigh',effective:'xhigh'});
+    expect(body.compiled.plan.effort).toEqual(body.plan.effort);
+    expect(body.plan.executionAuthorized).toBe(false);
     expect(body.executionAuthorized).toBe(false);
     expect((await api('http://127.0.0.1:11434').handle('autopilot-preview', post({ objective: '' }))).status).toBe(400);
   });
