@@ -1841,6 +1841,21 @@ const SCRIPT = String.raw`
       out.append(graphCard);
     }
 
+    if (result.instructionPrecedence) {
+      const precedence = result.instructionPrecedence;
+      const instructionCard = el('div', { class: 'card' }, el('h2', { text: 'Instruction precedence' }));
+      instructionCard.append(el('p', { class: 'muted', text: precedence.order.join(' → ') }));
+      const list = el('ul', { class: 'reasons' });
+      for (const item of precedence.effective) {
+        list.append(el('li', { text: item.channel + ' ← ' + item.layer + '/' + item.sourceId + ' · ' + item.mode + ':' + item.value }));
+      }
+      for (const conflict of precedence.conflicts) {
+        list.append(el('li', { class: 'bad', text: 'Conflict · ' + conflict.channel + ' · ' + conflict.sourceIds.join(', ') }));
+      }
+      instructionCard.append(list, el('p', { class: 'muted', text: precedence.conflicts.length ? 'Conflicts fail closed.' : 'Resolved deterministically. No instruction grants execution authority.' }));
+      out.append(instructionCard);
+    }
+
     out.append(el('div', { class: 'card' }, el('h2', { text: 'Prompt pipeline' }), el('p', { text: plan.promptPipeline.join(' → ') }), el('p', { class: 'muted', text: 'Preview only. This route does not authorize tools, writes, network calls or external actions.' })));
   }
 
