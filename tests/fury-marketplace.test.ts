@@ -131,6 +131,14 @@ describe('Fury Marketplace foundation', () => {
       ...fixture(),
       sourceSha256: 'abc',
     })).toThrow(/SHA-256/u);
+    expect(() => createFuryMarketplaceManifest({
+      ...fixture(),
+      capabilityType: 'root-shell' as never,
+    })).toThrow(/capabilityType/u);
+    expect(() => createFuryMarketplaceManifest({
+      ...fixture(),
+      permissions: { ...permissions, network: 'root' as never },
+    })).toThrow(/permissions\.network/u);
 
     const keys = generateKeyPairSync('ed25519');
     const manifest = fixture();
