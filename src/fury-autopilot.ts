@@ -168,6 +168,7 @@ function recommendedEffort(objective: string, profile: FuryInstructionProfileId)
 function wantsCaveman(objective: string, profile: FuryInstructionProfileId): boolean {
   const n = normalize(objective);
   return profile === 'operations'
+    || (profile === 'coding' && /\b(implement|implementation|code|coding|fix|refactor|build|test|tests|audit|debug|review|corrige|corriger|implemente|implementer)\b/u.test(n))
     || /\b(error|erreur|bug|fix|corrige|corriger|install|commande|command|terminal|powershell|quoi faire|what do i do)\b/u.test(n);
 }
 
