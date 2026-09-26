@@ -324,6 +324,34 @@ describe('Capability Autopilot V2 deterministic shortlist', () => {
       .toBeGreaterThan(0);
   });
 
+  it('keeps newly represented universal capability kinds fail-closed until a caller opts them into routing', () => {
+    const index = indexOf(capability('review-agent', {
+      kind: 'agent',
+      description: 'Repository review agent.',
+      source: { system: 'host', sourceId: 'review-agent' },
+    }));
+
+    const closed = selectFuryCapabilitiesForTask({
+      objective: 'Use a repository review agent.',
+      index,
+    });
+    expect(closed.selected).toHaveLength(0);
+    expect(closed.blockedCounts).toMatchObject({ 'kind-cap': 1 });
+
+    const enabled = selectFuryCapabilitiesForTask({
+      objective: 'Use a repository review agent.',
+      index,
+      options: { maxSelectedByKind: { agent: 1 } },
+    });
+    expect(enabled.selected).toEqual([
+      expect.objectContaining({
+        kind: 'agent',
+        id: 'review-agent',
+      }),
+    ]);
+    expect(enabled.executionAuthority).toBe(false);
+  });
+
   it('reports missing explicit requests without fabricating capabilities', () => {
     const index = indexOf(capability('known'));
 
@@ -390,7 +418,7 @@ describe('Capability Autopilot V2 deterministic shortlist', () => {
       objective: 'task',
       index,
       explicitRequests: [{
-        kind: 'agent' as FuryCapabilityIndexKind,
+        kind: 'side-effect' as FuryCapabilityIndexKind,
         id: 'unknown',
       }],
     })).toThrow(/kind is unsupported/u);
