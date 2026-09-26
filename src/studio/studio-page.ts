@@ -1841,6 +1841,22 @@ const SCRIPT = String.raw`
       out.append(graphCard);
     }
 
+    if (result.workspaceGraph) {
+      const workspace = result.workspaceGraph;
+      const workspaceCard = el('div', { class: 'card' }, el('h2', { text: 'Workspace graph' }));
+      workspaceCard.append(
+        el('p', { text: 'Project → Repository → Files / Memory / Decisions / Artifacts' }),
+        el('p', { class: 'muted', text:
+          'Repository: ' + (workspace.coverage.repository ? 'connected' : 'not available')
+          + ' · Files: ' + workspace.coverage.files
+          + ' · Memory: ' + workspace.coverage.memory
+          + ' · Decisions: ' + workspace.coverage.decisions
+          + ' · Artifacts: ' + workspace.coverage.artifacts }),
+        el('p', { class: 'muted', text: 'Projection only. FuryGraph, Memory VNext and artifact stores remain authoritative.' }),
+      );
+      out.append(workspaceCard);
+    }
+
     if (result.instructionPrecedence) {
       const precedence = result.instructionPrecedence;
       const instructionCard = el('div', { class: 'card' }, el('h2', { text: 'Instruction precedence' }));
@@ -1868,6 +1884,7 @@ const SCRIPT = String.raw`
         objective: $('#autopilot-objective').value,
         effort: $('#autopilot-effort').value,
         harnessId: $('#autopilot-harness').value || undefined,
+        includeWorkspaceGraph: true,
       });
       renderAutopilot(result);
       status.textContent = result.execution;
