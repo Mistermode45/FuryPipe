@@ -164,6 +164,16 @@ kbd{font:600 11px/1 var(--font);color:var(--muted);border:1px solid var(--line-2
 .side-nav ul{list-style:none;margin:0;padding:2px 8px;display:flex;flex-direction:column;gap:1px}
 .nav-label{padding:12px 12px 5px;color:var(--faint);font:650 9.5px/1 var(--font);letter-spacing:.12em;text-transform:uppercase;user-select:none}
 .nav-label:first-child{padding-top:6px}
+.nav-more-row{list-style:none;margin-top:4px}
+.nav-more{margin:0}
+.nav-more>summary{display:flex;align-items:center;gap:12px;height:38px;padding:0 12px;border-radius:10px;color:var(--muted);font:500 14px/1 var(--font);cursor:pointer;list-style:none;user-select:none;transition:background .15s,color .15s}
+.nav-more>summary::-webkit-details-marker{display:none}
+.nav-more>summary:hover,.nav-more[open]>summary{background:var(--b3);color:var(--ink)}
+.nav-more>summary .more-chevron{margin-left:auto;width:14px;height:14px;transition:transform .18s var(--ease)}
+.nav-more[open]>summary .more-chevron{transform:rotate(180deg)}
+.nav-more>ul{list-style:none;margin:3px 0 4px;padding:0 0 0 10px;display:flex;flex-direction:column;gap:1px;border-left:1px solid rgba(255,255,255,.055)}
+.nav-more>ul .nav-item{height:35px;font-size:13.5px}
+
 .nav-item{position:relative;display:flex;align-items:center;gap:12px;height:38px;padding:0 12px;border-radius:10px;color:var(--ink-2);text-decoration:none;font:500 14px/1 var(--font);white-space:nowrap;transition:background .15s,color .15s}
 .nav-item:hover{background:var(--b3);color:var(--ink)}
 .nav-item[aria-current="page"]{color:var(--ink);background:linear-gradient(90deg,rgba(255,106,26,.15),rgba(255,106,26,.02) 80%)}
@@ -221,11 +231,11 @@ main>section.chat{max-width:none;margin:0;padding:0;height:100%;display:flex;fle
 .chat.is-empty .stage-bg::after{content:"";position:absolute;width:34vw;height:34vw;max-width:520px;max-height:520px;left:50%;top:48%;transform:translate(-50%,-50%);border-radius:50%;border:1px solid rgba(255,122,40,.055);box-shadow:0 0 0 46px rgba(255,122,40,.018),0 0 0 96px rgba(255,122,40,.01);opacity:.8}
 .chat.is-empty .dock{padding-bottom:max(12vh,48px)}
 .chat:not(.is-empty) .hero,.chat:not(.is-empty) .suggest{display:none}
-.hero{text-align:center;margin:0 auto 30px;position:relative;z-index:1;animation:rise .5s var(--ease-out) both}
-.hero h2{font:650 clamp(30px,3.4vw,42px)/1.08 var(--display);letter-spacing:-.035em;margin:0;color:var(--ink);background:linear-gradient(180deg,#fff 0%,#e6dfd6 55%,#b5ab9f 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.hero{text-align:center;margin:0 auto 22px;position:relative;z-index:1;animation:rise .5s var(--ease-out) both}
+.hero h2{font:650 clamp(30px,3.2vw,40px)/1.08 var(--display);letter-spacing:-.035em;margin:0;color:var(--ink);background:linear-gradient(180deg,#fff 0%,#e6dfd6 55%,#b5ab9f 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 html[data-theme="system"] .hero h2{-webkit-text-fill-color:currentColor;background:none}
 .hero p{color:var(--muted);margin:12px 0 0;font-size:15.5px}
-.hero-mark{--hero-rx:0deg;--hero-ry:0deg;position:relative;width:148px;height:148px;margin:0 auto 26px;perspective:720px;transform-style:preserve-3d;transform:rotateX(var(--hero-rx)) rotateY(var(--hero-ry));transition:transform .22s var(--ease-out);will-change:transform}
+.hero-mark{--hero-rx:0deg;--hero-ry:0deg;position:relative;width:92px;height:92px;margin:0 auto 18px;perspective:720px;transform-style:preserve-3d;transform:rotateX(var(--hero-rx)) rotateY(var(--hero-ry));transition:transform .22s var(--ease-out);will-change:transform}
 .hero-mark::before,.hero-mark::after{content:"";position:absolute;border-radius:50%;background:var(--o-hot);box-shadow:0 0 14px rgba(255,106,26,.75);transform:translateZ(28px)}
 .hero-mark::before{width:4px;height:4px;left:6px;top:28px}.hero-mark::after{width:3px;height:3px;right:12px;bottom:25px;background:#ffd0ac}
 .hero-glow{position:absolute;inset:-70px;border-radius:50%;background:radial-gradient(circle,rgba(255,106,26,.25) 0%,rgba(255,90,0,.07) 40%,transparent 68%);transform:translateZ(-18px);filter:saturate(1.12)}
@@ -246,10 +256,10 @@ body.paused .orbit,body.paused .flow{animation-play-state:paused}
 .chip-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 14px;border-radius:12px;border:1px solid var(--line-2);background:rgba(255,255,255,.02);color:var(--ink-2);font:500 13.5px/1 var(--font);cursor:pointer;transition:border-color .2s,color .2s,background .2s,transform .12s}
 .chip-btn:hover{border-color:var(--o-line);color:var(--ink);background:rgba(255,106,26,.06)}.chip-btn:active{transform:scale(.97)}
 .chip-btn .i{width:16px;height:16px;color:var(--o-hot)}
-.setup{max-width:900px;margin:0 auto 18px;padding:18px 20px;border-radius:var(--r-lg);border:1px solid var(--line-2);background:linear-gradient(180deg,var(--b3),var(--b2));position:relative;z-index:1}
+.setup{max-width:900px;margin:0 auto 16px;padding:13px 14px;border-radius:var(--r-lg);border:1px solid var(--line-2);background:linear-gradient(180deg,var(--b3),var(--b2));position:relative;z-index:1}
 .setup h3{margin:0 0 6px;font:650 17px/1.3 var(--display);letter-spacing:-.015em}
 .setup p{margin:0 0 14px;color:var(--ink-2);font-size:14px}
-.setup .row{gap:8px}.setup-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:16px}.setup-choice{min-width:0;display:flex;align-items:center;gap:12px;padding:13px 14px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.012));color:var(--ink);text-decoration:none;text-align:left;cursor:pointer;transition:border-color .18s,background .18s,transform .18s var(--ease-out),box-shadow .18s}.setup-choice:hover{border-color:rgba(255,122,40,.28);background:linear-gradient(180deg,rgba(255,106,26,.075),rgba(255,255,255,.018));transform:translateY(-1px);box-shadow:0 18px 34px -30px rgba(255,90,0,.65)}.setup-choice.primary{border-color:var(--o-line);background:linear-gradient(135deg,rgba(255,106,26,.17),rgba(255,106,26,.035))}.setup-choice .setup-icon{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex:none;background:rgba(255,106,26,.09);border:1px solid rgba(255,122,40,.14);color:var(--o-hot)}.setup-choice .setup-icon .i{width:18px;height:18px}.setup-choice>span:last-child{display:flex;min-width:0;flex-direction:column;gap:3px}.setup-choice b{font:620 13.5px/1.25 var(--font)}.setup-choice small{color:var(--muted);font:450 11.5px/1.35 var(--font)}.setup-choice[disabled]{opacity:.55;cursor:wait;transform:none}.setup #setup-status{margin:10px 0 0}.setup-overlay{z-index:130}.setup-progress{width:min(460px,calc(100vw - 32px));padding:26px;border-radius:20px;border:1px solid rgba(255,255,255,.1);background:linear-gradient(180deg,#17171b,#0c0c0f);box-shadow:0 30px 100px rgba(0,0,0,.65);text-align:center}.setup-progress-icon{width:52px;height:52px;margin:0 auto 16px;border-radius:16px;display:grid;place-items:center;background:rgba(255,106,26,.1);border:1px solid rgba(255,122,40,.22);color:var(--o-hot)}.setup-progress h2{margin:0 0 8px;font:650 20px/1.2 var(--display)}.setup-progress p{min-height:40px;margin:0 0 18px}.setup-progress .row{justify-content:center}.setup-spinner{width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.16);border-top-color:var(--o-hot);animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.setup .row{gap:8px}.setup-copy{display:flex;align-items:center;gap:11px}.setup-copy>div{min-width:0;flex:1}.setup-copy h3{margin:0 0 3px}.setup-copy p{margin:0}.setup-orb{width:30px;height:30px;flex:none;border-radius:11px;background:radial-gradient(circle at 38% 32%,#ffd1ad 0%,var(--o-hot) 35%,#8f2b00 100%);box-shadow:0 0 20px rgba(255,106,26,.22)}.setup-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}.setup .setup-choice{appearance:none;min-width:0;display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.012));color:var(--ink);text-decoration:none;text-align:left;cursor:pointer;transition:border-color .18s,background .18s,transform .18s var(--ease-out),box-shadow .18s}.setup-choice:hover{border-color:rgba(255,122,40,.28);background:linear-gradient(180deg,rgba(255,106,26,.075),rgba(255,255,255,.018));transform:translateY(-1px);box-shadow:0 18px 34px -30px rgba(255,90,0,.65)}.setup .setup-choice.primary{border-color:rgba(255,122,40,.25);background:linear-gradient(135deg,rgba(255,106,26,.085),rgba(255,106,26,.02))}.setup .setup-choice>.i{width:17px;height:17px;flex:none;color:var(--o-hot)}.setup .setup-choice>span:last-child{display:flex;min-width:0;flex-direction:column;gap:2px}.setup .setup-choice b{font:620 13px/1.25 var(--font)}.setup .setup-choice small{color:var(--muted);font:450 11px/1.3 var(--font)}.setup-choice[disabled]{opacity:.55;cursor:wait;transform:none}.setup #setup-status{margin:10px 0 0}.setup-overlay{z-index:130}.setup-progress{width:min(460px,calc(100vw - 32px));padding:26px;border-radius:20px;border:1px solid rgba(255,255,255,.1);background:linear-gradient(180deg,#17171b,#0c0c0f);box-shadow:0 30px 100px rgba(0,0,0,.65);text-align:center}.setup-progress-icon{width:52px;height:52px;margin:0 auto 16px;border-radius:16px;display:grid;place-items:center;background:rgba(255,106,26,.1);border:1px solid rgba(255,122,40,.22);color:var(--o-hot)}.setup-progress h2{margin:0 0 8px;font:650 20px/1.2 var(--display)}.setup-progress p{min-height:40px;margin:0 0 18px}.setup-progress .row{justify-content:center}.setup-spinner{width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.16);border-top-color:var(--o-hot);animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 
 /* Composer */
 .composer{position:relative;z-index:2;background:linear-gradient(180deg,rgba(31,31,38,.96) 0%,rgba(20,20,25,.985) 100%);border:1px solid var(--line-2);border-radius:var(--r-xl);box-shadow:0 1px 0 rgba(255,255,255,.065) inset,0 -1px 0 rgba(0,0,0,.4) inset,0 22px 60px -24px rgba(0,0,0,.9);transition:border-color .22s var(--ease),box-shadow .22s var(--ease),transform .22s var(--ease-out);overflow:visible}
@@ -430,6 +440,7 @@ details.adv>div{padding:0 18px 16px}
 
 
 /* Premium work surfaces */
+.work-actions{margin:14px 0 4px}.work-advanced{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}.work-advanced>summary{display:flex;align-items:center;gap:8px;color:var(--ink-2);cursor:pointer;list-style:none;font:550 13px/1.3 var(--font)}.work-advanced>summary::-webkit-details-marker{display:none}.work-advanced>summary .muted{margin-left:auto;font-size:11px}.work-advanced-body{padding-top:14px}
 .cap-rail{display:flex;flex-wrap:wrap;gap:8px;margin:-10px 0 18px}
 .cap-rail span{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 10px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.015);color:var(--muted);font:550 12px/1 var(--font)}
 .cap-rail .i{width:14px;height:14px;color:var(--o-hot)}
@@ -503,7 +514,7 @@ details.adv>div{padding:0 18px 16px}
 
 /* ---------- Responsive ---------- */
 @media (max-width:1100px){.settings{grid-template-columns:1fr}.settings-nav{position:static;flex-direction:row;flex-wrap:wrap}}
-@media (max-width:520px){.tool span{display:none}.tool{padding:0;width:34px}.setup-actions{grid-template-columns:1fr}.suggest{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}}
+@media (max-width:520px){.tool span{display:none}.tool{padding:0;width:34px}.setup-actions{grid-template-columns:1fr}.suggest{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}.setup-copy p{display:none}}
 @media (max-width:860px){
   .app{grid-template-columns:minmax(0,1fr)}
   .side{position:fixed;z-index:80;top:0;bottom:0;left:0;width:min(300px,86vw);transform:translateX(-102%);transition:transform .26s var(--ease-out);box-shadow:30px 0 80px rgba(0,0,0,.6)}
@@ -732,7 +743,35 @@ const SCRIPT = String.raw`
     'Account connected successfully.': 'Compte connecté avec succès.',
     'Sign-in window finished. Use Refresh after completing authentication.': 'La fenêtre de connexion est terminée. Cliquez sur Actualiser après avoir terminé l’authentification.',
     'Preparing local AI': 'Préparation de l’IA locale',
-    'Close': 'Fermer'
+    'Close': 'Fermer',
+    'More': 'Plus',
+    'Work': 'Travail',
+    'Choose your AI': 'Choisissez votre IA',
+    'Connect a cloud account or install a private local model. Fury Auto can route between what you enable.': 'Connectez un compte cloud ou installez un modèle local privé. Fury Auto peut router entre les IA que vous activez.',
+    'Connect AI': 'Connecter une IA',
+    'Private · on this PC': 'Privé · sur ce PC',
+    'Local models': 'Modèles locaux',
+    'Find what fits your hardware': 'Trouver les modèles adaptés à votre matériel',
+    'Give FuryPipe a goal. It can plan first, or run with the exact permissions you allow.': 'Donnez un objectif à FuryPipe. Il peut d’abord préparer un plan ou exécuter la tâche avec exactement les permissions que vous autorisez.',
+    'What should FuryPipe do?': 'Que doit faire FuryPipe ?',
+    'e.g. Review the project, fix the issue and verify the result': 'Ex. : analyser le projet, corriger le problème et vérifier le résultat',
+    'Plan first': 'Planifier d’abord',
+    'Run task': 'Exécuter la tâche',
+    'Permissions & scope': 'Permissions et périmètre',
+    'Permissions': 'Permissions',
+    'Files or folders it may change (one per line)': 'Fichiers ou dossiers qu’il peut modifier (un par ligne)',
+    'I confirm starting agents on this repository (local runtimes only)': 'Je confirme le lancement des agents sur ce dépôt (runtimes locaux uniquement)',
+    'Explicit permissions': 'Permissions explicites',
+    'Isolated worktrees': 'Worktrees isolés',
+    'Proof-gated result': 'Résultat validé par preuves',
+    'READ': 'LECTURE',
+    'WRITE': 'ÉCRITURE',
+    'EXECUTE': 'EXÉCUTION',
+    'NETWORK': 'RÉSEAU',
+    'EXTERNAL ACTION': 'ACTION EXTERNE',
+    'ALLOW': 'AUTORISER',
+    'ASK': 'DEMANDER',
+    'DENY': 'REFUSER'
   });
   function detectedLanguage() {
     const langs = [...(Array.isArray(navigator.languages) ? navigator.languages : []), navigator.language, Intl.DateTimeFormat().resolvedOptions().locale, SERVER_LANGUAGE].filter(Boolean);
@@ -969,7 +1008,10 @@ const SCRIPT = String.raw`
   function show(name) {
     if (!views.includes(name)) name = 'notfound';
     for (const s of $$('main > section')) s.hidden = s.dataset.view !== name;
-    for (const a of $$('.side-nav a[data-view]')) { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); }
+    for (const a of $('.side-nav a[data-view]')) { if (a.dataset.view === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); }
+    const activeNav = $('.side-nav a[data-view="' + name + '"]');
+    const more = $('#nav-more');
+    if (activeNav && activeNav.closest('.nav-more') && more) more.open = true;
     document.body.dataset.view = name;
     $('#top-title').textContent = name === 'chat' ? (state.conv && state.conv.title ? state.conv.title : '') : (VIEW_TITLES[name] || '');
     $('#privacy').hidden = name !== 'chat' || !state.lastRoute;
@@ -1860,11 +1902,12 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
   <button type="button" id="search-btn" class="search-btn" title="Search and commands (Ctrl K)">${icon('search')}<span class="label">Search</span><kbd>Ctrl K</kbd></button>
   <nav class="side-nav" aria-label="Workspace"><ul>
     <li class="nav-label label" data-level="simple">Workspace</li>
-    ${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Cowork')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('mission', 'expert', 'Mission Control')}${nav('automations', 'engineer', 'Automations')}
-    <li class="nav-label label" data-level="power">Context</li>
-    ${nav('knowledge', 'power', 'Knowledge')}${nav('web', 'power', 'Web')}${nav('memory', 'power', 'Memory')}
-    <li class="nav-label label" data-level="simple">System</li>
-    ${nav('models', 'simple', 'Models')}${nav('connections', 'simple', 'Connections')}${nav('runtimes', 'engineer', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'power', 'MCP')}${nav('integrations', 'engineer', 'Integrations')}
+    ${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Work')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('automations', 'engineer', 'Automations')}
+    <li class="nav-more-row"><details class="nav-more" id="nav-more"><summary>${icon('more')}<span class="label">More</span>${icon('chevron','i more-chevron')}</summary><ul>
+      ${nav('knowledge', 'power', 'Knowledge')}${nav('web', 'power', 'Web')}${nav('memory', 'power', 'Memory')}
+      ${nav('models', 'simple', 'Models')}${nav('connections', 'simple', 'Connections')}${nav('mission', 'expert', 'Mission Control')}
+      ${nav('runtimes', 'engineer', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'power', 'MCP')}${nav('integrations', 'engineer', 'Integrations')}
+    </ul></details></li>
   </ul></nav>
   <div class="recent" aria-labelledby="recent-h"><h2 id="recent-h">Recent</h2><ul id="chat-list" aria-labelledby="recent-h"></ul></div>
   <div class="side-foot">
@@ -1891,14 +1934,12 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
       <h2>How can FuryPipe help?</h2>
       <p>One workspace for every model, agent and tool, starting with the AI on this machine.</p>
     </div>
-    <div id="chat-empty" class="setup" hidden>
-      <h3>Get FuryPipe ready</h3>
-      <p>Install a local AI in one click, connect an existing AI account, or let FuryPipe find the best models for this PC.</p>
+    <div id="chat-empty" class="setup setup-compact" hidden>
+      <div class="setup-copy"><span class="setup-orb" aria-hidden="true"></span><div><h3>Choose your AI</h3><p>Connect a cloud account or install a private local model. Fury Auto can route between what you enable.</p></div></div>
       <div class="setup-actions">
-        <button type="button" class="setup-choice primary" data-install-runtime="ollama"><span class="setup-icon">${icon('cpu')}</span><span><b>Install Ollama</b><small>Recommended · local and automatic</small></span></button>
-        <button type="button" class="setup-choice" data-install-runtime="lmstudio"><span class="setup-icon">${icon('models')}</span><span><b>Install LM Studio</b><small>Local desktop + model server</small></span></button>
-        <a class="setup-choice" href="#/connections"><span class="setup-icon">${icon('connections')}</span><span><b>Connect an AI account</b><small>Claude, ChatGPT/Codex, Gemini…</small></span></a>
-        <a class="setup-choice" href="#/models"><span class="setup-icon">${icon('sparkles')}</span><span><b>Find the best local AI</b><small>Matched to your GPU and RAM</small></span></a>
+        <a class="setup-choice primary" href="#/connections">${icon('connections')}<span><b>Connect AI</b><small>Claude, ChatGPT/Codex, Gemini</small></span></a>
+        <button type="button" class="setup-choice" data-install-runtime="ollama">${icon('cpu')}<span><b>Install Ollama</b><small>Private · on this PC</small></span></button>
+        <a class="setup-choice" href="#/models">${icon('models')}<span><b>Local models</b><small>Find what fits your hardware</small></span></a>
       </div>
       <p id="setup-status" class="status muted" role="status"></p>
     </div>
@@ -1931,15 +1972,16 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
     </div>
   </div></div>
 </section>
-<section data-view="cowork" class="work-view" aria-labelledby="h-cowork" hidden><h1 id="h-cowork">Cowork</h1><p class="lead">Describe a task and decide what the agent may do. Denied permissions never run; anything set to Ask needs your approval before agents start.</p>
-  <div class="cap-rail" aria-label="Cowork guarantees">
-    <span>${icon('shield')}Explicit permissions</span><span>${icon('branch')}Isolated worktrees</span><span>${icon('check')}Proof-gated result</span>
-  </div>
-  <div class="card work-brief"><label for="cowork-intent">Task</label><textarea id="cowork-intent" placeholder="e.g. Tidy the docs folder and summarise open TODOs"></textarea>
-  <fieldset class="row"><legend class="muted">Permissions</legend>${perm('READ', 'ALLOW')}${perm('WRITE', 'ASK')}${perm('EXECUTE', 'ASK')}${perm('NETWORK', 'DENY')}${perm('EXTERNAL_ACTION', 'DENY')}</fieldset>
-  <label for="cowork-files">Files or folders it may change (one per line)</label><textarea id="cowork-files" placeholder="docs/"></textarea>
-  <div class="row"><label for="cowork-confirm"><input id="cowork-confirm" type="checkbox"> I confirm starting agents on this repository (local runtimes only)</label></div>
-  <p class="row"><button id="cowork-run" type="button">Run with agents</button><button id="cowork-plan" type="button" class="secondary">Plan with Agents</button></p><p id="cowork-status" class="status" role="status"></p></div></section>
+<section data-view="cowork" class="work-view" aria-labelledby="h-cowork" hidden><h1 id="h-cowork">Work</h1><p class="lead">Give FuryPipe a goal. It can plan first, or run with the exact permissions you allow.</p>
+  <div class="card work-brief"><label for="cowork-intent">What should FuryPipe do?</label><textarea id="cowork-intent" placeholder="e.g. Review the project, fix the issue and verify the result"></textarea>
+  <p class="row work-actions"><button id="cowork-plan" type="button" class="secondary">Plan first</button><button id="cowork-run" type="button">Run task</button></p>
+  <details class="work-advanced"><summary>${icon('settings')}Permissions &amp; scope <span class="muted">Advanced</span></summary><div class="work-advanced-body">
+    <div class="cap-rail" aria-label="Work guarantees"><span>${icon('shield')}Explicit permissions</span><span>${icon('branch')}Isolated worktrees</span><span>${icon('check')}Proof-gated result</span></div>
+    <fieldset class="row"><legend class="muted">Permissions</legend>${perm('READ', 'ALLOW')}${perm('WRITE', 'ASK')}${perm('EXECUTE', 'ASK')}${perm('NETWORK', 'DENY')}${perm('EXTERNAL_ACTION', 'DENY')}</fieldset>
+    <label for="cowork-files">Files or folders it may change (one per line)</label><textarea id="cowork-files" placeholder="docs/"></textarea>
+    <div class="row"><label for="cowork-confirm"><input id="cowork-confirm" type="checkbox"> I confirm starting agents on this repository (local runtimes only)</label></div>
+  </div></details>
+  <p id="cowork-status" class="status" role="status"></p></div></section>
 <section data-view="code" class="code-workspace" aria-labelledby="h-code" hidden><h1 id="h-code">Code</h1><p class="lead">Project graph for this workspace (Graphify when present, native indexer otherwise) and change blast radius.</p>
   <div class="grid"><div class="card"><h2>Project graph</h2><table><tbody>
     <tr><th scope="row">Provider</th><td id="graph-provider">—</td></tr><tr><th scope="row">Files</th><td id="graph-files">—</td></tr>
