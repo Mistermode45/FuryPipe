@@ -77,3 +77,21 @@ Conflict rule: technical state → GitHub wins; product intent → master doc wi
 - Remaining work: governed runtime isolation, UI extension lifecycle, compatibility/migration coverage.
 - Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
 - No merge, release, tag, npm publish or deploy performed.
+
+
+## 2026-09-26 — Artifacts + Plugin Runtime Admission track
+
+Base authority: PR #233 exact HEAD `ef17b67ea0928d9b9d703d331cf3d5642f447233`.
+
+Added:
+- `src/fury-artifacts.ts`: bounded process-local Artifact Ledger with immutable revisions, SHA-256 identity, deterministic search, restore-by-new-revision and export envelopes.
+- `src/fury-plugin-runtime.ts`: operator-gated metadata admission, permission-subset enforcement and declarative sandboxed UI extension projections.
+- public exports: `furypipe/fury-artifacts`, `furypipe/fury-plugin-runtime`.
+- unit tests for both contracts.
+- checkpoint document: `docs/product/FURYPIPE_ARTIFACT_PLUGIN_RUNTIME_CHECKPOINT_2026-09-26.md`.
+
+Truth boundary:
+- artifact persistence is not claimed;
+- plugin code execution or UI mounting is not authorized;
+- no network/filesystem/subprocess authority was introduced;
+- final status requires exact-head hosted CI evidence.

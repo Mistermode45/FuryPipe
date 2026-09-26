@@ -58,10 +58,10 @@ Primary evidence:
 | FuryCode | DONE read-only / PARTIAL target | repo/editor/terminal/diff/problems/tests/git/GitHub/Graphify | Current Code view intentionally excludes editing/terminal; master target is broader | P2 | sandbox, permissions | High | browser QA + terminal security E2E |
 | Browser / Research | DONE core / PARTIAL target | search/fetch/extract/crawl/browser interaction with citations and provenance | FuryWeb core DONE; full browser-agent interaction breadth not reconciled | P2 | browser runtime, security | High | SSRF/injection + browser E2E |
 | MCP | DONE CORE / PARTIAL OAUTH UX/LIVE | auto router, manager, stdio/HTTP/SSE/streamable HTTP/OAuth, security | MCP Hub + Direct already provide multi-harness discovery, redaction, trust/policy, inventory probing, exact tool/schema binding, operator/governed approval, bounded execution receipts and durable replay. 2026 reconciliation adds explicit deprecated SSE compatibility and host-owned OAuthClientProvider support without token persistence. Remaining gap is interactive OAuth account UX/live certification, not transport authority. | P1/P2 | trust, secrets | High | protocol conformance + malicious MCP tests + optional OAuth live verification |
-| Plugins / SDK | PARTIAL SDK FOUNDATION | FuryPlugin architecture + manifest + SDK + UI extensions/providers/connectors | Existing opt-in Plugin Bundle registry remains authoritative. New public author SDK validates through that contract and compiles deterministic secret-redacted manifests with no install/network/filesystem/execution authority. Remaining gap is governed runtime loading/isolation plus UI-extension lifecycle and compatibility testing. | P2 | registry, permissions | High | plugin SDK tests + future extension isolation/browser tests |
+| Plugins / SDK | PARTIAL — SDK + ADMISSION FOUNDATION | FuryPlugin architecture + manifest + SDK + UI extensions/providers/connectors | Existing opt-in Plugin Bundle registry remains authoritative. The public SDK remains authoring-only; a new operator-gated runtime admission contract now enforces permission subsets and projects package-relative UI extensions into a no-network/no-filesystem/no-host-DOM sandbox profile. It still grants no execution or mount authority. Remaining gap is a real isolated executable host, lifecycle/rollback and compatibility/browser evidence. | P2 | registry, permissions | High | plugin SDK + admission tests + future isolated-host/browser tests |
 | Agents / execution | DONE core / PARTIAL target | specialized agents, graph, message bus, parallel coordination, replay | Dispatcher/Run/Mission Control/Replay DONE; universal agent graph/message bus UX broader | P2 | FuryIR, registry | Medium | deterministic DAG tests + replay verification |
 | Workflows / automations | DONE core / PARTIAL target | richer builder, schedules/events/webhooks, reusable workflows | FuryFlow Studio exists; full automation breadth requires reconciliation | P2 | execution engine | Medium | DAG + persistence + E2E |
-| Artifacts | PARTIAL | first-class artifact graph, versioning, restore/export/search | Current master sync already records Artifact Graph as a gap | P2 | storage, graph | Medium | history/diff/restore tests |
+| Artifacts | PARTIAL CORE — VERSIONED LEDGER WIRED | first-class artifact graph, versioning, restore/export/search | A bounded process-local Artifact Ledger now provides immutable revisions, SHA-256 identity, deterministic search, restore-by-new-revision and export envelopes without I/O authority. Durable persistence, cross-workspace retention, richer diff/history UX and Studio integration remain. | P2 | storage, graph | Medium | artifact ledger/history/restore/export tests + future persistence/Studio QA |
 | Graphify lifecycle | PARTIAL — RECOMMENDATION WIRED | safe automatic recommendation/refresh after relevant changes | Explicit bounded `refreshGraphify` remains operator-triggered. New lifecycle planner detects stale Graphify output and relevant source-file changes, recommends refresh, and explicitly preserves native fallback without granting execution authority. Automatic post-merge/checkout execution remains intentionally unimplemented pending an approval-bearing runtime hook. | P2 | FuryGraph, integrator | Medium | lifecycle planner tests + future approved post-integration hook |
 | Marketplace | PARTIAL FOUNDATION | signed metadata, trust levels, install/update/rollback | Signed deterministic manifests, Ed25519 trust verification and approval-only INSTALL/UPDATE/ROLLBACK transition plans now exist. Network/filesystem/execution authority remains false. Actual downloader/installer, persistent catalog, UI lifecycle and rollback executor remain P2. | P2 | registry, trust, signatures | High | signature/tamper tests + future installer isolation tests |
 | Security / Zero Trust | DONE core / PARTIAL target | zero-trust extension/runtime policy across every new capability | Strong current controls; each new media/plugin/provider surface must inherit them | P0 continuous | FuryProof, trust | Critical | negative tests + SAST/dependency/secret scans |
@@ -310,3 +310,17 @@ Remaining P2 work:
 Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
 
 No merge, tag, release, npm publish or deploy performed.
+
+
+## Artifacts + Plugin Runtime Admission checkpoint — 2026-09-26
+
+Implemented on a dedicated track stacked from PR #233 exact HEAD:
+
+- bounded versioned Artifact Ledger with immutable history, restore, search and export envelopes;
+- public package exports for `furypipe/fury-artifacts` and `furypipe/fury-plugin-runtime`;
+- operator-gated Plugin Runtime Admission using the existing `FuryPluginBundle` authority contract;
+- permission-subset enforcement;
+- declarative package-relative UI extensions projected into a required isolated sandbox profile;
+- no plugin execution, mount, filesystem or network authority is granted by these new contracts.
+
+State remains **PARTIAL / pending exact-head evidence**. Durable artifact persistence and a real executable isolated plugin host remain open.
