@@ -547,7 +547,7 @@ const SCRIPT = String.raw`
   const VIEW_TITLES = { chat: 'Chat', cowork: 'Cowork', code: 'Code', agents: 'Agents', mission: 'Mission Control', automations: 'Automations', models: 'Models', connections: 'Connections', runtimes: 'Runtimes', skills: 'Skills', mcp: 'MCP servers', knowledge: 'Knowledge', web: 'Web', memory: 'Memory', integrations: 'Integrations', settings: 'Settings' };
   const PROVIDER = { ollama: 'Ollama', lmstudio: 'LM Studio', llamacpp: 'llama.cpp', vllm: 'vLLM', sglang: 'SGLang', localai: 'LocalAI', jan: 'Jan', 'openai-compatible': 'OpenAI-compatible', 'anthropic-compatible': 'Anthropic-compatible' };
   const SETUP = { ollama: 'https://ollama.com/download', lmstudio: 'https://lmstudio.ai', llamacpp: 'https://github.com/ggml-org/llama.cpp', vllm: 'https://docs.vllm.ai', sglang: 'https://docs.sglang.ai', localai: 'https://localai.io', jan: 'https://jan.ai' };
-  const state = { local: null, hw: null, harnesses: null, connections: null, conv: null, pick: 'auto', lastRoute: null, files: [], pastes: [], web: false, kb: false, busy: null, activity: new Map() };
+  const state = { local: null, hw: null, harnesses: null, connections: null, conv: null, pick: 'auto', lastRoute: null, lastAutopilot: null, files: [], pastes: [], web: false, kb: false, autopilot: store.get('autopilot', 'on') !== 'off', responseStyle: store.get('responseStyle', 'auto'), busy: null, activity: new Map() };
   /* ---------- Locale / i18n ---------- */
   const SUPPORTED_LANGUAGES = Object.freeze(['en', 'fr']);
   const FR = Object.freeze({
@@ -586,6 +586,15 @@ const SCRIPT = String.raw`
     'Attach text files': 'Joindre des fichiers texte',
     'Read the web pages you link': 'Lire les pages web que vous partagez',
     'Ground answers in your indexed project documents': 'Appuyer les réponses sur les documents indexés du projet',
+    'Fury Autopilot': 'Fury Autopilot',
+    'Automatically optimises instructions, skills and MCP suggestions for this request': 'Optimise automatiquement les instructions, skills et suggestions MCP pour cette requête',
+    'Optimising prompt · selecting instructions, skills and MCP…': 'Optimisation du prompt · sélection des instructions, skills et MCP…',
+    'Autopilot unavailable — continuing with the original request.': 'Autopilot indisponible — poursuite avec la requête d’origine.',
+    'Response style': 'Style de réponse',
+    'Automatically chooses a concise or detailed response style for the task.': 'Choisit automatiquement un style de réponse concis ou détaillé selon la tâche.',
+    'Balanced': 'Équilibré',
+    'Caveman': 'Caveman',
+    'Detailed': 'Détaillé',
     'Choose a model': 'Choisir un modèle',
     'Search models': 'Rechercher des modèles',
     'Research': 'Rechercher',
@@ -1243,6 +1252,19 @@ const SCRIPT = String.raw`
   composer.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('#drop').hidden = true; });
   composer.addEventListener('drop', (e) => { e.preventDefault(); dragDepth = 0; $('#drop').hidden = true; if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
   for (const [id, key] of [['#tool-web', 'web'], ['#tool-kb', 'kb']]) $(id).addEventListener('click', () => { state[key] = !state[key]; $(id).setAttribute('aria-pressed', String(state[key])); });
+  $('#tool-autopilot').setAttribute('aria-pressed', String(state.autopilot));
+  $('#tool-autopilot').addEventListener('click', () => {
+    state.autopilot = !state.autopilot;
+    store.set('autopilot', state.autopilot ? 'on' : 'off');
+    $('#tool-autopilot').setAttribute('aria-pressed', String(state.autopilot));
+  });
+  for (const r of $('input[name="pref-response-style"]')) {
+    r.checked = r.value === state.responseStyle;
+    r.addEventListener('change', () => {
+      state.responseStyle = r.value;
+      store.set('responseStyle', r.value);
+    });
+  }
   for (const b of $$('.chip-btn[data-prompt]')) b.addEventListener('click', () => { input.value = b.dataset.prompt; autosize(); input.focus(); input.setSelectionRange(input.value.length, input.value.length); });
   function setStatus(text, stage) {
     const s = $('#chat-status'); s.replaceChildren();
@@ -1351,10 +1373,13 @@ const SCRIPT = String.raw`
   }
   function stopBtn(on) { const b = $('#chat-send'); $('#composer').dataset.busy = String(on); b.classList.toggle('stop', on); b.replaceChildren(ic(on ? 'stop' : 'arrowUp')); b.setAttribute('aria-label', on ? 'Stop generating' : 'Send message'); b.type = on ? 'button' : 'submit'; b.disabled = on ? false : (!hasDraft() || !candidates().length); }
   $('#chat-send').addEventListener('click', (e) => { if (state.busy) { e.preventDefault(); state.busy.abort(); } });
-  async function streamReply(route) {
+  async function streamReply(route, autopilotPlan = null) {
     state.lastRoute = route; renderRouteChip();
     const reply = { role: 'assistant', content: '', model: { kind: route.kind, model: route.model, locality: 'local' } };
-    const history = state.conv.messages.map(m => ({ role: m.role, content: m.content }));
+    const turns = state.conv.messages.map(m => ({ role: m.role, content: m.content })).slice(-63);
+    const history = autopilotPlan && autopilotPlan.prompt && typeof autopilotPlan.prompt.text === 'string'
+      ? [{ role: 'system', content: autopilotPlan.prompt.text }, ...turns]
+      : turns;
     state.conv.messages.push(reply); renderConversation();
     const body = $('#chat-log').lastElementChild.querySelector('.body'); const caret = el('span', { class: 'caret', 'aria-hidden': 'true' }); body.replaceChildren(caret);
     const ctrl = new AbortController(); state.busy = ctrl; stopBtn(true);
@@ -1405,18 +1430,47 @@ const SCRIPT = String.raw`
     for (const a of acts) wrap.append(el('details', {}, el('summary', {}, ic(a.icon), el('span', { text: a.label })), el('div', { class: 'detail', text: a.detail || '' })));
     return wrap;
   }
+  async function buildAutopilot(objective) {
+    if (!state.autopilot) return { plan: null, activity: null };
+    setStatus(translated('Optimising prompt · selecting instructions, skills and MCP…'), true);
+    try {
+      const plan = await post('/api/studio/autopilot/preview', { objective, responseStyle: state.responseStyle });
+      state.lastAutopilot = plan;
+      const facets = (plan.instructions && plan.instructions.facets || []).map(x => x.id);
+      const profiles = (plan.instructions && plan.instructions.profiles || []);
+      const skills = (plan.skills && plan.skills.selected || []).map(x => x.name);
+      const mcp = (plan.mcp && plan.mcp.suggested || []).map(x => x.name);
+      const summary = [
+        'Style: ' + plan.style.resolved,
+        'Prompt: ' + plan.prompt.level + ' · ' + plan.prompt.bytes + '/' + plan.prompt.budgetBytes + ' bytes' + (plan.prompt.budgetDegraded ? ' · compacted to budget' : ''),
+        'Instructions: ' + (facets.length ? facets.join(', ') : 'base'),
+        'Profiles: ' + (profiles.length ? profiles.join(', ') : 'none'),
+        'Skills: ' + (skills.length ? skills.join(', ') : 'none'),
+        'MCP suggestions: ' + (mcp.length ? mcp.join(', ') : 'none'),
+        'Authority: planning/instructions only; no tool or MCP execution granted',
+      ].join('\n');
+      return { plan, activity: { icon: 'sparkles', label: 'Fury Autopilot · ' + (skills.length + mcp.length) + ' capability suggestion' + (skills.length + mcp.length === 1 ? '' : 's'), detail: summary } };
+    } catch (error) {
+      state.lastAutopilot = null;
+      return { plan: null, activity: { icon: 'info', label: translated('Autopilot unavailable — continuing with the original request.'), detail: error.message } };
+    } finally {
+      setStatus('');
+    }
+  }
   $('#chat-form').addEventListener('submit', async (ev) => {
     ev.preventDefault(); if (state.busy) return;
     const text = input.value.trim(); if (!hasDraft()) return;
     const routeNow = currentRoute(text); if (!routeNow) { setStatus('No local model is running yet. Start one to chat privately on this machine.'); return; }
+    const autopilot = await buildAutopilot(text);
     const flip = !state.conv || !state.conv.messages.length ? morphToConversation() : null;
     const { content, acts } = await gatherContext(text);
+    if (autopilot.activity) acts.unshift(autopilot.activity);
     input.value = ''; state.files = []; state.pastes = []; renderTray(); autosize();
     if (!state.conv) state.conv = { messages: [] };
     state.conv.messages.push({ role: 'user', content });
     const node = activityNode(acts); if (node) state.activity.set(state.conv.messages.length - 1, node);
     renderConversation(); if (flip) flip();
-    await streamReply(routeNow);
+    await streamReply(routeNow, autopilot.plan);
   });
   async function branchAt(messageId) {
     try { state.conv = await post('/api/studio/chats/branch', { id: state.conv.id, atMessage: messageId }); state.activity = new Map(); renderConversation(); loadConversations(); setStatus('Branched. The original conversation is unchanged.'); }
@@ -1424,8 +1478,9 @@ const SCRIPT = String.raw`
   }
   async function retryLast() {
     const msgs = state.conv.messages; const lastUser = [...msgs].reverse().find(m => m.role === 'user'); if (!lastUser) return;
-    const r = currentRoute(splitContext(lastUser.content).text); if (!r) return;
-    try { state.conv = await post('/api/studio/chats/branch', { id: state.conv.id, atMessage: lastUser.id }); state.activity = new Map(); renderConversation(); await streamReply(r); }
+    const raw = splitContext(lastUser.content).text; const r = currentRoute(raw); if (!r) return;
+    const autopilot = await buildAutopilot(raw);
+    try { state.conv = await post('/api/studio/chats/branch', { id: state.conv.id, atMessage: lastUser.id }); state.activity = new Map(); renderConversation(); await streamReply(r, autopilot.plan); }
     catch (e) { setStatus(e.message); }
   }
   function newChat() { state.conv = null; state.activity = new Map(); state.lastRoute = null; renderConversation(); renderRouteChip(); loadConversations(); if (location.hash !== '#/chat' && location.hash !== '') location.hash = '#/chat'; setTimeout(() => input.focus(), 0); }
@@ -1954,6 +2009,7 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
             <input type="file" id="attach-input" multiple hidden tabindex="-1">
             <button type="button" id="tool-web" class="tool" aria-label="Web" aria-pressed="false" title="Read the web pages you link">${icon('web')}<span>Web</span></button>
             <button type="button" id="tool-kb" class="tool" aria-label="Knowledge" aria-pressed="false" title="Ground answers in your indexed project documents">${icon('knowledge')}<span>Knowledge</span></button>
+            <button type="button" id="tool-autopilot" class="tool" aria-label="Fury Autopilot" aria-pressed="true" title="Automatically optimises instructions, skills and MCP suggestions for this request">${icon('sparkles')}<span>Autopilot</span></button>
           </div>
           <div class="right">
             <button type="button" id="model-button" class="model-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="model-pop" title="Choose a model"><span class="fury-dot" aria-hidden="true"></span><span class="name" id="model-label">Fury Auto</span><svg class="i chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS.chevron}</svg></button>
@@ -2066,7 +2122,8 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
   <div>
     <div class="card set-group" id="set-general"><h2>General</h2>
       <div class="set-row"><div class="t"><b>Language</b><span>Automatically follows your browser language. You can override it here.</span></div>${seg('language', [['auto', 'Auto'], ['en', 'English'], ['fr', 'French']])}</div>
-      <div class="set-row"><div class="t"><b>Workspace mode</b><span>How much of FuryPipe's control plane you see. Power features are always one switch away.</span></div>${seg('mode', [['simple', 'Simple'], ['power', 'Power'], ['engineer', 'Engineer'], ['expert', 'Expert']])}</div></div>
+      <div class="set-row"><div class="t"><b>Workspace mode</b><span>How much of FuryPipe's control plane you see. Power features are always one switch away.</span></div>${seg('mode', [['simple', 'Simple'], ['power', 'Power'], ['engineer', 'Engineer'], ['expert', 'Expert']])}</div>
+      <div class="set-row"><div class="t"><b>Response style</b><span>Automatically chooses a concise or detailed response style for the task.</span></div>${seg('response-style', [['auto', 'Auto'], ['balanced', 'Balanced'], ['caveman', 'Caveman'], ['detailed', 'Detailed']])}</div></div>
     <div class="card set-group" id="set-appearance"><h2>Appearance</h2>
       <div class="set-row"><div class="t"><b>Theme</b><span>Dark is the signature FuryPipe look. System follows your OS.</span></div>${seg('theme', [['dark', 'Dark'], ['system', 'System']])}</div>
       <div class="set-row"><div class="t"><b>Motion</b><span>Reduce animation everywhere.</span></div>${seg('motion', [['system', 'System'], ['reduced', 'Reduced']])}</div>
