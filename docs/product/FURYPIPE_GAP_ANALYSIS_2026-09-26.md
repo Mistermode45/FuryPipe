@@ -58,7 +58,7 @@ Primary evidence:
 | FuryCode | DONE read-only / PARTIAL target | repo/editor/terminal/diff/problems/tests/git/GitHub/Graphify | Current Code view intentionally excludes editing/terminal; master target is broader | P2 | sandbox, permissions | High | browser QA + terminal security E2E |
 | Browser / Research | DONE core / PARTIAL target | search/fetch/extract/crawl/browser interaction with citations and provenance | FuryWeb core DONE; full browser-agent interaction breadth not reconciled | P2 | browser runtime, security | High | SSRF/injection + browser E2E |
 | MCP | DONE CORE / PARTIAL OAUTH UX/LIVE | auto router, manager, stdio/HTTP/SSE/streamable HTTP/OAuth, security | MCP Hub + Direct already provide multi-harness discovery, redaction, trust/policy, inventory probing, exact tool/schema binding, operator/governed approval, bounded execution receipts and durable replay. 2026 reconciliation adds explicit deprecated SSE compatibility and host-owned OAuthClientProvider support without token persistence. Remaining gap is interactive OAuth account UX/live certification, not transport authority. | P1/P2 | trust, secrets | High | protocol conformance + malicious MCP tests + optional OAuth live verification |
-| Plugins / SDK | NOT_VERIFIED | FuryPlugin architecture + manifest + SDK + UI extensions/providers/connectors | Existing plugin bundles exist; new public SDK/manifest lifecycle target not proven | P2 | registry, permissions | High | extension compatibility + crash isolation tests |
+| Plugins / SDK | PARTIAL SDK FOUNDATION | FuryPlugin architecture + manifest + SDK + UI extensions/providers/connectors | Existing opt-in Plugin Bundle registry remains authoritative. New public author SDK validates through that contract and compiles deterministic secret-redacted manifests with no install/network/filesystem/execution authority. Remaining gap is governed runtime loading/isolation plus UI-extension lifecycle and compatibility testing. | P2 | registry, permissions | High | plugin SDK tests + future extension isolation/browser tests |
 | Agents / execution | DONE core / PARTIAL target | specialized agents, graph, message bus, parallel coordination, replay | Dispatcher/Run/Mission Control/Replay DONE; universal agent graph/message bus UX broader | P2 | FuryIR, registry | Medium | deterministic DAG tests + replay verification |
 | Workflows / automations | DONE core / PARTIAL target | richer builder, schedules/events/webhooks, reusable workflows | FuryFlow Studio exists; full automation breadth requires reconciliation | P2 | execution engine | Medium | DAG + persistence + E2E |
 | Artifacts | PARTIAL | first-class artifact graph, versioning, restore/export/search | Current master sync already records Artifact Graph as a gap | P2 | storage, graph | Medium | history/diff/restore tests |
@@ -283,6 +283,29 @@ Implemented on the continuation branch:
 - no automatic subprocess execution was added after merge/checkout.
 
 This deliberately closes the recommendation half of the lifecycle gap without weakening the existing execution boundary. A future integration hook may request an approved refresh after successful repository mutations, but it must not silently execute Graphify.
+
+Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
+
+No merge, tag, release, npm publish or deploy performed.
+
+
+## Plugin SDK authoring foundation — 2026-09-26
+
+Implemented on the continuation branch:
+
+- public `furypipe/fury-plugin-sdk` authoring surface;
+- `defineFuryPlugin()` delegates to the existing canonical `FuryPluginBundle` validator;
+- `compileFuryPluginManifest()` emits deterministic, inspectable, secret-redacted metadata;
+- manifest digest is deterministic;
+- environment variable names may be declared, secret values are never included;
+- SDK manifests carry `installAuthorized:false`, `networkAuthorized:false`, `filesystemAuthorized:false`, `executionAuthorized:false`;
+- no plugin module loading, package installation, MCP connection, provider invocation or UI code execution is introduced by this foundation.
+
+Remaining P2 work:
+- governed plugin runtime loader/isolation;
+- explicit UI extension slots and crash containment;
+- lifecycle compatibility/migration tests;
+- Marketplace→Plugin installation executor only behind signed metadata + operator approval + sandbox policy.
 
 Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
 
