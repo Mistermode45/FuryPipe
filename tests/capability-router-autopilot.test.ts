@@ -60,6 +60,14 @@ describe('Capability Router + Capability Autopilot V2 convergence', () => {
     expect(plan.dynamicDomainIds).toEqual(['capability-index-autopilot']);
     expect(plan.selectedSkillIds).toContain('oauth-token-review');
     expect(plan.autoInvokeSkillsByStage.review).toContain('oauth-token-review');
+    expect(plan.selectionTrace).toEqual([
+      expect.objectContaining({
+        kind: 'skill',
+        id: 'oauth-token-review',
+        reason: expect.stringMatching(/explicit-request|family-match|task-relevance/u),
+        executionAuthorized: false,
+      }),
+    ]);
   });
 
   it('fails closed when the indexed shortlist is stale relative to the current router inventory', async () => {
@@ -135,6 +143,56 @@ describe('Capability Router + Capability Autopilot V2 convergence', () => {
 
     expect(plan.dynamicDomainIds).toEqual(['capability-index-autopilot']);
     expect(plan.autoInvokeMcpByStage).toEqual({});
+    expect(plan.selectionTrace).toEqual([
+      expect.objectContaining({
+        kind: 'mcp-tool',
+        id: 'github/pull_request.read',
+        requiredPermissions: ['network'],
+        executionAuthorized: false,
+      }),
+    ]);
+  });
+
+  it('surfaces non-executable model routing metadata without pretending the model was invoked', async () => {
+    const index = createFuryCapabilityIndex();
+    index.upsert({
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind: 'model',
+      id: 'model/coding-quality',
+      name: 'Coding quality model',
+      description: 'High quality model for repository code review.',
+      families: ['coding'],
+      tags: ['review'],
+      keywords: ['repository', 'code', 'review'],
+      trust: 'verified',
+      license: 'not-applicable',
+      health: 'ready',
+      riskClass: 'none',
+      requiredPermissions: [],
+      compatibility: [],
+      source: { system: 'model-fabric', sourceId: 'model/coding-quality' },
+    });
+
+    const analyzer = createFuryCapabilityRouterAutopilot({
+      index,
+      selectionOptions: { minScore: 0 },
+    });
+    const skills = createAgentSkillRegistry();
+    const plan = await resolveFuryCapabilities({
+      objective: 'Review repository code.',
+      skillRegistry: skills,
+      universalAnalyzer: analyzer,
+    });
+
+    expect(plan.selectionTrace).toEqual([
+      expect.objectContaining({
+        kind: 'model',
+        id: 'model/coding-quality',
+        executionAuthorized: false,
+      }),
+    ]);
+    expect(plan.autoInvokeMcpByStage).toEqual({});
+    expect(plan.selectedSkillIds).toEqual([]);
   });
 
   it('rejects forged indexes instead of accepting serialized authority-like data', () => {
