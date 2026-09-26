@@ -3,7 +3,7 @@
 Status: ACTIVE PRODUCT GAP LEDGER  
 Repository: `Mistermode45/FuryPipe`  
 Track: PR #233 — `claude/furypipe-studio-autopilot-extensions`  
-Audit input HEAD: `746f926e4ebc44d6face01b01ce66532cef19ec0`  
+Audit input HEAD: `23164fbfd1a5d7d7ad7d11353a6f3730692fcc5c`  
 Product source: `docs/product/FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md`
 
 ## Scope and evidence rule
@@ -152,3 +152,8 @@ Implemented on the continuation branch:
 
 Status remains `IMPLEMENTED_PENDING_EXACT_HEAD` until the final documentation/code SHA has all hosted gates green.
 
+
+
+### Exact-head correction note
+
+The first hosted validation of the Skill Creator documentation head exposed a real Prompt Analyzer classifier gap: an API/GitHub implementation request containing plural `tests` was classified as `PROFESSIONAL` instead of `CODING`. The classifier was corrected in `23164fbfd1a5d7d7ad7d11353a6f3730692fcc5c` by treating API/GitHub/implement/fix/testing vocabulary as coding evidence. The failed SHA is not reused as proof.
