@@ -44,6 +44,17 @@ describe('Studio Fury Autopilot',()=>{
         needsApproval:true,
       }));
       expect(plan.blueprint.capabilities.executionAuthority).toBe(false);
+      expect(plan.capabilityGraph).toMatchObject({
+        format:'furypipe-capability-graph/v1',
+        authority:'visualization-only',
+        executionAuthorized:false,
+      });
+      expect(plan.capabilityGraph.nodes).toContainEqual(expect.objectContaining({
+        kind:'capability',
+        capabilityId:'api-review',
+        family:'skills',
+        executionAuthority:false,
+      }));
       expect(plan.prompt.text).toContain('Check API behavior and tests before claiming done.');
       expect(plan.prompt.bytes).toBeLessThanOrEqual(plan.prompt.budgetBytes);
       expect(plan.plan.skills.map((x)=>x.name)).toContain('api-review');
