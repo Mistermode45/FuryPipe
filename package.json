@@ -608,6 +608,14 @@
     "./a2a-remote-adapter-node": {
       "types": "./dist/a2a-remote-adapter-node.d.ts",
       "import": "./dist/a2a-remote-adapter-node.js"
+    },
+    "./fury-artifacts": {
+      "types": "./dist/fury-artifacts.d.ts",
+      "import": "./dist/fury-artifacts.js"
+    },
+    "./fury-plugin-runtime": {
+      "types": "./dist/fury-plugin-runtime.d.ts",
+      "import": "./dist/fury-plugin-runtime.js"
     }
   },
   "files": [
