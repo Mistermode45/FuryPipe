@@ -1,7 +1,26 @@
-import { createHash } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 
 export const FURY_SUPPLY_CHAIN_FORMAT = 'furypipe-supply-chain-evidence/v1' as const;
 export const FURY_CYCLONEDX_SPEC_VERSION = '1.6' as const;
+
+export const FURY_SUPPLY_CHAIN_SIGNATURE_FORMAT = 'furypipe-supply-chain-signature/v1' as const;
+export const FURY_SUPPLY_CHAIN_SIGNATURE_ALGORITHM = 'Ed25519' as const;
+
+export interface FurySupplyChainSignature {
+  readonly format: typeof FURY_SUPPLY_CHAIN_SIGNATURE_FORMAT;
+  readonly algorithm: typeof FURY_SUPPLY_CHAIN_SIGNATURE_ALGORITHM;
+  readonly keyId: string;
+  readonly evidenceDigestSha256: string;
+  readonly signatureBase64: string;
+  readonly authority: 'detached-integrity-attestation-only';
+  readonly executionAuthorized: false;
+}
+
+export interface FurySupplyChainSignedAttestation {
+  readonly evidence: FurySupplyChainEvidence;
+  readonly signature: FurySupplyChainSignature;
+}
+
 
 export interface FuryResolvedPackageInput {
   readonly name: string;
@@ -244,6 +263,98 @@ function cycloneLicense(value: string | null): readonly { readonly license: { re
   return Object.freeze([Object.freeze({
     license: Object.freeze(LICENSE_ID_RE.test(value) ? { id: value } : { name: value }),
   })]);
+}
+
+
+function signaturePayload(evidenceDigestSha256: string): Buffer {
+  if (!SHA256_RE.test(evidenceDigestSha256)) {
+    throw new Error('evidenceDigestSha256 must be lowercase SHA-256');
+  }
+  return Buffer.from(`${FURY_SUPPLY_CHAIN_SIGNATURE_FORMAT}\0${evidenceDigestSha256}`, 'utf8');
+}
+
+function boundedKeyId(value: string): string {
+  const keyId = boundedText(value, 'keyId', 128);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:@+~-]{0,127}$/u.test(keyId)) {
+    throw new Error('keyId is invalid');
+  }
+  return keyId;
+}
+
+/**
+ * Creates a detached Ed25519 attestation for immutable supply-chain evidence.
+ * The private key is never stored in the evidence or signature object.
+ */
+export function signFurySupplyChainEvidence(
+  evidence: FurySupplyChainEvidence,
+  privateKeyPem: string | Buffer,
+  keyId: string,
+): FurySupplyChainSignature {
+  if (evidence.format !== FURY_SUPPLY_CHAIN_FORMAT || evidence.executionAuthorized !== false) {
+    throw new Error('valid FuryPipe supply-chain evidence is required');
+  }
+  const privateKey = createPrivateKey(privateKeyPem);
+  if (privateKey.asymmetricKeyType !== 'ed25519') {
+    throw new Error('supply-chain signatures require an Ed25519 private key');
+  }
+  const signature = sign(null, signaturePayload(evidence.evidenceDigestSha256), privateKey);
+  return Object.freeze({
+    format: FURY_SUPPLY_CHAIN_SIGNATURE_FORMAT,
+    algorithm: FURY_SUPPLY_CHAIN_SIGNATURE_ALGORITHM,
+    keyId: boundedKeyId(keyId),
+    evidenceDigestSha256: evidence.evidenceDigestSha256,
+    signatureBase64: signature.toString('base64'),
+    authority: 'detached-integrity-attestation-only',
+    executionAuthorized: false,
+  });
+}
+
+/**
+ * Verifies a detached supply-chain attestation against the exact evidence
+ * digest and the operator-provided Ed25519 public key.
+ */
+export function verifyFurySupplyChainEvidenceSignature(
+  evidence: FurySupplyChainEvidence,
+  signatureRecord: FurySupplyChainSignature,
+  publicKeyPem: string | Buffer,
+): boolean {
+  if (
+    evidence.format !== FURY_SUPPLY_CHAIN_FORMAT
+    || evidence.executionAuthorized !== false
+    || signatureRecord.format !== FURY_SUPPLY_CHAIN_SIGNATURE_FORMAT
+    || signatureRecord.algorithm !== FURY_SUPPLY_CHAIN_SIGNATURE_ALGORITHM
+    || signatureRecord.authority !== 'detached-integrity-attestation-only'
+    || signatureRecord.executionAuthorized !== false
+    || signatureRecord.evidenceDigestSha256 !== evidence.evidenceDigestSha256
+    || !SHA256_RE.test(signatureRecord.evidenceDigestSha256)
+    || typeof signatureRecord.signatureBase64 !== 'string'
+    || signatureRecord.signatureBase64.length < 16
+    || signatureRecord.signatureBase64.length > 1024
+  ) return false;
+  boundedKeyId(signatureRecord.keyId);
+  const publicKey = createPublicKey(publicKeyPem);
+  if (publicKey.asymmetricKeyType !== 'ed25519') {
+    throw new Error('supply-chain signatures require an Ed25519 public key');
+  }
+  let signatureBytes: Buffer;
+  try {
+    signatureBytes = Buffer.from(signatureRecord.signatureBase64, 'base64');
+  } catch {
+    return false;
+  }
+  if (signatureBytes.length !== 64) return false;
+  return verify(null, signaturePayload(evidence.evidenceDigestSha256), publicKey, signatureBytes);
+}
+
+export function createFurySupplyChainSignedAttestation(
+  evidence: FurySupplyChainEvidence,
+  privateKeyPem: string | Buffer,
+  keyId: string,
+): FurySupplyChainSignedAttestation {
+  return Object.freeze({
+    evidence,
+    signature: signFurySupplyChainEvidence(evidence, privateKeyPem, keyId),
+  });
 }
 
 export function createFuryCycloneDxBom(evidence: FurySupplyChainEvidence): FuryCycloneDxBom {
