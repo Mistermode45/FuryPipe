@@ -9,6 +9,7 @@ import { compileFuryPrompt } from '../fury-prompt.js';
 import { resolveInstructionPlan } from '../instruction-fabric.js';
 import type { FuryMcpHub, FuryMcpSourceView } from '../fury-mcp-hub.js';
 import type { FurySkillHub } from '../fury-skill-hub.js';
+import { createFuryRequestBlueprint } from '../fury-request-blueprint.js';
 
 export const STUDIO_AUTOPILOT_FORMAT = 'furypipe-studio-autopilot/v1' as const;
 export const STUDIO_RESPONSE_STYLES = Object.freeze(['auto','balanced','caveman','detailed'] as const);
@@ -205,10 +206,27 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   }
 
   const selectedByName=new Map(skillSelectionPlan.selected.map((item)=>[item.name,item]));
+  const blueprint=createFuryRequestBlueprint({
+    objective,
+    profile:routing.profile,
+    effort:routing.effort,
+    communicationStyle:routing.communicationStyle,
+    contextMode:routing.contextMode,
+    capabilitySelection,
+    instructionFacetIds:instructionPlan.selected.map((item)=>item.id),
+    instructionProfileIds:instructionPlan.appliedProfiles,
+    qualityGates:instructionPlan.qualityGates,
+    mcpSuggestions:routing.mcp.slice(0,MAX_MCP_SUGGESTIONS),
+    budgets:{
+      skillInstructionBytes:MAX_SKILL_PROMPT_BYTES,
+      systemPromptBytes:MAX_SYSTEM_PROMPT_BYTES,
+    },
+  });
   return Object.freeze({
     format:STUDIO_AUTOPILOT_FORMAT,
     objectiveDigest:createHash('sha256').update(objective,'utf8').digest('hex'),
     plan:routing,
+    blueprint,
     routing:Object.freeze({
       format:routing.format,
       profile:routing.profile,
