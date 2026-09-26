@@ -703,11 +703,11 @@ export function createStudioApi(options: StudioApiOptions) {
               if (body.args !== undefined && (!Array.isArray(body.args) || !body.args.every((arg) => typeof arg === 'string'))) return problem(400, 'invalid-input', 'MCP args must be strings');
               return json(await mcp.addProjectSource({ name: body.name, transport: 'stdio', command: body.command, ...(Array.isArray(body.args) ? { args: body.args as string[] } : {}) }), 201);
             }
-            if (body.transport === 'streamable_http') {
+            if (body.transport === 'streamable_http' || body.transport === 'sse') {
               if (typeof body.url !== 'string') return problem(400, 'invalid-input', 'HTTP MCP URL is required');
-              return json(await mcp.addProjectSource({ name: body.name, transport: 'streamable_http', url: body.url }), 201);
+              return json(await mcp.addProjectSource({ name: body.name, transport: body.transport, url: body.url }), 201);
             }
-            return problem(400, 'invalid-input', 'transport must be stdio or streamable_http');
+            return problem(400, 'invalid-input', 'transport must be stdio, streamable_http or legacy sse');
           }
           case 'mcp-act': {
             const body = await readJson(request) as { sourceId?: unknown; action?: unknown; tool?: unknown; value?: unknown };
