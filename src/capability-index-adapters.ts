@@ -17,6 +17,8 @@ import type {
   FuryKernelToolSourceSummary,
 } from './fury-kernel-tool-bridge-node.js';
 import type { McpToolRiskClass } from './mcp-tool-risk.js';
+import type { FurySkillEntry, FurySkillHub } from './fury-skill-hub.js';
+import type { FuryMcpHub, FuryMcpSourceView } from './fury-mcp-hub.js';
 import {
   FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
   isGeneratedFuryCapabilityIndex,
@@ -46,7 +48,7 @@ export interface FuryCapabilityIndexHealthOverrides {
 export interface FuryCapabilityIndexProjectionReport {
   readonly indexed: number;
   readonly skipped: number;
-  readonly source: 'skill-registry' | 'plugin-registry' | 'model-fabric' | 'mcp-host';
+  readonly source: 'skill-registry' | 'skill-hub' | 'plugin-registry' | 'model-fabric' | 'mcp-host' | 'mcp-hub';
   readonly authority: 'projection-only';
   readonly executionAuthority: false;
 }
@@ -349,6 +351,196 @@ export function projectSkillsIntoCapabilityIndex(
     indexed: inspections.length,
     skipped: 0,
     source: 'skill-registry' as const,
+    authority: 'projection-only' as const,
+    executionAuthority: false as const,
+  });
+}
+
+
+function skillHubHealth(skill: FurySkillEntry): FuryCapabilityIndexHealthState {
+  if (!skill.enabled || skill.pinMismatch) return 'blocked';
+  return 'ready';
+}
+
+function skillHubTrust(skill: FurySkillEntry): FuryCapabilityIndexTrustState {
+  return skill.trust === 'trusted-instructions' ? 'verified' : 'unverified';
+}
+
+/**
+ * Project Studio's progressive instruction Skill Hub into the same process-local
+ * Capability Index used by Capability Autopilot.
+ *
+ * This only reads already-discovered metadata/checksums. It does not activate a
+ * skill, load its instruction body into the turn, execute allowed-tools, or
+ * grant runtime authority.
+ */
+export async function projectSkillHubIntoCapabilityIndex(
+  index: FuryCapabilityIndex,
+  hub: FurySkillHub,
+): Promise<FuryCapabilityIndexProjectionReport> {
+  requireIndex(index);
+  const view = await hub.list();
+  let indexed = 0;
+  let skipped = 0;
+  for (const skill of view.skills) {
+    if (!indexableIdentity(skill.name)) {
+      skipped += 1;
+      continue;
+    }
+    put(index, {
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind: 'skill',
+      id: skill.name,
+      name: skill.name.replace(/[._-]+/gu, ' '),
+      description: skill.description,
+      families: uniqueMetadata(['skill', skill.scope, skill.type]),
+      tags: uniqueMetadata([
+        `scope-${skill.scope}`,
+        `type-${skill.type}`,
+        `governance-${skill.governance}`,
+        skill.pinMismatch ? 'pin-mismatch' : 'pin-current',
+      ]),
+      keywords: uniqueMetadata([skill.name, skill.description], 160),
+      trust: skillHubTrust(skill),
+      // Runtime activation does not redistribute the local skill. Import/install
+      // governance remains the place that audits third-party licensing.
+      license: 'not-applicable',
+      health: skillHubHealth(skill),
+      riskClass: 'none',
+      requiredPermissions: [],
+      compatibility: uniqueMetadata(skill.compatibleHarnesses),
+      source: {
+        system: 'skill-registry',
+        sourceId: skill.name,
+        sourceRevision: skill.checksum,
+      },
+    });
+    indexed += 1;
+  }
+  return Object.freeze({
+    indexed,
+    skipped,
+    source: 'skill-hub' as const,
+    authority: 'projection-only' as const,
+    executionAuthority: false as const,
+  });
+}
+
+function mcpHubPermission(source: FuryMcpSourceView): 'process' | 'network' {
+  return source.transport === 'stdio' ? 'process' : 'network';
+}
+
+function mcpHubHealth(source: FuryMcpSourceView): FuryCapabilityIndexHealthState {
+  if (!source.enabled || source.defaultPolicy === 'DENY') return 'blocked';
+  if (source.health?.ok === true) return 'ready';
+  if (source.health?.ok === false) return 'unavailable';
+  return 'unknown';
+}
+
+function mcpHubTrust(source: FuryMcpSourceView): FuryCapabilityIndexTrustState {
+  return source.trusted ? 'verified' : 'unverified';
+}
+
+function mcpHubToolRisk(
+  tool: NonNullable<FuryMcpSourceView['health']>['tools'][number],
+): FuryCapabilityIndexRiskClass {
+  if (tool.readOnly) return 'read';
+  if (/destructive|delete|admin/iu.test(tool.riskClass)) return 'admin';
+  return /write|mutat/iu.test(tool.riskClass) ? 'write' : 'unknown';
+}
+
+/**
+ * Project Studio's MCP Hub inventory without starting a configured process or
+ * issuing a network probe. Only tools already present in stored health evidence
+ * are indexed.
+ */
+export async function projectMcpHubIntoCapabilityIndex(
+  index: FuryCapabilityIndex,
+  hub: FuryMcpHub,
+): Promise<FuryCapabilityIndexProjectionReport> {
+  requireIndex(index);
+  const view = await hub.list();
+  let indexed = 0;
+  let skipped = 0;
+  for (const source of view.sources) {
+    if (!indexableIdentity(source.sourceId)) {
+      skipped += 1;
+      continue;
+    }
+    const permission = mcpHubPermission(source);
+    put(index, {
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind: 'mcp-server',
+      id: source.sourceId,
+      name: source.name,
+      description:
+        `Configured Studio MCP source ${source.name}; transport ${source.transport}; locality ${source.locality}; live tool inventory is ${source.health?.ok === true ? 'available' : 'not-verified'}.`,
+      families: uniqueMetadata(['mcp', source.locality, source.transport]),
+      tags: uniqueMetadata([
+        `transport-${source.transport}`,
+        `locality-${source.locality}`,
+        `policy-${source.defaultPolicy}`,
+        source.trusted ? 'trusted' : 'untrusted',
+      ]),
+      keywords: uniqueMetadata([source.sourceId, source.name, 'mcp'], 160),
+      trust: mcpHubTrust(source),
+      license: 'not-applicable',
+      health: mcpHubHealth(source),
+      riskClass: source.transport === 'stdio' ? 'process' : 'read',
+      requiredPermissions: [permission],
+      compatibility: [],
+      source: {
+        system: 'mcp-host',
+        sourceId: source.sourceId,
+        ...(source.health?.at === undefined
+          ? {}
+          : { observedAt: new Date(source.health.at).toISOString() }),
+      },
+    });
+    indexed += 1;
+
+    if (source.health?.ok !== true) continue;
+    for (const tool of source.health.tools) {
+      const id = `${source.sourceId}/${tool.name}`;
+      if (!indexableIdentity(id)) {
+        skipped += 1;
+        continue;
+      }
+      put(index, {
+        format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+        kind: 'mcp-tool',
+        id,
+        name: tool.name,
+        description:
+          `Probed Studio MCP tool ${tool.name} from ${source.name}; risk ${tool.riskClass}; selection never grants execution authority.`,
+        families: uniqueMetadata(['mcp', 'tool']),
+        tags: uniqueMetadata([
+          `risk-${tool.riskClass}`,
+          tool.readOnly ? 'read-only' : 'mutation-or-unknown',
+          `policy-${source.toolPolicies[tool.name] ?? source.defaultPolicy}`,
+        ]),
+        keywords: uniqueMetadata([source.sourceId, source.name, tool.name, 'mcp tool'], 160),
+        trust: mcpHubTrust(source),
+        license: 'not-applicable',
+        health: 'ready',
+        riskClass: mcpHubToolRisk(tool),
+        requiredPermissions: [permission],
+        compatibility: [],
+        source: {
+          system: 'mcp-host',
+          sourceId: id,
+          sourceRevision: `${source.health.at}:${tool.riskClass}:${tool.readOnly ? 'ro' : 'rw'}`,
+          observedAt: new Date(source.health.at).toISOString(),
+        },
+      });
+      indexed += 1;
+    }
+  }
+
+  return Object.freeze({
+    indexed,
+    skipped,
+    source: 'mcp-hub' as const,
     authority: 'projection-only' as const,
     executionAuthority: false as const,
   });
