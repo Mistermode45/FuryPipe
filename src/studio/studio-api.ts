@@ -57,7 +57,7 @@ export type StudioRoute =
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
   | 'web'
   | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act'
-  | 'integrations' | 'connections' | 'connection-login'
+  | 'integrations' | 'connections' | 'connection-login' | 'support'
   | 'chats' | 'chat-get' | 'chat-save' | 'chat-branch' | 'chat-delete'
   | 'code-tree' | 'code-file' | 'code-worktrees' | 'code-diff';
 
@@ -75,6 +75,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/dispatch-preview': { route: 'dispatch-preview', method: 'POST' },
   '/api/studio/autopilot/preview': { route: 'autopilot-preview', method: 'POST' },
   '/api/studio/extensions.json': { route: 'extensions', method: 'GET' },
+  '/api/studio/support.json': { route: 'support', method: 'GET' },
   '/api/studio/chat': { route: 'chat', method: 'POST' },
   '/api/studio/flow-preview': { route: 'flow-preview', method: 'POST' },
   '/api/studio/runs.json': { route: 'runs', method: 'GET' },
@@ -469,6 +470,22 @@ export function createStudioApi(options: StudioApiOptions) {
                 includeRestricted: params.get('restricted') === '1',
               }),
               installation: 'LOCAL_REVIEW_REQUIRED: catalog entries are never downloaded or activated automatically',
+            });
+          }
+          case 'support': {
+            const configured = process.env.FURYPIPE_SUPPORT_URL?.trim();
+            let supportUrl: string | undefined;
+            if (configured) {
+              try {
+                const parsed = new URL(configured);
+                if (parsed.protocol === 'https:' && !parsed.username && !parsed.password) supportUrl = parsed.toString();
+              } catch {}
+            }
+            return json({
+              project: 'FuryPipe',
+              creator: 'LégendeUrbaine',
+              ...(supportUrl ? { supportUrl } : {}),
+              configured: supportUrl !== undefined,
             });
           }
           case 'flow-preview': {
