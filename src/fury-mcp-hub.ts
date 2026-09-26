@@ -69,6 +69,10 @@ export interface FuryMcpDecision {
   readonly reason: string;
 }
 
+export type FuryMcpProjectSourceInput =
+  | { readonly name: string; readonly transport: 'stdio'; readonly command: string; readonly args?: readonly string[] }
+  | { readonly name: string; readonly transport: 'streamable_http'; readonly url: string };
+
 const MAX_CONFIG_BYTES = 1024 * 1024;
 const MAX_SOURCES = 256;
 const SECRET_FLAG = /(?:token|secret|password|passwd|api[-_]?key|auth|credential|bearer)/iu;
@@ -252,6 +256,61 @@ export async function discoverFuryMcpSources(options: { readonly projectRoot: st
 
 export type FuryMcpProbe = (config: McpDirectRuntimeConfig) => Promise<McpDirectInventoryProbeEvidence>;
 
+function validateProjectSourceInput(input: FuryMcpProjectSourceInput): Record<string, unknown> {
+  if (!input || typeof input !== 'object' || typeof input.name !== 'string' || !/^[A-Za-z0-9_.@-]{1,64}$/u.test(input.name)) {
+    throw new FuryMcpHubError('MCP source name must be 1-64 safe characters');
+  }
+  if (input.transport === 'stdio') {
+    if (typeof input.command !== 'string' || !input.command.trim() || input.command.length > 1024 || /[\u0000-\u001f]/u.test(input.command)) {
+      throw new FuryMcpHubError('MCP stdio command is invalid');
+    }
+    const args = input.args ?? [];
+    if (!Array.isArray(args) || args.length > 32 || args.some((arg) => typeof arg !== 'string' || arg.length > 2048 || /[\u0000-\u001f]/u.test(arg))) {
+      throw new FuryMcpHubError('MCP stdio args are invalid');
+    }
+    if (args.some((arg) => SECRET_FLAG.test(arg) || SECRET_VALUE.test(arg))) {
+      throw new FuryMcpHubError('secret-looking MCP arguments are refused; configure credentials outside Studio');
+    }
+    return { command: input.command.trim(), args: [...args] };
+  }
+  if (input.transport === 'streamable_http') {
+    if (typeof input.url !== 'string' || input.url.length > 2048) throw new FuryMcpHubError('MCP URL is invalid');
+    let url: URL;
+    try { url = new URL(input.url); } catch { throw new FuryMcpHubError('MCP URL is invalid'); }
+    const loopback = isLoopback(url.toString());
+    if (url.protocol !== 'https:' && !(loopback && url.protocol === 'http:')) throw new FuryMcpHubError('remote MCP URLs must use HTTPS');
+    if (url.username || url.password || url.search || url.hash) throw new FuryMcpHubError('MCP URL credentials, query strings and fragments are refused in Studio');
+    return { type: 'http', url: url.toString() };
+  }
+  throw new FuryMcpHubError('unsupported MCP transport');
+}
+
+async function writeProjectFuryMcpConfig(projectRoot: string, input: FuryMcpProjectSourceInput): Promise<void> {
+  const dir = path.join(projectRoot, '.furypipe');
+  const file = path.join(dir, 'mcp.json');
+  let current: Raw = {};
+  try {
+    const info = await stat(file);
+    if (!info.isFile() || info.size > MAX_CONFIG_BYTES) throw new FuryMcpHubError('existing FuryPipe MCP config is invalid or too large');
+    const parsed = JSON.parse(await readFile(file, 'utf8')) as unknown;
+    if (!isObj(parsed)) throw new FuryMcpHubError('existing FuryPipe MCP config must be a JSON object');
+    current = parsed;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  const servers = current.mcpServers === undefined ? {} : current.mcpServers;
+  if (!isObj(servers)) throw new FuryMcpHubError('existing FuryPipe MCP mcpServers value must be an object');
+  if (Object.prototype.hasOwnProperty.call(servers, input.name)) throw new FuryMcpHubError(`MCP source ${input.name} already exists`);
+  if (Object.keys(servers).length >= MAX_SOURCES) throw new FuryMcpHubError('MCP source limit reached');
+  const next: Raw = { ...current, mcpServers: { ...servers, [input.name]: validateProjectSourceInput(input) } };
+  const serialized = `${JSON.stringify(next, null, 2)}\n`;
+  if (Buffer.byteLength(serialized, 'utf8') > MAX_CONFIG_BYTES) throw new FuryMcpHubError('FuryPipe MCP config would exceed its size bound');
+  await mkdir(dir, { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  await writeFile(tmp, serialized, { mode: 0o600 });
+  await rename(tmp, file);
+}
+
 export function createFuryMcpHub(options: {
   readonly projectRoot: string;
   readonly stateDir: string;
@@ -323,6 +382,21 @@ export function createFuryMcpHub(options: {
 
   return Object.freeze({
     list,
+    /** Add a project-scoped source without secrets. New sources are disabled and untrusted until reviewed. */
+    async addProjectSource(input: FuryMcpProjectSourceInput): Promise<FuryMcpSourceView> {
+      const normalized = input.transport === 'stdio'
+        ? { name: input.name, transport: input.transport, command: input.command, args: [...(input.args ?? [])] } as const
+        : { name: input.name, transport: input.transport, url: input.url } as const;
+      validateProjectSourceInput(normalized);
+      await writeProjectFuryMcpConfig(options.projectRoot, normalized);
+      const sourceId = `project-furypipe.${normalized.name}`.replace(/[^A-Za-z0-9._:-]/gu, '_').slice(0, 128);
+      const state = await load();
+      state.sources[sourceId] = { enabled: false, trusted: false, defaultPolicy: 'ASK', tools: {} };
+      await save(state);
+      const source = (await discoverFuryMcpSources(options)).sources.find((candidate) => candidate.sourceId === sourceId);
+      if (!source) throw new FuryMcpHubError('new MCP source was written but could not be rediscovered');
+      return view(source, state.sources[sourceId]);
+    },
     setEnabled: (sourceId: string, enabled: boolean) => mutate(sourceId, (s) => { s.enabled = enabled; }),
     setTrusted: (sourceId: string, trusted: boolean) => mutate(sourceId, (s) => { s.trusted = trusted; }),
     setDefaultPolicy: async (sourceId: string, policy: FuryMcpPolicy) => { const p = assertPolicy(policy); return mutate(sourceId, (s) => { s.defaultPolicy = p; }); },
