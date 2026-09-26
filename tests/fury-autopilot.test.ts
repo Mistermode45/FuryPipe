@@ -30,6 +30,38 @@ describe('Fury Autopilot', () => {
     expect(plan.executionAuthorized).toBe(false);
   });
 
+  it('uses converged governed MCP candidates without re-running legacy source matching', () => {
+    const plan = planFuryAutopilot({
+      objective: 'Review the GitHub repository',
+      mcpCandidates: [{
+        sourceId: 'project-mcp.github',
+        source: 'github',
+        score: 42,
+        policy: 'ASK',
+        trusted: false,
+        needsApproval: true,
+        reason: 'Capability Autopilot blocked executable selection: missing-permission.',
+      }],
+      mcpSources: [{
+        sourceId: 'legacy-wrong',
+        name: 'github',
+        enabled: true,
+        trusted: true,
+        defaultPolicy: 'ALLOW',
+      }],
+    });
+    expect(plan.mcp).toEqual([
+      expect.objectContaining({
+        sourceId: 'project-mcp.github',
+        source: 'github',
+        score: 42,
+        needsApproval: true,
+      }),
+    ]);
+    expect(plan.mcp.some((item) => item.sourceId === 'legacy-wrong')).toBe(false);
+    expect(plan.executionAuthorized).toBe(false);
+  });
+
   it('uses Caveman for operational troubleshooting and respects effort overrides', () => {
     const plan = planFuryAutopilot({
       objective: 'PowerShell error while installing the runtime, tell me what command fixes it',
