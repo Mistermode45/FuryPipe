@@ -43,6 +43,11 @@ jobs:
       - name: Produce local versioned tarball upgrade and rollback evidence
         run: pnpm run validation:upgrade-rollback
 
+      - name: Produce deterministic supply-chain evidence and CycloneDX SBOM
+        run: pnpm run validation:supply-chain
+        env:
+          FURYPIPE_SUPPLY_CHAIN_OUTPUT_DIR: artifacts/rc-preparation/supply-chain
+
       - name: Produce non-destructive RC preparation evidence
         run: node scripts/rc-preparation.mjs
 
