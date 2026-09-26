@@ -100,23 +100,20 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     input.skills.autoSelect(objective,{...(input.harnessId?{harnessId:input.harnessId}:{}),maxActive:4}),
     input.mcp.list(),
   ]);
-  const activation=await input.skills.activateSelection(
-    skillSelection.plan.selected.map((skill)=>skill.name),
-    input.harnessId?{harnessId:input.harnessId}:{},
-  );
+  const activation=await input.skills.activatePlan(skillSelection.plan);
 
   let skillBytes=0;
   const activeSkillBlocks:string[]=[];
   const activeSkills:Array<{name:string;instructionBytes:number;instructionSha256:string}>=[];
   const promptBudgetBlocked:string[]=[];
-  for(const skill of activation){
-    const bytes=encoder.encode(skill.instructions).byteLength;
+  for(const skill of activation.activated){
+    const bytes=encoder.encode(skill.promptBlock).byteLength;
     if(skillBytes+bytes>MAX_SKILL_PROMPT_BYTES){
       promptBudgetBlocked.push(skill.name);
       continue;
     }
     skillBytes+=bytes;
-    activeSkillBlocks.push(skill.instructions);
+    activeSkillBlocks.push(skill.promptBlock);
     activeSkills.push(Object.freeze({
       name:skill.name,
       instructionBytes:skill.receipt.instructionBytes,
@@ -197,9 +194,10 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
         reason:selectedByName.get(item.name)?.reason??'description_relevance',
       }))),
       excluded:skillSelection.excluded,
-      blocked:Object.freeze(
-        promptBudgetBlocked.map((name)=>Object.freeze({name,reason:'prompt-budget' as const,detail:'skill prompt exceeded the per-turn activation budget'})),
-      ),
+      blocked:Object.freeze([
+        ...activation.blocked.map((item)=>Object.freeze({name:item.name,reason:item.reason,detail:item.detail})),
+        ...promptBudgetBlocked.map((name)=>Object.freeze({name,reason:'prompt-budget' as const,detail:'skill prompt exceeded the per-turn activation budget'})),
+      ]),
       instructionBudgetBytes:MAX_SKILL_PROMPT_BYTES,
       executionAuthorized:false as const,
     }),
