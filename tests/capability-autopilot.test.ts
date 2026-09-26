@@ -236,6 +236,15 @@ describe('Capability Autopilot V2 deterministic shortlist', () => {
     expect(blocked.blockedCounts).toMatchObject({
       'missing-permission': 1,
     });
+    expect(blocked.blocked).toContainEqual(expect.objectContaining({
+      kind: 'mcp-tool',
+      id: 'repo-network-tool',
+      reason: 'missing-permission',
+      requiredPermissions: ['network', 'repository-read'],
+      relevanceScore: expect.any(Number),
+      score: expect.any(Number),
+      fingerprintSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    }));
 
     const eligible = selectFuryCapabilitiesForTask({
       objective: 'Read repository metadata',
