@@ -3,12 +3,14 @@ import { createHash } from 'node:crypto';
 import { planFuryAutopilot, type FuryAutopilotEffort } from '../fury-autopilot.js';
 import { createFuryCapabilityIndex } from '../capability-index.js';
 import { selectFuryCapabilitiesForTask } from '../capability-autopilot.js';
-import { projectMcpHubIntoCapabilityIndex, projectSkillHubIntoCapabilityIndex } from '../capability-index-adapters.js';
+import { projectHarnessesIntoCapabilityIndex, projectMcpHubIntoCapabilityIndex, projectProvidersIntoCapabilityIndex, projectSkillHubIntoCapabilityIndex } from '../capability-index-adapters.js';
 import type { AgentSkillSelectionPlan } from '../agent-skill-selector.js';
 import { compileFuryPrompt } from '../fury-prompt.js';
 import { resolveInstructionPlan } from '../instruction-fabric.js';
 import type { FuryMcpHub, FuryMcpSourceView } from '../fury-mcp-hub.js';
 import type { FurySkillHub } from '../fury-skill-hub.js';
+import type { FuryHarnessDiscovery } from '../fury-harness-hub.js';
+import { DEFAULT_PROVIDER_REGISTRY } from '../core/provider-fabric.js';
 import { createFuryRequestBlueprint } from '../fury-request-blueprint.js';
 
 export const STUDIO_AUTOPILOT_FORMAT = 'furypipe-studio-autopilot/v1' as const;
@@ -21,6 +23,7 @@ export interface StudioAutopilotInput {
   readonly skills: FurySkillHub;
   readonly mcp: FuryMcpHub;
   readonly harnessId?: string;
+  readonly harnesses?: FuryHarnessDiscovery;
   readonly effort?: FuryAutopilotEffort;
   readonly responseStyle?: StudioResponseStyle;
   readonly customInstructions?: string;
@@ -58,6 +61,8 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   }
 
   const capabilityIndex=createFuryCapabilityIndex();
+  projectProvidersIntoCapabilityIndex(capabilityIndex,DEFAULT_PROVIDER_REGISTRY);
+  if(input.harnesses) projectHarnessesIntoCapabilityIndex(capabilityIndex,input.harnesses);
   const [,,mcpView]=await Promise.all([
     projectSkillHubIntoCapabilityIndex(capabilityIndex,input.skills),
     projectMcpHubIntoCapabilityIndex(capabilityIndex,input.mcp),
@@ -66,11 +71,14 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   const capabilitySelection=selectFuryCapabilitiesForTask({
     objective,
     index:capabilityIndex,
-    ...(input.harnessId?{hostCompatibility:[input.harnessId]}:{}),
+    ...(input.harnessId?{
+      hostCompatibility:[input.harnessId],
+      explicitRequests:[{kind:'agent' as const,id:input.harnessId}],
+    }:{}),
     availablePermissions:[],
     options:{
-      maxSelected:4,
-      maxSelectedByKind:{skill:4,plugin:0,'mcp-server':0,'mcp-tool':0,model:0},
+      maxSelected:5,
+      maxSelectedByKind:{skill:4,agent:1,provider:0,plugin:0,'mcp-server':0,'mcp-tool':0,model:0},
     },
   });
   const selectedSkillCapabilities=capabilitySelection.selected.filter((item)=>item.kind==='skill');
