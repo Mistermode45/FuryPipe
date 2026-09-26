@@ -1,6 +1,6 @@
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 
-import type { CapabilityPermissions, CapabilityType } from './ecosystem/types.js';
+import { CAPABILITY_TYPES, type CapabilityPermissions, type CapabilityType } from './ecosystem/types.js';
 
 export const FURY_MARKETPLACE_MANIFEST_FORMAT = 'furypipe-marketplace-manifest/v1' as const;
 export const FURY_MARKETPLACE_SIGNATURE_FORMAT = 'furypipe-marketplace-signature/v1' as const;
@@ -91,6 +91,33 @@ function list(values:readonly string[]|undefined,label:string,maxItems:number,ma
   return Object.freeze([...new Set(input.map((value,index)=>bounded(value,`${label}[${index}]`,maxChars)))].sort());
 }
 
+function validatePermissions(value:CapabilityPermissions):CapabilityPermissions{
+  if(!value||typeof value!=='object'||Array.isArray(value)) throw new Error('permissions are invalid');
+  const allowedKeys=['network','filesystem','subprocess','credentials','externalWrites','database','browser','provider','cloud'];
+  const keys=Object.keys(value as object);
+  if(keys.length!==allowedKeys.length||keys.some((key)=>!allowedKeys.includes(key))) throw new Error('permissions are invalid');
+  const check=(candidate:unknown,allowed:readonly string[],label:string)=>{
+    if(typeof candidate!=='string'||!allowed.includes(candidate)) throw new Error(`permissions.${label} is invalid`);
+    return candidate;
+  };
+  const externalWrites=value.externalWrites;
+  if(!Array.isArray(externalWrites)||externalWrites.length>7||new Set(externalWrites).size!==externalWrites.length
+    ||externalWrites.some((entry)=>!['communication','publish','deploy','financial','infrastructure','database','admin'].includes(entry))) {
+    throw new Error('permissions.externalWrites is invalid');
+  }
+  return Object.freeze({
+    network:check(value.network,['none','restricted','arbitrary'],'network') as CapabilityPermissions['network'],
+    filesystem:check(value.filesystem,['none','read','write','delete','arbitrary-write'],'filesystem') as CapabilityPermissions['filesystem'],
+    subprocess:check(value.subprocess,['none','restricted','arbitrary'],'subprocess') as CapabilityPermissions['subprocess'],
+    credentials:check(value.credentials,['none','read','use','manage'],'credentials') as CapabilityPermissions['credentials'],
+    externalWrites:Object.freeze([...externalWrites]),
+    database:check(value.database,['none','read','scoped-write','admin'],'database') as CapabilityPermissions['database'],
+    browser:check(value.browser,['none','read','interact'],'browser') as CapabilityPermissions['browser'],
+    provider:check(value.provider,['none','invoke','configure'],'provider') as CapabilityPermissions['provider'],
+    cloud:check(value.cloud,['none','read','scoped-write','admin'],'cloud') as CapabilityPermissions['cloud'],
+  });
+}
+
 function canonicalPayload(input:Omit<FuryMarketplaceManifest,'format'|'manifestDigestSha256'|'executionAuthorized'>):string{
   return JSON.stringify(input);
 }
@@ -101,6 +128,7 @@ export function createFuryMarketplaceManifest(input:FuryMarketplaceManifestInput
   const name=bounded(input.name,'name',160);
   const version=bounded(input.version,'version',128);
   if(!VERSION_RE.test(version)) throw new Error('version is invalid');
+  if(!(CAPABILITY_TYPES as readonly string[]).includes(input.capabilityType)) throw new Error('capabilityType is invalid');
   const sourceUrl=bounded(input.sourceUrl,'sourceUrl',2048);
   if(!HTTPS_RE.test(sourceUrl)||/[?#].*(?:token|key|secret|password)=/iu.test(sourceUrl)) throw new Error('sourceUrl must be credential-free HTTPS');
   if(!SHA256_RE.test(input.sourceSha256)) throw new Error('sourceSha256 must be lowercase SHA-256');
@@ -114,7 +142,7 @@ export function createFuryMarketplaceManifest(input:FuryMarketplaceManifestInput
   }
   const unsigned=Object.freeze({
     id,name,version,capabilityType:input.capabilityType,sourceUrl,sourceSha256:input.sourceSha256,
-    license,author,permissions:input.permissions,dependencies,documentation,trust:input.trust,
+    license,author,permissions:validatePermissions(input.permissions),dependencies,documentation,trust:input.trust,
   });
   return Object.freeze({
     format:FURY_MARKETPLACE_MANIFEST_FORMAT,
