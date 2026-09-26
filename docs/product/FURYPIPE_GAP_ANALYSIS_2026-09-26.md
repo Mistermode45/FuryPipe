@@ -3,7 +3,7 @@
 Status: ACTIVE PRODUCT GAP LEDGER  
 Repository: `Mistermode45/FuryPipe`  
 Track: PR #233 — `claude/furypipe-studio-autopilot-extensions`  
-Audit input HEAD: `23164fbfd1a5d7d7ad7d11353a6f3730692fcc5c`  
+Audit input HEAD: `e1a084be6216b107e787e2037e68af7f69776211`  
 Product source: `docs/product/FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md`
 
 ## Scope and evidence rule
@@ -49,8 +49,8 @@ Primary evidence:
 | FuryPrompt Engine | IMPLEMENTED_PENDING_EXACT_HEAD | Raw/Auto/Enhanced/Professional/Coding/Research/Creative/Strict/Fast + analyzer + compiled-prompt inspection | Nine official modes and deterministic prompt analysis are implemented; Studio renders recommended mode, ambiguity, missing context, conflict indicators, risk, expected output and complexity without silently changing authority | P1 | instruction fabric | Medium | prompt analyzer/compiler tests + Studio/browser QA + exact-head CI |
 | FuryContext | IMPLEMENTED_PENDING_EXACT_HEAD | Retrieval + budget + inspector + compaction + diff-aware context | Context compiler remains core; bounded Context Inspector exposes loaded/available-not-loaded/not-present/unknown categories and explicit byte/token-estimate basis; deterministic Context Diff compares added/removed/changed entries and hard constraints. Advanced semantic compaction/history UX remains P2. | P1/P2 | memory, graph | High | context compiler/inspector/diff tests + FuryBench + Studio/browser QA + exact-head CI |
 | FuryMemory | DONE core / PARTIAL target | Multi-layer memory graph, provenance, management, time machine | Memory VNext + Studio memory exist; advanced management/time-machine/cross-project graph remain broader | P2 | graph, storage | High | recall/false-memory eval + migration tests |
-| Model Hub | PARTIAL | Unified local/cloud providers with real capability detection and per-model power controls | Local fabric DONE; cloud models remain outside Studio per current spec | P1 | provider adapters, budget, secrets | High | provider contract tests + live opt-in verification |
-| Provider architecture | PARTIAL | Stable ProviderAdapter/SDK, health routing, retries/fallback/circuit breakers | Foundation has governed providers, but complete new Studio/provider-SDK target is not reconciled | P1/P2 | model hub, observability | High | adapter conformance + failure/chaos tests |
+| Model Hub | IMPLEMENTED_PENDING_EXACT_HEAD | Unified local/cloud providers with real capability detection and per-model power controls | Studio now exposes a governed Model Hub snapshot combining Provider Fabric registration, safe AI connection discovery and reachable local Model Fabric entries. Truth states distinguish AVAILABLE_VERIFIED / CONFIGURED_UNVERIFIED / RUNTIME_DETECTED / NOT_CONFIGURED / UNKNOWN; unregistered connections remain visible but never executable. Cloud model catalog breadth and provider-specific power controls remain P2 and must stay unknown until provider evidence proves them. | P1/P2 | provider runtime, model fabric, secrets | High | model hub/unit/API/browser QA + live opt-in verification |
+| Provider architecture | DONE CORE / PARTIAL SDK/UX | Stable ProviderAdapter/SDK, health routing, retries/fallback/circuit breakers | Existing governed provider boundary already includes exact request envelopes, fresh-health execution gates, process-local single-use permits, production OpenAI/Anthropic/Google transports, conservative transport-health promotion, bounded retry/fallback orchestration, cancellation, Retry-After handling and explicit cross-provider fallback authority. Remaining gap is a higher-level extension SDK/Studio configuration surface, not execution governance. | P1/P2 | model hub, observability | High | existing provider executor/transport/health/retry-fallback suites + installed package smoke + optional live verification |
 | Image Studio | PARTIAL / NOT_VERIFIED | text/image editing, history, controls, artifacts | Visual engine primitives exist in foundation; complete Studio target not evidenced here | P2 | provider adapters, artifacts | Medium | provider-optional E2E |
 | Video Studio | NOT_VERIFIED | provider-backed generation + storyboard/timeline | Helios is cataloged; production Studio integration not proven | P2 | queue, media providers, GPU | Medium | provider-optional E2E + queue recovery |
 | Audio / Voice | PARTIAL | STT/TTS/realtime duplex with interruption and permissions | Current spec records media-realtime-voice primitive; Studio adds progressive dictation | P2 | permissions, model fabric | High | microphone/STT/TTS/realtime E2E |
@@ -157,3 +157,25 @@ Status remains `IMPLEMENTED_PENDING_EXACT_HEAD` until the final documentation/co
 ### Exact-head correction note
 
 The first hosted validation of the Skill Creator documentation head exposed a real Prompt Analyzer classifier gap: an API/GitHub implementation request containing plural `tests` was classified as `PROFESSIONAL` instead of `CODING`. The classifier was corrected in `23164fbfd1a5d7d7ad7d11353a6f3730692fcc5c` by treating API/GitHub/implement/fix/testing vocabulary as coding evidence. The failed SHA is not reused as proof.
+
+
+## Model Hub / Provider Architecture checkpoint — 2026-09-26
+
+Code checkpoint audited at `e1a084be6216b107e787e2037e68af7f69776211`.
+
+Implemented/reconciled:
+
+- added `src/fury-model-hub.ts` as an inspection/routing-only projection over existing Provider Fabric, Model Fabric and safe AI Connection discovery;
+- Studio exposes `GET /api/studio/models.json` and renders provider truth states in the Models view;
+- configured credentials never imply live availability;
+- runtime detection never implies provider invocation authority;
+- detected providers without a registered adapter remain visible as `unregistered` / availability `unknown`;
+- reachable local inference models are projected through the existing Model Fabric path;
+- every Model Hub provider/model record carries `executionAuthorized:false`;
+- existing provider architecture was re-audited rather than duplicated: `governed-provider-executor`, `provider-execution-gate`, `provider-request-envelope`, `provider-transport`, `provider-transport-health`, `provider-retry-fallback-orchestrator` and production provider transports remain authoritative.
+
+Hosted evidence observed for the code checkpoint before this documentation update: Local Contracts, Secret Scan, Benchmark Contract, Web Studio Browser QA, Dashboard Browser QA, Accessibility, Upgrade/Rollback, Recovery/Restart and RC Preparation were green; CI/Cross-Browser/FuryBench/Clean Room were still completing. No earlier SHA is promoted as proof for the documentation head.
+
+Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
+
+No merge, tag, release, npm publish or deploy is authorized by this checkpoint.
