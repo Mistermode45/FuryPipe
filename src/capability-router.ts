@@ -59,7 +59,6 @@ export interface FuryCapabilityPack {
   readonly pluginBundleIds: readonly string[];
   readonly qualityGates: readonly string[];
   readonly promptAdditions: Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>;
-  readonly selectionTrace: readonly FuryExplainableCapabilitySelection[];
 }
 
 export interface FuryExplainableCapabilitySelection {
@@ -176,6 +175,7 @@ export interface FuryCapabilityPlan {
   readonly pluginActivations: readonly CapabilityPluginActivation[];
   readonly qualityGates: readonly string[];
   readonly promptAdditions: Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>;
+  readonly selectionTrace: readonly FuryExplainableCapabilitySelection[];
 }
 
 export interface FuryCapabilityResolveInput {
