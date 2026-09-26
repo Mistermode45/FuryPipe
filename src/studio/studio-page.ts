@@ -76,6 +76,10 @@ const ICONS: Readonly<Record<string, string>> = Object.freeze({
   models: '<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
   runtimes: '<path d="m4 17 6-5-6-5"/><path d="M12 19h8"/>',
   skills: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
+  autopilot: '<path d="M12 2l2.1 6.1L20 10l-5.9 1.9L12 18l-2.1-6.1L4 10l5.9-1.9z"/><path d="M5 18l.8 2.2L8 21l-2.2.8L5 24l-.8-2.2L2 21l2.2-.8z"/>',
+  extensions: '<path d="M9 3h6v4a2 2 0 1 0 4 0V3h2v7h-4a2 2 0 1 0 0 4h4v7h-7v-4a2 2 0 1 0-4 0v4H3v-7h4a2 2 0 1 0 0-4H3V3h6z"/>',
+  support: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/>',
+  mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/>',
   mcp: '<path d="M9 2v6M15 2v6"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v5"/>',
   integrations: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/>',
   connections: '<circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/><path d="M11 12h2M5 7.5a8 8 0 0 1 14 0M5 16.5a8 8 0 0 0 14 0"/>',
@@ -528,6 +532,10 @@ details.adv>div{padding:0 18px 16px}
   .disclaimer{display:none}
   .model-btn{max-width:170px}
 }
+.effort-select{width:auto;min-width:96px;max-width:132px;height:34px;padding:0 9px;border-radius:9px;font-size:12px;background:var(--surface-2);border:1px solid var(--line);color:var(--text)}
+.autopilot-grid{align-items:start}.autopilot-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:14px 0}.autopilot-stat{padding:13px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}.autopilot-stat b{display:block;margin-bottom:4px}.autopilot-stat span{font-size:12px;color:var(--muted)}
+.extension-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}.extension-card{margin:0}.extension-meta{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.extension-card .risk-RESTRICTED{color:var(--danger)}.creator-name{font-size:24px;font-weight:750;letter-spacing:-.02em}.voice-listening{box-shadow:0 0 0 3px rgba(255,122,26,.18);color:var(--accent)}.support-btn{display:inline-flex;align-items:center;gap:8px}
+@media (max-width:860px){.effort-select{max-width:104px}.extension-grid{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
 html[data-motion="reduced"] *,html[data-motion="reduced"] *::before,html[data-motion="reduced"] *::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
 `;
@@ -1902,11 +1910,11 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
   <button type="button" id="search-btn" class="search-btn" title="Search and commands (Ctrl K)">${icon('search')}<span class="label">Search</span><kbd>Ctrl K</kbd></button>
   <nav class="side-nav" aria-label="Workspace"><ul>
     <li class="nav-label label" data-level="simple">Workspace</li>
-    ${nav('chat', 'simple', 'Chat')}${nav('cowork', 'power', 'Work')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('automations', 'engineer', 'Automations')}
+    ${nav('chat', 'simple', 'Chat')}${nav('autopilot', 'power', 'Autopilot')}${nav('cowork', 'power', 'Work')}${nav('code', 'engineer', 'Code')}${nav('agents', 'engineer', 'Agents')}${nav('automations', 'engineer', 'Automations')}
     <li class="nav-more-row"><details class="nav-more" id="nav-more"><summary>${icon('more')}<span class="label">More</span>${icon('chevron','i more-chevron')}</summary><ul>
       ${nav('knowledge', 'power', 'Knowledge')}${nav('web', 'power', 'Web')}${nav('memory', 'power', 'Memory')}
       ${nav('models', 'simple', 'Models')}${nav('connections', 'simple', 'Connections')}${nav('mission', 'expert', 'Mission Control')}
-      ${nav('runtimes', 'engineer', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'power', 'MCP')}${nav('integrations', 'engineer', 'Integrations')}
+      ${nav('runtimes', 'engineer', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'power', 'MCP')}${nav('extensions', 'power', 'Extensions')}${nav('integrations', 'engineer', 'Integrations')}${nav('support', 'simple', 'Support')}
     </ul></details></li>
   </ul></nav>
   <div class="recent" aria-labelledby="recent-h"><h2 id="recent-h">Recent</h2><ul id="chat-list" aria-labelledby="recent-h"></ul></div>
@@ -1954,8 +1962,13 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
             <input type="file" id="attach-input" multiple hidden tabindex="-1">
             <button type="button" id="tool-web" class="tool" aria-label="Web" aria-pressed="false" title="Read the web pages you link">${icon('web')}<span>Web</span></button>
             <button type="button" id="tool-kb" class="tool" aria-label="Knowledge" aria-pressed="false" title="Ground answers in your indexed project documents">${icon('knowledge')}<span>Knowledge</span></button>
+            <button type="button" id="voice-btn" class="tool icon-only" aria-label="Voice input" title="Speak to FuryPipe" hidden>${icon('mic')}</button>
           </div>
           <div class="right">
+            <label class="sr-only" for="effort-select">Reasoning effort</label>
+            <select id="effort-select" class="effort-select" title="Reasoning effort" aria-label="Reasoning effort">
+              <option value="auto">Auto effort</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">XHigh</option><option value="max">Max</option>
+            </select>
             <button type="button" id="model-button" class="model-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="model-pop" title="Choose a model"><span class="fury-dot" aria-hidden="true"></span><span class="name" id="model-label">Fury Auto</span><svg class="i chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS.chevron}</svg></button>
             <button type="submit" id="chat-send" class="send" aria-label="Send message" disabled>${icon('arrowUp')}</button>
           </div>
@@ -1971,6 +1984,15 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
       <button type="button" class="chip-btn" data-prompt="Plan the steps to ">${icon('cowork')}Work</button>
     </div>
   </div></div>
+</section>
+<section data-view="autopilot" aria-labelledby="h-autopilot" hidden><h1 id="h-autopilot">Fury Autopilot</h1><p class="lead">One request in; FuryPipe chooses the instruction profile, reasoning effort, trusted skills, MCP candidates, context mode and verification path — then shows you why before anything risky can run.</p>
+  <div class="grid autopilot-grid">
+    <div class="card"><h2>Preview a request</h2><form id="autopilot-form"><label for="autopilot-objective">Task</label><textarea id="autopilot-objective" required placeholder="e.g. Research the latest MCP security guidance, update the implementation and verify the tests"></textarea>
+      <div class="row"><div><label for="autopilot-effort">Reasoning effort</label><select id="autopilot-effort"><option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="xhigh">XHigh</option><option value="max">Max</option></select></div>
+      <div><label for="autopilot-harness">Runtime</label><select id="autopilot-harness"><option value="">Any</option>${FURY_HARNESS_REGISTRY.map((h) => `<option value="${h.id}">${escapeHtml(h.displayName)}</option>`).join('')}</select></div><button type="submit">Build route</button></div></form><p id="autopilot-status" class="status muted" role="status"></p></div>
+    <div class="card"><h2>Automatic, not uncontrolled</h2><ul class="reasons"><li>Relevant SKILL.md instructions are loaded progressively and checksummed.</li><li>MCP tools are selected by intent but still obey trust and per-tool policy.</li><li>Visual context compression is used only when the request benefits from it.</li><li>Mutation, network and external actions still require the existing FuryPipe gates.</li></ul></div>
+  </div>
+  <div id="autopilot-out" aria-live="polite"></div>
 </section>
 <section data-view="cowork" class="work-view" aria-labelledby="h-cowork" hidden><h1 id="h-cowork">Work</h1><p class="lead">Give FuryPipe a goal. It can plan first, or run with the exact permissions you allow.</p>
   <div class="card work-brief"><label for="cowork-intent">What should FuryPipe do?</label><textarea id="cowork-intent" placeholder="e.g. Review the project, fix the issue and verify the result"></textarea>
@@ -2039,6 +2061,7 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
 <section data-view="runtimes" aria-labelledby="h-runtimes" hidden><h1 id="h-runtimes">Runtimes</h1><p class="lead">Agent harnesses installed on this machine. Harness, provider and model are independent choices.</p>
   <div class="card"><table><thead><tr><th scope="col">Runtime</th><th scope="col">State</th><th scope="col">Version</th><th scope="col">Integration</th><th scope="col">Local models via</th><th scope="col">Evidence</th></tr></thead><tbody id="runtimes-body"></tbody></table><p id="runtimes-status" class="status muted" role="status"></p></div></section>
 <section data-view="skills" aria-labelledby="h-skills" hidden><h1 id="h-skills">Skills</h1><p class="lead">Agent Skills found in this project and your home folder (.furypipe, .agents, .claude, .opencode, .github). Pin a skill to block it automatically if its content changes.</p>
+  <div class="card"><h2>Add a local skill</h2><form id="skill-install-form"><label for="skill-source-dir">Folder containing SKILL.md</label><input id="skill-source-dir" required autocomplete="off" placeholder="C:\\path\\to\\skill"><div class="row"><label><input id="skill-install-confirm" type="checkbox"> I reviewed this skill and want FuryPipe to import it</label><button type="submit">Import skill</button></div></form><p id="skill-install-status" class="status muted" role="status">Remote repositories are never downloaded automatically from this form.</p></div>
   <div class="card"><table><thead><tr><th scope="col">Skill</th><th scope="col">Scope</th><th scope="col">State</th><th scope="col">Version</th><th scope="col">Runtimes</th><th scope="col">Uses</th><th scope="col">Checksum</th><th scope="col">Governance</th><th scope="col">Actions</th></tr></thead><tbody id="skills-body"></tbody></table><p id="skills-status" class="status muted" role="status"></p></div>
   <div class="card"><h2>Which skills would a task use?</h2><form id="skill-select-form"><label for="skill-objective">Task</label><textarea id="skill-objective" required placeholder="e.g. Review the SQL migration for locking"></textarea>
   <div class="row"><div><label for="skill-harness">Runtime</label><select id="skill-harness"><option value="">Any</option>${FURY_HARNESS_REGISTRY.map((h) => `<option value="${h.id}">${escapeHtml(h.displayName)}</option>`).join('')}</select></div><button type="submit">Preview selection</button></div></form><div id="skill-select-out" aria-live="polite"></div></div></section>
@@ -2059,8 +2082,15 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
   <div class="row"><div><label for="mem-scope">For</label><select id="mem-scope"><option value="project">This project</option><option value="user">Me, everywhere</option></select></div><button type="submit">Save</button></div></form></div>
   <div class="card"><form id="mem-search-form"><label for="mem-query">Recall</label><input id="mem-query" required autocomplete="off"><div class="row"><button type="submit">Recall</button></div></form><div id="mem-results" aria-live="polite"></div></div>
   <div class="card"><table><thead><tr><th scope="col">ID</th><th scope="col">State</th><th scope="col">Kind</th><th scope="col">Scope</th><th scope="col">Source</th><th scope="col">Confidence</th><th scope="col">Age</th><th scope="col">Actions</th></tr></thead><tbody id="mem-body"></tbody></table></div></div></section>
+<section data-view="extensions" aria-labelledby="h-extensions" hidden><h1 id="h-extensions">Extensions</h1><p class="lead">Discover skills, prompt packs, model runtimes, workbenches and MCP ecosystem sources without turning popularity into trust.</p>
+  <div class="card"><form id="extensions-form"><div class="row"><div><label for="extensions-query">Search</label><input id="extensions-query" type="search" autocomplete="off" placeholder="coding, video, Azure, MCP…"></div><div><label for="extensions-kind">Type</label><select id="extensions-kind"><option value="">All</option><option value="SKILL_PACK">Skill packs</option><option value="PROMPT_PACK">Prompt packs</option><option value="MODEL_RUNTIME">Model runtimes</option><option value="AI_WORKBENCH">AI workbenches</option><option value="REGISTRY">Registries</option><option value="MCP_APP">MCP Apps</option></select></div><label><input id="extensions-restricted" type="checkbox"> Show restricted</label><button type="submit">Search</button></div></form><p id="extensions-status" class="status muted" role="status"></p></div>
+  <div id="extensions-grid" class="extension-grid" aria-live="polite"></div>
+</section>
 <section data-view="integrations" aria-labelledby="h-integrations" hidden><h1 id="h-integrations">Integrations</h1><p class="lead">MCP servers, APIs (OpenAPI) and webhooks in one registry, with how each one authenticates, what it may do and whether you trust it. Declare APIs and webhooks in .furypipe/integrations.json.</p>
   <div class="card"><table><thead><tr><th scope="col">Integration</th><th scope="col">Kind</th><th scope="col">Status</th><th scope="col">Auth</th><th scope="col">Can</th><th scope="col">Default</th><th scope="col">Trust</th><th scope="col">Notes</th></tr></thead><tbody id="int-body"></tbody></table><p id="int-status" class="status muted" role="status"></p></div></section>
+<section data-view="support" aria-labelledby="h-support" hidden><h1 id="h-support">Support FuryPipe</h1><p class="lead">FuryPipe is an independent project built to keep model, agent, skill, MCP, memory and evidence workflows in one governed workspace.</p>
+  <div class="grid"><div class="card creator-card"><h2>Creator</h2><p class="creator-name">LégendeUrbaine</p><p class="muted">Creator and project lead of FuryPipe.</p></div><div class="card"><h2>Support development</h2><p id="support-copy">Loading support options…</p><div id="support-action"></div><p class="muted">FuryPipe never invents or redirects donation destinations. The button appears only when FURYPIPE_SUPPORT_URL is configured to a valid HTTPS address.</p></div></div>
+</section>
 <section data-view="settings" aria-labelledby="h-settings" hidden><h1 id="h-settings">Settings</h1><p class="lead">Make FuryPipe yours. Preferences are stored in this browser.</p>
   <div class="settings"><nav class="settings-nav" aria-label="Settings sections"><a href="#/settings/general">General</a><a href="#/settings/appearance">Appearance</a><a href="#/settings/privacy">Privacy</a><a href="#/settings/advanced">Advanced</a></nav>
   <div>
