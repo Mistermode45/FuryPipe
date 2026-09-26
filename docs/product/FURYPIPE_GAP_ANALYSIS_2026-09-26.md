@@ -70,7 +70,7 @@ Primary evidence:
 | Cost / budgets | DONE core / PARTIAL UX | per-request/daily/monthly/workspace costs and budgets | Dispatch budget profiles DONE; complete cost accounting/display not in Studio | P2 | providers, observability | Medium | accounting tests + UI QA |
 | Performance / recovery | DONE foundation / PARTIAL expanded | startup, streaming, queues, cancellation, backpressure, recovery, large-scale budgets | Many gates exist; new media/indexing/background workloads add unverified scale paths | P2/P3 | queue/storage | Medium | perf/chaos/restart suites |
 | Personalization / i18n / accessibility | PARTIAL | appearance studio, profiles/layouts, FR/EN, keyboard/a11y | modes and automated a11y exist; full new customization target not reconciled | P3 | Studio | Low/Medium | browser/a11y/visual regression |
-| FuryEval | PARTIAL | router/skill/memory/agent evals and regression datasets | FuryBench exists; master target adds broader per-capability effectiveness analytics | P1/P2 | observability | Medium | reproducible benchmark datasets |
+| FuryEval | DONE CORE / PARTIAL DATASETS | router/skill/memory/agent evals and regression datasets | Deterministic FuryEval datasets/reports/comparisons now measure success, precision, recall, F1, optional latency and cost, with stable dataset digests and explicit comparability. Studio exposes evaluation-only API. Remaining gap is curated versioned real-world datasets and long-term effectiveness history. | P1/P2 | observability | Medium | FuryEval unit/API tests + reproducible curated datasets |
 | CLI/API/headless/desktop | PARTIAL | shared services across CLI/UI/API/headless/desktop | CLI/runtime foundation exists; desktop and complete headless/API parity not proven | P3 | stable service contracts | Medium | installed-package + API contract tests |
 | Collaboration | NOT_VERIFIED | architecture-ready roles/shared workspaces without weakening permissions | Not a current release-critical implementation | P3 | identity/permissions | High | authorization matrix tests |
 | Frontier differentiators | FRONTIER_BET | Capability Mesh, Context Diff, Memory Time Machine, Self-Healing, etc. only when measurable | Some primitives exist; most are intentionally not release criteria | P4 | core maturity + FuryEval | High if marketed early | benchmark before any differentiator claim |
@@ -244,3 +244,25 @@ Exact-head evidence observed for `effbf0312bab129c4940bab3bce7f5d38bb1d5d3`:
 - RC Preparation explicitly executed build, upgrade/rollback evidence and deterministic Supply Chain / CycloneDX generation successfully.
 
 Governance remains unchanged: PR #233 is OPEN + DRAFT; no merge, tag, release, npm publish or deploy is authorized or performed.
+
+
+## FuryEval core checkpoint — 2026-09-26
+
+Implemented on the continuation branch:
+
+- public `furypipe/fury-eval` contract;
+- bounded versioned datasets across routing / skills / memory / agents;
+- deterministic expected-vs-observed selection scoring;
+- success rate, precision, recall and F1;
+- optional mean latency and mean cost measurements when supplied by observed evidence;
+- stable dataset digest binding;
+- comparable baseline/candidate reports with explicit regression/improvement lists;
+- reports with different dataset identity/version are never presented as directly comparable;
+- Studio `POST /api/studio/eval` evaluates supplied observations only;
+- every report/comparison carries `executionAuthorized:false`;
+- malformed/duplicate/unbounded cases fail closed;
+- no model/tool/MCP/agent execution is introduced by FuryEval.
+
+Status: `IMPLEMENTED_PENDING_EXACT_HEAD` until the final code/documentation SHA completes all hosted gates. Curated production datasets and longitudinal effectiveness history remain a later P2 extension.
+
+No merge, tag, release, npm publish or deploy performed.
