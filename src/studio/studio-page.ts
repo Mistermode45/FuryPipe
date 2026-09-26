@@ -551,11 +551,11 @@ const SCRIPT = String.raw`
   const tpl = document.createElement('template');
   function ic(name, cls) { tpl.innerHTML = '<svg class="' + (cls || 'i') + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[name] || '') + '</svg>'; return tpl.content.firstChild; }
   const store = { get(k, d) { try { const v = localStorage.getItem('furypipe.studio.' + k); return v === null ? d : v; } catch { return d; } }, set(k, v) { try { localStorage.setItem('furypipe.studio.' + k, v); } catch {} } };
-  const views = ['chat','cowork','code','agents','mission','automations','models','connections','runtimes','skills','mcp','knowledge','web','memory','integrations','settings'];
-  const VIEW_TITLES = { chat: 'Chat', cowork: 'Cowork', code: 'Code', agents: 'Agents', mission: 'Mission Control', automations: 'Automations', models: 'Models', connections: 'Connections', runtimes: 'Runtimes', skills: 'Skills', mcp: 'MCP servers', knowledge: 'Knowledge', web: 'Web', memory: 'Memory', integrations: 'Integrations', settings: 'Settings' };
+  const views = ['chat','autopilot','cowork','code','agents','mission','automations','models','connections','runtimes','skills','mcp','extensions','knowledge','web','memory','integrations','support','settings'];
+  const VIEW_TITLES = { chat: 'Chat', autopilot: 'Fury Autopilot', cowork: 'Cowork', code: 'Code', agents: 'Agents', mission: 'Mission Control', automations: 'Automations', models: 'Models', connections: 'Connections', runtimes: 'Runtimes', skills: 'Skills', mcp: 'MCP servers', extensions: 'Extensions', knowledge: 'Knowledge', web: 'Web', memory: 'Memory', integrations: 'Integrations', support: 'Support FuryPipe', settings: 'Settings' };
   const PROVIDER = { ollama: 'Ollama', lmstudio: 'LM Studio', llamacpp: 'llama.cpp', vllm: 'vLLM', sglang: 'SGLang', localai: 'LocalAI', jan: 'Jan', 'openai-compatible': 'OpenAI-compatible', 'anthropic-compatible': 'Anthropic-compatible' };
   const SETUP = { ollama: 'https://ollama.com/download', lmstudio: 'https://lmstudio.ai', llamacpp: 'https://github.com/ggml-org/llama.cpp', vllm: 'https://docs.vllm.ai', sglang: 'https://docs.sglang.ai', localai: 'https://localai.io', jan: 'https://jan.ai' };
-  const state = { local: null, hw: null, harnesses: null, connections: null, conv: null, pick: 'auto', lastRoute: null, files: [], pastes: [], web: false, kb: false, busy: null, activity: new Map() };
+  const state = { local: null, hw: null, harnesses: null, connections: null, conv: null, pick: 'auto', lastRoute: null, autopilot: null, autopilotSystem: '', files: [], pastes: [], web: false, kb: false, busy: null, activity: new Map() };
   /* ---------- Locale / i18n ---------- */
   const SUPPORTED_LANGUAGES = Object.freeze(['en', 'fr']);
   const FR = Object.freeze({
@@ -912,6 +912,16 @@ const SCRIPT = String.raw`
   function badge(text, cls) { return el('span', { class: 'badge ' + cls, text }); }
   const reduceMotion = () => document.documentElement.dataset.motion === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  /* ---------- Reasoning effort ---------- */
+  const effortSelect = $('#effort-select');
+  const storedEffort = store.get('effort', 'auto');
+  if ([...effortSelect.options].some((o) => o.value === storedEffort)) effortSelect.value = storedEffort;
+  effortSelect.addEventListener('change', () => {
+    store.set('effort', effortSelect.value);
+    const preview = $('#autopilot-effort');
+    if (preview) preview.value = effortSelect.value;
+  });
+
   /* ---------- Preferences ---------- */
   function applyPrefs() {
     const d = document.documentElement;
@@ -1037,6 +1047,8 @@ const SCRIPT = String.raw`
     if (name === 'runtimes') loadHarnesses();
     if (name === 'skills') loadSkills();
     if (name === 'mcp') loadMcp();
+    if (name === 'extensions') loadExtensions();
+    if (name === 'support') loadSupport();
     if (name === 'knowledge') loadKnowledge();
     if (name === 'memory') loadMemory();
     if (name === 'integrations') loadIntegrations();
@@ -1089,8 +1101,9 @@ const SCRIPT = String.raw`
   function renderRouteChip() {
     const r = state.lastRoute; const chip = $('#route-chip');
     if (!r) { chip.hidden = true; $('#privacy').hidden = true; return; }
-    chip.hidden = false; chip.replaceChildren(ic('route'), el('span', { text: r.model }), el('span', { class: 'sep', text: '·' }), el('span', { text: PROVIDER[r.kind] || r.kind }), el('span', { class: 'sep', text: '·' }), el('span', { text: 'Local' }));
-    chip.setAttribute('aria-label', 'Route: ' + r.model + ', ' + (PROVIDER[r.kind] || r.kind) + ', local. Why this route?');
+    const ap = r.autopilot;
+    chip.hidden = false; chip.replaceChildren(ic('route'), el('span', { text: r.model }), el('span', { class: 'sep', text: '·' }), el('span', { text: PROVIDER[r.kind] || r.kind }), el('span', { class: 'sep', text: '·' }), el('span', { text: ap ? ap.profile.label + ' · ' + ap.effort.effective : 'Local' }));
+    chip.setAttribute('aria-label', 'Route: ' + r.model + ', ' + (PROVIDER[r.kind] || r.kind) + (ap ? ', ' + ap.profile.label + ', effort ' + ap.effort.effective : ', local') + '. Why this route?');
     $('#privacy').hidden = document.body.dataset.view !== 'chat';
   }
   function fitPill(fit) { const cls = fit === 'FITS' ? 'ok' : fit === 'MAY_BE_SLOW' ? 'warn' : fit === 'DOES_NOT_FIT' ? 'bad' : 'muted'; return el('span', { class: 'fit ' + cls, text: fit === 'MAY_BE_SLOW' ? 'SLOW' : fit === 'DOES_NOT_FIT' ? 'TOO BIG' : (fit || 'UNKNOWN') }); }
@@ -1128,6 +1141,14 @@ const SCRIPT = String.raw`
     row('Model', r.model); row('Provider', PROVIDER[r.kind] || r.kind); row('Runtime', 'FuryPipe Native'); row('Where', 'Local, on this machine'); row('Privacy', 'Messages never leave this computer'); row('Cost', '$0 (local inference)'); row('Hardware fit', r.fit || 'unknown');
     row('Tools', [state.web ? 'Web' : '', state.kb ? 'Knowledge' : ''].filter(Boolean).join(', ') || 'none'); row('Skills / MCP', 'not used in chat'); row('Chosen by', r.auto ? 'Fury Auto (' + r.considered + ' model' + (r.considered === 1 ? '' : 's') + ' considered)' : 'You');
     p.append(dl, el('div', { class: 'why', text: r.reason }));
+    if (r.autopilot) {
+      const ap = r.autopilot;
+      p.append(
+        el('div', { class: 'why', text: 'Instruction profile: ' + ap.profile.label + ' · effort: ' + ap.effort.effective + ' · style: ' + ap.communicationStyle + ' · context: ' + ap.contextMode }),
+        el('div', { class: 'why', text: ap.skills.length ? 'Skills: ' + ap.skills.map((x) => x.name).join(', ') : 'Skills: none selected for this request' }),
+        el('div', { class: 'why', text: ap.mcp.length ? 'MCP candidates: ' + ap.mcp.map((x) => x.source + (x.tool ? '/' + x.tool : '') + (x.needsApproval ? ' [approval]' : '')).join(', ') : 'MCP: no matching governed source' }),
+      );
+    }
     p.dataset.align = 'left'; openPopover(p, $('#route-chip'), 'left');
   });
   $('#route-pop').addEventListener('keydown', (e) => { if (e.key === 'Escape') closePop(); });
