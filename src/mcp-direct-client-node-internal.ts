@@ -166,7 +166,7 @@ export interface McpDirectSdkFactory {
     readonly authProvider?: OAuthClientProvider;
     readonly maxResponseBytes: number;
   }): unknown;
-  createSseTransport(config: {
+  createSseTransport?(config: {
     readonly url: URL;
     readonly headers: Readonly<Record<string, string>>;
     readonly authProvider?: OAuthClientProvider;
@@ -661,9 +661,13 @@ function transportFor(
     ...(http.authProvider === undefined ? {} : { authProvider: http.authProvider }),
     maxResponseBytes,
   };
-  return config.source.transport === 'sse'
-    ? factory.createSseTransport(remoteConfig)
-    : factory.createHttpTransport(remoteConfig);
+  if (config.source.transport === 'sse') {
+    if (typeof factory.createSseTransport !== 'function') {
+      throw new Error('MCP SSE transport factory is unavailable');
+    }
+    return factory.createSseTransport(remoteConfig);
+  }
+  return factory.createHttpTransport(remoteConfig);
 }
 
 /**
