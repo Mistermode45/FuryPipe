@@ -62,12 +62,58 @@ const post = (body: unknown, type = 'application/json') => new Request('http://1
 describe('Studio API', () => {
   it('matches only the declared routes', () => {
     expect(studioApiRoute('/api/studio/local.json')).toEqual({ route: 'local', method: 'GET' });
+    expect(studioApiRoute('/api/studio/models.json')).toEqual({ route: 'models', method: 'GET' });
     expect(studioApiRoute('/api/studio/chat')).toEqual({ route: 'chat', method: 'POST' });
     expect(studioApiRoute('/api/studio/setup/runtime')).toEqual({ route: 'runtime-setup', method: 'POST' });
     expect(studioApiRoute('/api/studio/setup/runtime/status')).toEqual({ route: 'runtime-setup-status', method: 'GET' });
     expect(studioApiRoute('/api/studio/autopilot/preview')).toEqual({ route: 'autopilot-preview', method: 'POST' });
+    expect(studioApiRoute('/api/studio/eval')).toEqual({ route: 'eval', method: 'POST' });
     expect(studioApiRoute('/api/studio/connections/login')).toEqual({ route: 'connection-login', method: 'POST' });
     expect(studioApiRoute('/api/studio/../control-room.json')).toBeNull();
+  });
+
+  it('exposes a read-only model hub without treating configuration as execution authority', async () => {
+    const studio = createStudioApi({
+      projectRoot: process.cwd(),
+      discoverHarnesses: async () => harnesses,
+      discoverLocal: async () => ({ backends: local('http://127.0.0.1:11434') }),
+      discoverHardware: async () => ({ platform: 'linux', arch: 'x64', cpuModel: 't', cpuCount: 8, totalMemoryBytes: 32 * 1024 ** 3, freeMemoryBytes: 1, unifiedMemory: false, gpus: [] }),
+      discoverConnections: async () => ({
+        format: 'furypipe-ai-connections/v1',
+        connections: [{
+          id: 'openai',
+          displayName: 'OpenAI',
+          state: 'credential-configured',
+          configuredVia: ['OPENAI_API_KEY'],
+          runtimes: [],
+          accountVerification: 'not-probed',
+        }],
+        policy: {
+          browserSessions: 'not-inspected',
+          credentialStores: 'not-inspected',
+          secretValues: 'never-returned',
+          accountStatus: 'official-cli-only',
+        },
+      }),
+    });
+    const response = await studio.handle('models', new Request('http://127.0.0.1/api/studio/models.json'));
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      authority: string;
+      executionAuthorized: boolean;
+      providers: { id: string; state: string; executionAuthorized: boolean }[];
+      models: { id: string; executionAuthorized: boolean }[];
+    };
+    expect(body.authority).toBe('inspection-and-routing-only');
+    expect(body.executionAuthorized).toBe(false);
+    expect(body.providers.find((provider) => provider.id === 'openai')).toMatchObject({
+      state: 'CONFIGURED_UNVERIFIED',
+      executionAuthorized: false,
+    });
+    expect(body.models).toContainEqual(expect.objectContaining({
+      id: 'local:ollama:qwen2.5-coder:7b',
+      executionAuthorized: false,
+    }));
   });
 
   it('derives bindings from installed harnesses and reachable local models (harness x provider x model)', () => {
@@ -135,13 +181,54 @@ describe('Studio API', () => {
   });
 
   it('previews Fury Autopilot instructions without granting execution authority', async () => {
-    const res = await api('http://127.0.0.1:11434').handle('autopilot-preview', post({ objective: 'Implement a production API fix with tests', responseStyle: 'auto' }));
+    const res = await api('http://127.0.0.1:11434').handle('autopilot-preview', post({ objective: 'Implement a production API fix with tests', effort:'xhigh', responseStyle: 'auto' }));
     expect(res.status).toBe(200);
-    const body = await res.json() as { instructions:{profiles:string[]}; prompt:{text:string}; executionAuthorized:boolean };
+    const body = await res.json() as {
+      instructions:{profiles:string[]};
+      prompt:{text:string};
+      plan:{effort:{requested:string;effective:string};executionAuthorized:boolean};
+      compiled:{plan:{effort:{requested:string;effective:string}}};
+      executionAuthorized:boolean;
+    };
     expect(body.instructions.profiles).toContain('karpathy-coding-discipline');
     expect(body.prompt.text).toContain('Define observable success criteria before implementation');
+    expect(body.plan.effort).toMatchObject({requested:'xhigh',effective:'xhigh'});
+    expect(body.compiled.plan.effort).toEqual(body.plan.effort);
+    expect(body.plan.executionAuthorized).toBe(false);
     expect(body.executionAuthorized).toBe(false);
     expect((await api('http://127.0.0.1:11434').handle('autopilot-preview', post({ objective: '' }))).status).toBe(400);
+  });
+
+  it('evaluates bounded datasets without executing capabilities', async () => {
+    const studio = api('http://127.0.0.1:11434');
+    const response = await studio.handle('eval', post({
+      dataset: {
+        format: 'furypipe-eval-dataset/v1',
+        id: 'studio-routing',
+        version: '1.0.0',
+        cases: [{
+          id: 'case-1',
+          domain: 'routing',
+          objective: 'Review repository security.',
+          expected: ['security-skill'],
+          observed: ['security-skill'],
+          success: true,
+        }],
+      },
+    }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      authority:string;
+      execution:string;
+      executionAuthorized:boolean;
+      overall:{f1:number;successRate:number};
+    };
+    expect(body.authority).toBe('evaluation-only');
+    expect(body.execution).toMatch(/^NOT_EXECUTED/u);
+    expect(body.executionAuthorized).toBe(false);
+    expect(body.overall).toMatchObject({ f1:1, successRate:1 });
+
+    expect((await studio.handle('eval', post({ dataset:{ format:'wrong' } }))).status).toBe(422);
   });
 
   it('reports local models with hardware fit', async () => {
@@ -312,6 +399,49 @@ describe('Studio Skills Hub', () => {
       expect((await studio.handle('skill-install', post({ sourceDir: 'relative/dir', confirm: true }))).status).toBe(400);
       expect((await studio.handle('skill-install', post({ sourceDir: join(root, 'missing'), confirm: true }))).status).toBe(404);
       expect((await studio.handle('skill-install', post({ sourceDir: src, confirm: true }))).status).toBe(201);
+      expect((await studio.handle('skill-create', post({
+        name:'release-review',
+        description:'Review release changes before publishing.',
+        instructions:'Inspect the diff, verify tests, and report evidence.',
+      }))).status).toBe(400);
+      const createdResponse = await studio.handle('skill-create', post({
+        name:'release-review',
+        description:'Review release changes before publishing.',
+        instructions:'Inspect the diff, verify tests, and report evidence.',
+        version:'1.0.0',
+        author:'LégendeUrbaine',
+        license:'MIT',
+        harnesses:['codex'],
+        allowedTools:['read_file'],
+        type:'GENERATED',
+        triggers:['release review requested'],
+        examples:['Review this release.'],
+        tests:['No execution authority is granted.'],
+        confirm:true,
+      }));
+      expect(createdResponse.status).toBe(201);
+      expect(await createdResponse.json()).toMatchObject({
+        name:'release-review',
+        author:'LégendeUrbaine',
+        compatibleHarnesses:['codex'],
+        type:'GENERATED',
+        executionAuthorized:false,
+      });
+      const afterCreate = await (await studio.handle('skills', new Request('http://127.0.0.1/'))).json() as { skills:{name:string}[] };
+      expect(afterCreate.skills.map((skill)=>skill.name)).toContain('release-review');
+      expect((await studio.handle('skill-create', post({
+        name:'bad skill',
+        description:'x',
+        instructions:'y',
+        confirm:true,
+      }))).status).toBe(422);
+      expect((await studio.handle('skill-create', post({
+        name:'safe-skill',
+        description:'x',
+        instructions:'y',
+        harnesses:['unknown-runtime'],
+        confirm:true,
+      }))).status).toBe(422);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -492,6 +622,119 @@ describe('Studio Code', () => {
       expect(diff.patch).toContain('+export const a = 2;');
       expect((await studio.handle('code-diff', post({ worktree: '/tmp' }))).status).toBe(404);
       expect((await studio.handle('code-diff', post({ worktree: wt.path, base: 'HEAD; rm -rf /' }))).status).toBe(400);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+
+describe('Studio Artifacts', () => {
+  it('persists, versions, searches, restores and exports artifacts through explicit Studio writes', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-studio-artifacts-'));
+    let clock = Date.parse('2026-09-26T18:00:00.000Z');
+    const makeStudio = () => createStudioApi({
+      projectRoot: process.cwd(),
+      artifactsDir: join(root, 'store'),
+      now: () => clock,
+      discoverHarnesses: async () => harnesses,
+      discoverLocal: async () => ({ backends: [] }),
+    });
+    try {
+      expect(studioApiRoute('/api/studio/artifacts.json')).toEqual({ route: 'artifacts', method: 'GET' });
+      expect(studioApiRoute('/api/studio/artifacts/create')).toEqual({ route: 'artifact-create', method: 'POST' });
+      const studio = makeStudio();
+
+      expect((await studio.handle('artifact-create', post({
+        id: 'architecture',
+        kind: 'markdown',
+        title: 'Architecture',
+        content: '# v1',
+      }))).status).toBe(400);
+
+      const created = await studio.handle('artifact-create', post({
+        id: 'architecture',
+        kind: 'markdown',
+        title: 'Architecture',
+        content: '# v1',
+        mediaType: 'text/markdown',
+        metadata: { track: 'P2' },
+        confirm: true,
+      }));
+      expect(created.status).toBe(201);
+      const createdBody = await created.json() as { writePerformed: boolean; executionAuthorized: boolean; summary: { versions: number } };
+      expect(createdBody).toMatchObject({ writePerformed: true, executionAuthorized: false });
+      expect(createdBody.summary.versions).toBe(1);
+
+      const listed = await (await studio.handle('artifacts', new Request('http://127.0.0.1/api/studio/artifacts.json'))).json() as {
+        artifacts: { id: string; versions: number; latest: { content?: string; contentSha256: string } }[];
+      };
+      expect(listed.artifacts).toHaveLength(1);
+      expect(listed.artifacts[0]).toMatchObject({ id: 'architecture', versions: 1 });
+      expect(listed.artifacts[0]?.latest.content).toBeUndefined();
+      expect(listed.artifacts[0]?.latest.contentSha256).toMatch(/^[0-9a-f]{64}$/u);
+
+      const fetched = await (await studio.handle('artifact-get', post({ id: 'architecture' }))).json() as {
+        artifact: { versions: { content: string }[] };
+      };
+      expect(fetched.artifact.versions[0]?.content).toBe('# v1');
+
+      clock += 1_000;
+      const versioned = await studio.handle('artifact-version', post({
+        artifactId: 'architecture',
+        content: '# v2',
+        mediaType: 'text/markdown',
+        metadata: { track: 'P2' },
+        confirm: true,
+      }));
+      expect(versioned.status).toBe(200);
+
+      const search = await (await studio.handle('artifact-search', post({ query: 'architecture' }))).json() as {
+        artifacts: { id: string; versions: number }[];
+      };
+      expect(search.artifacts).toEqual([expect.objectContaining({ id: 'architecture', versions: 2 })]);
+
+      const planResponse = await studio.handle('artifact-restore-plan', post({ artifactId: 'architecture', sourceVersion: 1 }));
+      expect(planResponse.status).toBe(200);
+      const plan = await planResponse.json() as Record<string, unknown>;
+      expect(plan).toMatchObject({
+        sourceVersion: 1,
+        currentVersion: 2,
+        plannedVersion: 3,
+        requiresApproval: true,
+        writeAuthorized: false,
+        executionAuthorized: false,
+      });
+
+      expect((await studio.handle('artifact-restore', post({ plan }))).status).toBe(400);
+      clock += 1_000;
+      const restored = await studio.handle('artifact-restore', post({ plan, confirm: true }));
+      expect(restored.status).toBe(200);
+      expect(await restored.json()).toMatchObject({
+        sourceVersion: 1,
+        previousVersion: 2,
+        restoredVersion: 3,
+        operatorConfirmed: true,
+        writePerformed: true,
+        executionAuthorized: false,
+      });
+
+      const exported = await (await studio.handle('artifact-export', new Request('http://127.0.0.1/api/studio/artifacts/export'))).json() as {
+        format: string; artifacts: { id: string; versions: unknown[] }[]; exportDigestSha256: string; executionAuthorized: boolean;
+      };
+      expect(exported.format).toBe('furypipe-artifact-export/v1');
+      expect(exported.exportDigestSha256).toMatch(/^[0-9a-f]{64}$/u);
+      expect(exported.executionAuthorized).toBe(false);
+      expect(exported.artifacts[0]?.versions).toHaveLength(3);
+
+      const reopened = makeStudio();
+      const persisted = await (await reopened.handle('artifact-get', post({ id: 'architecture' }))).json() as {
+        artifact: { versions: { content: string }[] };
+      };
+      expect(persisted.artifact.versions.map((version) => version.content)).toEqual(['# v1', '# v2', '# v1']);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

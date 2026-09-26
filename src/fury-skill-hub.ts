@@ -19,6 +19,7 @@ import { selectAgentSkillsForTask, type AgentSkillSelectionPlan } from './agent-
 import { activateSelectedAgentSkillsNode, type AgentSkillActivationBatch } from './agent-skill-activation-node.js';
 import { discoverAgentSkillsNode, type AgentSkillDiscoveryOptions, type DiscoveredAgentSkill } from './agent-skills-node.js';
 import { parseAgentSkillManifest } from './agent-skills-standard.js';
+import { createAgentSkillActivationReceipt, type AgentSkillActivationReceipt } from './agent-skill-activation.js';
 import { FURY_HARNESS_REGISTRY } from './fury-harness-hub.js';
 
 export const FURY_SKILL_GOVERNANCE = Object.freeze(['DRAFT_ONLY', 'ASK_BEFORE_WRITE', 'AUTO_APPLY_LOW_RISK', 'LOCKED'] as const);
@@ -29,6 +30,8 @@ export type FurySkillType = typeof FURY_SKILL_TYPES[number];
 const STATE_FORMAT = 'furypipe-skill-hub-state/v1';
 const MAX_FILES = 128;
 const MAX_TOTAL_BYTES = 4 * 1024 * 1024;
+const MAX_ACTIVE_INSTRUCTION_BYTES = 48 * 1024;
+const MAX_SINGLE_ACTIVE_INSTRUCTION_BYTES = 24 * 1024;
 const MAX_DEPTH = 6;
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const DIGEST = /^[0-9a-f]{64}$/u;
@@ -85,6 +88,31 @@ export interface FurySkillCompare {
   readonly removed: readonly string[];
   readonly changed: readonly string[];
 }
+
+export interface FurySkillActivation {
+  readonly name: string;
+  readonly instructions: string;
+  readonly checksum: string;
+  readonly allowedTools?: string;
+  readonly receipt: AgentSkillActivationReceipt;
+  readonly executionAuthorized: false;
+}
+
+export interface FurySkillCreateInput {
+  readonly name: string;
+  readonly description: string;
+  readonly instructions: string;
+  readonly version?: string;
+  readonly author?: string;
+  readonly license?: string;
+  readonly harnesses?: readonly string[];
+  readonly allowedTools?: readonly string[];
+  readonly type?: FurySkillType;
+  readonly triggers?: readonly string[];
+  readonly examples?: readonly string[];
+  readonly tests?: readonly string[];
+}
+
 
 interface FileSet {
   readonly files: ReadonlyMap<string, Buffer>;
@@ -277,6 +305,84 @@ export function createFurySkillHub(options: {
       else s.failures += 1;
       s.lastUsedAt = now();
     }),
+    /** Create or replace a project-local instruction skill from bounded operator-authored fields. */
+    async create(input: FurySkillCreateInput): Promise<FurySkillEntry> {
+      if (!input || typeof input !== 'object') throw new FurySkillHubError('skill create input is required');
+      const name = assertName(input.name);
+      await lockedGuard(name);
+      const safeText = (value: unknown, label: string, max: number, required = false): string => {
+        if (value === undefined && !required) return '';
+        if (typeof value !== 'string') throw new FurySkillHubError(`${label} must be text`);
+        const normalized = value.normalize('NFKC').trim();
+        if ((required && !normalized) || normalized.length > max || /[\u0000\u007f]/u.test(normalized)) {
+          throw new FurySkillHubError(`${label} is invalid`);
+        }
+        return normalized;
+      };
+      const list = (value: readonly string[] | undefined, label: string, maxItems: number, maxChars: number): readonly string[] => {
+        if (value === undefined) return Object.freeze([]);
+        if (!Array.isArray(value) || value.length > maxItems) throw new FurySkillHubError(`${label} exceeds its bound`);
+        const out: string[] = [];
+        const seen = new Set<string>();
+        for (const item of value) {
+          const text = safeText(item, label, maxChars, true);
+          if (!seen.has(text)) { seen.add(text); out.push(text); }
+        }
+        return Object.freeze(out);
+      };
+      const description = safeText(input.description, 'skill description', 1024, true);
+      const instructions = safeText(input.instructions, 'skill instructions', 200_000, true);
+      if (Buffer.byteLength(instructions, 'utf8') > MAX_SINGLE_ACTIVE_INSTRUCTION_BYTES) {
+        throw new FurySkillHubError('skill instructions exceed the per-skill activation bound');
+      }
+      const version = safeText(input.version, 'skill version', 64) || '1.0.0';
+      if (!/^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/u.test(version)) throw new FurySkillHubError('skill version is invalid');
+      const author = safeText(input.author, 'skill author', 128) || 'local-operator';
+      const license = safeText(input.license, 'skill license', 128) || 'UNSPECIFIED';
+      const harnesses = list(input.harnesses, 'skill harness', 16, 64);
+      for (const harness of harnesses) if (!FURY_KNOWN_HARNESSES.has(harness)) throw new FurySkillHubError(`unknown harness: ${harness}`);
+      const allowedTools = list(input.allowedTools, 'allowed tool', 32, 128);
+      const triggers = list(input.triggers, 'skill trigger', 32, 256);
+      const examples = list(input.examples, 'skill example', 32, 1024);
+      const tests = list(input.tests, 'skill test', 32, 1024);
+      const type = input.type ?? 'STATIC';
+      if (!(FURY_SKILL_TYPES as readonly string[]).includes(type)) throw new FurySkillHubError('skill type is invalid');
+
+      const frontmatter = [
+        '---',
+        `name: ${name}`,
+        `description: ${JSON.stringify(description)}`,
+        `license: ${JSON.stringify(license)}`,
+        ...(allowedTools.length ? [`allowed-tools: ${JSON.stringify(allowedTools.join(', '))}`] : []),
+        'metadata:',
+        `  version: ${JSON.stringify(version)}`,
+        `  author: ${JSON.stringify(author)}`,
+        `  furypipe-type: ${JSON.stringify(type.toLowerCase())}`,
+        ...(harnesses.length ? [`  harnesses: ${JSON.stringify(harnesses.join(', '))}`] : []),
+        '---',
+      ];
+      const body = [
+        `# ${name}`,
+        '',
+        instructions,
+        ...(triggers.length ? ['', '## Trigger conditions', ...triggers.map((item) => `- ${item}`)] : []),
+        ...(examples.length ? ['', '## Examples', ...examples.map((item) => `- ${item}`)] : []),
+        ...(tests.length ? ['', '## Tests', ...tests.map((item) => `- ${item}`)] : []),
+        '',
+      ].join('\n');
+      const manifest = `${frontmatter.join('\n')}\n\n${body}`;
+      try {
+        parseAgentSkillManifest(manifest, name);
+      } catch (error) {
+        throw new FurySkillHubError(`generated SKILL.md is invalid: ${(error as Error).message}`);
+      }
+      const bytes = Buffer.from(manifest, 'utf8');
+      const hash = createHash('sha256').update(`SKILL.md\0${bytes.byteLength}\0`).update(bytes).digest('hex');
+      const source: FileSet = { files: new Map([['SKILL.md', bytes]]), checksum: hash };
+      await replaceInstalled(name, source);
+      await snapshot(name, path.join(installRoot, name));
+      return find(name);
+    },
     /** Install (or update) a skill from a local directory into <project>/.furypipe/skills/<name>. */
     async install(sourceDir: string): Promise<FurySkillEntry> {
       const source = await readSkillFiles(path.resolve(sourceDir));
@@ -316,15 +422,52 @@ export function createFurySkillHub(options: {
       return Object.freeze({ added, removed, changed });
     },
     /**
-     * Re-discover and activate a previously selected instruction-skill plan
-     * using the exact same trust roots configured for this hub.
-     *
-     * Activation loads SKILL.md instructions only. It never executes scripts,
-     * tools, MCP methods or other bundled resources.
+     * Re-discover and activate the exact selection plan. This preserves the
+     * selector's checksum/trust decision across the selection→activation boundary.
+     * It loads instruction text only and never grants executable authority.
      */
-    async activateSelection(plan: AgentSkillSelectionPlan): Promise<AgentSkillActivationBatch> {
+    async activatePlan(plan: AgentSkillSelectionPlan): Promise<AgentSkillActivationBatch> {
       const discovery = await discover();
       return activateSelectedAgentSkillsNode(plan, discovery.skills);
+    },
+    /**
+     * Load only the validated SKILL.md bodies selected for one turn.
+     *
+     * This is progressive instruction activation, not capability activation:
+     * allowed-tools remains metadata and executionAuthorized stays false.
+     */
+    async activateSelection(names: readonly string[], select: { readonly harnessId?: string } = {}): Promise<readonly FurySkillActivation[]> {
+      if (!Array.isArray(names) || names.length > 8) throw new FurySkillHubError('at most 8 skills may be activated for one turn');
+      const requested = [...new Set(names.map((name) => assertName(name)))];
+      const entries = (await list()).skills;
+      const activated: FurySkillActivation[] = [];
+      let totalBytes = 0;
+      for (const name of requested) {
+        const entry = entries.find((candidate) => candidate.name === name);
+        if (!entry) throw new FurySkillHubError(`unknown skill: ${name}`);
+        if (!entry.enabled) throw new FurySkillHubError(`skill ${name} is disabled`);
+        if (entry.pinMismatch) throw new FurySkillHubError(`skill ${name} changed after it was pinned`);
+        if (entry.trust !== 'trusted-instructions') throw new FurySkillHubError(`skill ${name} is not trusted for instruction activation`);
+        if (select.harnessId && entry.compatibleHarnesses.length && !entry.compatibleHarnesses.includes(select.harnessId)) {
+          throw new FurySkillHubError(`skill ${name} is not compatible with runtime ${select.harnessId}`);
+        }
+        const raw = await readFile(entry.location, 'utf8');
+        const manifest = parseAgentSkillManifest(raw, name);
+        const bytes = Buffer.byteLength(manifest.instructions, 'utf8');
+        if (bytes > MAX_SINGLE_ACTIVE_INSTRUCTION_BYTES) throw new FurySkillHubError(`skill ${name} instructions exceed the per-skill activation bound`);
+        totalBytes += bytes;
+        if (totalBytes > MAX_ACTIVE_INSTRUCTION_BYTES) throw new FurySkillHubError('activated skill instructions exceed the per-turn bound');
+        const receipt = await createAgentSkillActivationReceipt(manifest.metadata, manifest.instructions);
+        activated.push(Object.freeze({
+          name,
+          instructions: manifest.instructions,
+          checksum: entry.checksum,
+          ...(manifest.metadata.allowedTools ? { allowedTools: manifest.metadata.allowedTools } : {}),
+          receipt,
+          executionAuthorized: false,
+        }));
+      }
+      return Object.freeze(activated);
     },
     /** Route an objective to skills that are enabled, trusted, pin-consistent and runtime-compatible. */
     async autoSelect(objective: string, select: { readonly harnessId?: string; readonly maxActive?: number } = {}): Promise<FurySkillSelection> {

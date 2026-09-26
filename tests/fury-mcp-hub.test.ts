@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -78,6 +78,36 @@ describe('FuryMcpHub policy and health', () => {
     expect(await hub.decide('project-mcp.fixture', 'other')).toEqual({ decision: 'DENY', reason: 'source disabled' });
     await expect(hub.setDefaultPolicy('project-mcp.fixture', 'MAYBE' as never)).rejects.toThrow(FuryMcpHubError);
   }, 30_000);
+
+  it('adds project MCP sources disabled and untrusted, without accepting embedded secrets', async () => {
+    const { hub, project } = setup();
+    const local = await hub.addProjectSource({ name: 'studio-local', transport: 'stdio', command: 'node', args: ['server.mjs'] });
+    expect(local).toMatchObject({
+      sourceId: 'project-furypipe.studio-local',
+      origin: 'project-furypipe',
+      enabled: false,
+      trusted: false,
+      defaultPolicy: 'ASK',
+      transport: 'stdio',
+    });
+    const written = JSON.parse(readFileSync(join(project, '.furypipe', 'mcp.json'), 'utf8'));
+    expect(written.mcpServers['studio-local']).toEqual({ command: 'node', args: ['server.mjs'] });
+
+    const remote = await hub.addProjectSource({ name: 'docs', transport: 'streamable_http', url: 'https://mcp.example.com/v1' });
+    expect(remote).toMatchObject({ enabled: false, trusted: false, locality: 'remote' });
+
+    const legacy = await hub.addProjectSource({ name: 'legacy-docs', transport: 'sse', url: 'https://mcp.example.com/sse' });
+    expect(legacy).toMatchObject({
+      transport: 'sse',
+      enabled: false,
+      trusted: false,
+      locality: 'remote',
+    });
+
+    await expect(hub.addProjectSource({ name: 'secret', transport: 'stdio', command: 'tool', args: ['--api-key=abc'] })).rejects.toThrow(/secret-looking/u);
+    await expect(hub.addProjectSource({ name: 'unsafe', transport: 'streamable_http', url: 'http://example.com/mcp' })).rejects.toThrow(/HTTPS/u);
+    await expect(hub.addProjectSource({ name: 'query', transport: 'streamable_http', url: 'https://mcp.example.com/mcp?token=x' })).rejects.toThrow(/query strings/u);
+  });
 
   it('refuses remote probes without allowRemote and records failures honestly', async () => {
     const { root, project, home } = setup();

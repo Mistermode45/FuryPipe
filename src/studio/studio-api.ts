@@ -43,36 +43,60 @@ import { inspectHuggingFaceGguf, recommendHuggingFaceGguf } from '../fury-huggin
 import { installFuryLocalRuntime, type FuryRuntimeSetupId, type FuryRuntimeSetupRunner } from '../fury-runtime-setup.js';
 import { launchFuryAccountLogin, type FuryAccountLoginLauncher, type FuryAccountProvider } from '../fury-account-connect.js';
 import { probeFuryAccountStatuses, type FuryAccountStatusRunner } from '../fury-account-status.js';
-import { planStudioAutopilot, type StudioResponseStyle } from './studio-autopilot.js';
+import { FURY_AUTOPILOT_EFFORTS, type FuryAutopilotEffort } from '../fury-autopilot.js';
+import { STUDIO_RESPONSE_STYLES, planStudioAutopilot, type StudioResponseStyle } from './studio-autopilot.js';
+import { FURY_EXTENSION_KINDS, listFuryExtensions, type FuryExtensionKind } from '../fury-extension-catalog.js';
+import { renderTextToImages } from '../core/library.js';
+import { createModelFabricRegistry } from '../core/model-fabric.js';
+import { DEFAULT_PROVIDER_REGISTRY } from '../core/provider-fabric.js';
+import { buildFuryModelHubSnapshot } from '../fury-model-hub.js';
+import { localModelCapabilityId, observeFuryLocalModelsInModelFabric } from '../fury-local-model-fabric.js';
+import { buildFuryWorkspaceGraph } from '../fury-workspace-graph.js';
+import { evaluateFuryDataset, type FuryEvalDataset } from '../fury-eval.js';
+import { createFuryArtifactRepository, type FuryArtifactRepository } from '../fury-artifact-repository-node.js';
+import type { FuryArtifact, FuryArtifactKind, FuryArtifactRestorePlan } from '../fury-artifacts.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
 const CACHE_MS = 10_000;
 
 export type StudioRoute =
-  | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'autopilot-preview' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'chat' | 'flow-preview'
-  | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-compare'
-  | 'mcp' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
+  | 'harnesses' | 'local' | 'models' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'autopilot-preview' | 'eval' | 'extensions' | 'chat' | 'flow-preview'
+  | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-create' | 'skill-compare'
+  | 'mcp' | 'mcp-add' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
-  | 'web'
+  | 'web' | 'visual-render'
   | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act'
-  | 'integrations' | 'connections' | 'connection-login'
+  | 'integrations' | 'connections' | 'connection-login' | 'support'
+  | 'artifacts' | 'artifact-get' | 'artifact-create' | 'artifact-version' | 'artifact-search' | 'artifact-restore-plan' | 'artifact-restore' | 'artifact-export'
   | 'chats' | 'chat-get' | 'chat-save' | 'chat-branch' | 'chat-delete'
   | 'code-tree' | 'code-file' | 'code-worktrees' | 'code-diff';
 
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
   '/api/studio/local.json': { route: 'local', method: 'GET' },
+  '/api/studio/models.json': { route: 'models', method: 'GET' },
   '/api/studio/hardware.json': { route: 'hardware', method: 'GET' },
   '/api/studio/local-model/inspect': { route: 'local-model-inspect', method: 'POST' },
   '/api/studio/local-model/recommend': { route: 'local-model-recommend', method: 'POST' },
   '/api/studio/setup/runtime': { route: 'runtime-setup', method: 'POST' },
   '/api/studio/setup/runtime/status': { route: 'runtime-setup-status', method: 'GET' },
-  '/api/studio/autopilot/preview': { route: 'autopilot-preview', method: 'POST' },
   '/api/studio/bindings.json': { route: 'bindings', method: 'GET' },
   '/api/studio/graph.json': { route: 'graph', method: 'GET' },
   '/api/studio/blast-radius': { route: 'blast-radius', method: 'POST' },
   '/api/studio/dispatch-preview': { route: 'dispatch-preview', method: 'POST' },
+  '/api/studio/autopilot/preview': { route: 'autopilot-preview', method: 'POST' },
+  '/api/studio/eval': { route: 'eval', method: 'POST' },
+  '/api/studio/extensions.json': { route: 'extensions', method: 'GET' },
+  '/api/studio/support.json': { route: 'support', method: 'GET' },
+  '/api/studio/artifacts.json': { route: 'artifacts', method: 'GET' },
+  '/api/studio/artifacts/get': { route: 'artifact-get', method: 'POST' },
+  '/api/studio/artifacts/create': { route: 'artifact-create', method: 'POST' },
+  '/api/studio/artifacts/version': { route: 'artifact-version', method: 'POST' },
+  '/api/studio/artifacts/search': { route: 'artifact-search', method: 'POST' },
+  '/api/studio/artifacts/restore/plan': { route: 'artifact-restore-plan', method: 'POST' },
+  '/api/studio/artifacts/restore': { route: 'artifact-restore', method: 'POST' },
+  '/api/studio/artifacts/export': { route: 'artifact-export', method: 'GET' },
   '/api/studio/chat': { route: 'chat', method: 'POST' },
   '/api/studio/flow-preview': { route: 'flow-preview', method: 'POST' },
   '/api/studio/runs.json': { route: 'runs', method: 'GET' },
@@ -82,8 +106,10 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/skills/act': { route: 'skill-act', method: 'POST' },
   '/api/studio/skills/select': { route: 'skill-select', method: 'POST' },
   '/api/studio/skills/install': { route: 'skill-install', method: 'POST' },
+  '/api/studio/skills/create': { route: 'skill-create', method: 'POST' },
   '/api/studio/skills/compare': { route: 'skill-compare', method: 'POST' },
   '/api/studio/mcp.json': { route: 'mcp', method: 'GET' },
+  '/api/studio/mcp/add': { route: 'mcp-add', method: 'POST' },
   '/api/studio/mcp/act': { route: 'mcp-act', method: 'POST' },
   '/api/studio/mcp/probe': { route: 'mcp-probe', method: 'POST' },
   '/api/studio/mcp/decide': { route: 'mcp-decide', method: 'POST' },
@@ -91,6 +117,7 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/knowledge/ingest': { route: 'knowledge-ingest', method: 'POST' },
   '/api/studio/knowledge/search': { route: 'knowledge-search', method: 'POST' },
   '/api/studio/web': { route: 'web', method: 'POST' },
+  '/api/studio/visual/render': { route: 'visual-render', method: 'POST' },
   '/api/studio/memory.json': { route: 'memory', method: 'GET' },
   '/api/studio/memory/remember': { route: 'memory-remember', method: 'POST' },
   '/api/studio/memory/search': { route: 'memory-search', method: 'POST' },
@@ -152,6 +179,10 @@ export interface StudioApiOptions {
   readonly memory?: StudioMemory;
   /** Conversation store directory (default ~/.furypipe/studio/chats/<project>). */
   readonly chatsDir?: string;
+  /** Persistent Artifacts repository. Inject for tests/custom storage; otherwise RecoveryStore-backed local state is used. */
+  readonly artifactRepository?: FuryArtifactRepository;
+  /** Artifact RecoveryStore root (default ~/.furypipe/studio/artifacts/<project>). */
+  readonly artifactsDir?: string;
 }
 
 interface StudioRun {
@@ -279,6 +310,46 @@ export function createStudioApi(options: StudioApiOptions) {
   };
 
   const chats: StudioChats = createStudioChats({ stateDir: options.chatsDir ?? path.join(os.homedir(), '.furypipe', 'studio', 'chats', projectKey), now });
+  const artifacts = options.artifactRepository ?? createFuryArtifactRepository({
+    root: options.artifactsDir ?? path.join(os.homedir(), '.furypipe', 'studio', 'artifacts', projectKey),
+    projectId: projectKey,
+  });
+  const artifactSummary = (artifact: FuryArtifact) => {
+    const latest = artifact.versions.at(-1)!;
+    return Object.freeze({
+      id: artifact.id,
+      kind: artifact.kind,
+      title: artifact.title,
+      projectId: artifact.projectId,
+      createdAt: artifact.createdAt,
+      updatedAt: artifact.updatedAt,
+      versions: artifact.versions.length,
+      latest: Object.freeze({
+        version: latest.version,
+        createdAt: latest.createdAt,
+        mediaType: latest.mediaType,
+        byteLength: latest.byteLength,
+        contentSha256: latest.contentSha256,
+        metadata: latest.metadata,
+      }),
+    });
+  };
+  const artifactMetadata = (value: unknown): Readonly<Record<string, string>> | undefined => {
+    if (value === undefined) return undefined;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw Object.assign(new Error('artifact metadata must be an object'), { status: 400 });
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length > 32 || entries.some(([key, item]) => !key || key.length > 64 || typeof item !== 'string' || item.length > 512)) {
+      throw Object.assign(new Error('artifact metadata must contain at most 32 bounded string entries'), { status: 400 });
+    }
+    return Object.freeze(Object.fromEntries(entries as [string, string][]));
+  };
+  const artifactKind = (value: unknown): FuryArtifactKind => {
+    const kinds: readonly FuryArtifactKind[] = ['text', 'markdown', 'json', 'code', 'image', 'audio', 'video', 'binary-reference'];
+    if (typeof value !== 'string' || !kinds.includes(value as FuryArtifactKind)) {
+      throw Object.assign(new Error('artifact kind is invalid'), { status: 400 });
+    }
+    return value as FuryArtifactKind;
+  };
   const code = createStudioCode(options.projectRoot);
   let memoryState: StudioMemory | undefined = options.memory;
   const memory = () => (memoryState ??= studioMemoryFromEnv());
@@ -390,24 +461,14 @@ export function createStudioApi(options: StudioApiOptions) {
               })),
             });
           }
-          case 'autopilot-preview': {
-            const body = await readJson(request) as { objective?: unknown; harnessId?: unknown; responseStyle?: unknown };
-            if (typeof body.objective !== 'string' || !body.objective.trim() || body.objective.length > 32_768) {
-              return problem(400, 'invalid-input', 'objective is required (max 32768 characters)');
-            }
-            if (body.harnessId !== undefined && (typeof body.harnessId !== 'string' || body.harnessId.length > 128)) {
-              return problem(400, 'invalid-input', 'harnessId must be bounded text');
-            }
-            if (body.responseStyle !== undefined && typeof body.responseStyle !== 'string') {
-              return problem(400, 'invalid-input', 'responseStyle must be text');
-            }
-            return json(await planStudioAutopilot({
-              objective: body.objective,
-              projectRoot: options.projectRoot,
-              skills,
-              mcp,
-              ...(typeof body.harnessId === 'string' && body.harnessId ? { harnessId: body.harnessId } : {}),
-              ...(typeof body.responseStyle === 'string' ? { responseStyle: body.responseStyle as StudioResponseStyle } : {}),
+          case 'models': {
+            const [localState, connectionState] = await Promise.all([local(), connections()]);
+            const modelRegistry = createModelFabricRegistry();
+            observeFuryLocalModelsInModelFabric(modelRegistry, localState.backends);
+            return json(buildFuryModelHubSnapshot({
+              providers: DEFAULT_PROVIDER_REGISTRY,
+              models: modelRegistry,
+              connections: connectionState,
             }));
           }
           case 'bindings': {
@@ -440,6 +501,204 @@ export function createStudioApi(options: StudioApiOptions) {
             }
             const plan = planFuryDispatch({ ir, candidates, mode, ...(coupling ? { coupling } : {}) });
             return json({ plan, candidates: candidates.map((c) => ({ id: c.id, harnessId: c.harnessId, provider: c.provider, model: c.model, locality: c.locality })), execution: 'NOT_EXECUTED: preview only' });
+          }
+          case 'autopilot-preview': {
+            const body = await readJson(request) as { objective?: unknown; harnessId?: unknown; effort?: unknown; responseStyle?: unknown; customInstructions?: unknown; localModel?: unknown; localBackend?: unknown; includeWorkspaceGraph?: unknown };
+            if (typeof body.objective !== 'string' || !body.objective.trim() || body.objective.length > 32_768 || body.objective.includes('\0')) {
+              return problem(400, 'invalid-input', 'objective is required (max 32768 characters)');
+            }
+            if (body.harnessId !== undefined && (typeof body.harnessId !== 'string' || body.harnessId.length > 128 || body.harnessId.includes('\0'))) {
+              return problem(400, 'invalid-input', 'harnessId must be bounded text');
+            }
+            if (body.customInstructions !== undefined && (typeof body.customInstructions !== 'string' || body.customInstructions.length > 4_000 || body.customInstructions.includes('\0'))) {
+              return problem(400, 'invalid-input', 'customInstructions must be bounded text');
+            }
+            const effort = typeof body.effort === 'string' && (FURY_AUTOPILOT_EFFORTS as readonly string[]).includes(body.effort)
+              ? body.effort as FuryAutopilotEffort
+              : 'auto';
+            let responseStyle: StudioResponseStyle = 'auto';
+            if (body.responseStyle !== undefined) {
+              if (typeof body.responseStyle !== 'string' || !(STUDIO_RESPONSE_STYLES as readonly string[]).includes(body.responseStyle)) {
+                return problem(400, 'invalid-input', 'responseStyle is unsupported');
+              }
+              responseStyle = body.responseStyle as StudioResponseStyle;
+            }
+            const harnessId = typeof body.harnessId === 'string' && body.harnessId ? body.harnessId : undefined;
+            const localBackend = typeof body.localBackend === 'string' ? body.localBackend : undefined;
+            const localModel = typeof body.localModel === 'string' ? body.localModel : undefined;
+            if ((localBackend === undefined) !== (localModel === undefined)) {
+              return problem(400, 'invalid-input', 'localBackend and localModel must be supplied together');
+            }
+            if (localBackend !== undefined && (!['ollama','lmstudio','llamacpp','vllm','sglang','localai','jan','openai-compatible','anthropic-compatible'].includes(localBackend) || !localModel || localModel.length > 512 || localModel.includes('\0'))) {
+              return problem(400, 'invalid-input', 'local model selection is invalid');
+            }
+            const [harnessDiscovery, localDiscovery] = await Promise.all([harnesses(), local()]);
+            const modelFabric = createModelFabricRegistry();
+            const modelHealth = observeFuryLocalModelsInModelFabric(modelFabric, localDiscovery.backends);
+            const selectedModelCapabilityId = localBackend && localModel
+              ? localModelCapabilityId(localBackend as FuryLocalBackendKind, localModel)
+              : undefined;
+            if (selectedModelCapabilityId && !modelFabric.list().some((model) => `custom/${model.id}` === selectedModelCapabilityId)) {
+              return problem(409, 'model-unavailable', 'selected local model is not present in the current discovery snapshot');
+            }
+            const compiled = await planStudioAutopilot({
+              objective: body.objective,
+              projectRoot: options.projectRoot,
+              skills,
+              mcp,
+              harnesses: harnessDiscovery,
+              modelFabric,
+              modelHealth,
+              ...(selectedModelCapabilityId ? { selectedModelCapabilityId } : {}),
+              effort,
+              ...(harnessId ? { harnessId } : {}),
+              responseStyle,
+              ...(typeof body.customInstructions === 'string' && body.customInstructions.trim()
+                ? { customInstructions: body.customInstructions.trim() }
+                : {}),
+            });
+            let workspaceGraph:ReturnType<typeof buildFuryWorkspaceGraph>|undefined;
+            if(body.includeWorkspaceGraph===true){
+              const repositoryGraph=await graph().catch(()=>undefined);
+              const m=memory();
+              const memories=m.enabled&&m.store
+                ? await studioMemoryList(m.store,options.projectRoot,now()).catch(()=>[])
+                : [];
+              workspaceGraph=buildFuryWorkspaceGraph({
+                projectRoot:options.projectRoot,
+                ...(repositoryGraph?{repositoryGraph}:{}),
+                capabilityGraph:compiled.capabilityGraph,
+                memories,
+              });
+            }
+            return json({
+              ...compiled,
+              ...(workspaceGraph?{workspaceGraph}:{}),
+              plan: compiled.plan,
+              compiled,
+              excludedSkills: compiled.skills.excluded,
+              execution: 'NOT_EXECUTED: instructions compiled; tools, scripts and MCP execution remain separately governed',
+            });
+          }
+          case 'eval': {
+            const body = await readJson(request) as { dataset?: unknown };
+            if (!body || typeof body !== 'object' || body.dataset === undefined) {
+              return problem(400, 'invalid-input', 'dataset is required');
+            }
+            try {
+              const report = evaluateFuryDataset(body.dataset as FuryEvalDataset);
+              return json({
+                ...report,
+                authority: 'evaluation-only',
+                execution: 'NOT_EXECUTED: FuryEval evaluates supplied observations only',
+              });
+            } catch (error) {
+              return problem(422, 'eval-rejected', (error as Error).message);
+            }
+          }
+          case 'extensions': {
+            const params = new URL(request.url).searchParams;
+            const rawKind = params.get('kind');
+            const kind = rawKind && (FURY_EXTENSION_KINDS as readonly string[]).includes(rawKind)
+              ? rawKind as FuryExtensionKind
+              : undefined;
+            return json({
+              extensions: listFuryExtensions({
+                ...(params.get('q') ? { query: params.get('q')! } : {}),
+                ...(kind ? { kind } : {}),
+                includeRestricted: params.get('restricted') === '1',
+              }),
+              installation: 'LOCAL_REVIEW_REQUIRED: catalog entries are never downloaded or activated automatically',
+            });
+          }
+          case 'artifacts':
+            return json({ artifacts: (await artifacts.list()).map(artifactSummary), authority: 'persistent-artifact-store' });
+          case 'artifact-get': {
+            const body = await readJson(request) as { id?: unknown };
+            if (typeof body?.id !== 'string' || !body.id.trim()) return problem(400, 'invalid-input', 'artifact id is required');
+            const artifact = await artifacts.get(body.id.trim());
+            if (!artifact) return problem(404, 'artifact-not-found', 'artifact not found');
+            return json({ artifact, authority: 'persistent-artifact-store' });
+          }
+          case 'artifact-create': {
+            const body = await readJson(request) as {
+              id?: unknown; kind?: unknown; title?: unknown; content?: unknown; mediaType?: unknown; metadata?: unknown; confirm?: unknown;
+            };
+            if (body?.confirm !== true) return problem(400, 'confirmation-required', 'creating an artifact requires confirm: true');
+            if (typeof body.id !== 'string' || typeof body.title !== 'string' || typeof body.content !== 'string') {
+              return problem(400, 'invalid-input', 'artifact id, title and content are required');
+            }
+            if (body.mediaType !== undefined && typeof body.mediaType !== 'string') return problem(400, 'invalid-input', 'artifact mediaType must be text');
+            const artifact = await artifacts.create({
+              id: body.id,
+              kind: artifactKind(body.kind),
+              title: body.title,
+              content: body.content,
+              ...(typeof body.mediaType === 'string' ? { mediaType: body.mediaType } : {}),
+              ...(body.metadata === undefined ? {} : { metadata: artifactMetadata(body.metadata)! }),
+              now: new Date(now()).toISOString(),
+            });
+            return json({ artifact, summary: artifactSummary(artifact), writePerformed: true, executionAuthorized: false }, 201);
+          }
+          case 'artifact-version': {
+            const body = await readJson(request) as { artifactId?: unknown; content?: unknown; mediaType?: unknown; metadata?: unknown; confirm?: unknown };
+            if (body?.confirm !== true) return problem(400, 'confirmation-required', 'adding an artifact version requires confirm: true');
+            if (typeof body.artifactId !== 'string' || typeof body.content !== 'string') return problem(400, 'invalid-input', 'artifactId and content are required');
+            if (body.mediaType !== undefined && typeof body.mediaType !== 'string') return problem(400, 'invalid-input', 'artifact mediaType must be text');
+            const artifact = await artifacts.appendVersion({
+              artifactId: body.artifactId,
+              content: body.content,
+              ...(typeof body.mediaType === 'string' ? { mediaType: body.mediaType } : {}),
+              ...(body.metadata === undefined ? {} : { metadata: artifactMetadata(body.metadata)! }),
+              now: new Date(now()).toISOString(),
+            });
+            return json({ artifact, summary: artifactSummary(artifact), writePerformed: true, executionAuthorized: false });
+          }
+          case 'artifact-search': {
+            const body = await readJson(request) as { query?: unknown };
+            if (typeof body?.query !== 'string' || !body.query.trim() || body.query.length > 512) return problem(400, 'invalid-input', 'artifact search query is required (max 512 characters)');
+            return json({ artifacts: (await artifacts.search(body.query.trim())).map(artifactSummary), authority: 'persistent-artifact-store' });
+          }
+          case 'artifact-restore-plan': {
+            const body = await readJson(request) as { artifactId?: unknown; sourceVersion?: unknown };
+            if (typeof body?.artifactId !== 'string' || !Number.isSafeInteger(body.sourceVersion) || Number(body.sourceVersion) < 1) {
+              return problem(400, 'invalid-input', 'artifactId and positive integer sourceVersion are required');
+            }
+            return json(await artifacts.planRestore(body.artifactId, Number(body.sourceVersion)));
+          }
+          case 'artifact-restore': {
+            const body = await readJson(request) as { plan?: unknown; confirm?: unknown };
+            if (body?.confirm !== true) return problem(400, 'confirmation-required', 'artifact restore requires confirm: true');
+            if (!body.plan || typeof body.plan !== 'object' || Array.isArray(body.plan)) return problem(400, 'invalid-input', 'restore plan is required');
+            const rawPlan = body.plan as Record<string, unknown>;
+            if (typeof rawPlan.artifactId !== 'string' || !Number.isSafeInteger(rawPlan.sourceVersion)) return problem(400, 'invalid-input', 'restore plan is invalid');
+            const receipt = await artifacts.executeRestore({
+              plan: body.plan as FuryArtifactRestorePlan,
+              confirm: true,
+              now: new Date(now()).toISOString(),
+            });
+            return json(receipt);
+          }
+          case 'artifact-export': {
+            const exported = await artifacts.exportProject();
+            if (exported.bytes > 8 * 1024 * 1024) return problem(413, 'export-too-large', 'artifact export exceeds the Studio 8 MiB response bound');
+            return json(exported);
+          }
+          case 'support': {
+            const configured = process.env.FURYPIPE_SUPPORT_URL?.trim();
+            let supportUrl: string | undefined;
+            if (configured) {
+              try {
+                const parsed = new URL(configured);
+                if (parsed.protocol === 'https:' && !parsed.username && !parsed.password) supportUrl = parsed.toString();
+              } catch {}
+            }
+            return json({
+              project: 'FuryPipe',
+              creator: 'LégendeUrbaine',
+              ...(supportUrl ? { supportUrl } : {}),
+              configured: supportUrl !== undefined,
+            });
           }
           case 'flow-preview': {
             const body = await readJson(request) as { flow?: unknown; fixtures?: unknown; approvals?: unknown };
@@ -549,12 +808,53 @@ export function createStudioApi(options: StudioApiOptions) {
             if (typeof body.sourceDir !== 'string' || !path.isAbsolute(body.sourceDir) || body.sourceDir.length > 1_024) return problem(400, 'invalid-input', 'sourceDir must be an absolute local directory');
             return json(await skills.install(body.sourceDir), 201);
           }
+          case 'skill-create': {
+            const body = await readJson(request) as {
+              name?: unknown; description?: unknown; instructions?: unknown; version?: unknown; author?: unknown; license?: unknown;
+              harnesses?: unknown; allowedTools?: unknown; type?: unknown; triggers?: unknown; examples?: unknown; tests?: unknown; confirm?: unknown;
+            };
+            if (body?.confirm !== true) return problem(400, 'confirmation-required', 'creating a skill requires confirm: true');
+            const arrayOfStrings = (value: unknown): string[] | undefined => {
+              if (value === undefined) return undefined;
+              if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) throw Object.assign(new Error('skill list fields must contain only strings'), { status: 400 });
+              return value as string[];
+            };
+            return json(await skills.create({
+              name: String(body.name ?? ''),
+              description: String(body.description ?? ''),
+              instructions: String(body.instructions ?? ''),
+              ...(typeof body.version === 'string' ? { version: body.version } : {}),
+              ...(typeof body.author === 'string' ? { author: body.author } : {}),
+              ...(typeof body.license === 'string' ? { license: body.license } : {}),
+              ...(typeof body.type === 'string' ? { type: body.type as never } : {}),
+              ...(body.harnesses !== undefined ? { harnesses: arrayOfStrings(body.harnesses)! } : {}),
+              ...(body.allowedTools !== undefined ? { allowedTools: arrayOfStrings(body.allowedTools)! } : {}),
+              ...(body.triggers !== undefined ? { triggers: arrayOfStrings(body.triggers)! } : {}),
+              ...(body.examples !== undefined ? { examples: arrayOfStrings(body.examples)! } : {}),
+              ...(body.tests !== undefined ? { tests: arrayOfStrings(body.tests)! } : {}),
+            }), 201);
+          }
           case 'skill-compare': {
             const body = await readJson(request) as { name?: unknown; a?: unknown; b?: unknown };
             return json(await skills.compare(String(body?.name ?? ''), String(body?.a ?? ''), String(body?.b ?? '')));
           }
           case 'mcp':
             return json(await mcp.list());
+          case 'mcp-add': {
+            const body = await readJson(request) as { name?: unknown; transport?: unknown; command?: unknown; args?: unknown; url?: unknown; confirm?: unknown };
+            if (body.confirm !== true) return problem(400, 'confirmation-required', 'adding an MCP source requires confirm: true');
+            if (typeof body.name !== 'string') return problem(400, 'invalid-input', 'MCP source name is required');
+            if (body.transport === 'stdio') {
+              if (typeof body.command !== 'string') return problem(400, 'invalid-input', 'stdio MCP command is required');
+              if (body.args !== undefined && (!Array.isArray(body.args) || !body.args.every((arg) => typeof arg === 'string'))) return problem(400, 'invalid-input', 'MCP args must be strings');
+              return json(await mcp.addProjectSource({ name: body.name, transport: 'stdio', command: body.command, ...(Array.isArray(body.args) ? { args: body.args as string[] } : {}) }), 201);
+            }
+            if (body.transport === 'streamable_http' || body.transport === 'sse') {
+              if (typeof body.url !== 'string') return problem(400, 'invalid-input', 'HTTP MCP URL is required');
+              return json(await mcp.addProjectSource({ name: body.name, transport: body.transport, url: body.url }), 201);
+            }
+            return problem(400, 'invalid-input', 'transport must be stdio, streamable_http or legacy sse');
+          }
           case 'mcp-act': {
             const body = await readJson(request) as { sourceId?: unknown; action?: unknown; tool?: unknown; value?: unknown };
             const id = String(body?.sourceId ?? '');
@@ -646,6 +946,48 @@ export function createStudioApi(options: StudioApiOptions) {
             const { sources } = await mcp.list();
             return json(await buildFuryIntegrationRegistry({ projectRoot: options.projectRoot, mcp: sources }));
           }
+          case 'visual-render': {
+            const body = await readJson(request) as { text?: unknown; model?: unknown; reflow?: unknown };
+            if (typeof body.text !== 'string' || !body.text.trim()) {
+              return problem(400, 'invalid-input', 'visual render text is required');
+            }
+            if (body.text.length > 24_000) {
+              return problem(413, 'input-too-large', 'visual preview is limited to 24,000 characters');
+            }
+            if (body.model !== undefined && (typeof body.model !== 'string' || body.model.length > 256 || /[\u0000-\u001f]/u.test(body.model))) {
+              return problem(400, 'invalid-input', 'visual model identifier is invalid');
+            }
+            const result = await renderTextToImages(body.text, {
+              ...(typeof body.model === 'string' && body.model.trim() ? { model: body.model.trim() } : {}),
+              reflow: body.reflow !== false,
+              shrink: true,
+              maxCharsPerImage: 8_000,
+            });
+            if (result.pages.length > 4) {
+              return problem(413, 'render-too-large', 'visual preview produced too many pages');
+            }
+            const totalBytes = result.pages.reduce((sum, page) => sum + page.png.byteLength, 0);
+            if (totalBytes > 8 * 1024 * 1024) {
+              return problem(413, 'render-too-large', 'visual preview exceeds the 8 MiB output bound');
+            }
+            return json({
+              format: 'furypipe-studio-visual-preview/v1',
+              sourceChars: body.text.length,
+              model: typeof body.model === 'string' && body.model.trim() ? body.model.trim() : null,
+              reflow: body.reflow !== false,
+              droppedChars: result.droppedChars,
+              pixels: result.pixels,
+              totalBytes,
+              pages: result.pages.map((page, index) => ({
+                index,
+                width: page.width,
+                height: page.height,
+                bytes: page.png.byteLength,
+                dataUrl: `data:image/png;base64,${Buffer.from(page.png).toString('base64')}`,
+              })),
+              note: 'Preview uses FuryPipe native renderer only. Production provider transforms still apply ExactGuard, model capability, profitability, image-count and byte-budget gates.',
+            });
+          }
           case 'memory': {
             const m = memory();
             if (!m.enabled || !m.store) return json({ enabled: false, reason: m.reason, records: [] });
@@ -711,6 +1053,7 @@ export function createStudioApi(options: StudioApiOptions) {
         if (error instanceof FuryKnowledgeError) return problem(422, 'knowledge-rejected', error.message);
         if (error instanceof FuryMcpHubError) return problem(/^unknown MCP source/u.test(error.message) ? 404 : 422, 'mcp-rejected', error.message);
         if (error instanceof FurySkillHubError) return problem(/^unknown skill/u.test(error.message) ? 404 : 422, 'skill-rejected', error.message);
+        if (route.startsWith('artifact')) return problem(/^unknown artifact/u.test((error as Error).message) ? 404 : 422, 'artifact-rejected', (error as Error).message.slice(0, 300));
         if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') return problem(404, 'not-found', 'path not found');
         if (error instanceof FuryFlowError) return problem(422, 'invalid-flow', error.message);
         if ((error as Error).name === 'FuryLocalFabricError') return problem(403, 'endpoint-denied', (error as Error).message);

@@ -1,6 +1,6 @@
 import type { McpToolRiskAssessment, McpToolTrust } from './mcp-tool-risk.js';
 
-export type McpDirectTransport = 'stdio' | 'streamable_http';
+export type McpDirectTransport = 'stdio' | 'streamable_http' | 'sse';
 export type McpDirectProtocolEra = 'modern_2026' | 'legacy_2025' | 'unknown';
 export type McpDirectHandshake = 'discover' | 'initialize' | 'unknown';
 export type McpDirectHealthEvidence =
@@ -162,7 +162,7 @@ export function createMcpDirectLifecycle(
 ): McpDirectLifecycleState {
   assertId(source.sourceId, 'sourceId');
   assertSha(source.endpointFingerprint, 'endpointFingerprint');
-  if (source.transport !== 'stdio' && source.transport !== 'streamable_http') {
+  if (source.transport !== 'stdio' && source.transport !== 'streamable_http' && source.transport !== 'sse') {
     throw new Error('unsupported MCP transport');
   }
   if (source.trust !== 'trusted' && source.trust !== 'untrusted') {

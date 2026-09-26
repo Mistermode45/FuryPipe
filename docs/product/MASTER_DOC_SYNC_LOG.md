@@ -23,3 +23,57 @@ Conflict rule: technical state → GitHub wins; product intent → master doc wi
 | 2026-09-25 | Graphify auto-refresh after merge/checkout (§47.2) is not wired: `refreshGraphify` is an explicit API only; SHOULD-04 reclassified PARTIAL. `graphify-out/` at the repository root is git-ignored; only the 60 KB test fixture is committed. | §47.2 | this commit | §47 | SYNCED |
 | 2026-09-25 | Harness Hub gains generic ACP and A2A protocol entries (§15 preference 1 and 3) backed by the foundation's ACP/A2A runtimes; they are configured endpoints, never discovered on PATH. | §15 | this commit | §15 | SYNCED |
 | 2026-09-25 | Studio UX-01 human verdict REWORK_REQUIRED → reworked as "Fury Lux" (black × orange); UX-01 now PENDING_HUMAN_RETEST. The operator-supplied 21st.dev `claude-style-chat-input` (React/Tailwind/lucide) is ported to a vanilla FuryComposer, not added as a dependency; its fake behaviours (hardcoded Claude models, simulated uploads, prefilled analysis, Thinking toggle) are dropped. `ai-prompt-box` was not received. | Studio is a zero-build page under a nonce CSP; a React/Tailwind build would break that model and grow the npm package. Honesty rule: no simulated capability. | this commit | §37 Progressive UX, §7 Universal Chat | SYNCED |
+| 2026-09-26 | Operator supplied the new `FURYPIPE — ULTIMATE MASTER CONTINUATION PROMPT 2026` (347 sections). It is persisted verbatim in `docs/product/FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md`; the evidence-based machine inventory and gap analysis are `FURYPIPE_CAPABILITY_INVENTORY_2026-09-26.json` and `FURYPIPE_GAP_ANALYSIS_2026-09-26.md`. The 2026-09-25 Completion Spec remains a track closure ledger, not the full future product definition. | Product vision expanded after the 2026-09-25 master document. Preserve existing validated capabilities and converge existing registry/router primitives rather than creating parallel systems. | current continuation track | whole product | SYNCED_TO_REPO |
+
+| 2026-09-26 | Capability Convergence checkpoint: Studio skill/agent routing now consumes the shared Capability Index/Autopilot path; Fury Request Blueprint is process-local/attested; Fury Capability Graph projects and renders request→decision→capability/advisory/blocked relationships without execution authority. FuryGraph remains authoritative for repository/code relationships. | Continue the master continuation spec by converging existing primitives rather than creating a second registry/router/graph. Remaining P1 gaps are recorded in the gap ledger. | implementation checkpoint `42d33f472eaa590bf399521a167c13c5adc96ed6` | Capability Registry / Router / Graph | SYNCED_TO_REPO |
+
+| 2026-09-26 | Capability Convergence closed at the code-contract level: shared Capability Index/Autopilot drives Studio skill/agent/model advisories; MCP/model candidates without runtime authority remain advisory-only; Workspace Graph composes project/repository/files/memory/decisions/artifacts; instruction precedence is deterministic and fail-closed. The next P1 milestone adds FuryPrompt modes/analyzer plus Context Inspector/Context Diff. | This preserves the master continuation rule that selection is not execution, reuses authoritative stores instead of parallel registries, and exposes truth states rather than fabricated capability availability. | continuation checkpoint `808c556d91d06f6af32575c161bf08515e1965c5` | Capability Registry / Router / Graph / FuryPrompt / FuryContext | PENDING_EXACT_HEAD_EVIDENCE |
+| 2026-09-26 | P1 Prompt/Context + Skill Creator checkpoint: FuryPrompt exposes nine bounded modes and deterministic analysis; FuryContext exposes truth-state inspection plus deterministic capsule diff; Skill Hub can create validated project-local SKILL.md files from Studio/API with explicit confirmation. Tool declarations remain metadata-only and never widen runtime authority. | Implements the continuation specification without creating parallel prompt/context/skill authority systems. Existing compiler, context capsule, Skill Hub snapshots and runtime policy remain authoritative. | checkpoint `4ab955841ee9e6bc98b0caea6b91d11a7c4a71a4` | FuryPrompt / FuryContext / Skills | PENDING_EXACT_HEAD_EVIDENCE |
+
+
+## 2026-09-26 — Supply Chain + Marketplace foundation
+
+- Validated implementation SHA: `effbf0312bab129c4940bab3bce7f5d38bb1d5d3`.
+- Exact-head evidence on that SHA: 13/13 hosted workflows SUCCESS; CI 9/9; Clean Room 9/9.
+- Added detached Ed25519 Supply Chain attestations and public `furypipe/fury-supply-chain` export.
+- Added deterministic signed Marketplace manifest/trust/approval-only transition foundation and public `furypipe/fury-marketplace` export.
+- Marketplace remains non-executing: no automatic download/install/network/filesystem authority.
+- Gap ledger updated from Marketplace NOT_STARTED → PARTIAL FOUNDATION and Supply Chain PARTIAL → DONE CORE / PARTIAL DISTRIBUTION.
+- Documentation synchronization commit is newer than the validated implementation SHA and therefore requires its own exact-head hosted evidence before being treated as the final PR checkpoint.
+- No merge, tag, release, npm publish or deploy performed.
+
+
+## 2026-09-26 — FuryEval core
+
+- Added deterministic FuryEval datasets/reports/comparisons for routing, skills, memory and agents.
+- Metrics: success rate, precision, recall, F1, optional latency/cost when supplied by observed evidence.
+- Dataset identity/version gates comparability; non-comparable reports are not ranked against each other.
+- Studio evaluation endpoint is analysis-only and never grants runtime authority.
+- Public package export: `furypipe/fury-eval`.
+- Remaining work: curated production datasets, longitudinal effectiveness history and UI visualization.
+- Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
+- No merge, release, tag, npm publish or deploy performed.
+
+
+## 2026-09-26 — Graphify lifecycle recommendation
+
+- Added non-executing Graphify lifecycle planning.
+- Stale graph or relevant code changes → `RECOMMEND_REFRESH`.
+- Missing Graphify output → `USE_NATIVE_FALLBACK`.
+- Path traversal inputs are discarded from changed-file consideration.
+- Existing explicit `refreshGraphify()` remains the only subprocess boundary.
+- No automatic refresh, merge hook, checkout hook or hidden subprocess was introduced.
+- Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
+- No merge, release, tag, npm publish or deploy performed.
+
+
+## 2026-09-26 — Plugin SDK authoring foundation
+
+- Added public non-executing Plugin SDK.
+- Reuses the canonical FuryPluginBundle validator; no parallel plugin authority model.
+- Produces deterministic secret-redacted manifests with stable digest.
+- Environment variable names may be declared; credential values remain absent.
+- SDK cannot install packages, connect MCP, invoke providers, load plugin code or mutate the filesystem.
+- Remaining work: governed runtime isolation, UI extension lifecycle, compatibility/migration coverage.
+- Status: `IMPLEMENTED_PENDING_EXACT_HEAD`.
+- No merge, release, tag, npm publish or deploy performed.

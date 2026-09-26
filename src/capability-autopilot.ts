@@ -109,8 +109,13 @@ export interface FurySelectedCapability {
 export interface FuryBlockedCapability {
   readonly kind: FuryCapabilityIndexKind;
   readonly id: string;
+  readonly fingerprintSha256: string;
   readonly reason: FuryCapabilitySelectionBlockReason;
   readonly requestedExplicitly: boolean;
+  readonly score: number;
+  readonly relevanceScore: number;
+  readonly penalty: number;
+  readonly requiredPermissions: readonly string[];
 }
 
 export interface FuryMissingExplicitCapability {
@@ -167,11 +172,31 @@ const MAX_FACT_CHARS = 128;
 
 const DEFAULT_KIND_CAPS: Readonly<Record<FuryCapabilityIndexKind, number>> =
   Object.freeze({
+    model: 2,
+    provider: 0,
     skill: 3,
+    'skill-pack': 0,
+    instruction: 0,
     plugin: 1,
+    mcp: 0,
     'mcp-server': 2,
     'mcp-tool': 4,
-    model: 2,
+    connector: 0,
+    tool: 0,
+    agent: 0,
+    workflow: 0,
+    automation: 0,
+    'memory-provider': 0,
+    'search-provider': 0,
+    'browser-provider': 0,
+    'image-provider': 0,
+    'video-provider': 0,
+    'audio-provider': 0,
+    'voice-provider': 0,
+    'embedding-provider': 0,
+    reranker: 0,
+    'code-runtime': 0,
+    sandbox: 0,
   });
 
 const RISK_PENALTIES: Readonly<Record<FuryCapabilityIndexRecord['riskClass'], number>> =
@@ -587,13 +612,21 @@ function blockDetail(
   record: FuryCapabilityIndexRecord,
   reason: FuryCapabilitySelectionBlockReason,
   requestedExplicitly: boolean,
+  score: number,
+  relevanceScore: number,
+  penalty: number,
 ): void {
   if (details.length >= max) return;
   details.push(Object.freeze({
     kind: record.kind,
     id: record.id,
+    fingerprintSha256: record.fingerprintSha256,
     reason,
     requestedExplicitly,
+    score,
+    relevanceScore,
+    penalty,
+    requiredPermissions: record.requiredPermissions,
   }));
 }
 
@@ -737,26 +770,6 @@ export function selectFuryCapabilitiesForTask(
     if (requestedExplicitly) requestedFound.add(key);
     const signal = signalByIdentity.get(key);
 
-    const hardBlock = blockReasonFor(
-      record,
-      signal,
-      hostCompatibility,
-      availablePermissions,
-    );
-    if (hardBlock !== undefined) {
-      increment(blockedCounts, hardBlock);
-      if (requestedExplicitly || maxBlockedDetails > blocked.length) {
-        blockDetail(
-          blocked,
-          maxBlockedDetails,
-          record,
-          hardBlock,
-          requestedExplicitly,
-        );
-      }
-      continue;
-    }
-
     let relevance = 0;
     const weights = tokenWeights.get(key) ?? new Map<string, number>();
     for (const token of objectiveTokens) {
@@ -781,6 +794,29 @@ export function selectFuryCapabilitiesForTask(
       (requestedExplicitly ? 1_000_000 : 0) + relevance - penalty
     ).toFixed(6));
 
+    const hardBlock = blockReasonFor(
+      record,
+      signal,
+      hostCompatibility,
+      availablePermissions,
+    );
+    if (hardBlock !== undefined) {
+      increment(blockedCounts, hardBlock);
+      if (requestedExplicitly || maxBlockedDetails > blocked.length) {
+        blockDetail(
+          blocked,
+          maxBlockedDetails,
+          record,
+          hardBlock,
+          requestedExplicitly,
+          score,
+          relevance,
+          penalty,
+        );
+      }
+      continue;
+    }
+
     if (!requestedExplicitly && score < minScore) {
       increment(blockedCounts, 'below-threshold');
       // Below-threshold details are intentionally omitted unless there is
@@ -792,6 +828,9 @@ export function selectFuryCapabilitiesForTask(
           record,
           'below-threshold',
           false,
+          score,
+          relevance,
+          penalty,
         );
       }
       continue;
@@ -830,6 +869,9 @@ export function selectFuryCapabilitiesForTask(
         candidate.record,
         'global-cap',
         candidate.requestedExplicitly,
+        candidate.score,
+        candidate.relevanceScore,
+        candidate.penalty,
       );
       continue;
     }
@@ -842,6 +884,9 @@ export function selectFuryCapabilitiesForTask(
         candidate.record,
         'kind-cap',
         candidate.requestedExplicitly,
+        candidate.score,
+        candidate.relevanceScore,
+        candidate.penalty,
       );
       continue;
     }

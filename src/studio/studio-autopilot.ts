@@ -1,9 +1,21 @@
 import { createHash } from 'node:crypto';
 
-import { compileFuryPrompt } from '../fury-prompt.js';
+import { planFuryAutopilot, type FuryAutopilotEffort } from '../fury-autopilot.js';
+import { createFuryCapabilityIndex } from '../capability-index.js';
+import { selectFuryCapabilitiesForTask } from '../capability-autopilot.js';
+import { projectHarnessesIntoCapabilityIndex, projectMcpHubIntoCapabilityIndex, projectModelsIntoCapabilityIndex, projectProvidersIntoCapabilityIndex, projectSkillHubIntoCapabilityIndex } from '../capability-index-adapters.js';
+import type { AgentSkillSelectionPlan } from '../agent-skill-selector.js';
+import { analyzeFuryPromptRequest, compileFuryPrompt } from '../fury-prompt.js';
 import { resolveInstructionPlan } from '../instruction-fabric.js';
 import type { FuryMcpHub, FuryMcpSourceView } from '../fury-mcp-hub.js';
 import type { FurySkillHub } from '../fury-skill-hub.js';
+import type { FuryHarnessDiscovery } from '../fury-harness-hub.js';
+import { DEFAULT_PROVIDER_REGISTRY } from '../core/provider-fabric.js';
+import { createFuryRequestBlueprint } from '../fury-request-blueprint.js';
+import { buildFuryCapabilityGraph } from '../fury-capability-graph.js';
+import type { ModelFabricRegistry } from '../core/model-fabric.js';
+import { resolveFuryInstructionPrecedence } from '../instruction-precedence.js';
+import { buildFuryContextInspector } from '../fury-context-inspector.js';
 
 export const STUDIO_AUTOPILOT_FORMAT = 'furypipe-studio-autopilot/v1' as const;
 export const STUDIO_RESPONSE_STYLES = Object.freeze(['auto','balanced','caveman','detailed'] as const);
@@ -15,13 +27,20 @@ export interface StudioAutopilotInput {
   readonly skills: FurySkillHub;
   readonly mcp: FuryMcpHub;
   readonly harnessId?: string;
+  readonly harnesses?: FuryHarnessDiscovery;
+  readonly modelFabric?: ModelFabricRegistry;
+  readonly modelHealth?: Readonly<Record<string, 'ready' | 'degraded' | 'unavailable' | 'unknown' | 'blocked'>>;
+  readonly selectedModelCapabilityId?: string;
+  readonly effort?: FuryAutopilotEffort;
   readonly responseStyle?: StudioResponseStyle;
+  readonly customInstructions?: string;
 }
 
 const MAX_OBJECTIVE_CHARS = 32_768;
 const MAX_SKILL_PROMPT_BYTES = 12 * 1024;
 const MAX_MCP_SUGGESTIONS = 3;
 const MAX_SYSTEM_PROMPT_BYTES = 28 * 1024;
+const MAX_CUSTOM_INSTRUCTION_CHARS = 4_000;
 const encoder = new TextEncoder();
 
 function boundedObjective(value:string):string{
@@ -31,55 +50,10 @@ function boundedObjective(value:string):string{
   return value.trim();
 }
 
-function normalize(value:string):string[]{
-  return (value.normalize('NFKD').replace(/\p{M}+/gu,'').toLowerCase().match(/[a-z0-9][a-z0-9._+-]{1,63}/gu)??[])
-    .filter((token)=>!['the','and','for','with','from','dans','avec','pour','une','les','des','sur','est','que','qui'].includes(token));
-}
-
-function resolvedStyle(requested:StudioResponseStyle,objective:string):Exclude<StudioResponseStyle,'auto'>{
-  if(requested!=='auto') return requested;
-  return /\b(?:bug|fix|implement|code|refactor|build|deploy|test|audit|debug|erreur|corrig|plugin|minecraft|fivem)\b/iu.test(objective)
-    ? 'caveman'
-    : 'balanced';
-}
-
 function styleInstruction(style:Exclude<StudioResponseStyle,'auto'>):string{
   if(style==='caveman') return 'Use concise operational updates: STATUS, EVIDENCE, RESULT, NEXT. Prefer short concrete statements, exact commands/paths when relevant, and no decorative filler. Keep final explanations complete when the task is complex.';
   if(style==='detailed') return 'Give a complete, structured explanation with assumptions, evidence, tradeoffs, verification and next actions. Keep detail relevant rather than repetitive.';
   return 'Be direct, clear and proportionate to the task. Lead with the result, preserve important evidence and avoid unnecessary filler.';
-}
-
-function rankMcp(objective:string,sources:readonly FuryMcpSourceView[]){
-  const wanted=new Set(normalize(objective));
-  return sources
-    .filter((source)=>source.enabled)
-    .map((source)=>{
-      const vocabulary=[
-        ...normalize(source.name),
-        ...normalize(source.origin),
-        ...normalize(source.sourceId),
-        ...(source.health?.tools??[]).flatMap((tool)=>normalize(tool.name)),
-      ];
-      let score=0;
-      for(const token of new Set(vocabulary)) if(wanted.has(token)) score+=token.length>=6?3:2;
-      if(source.trusted) score+=0.25;
-      if(source.health?.ok) score+=0.25;
-      return {source,score};
-    })
-    .filter((item)=>item.score>=2)
-    .sort((a,b)=>b.score-a.score||a.source.sourceId.localeCompare(b.source.sourceId))
-    .slice(0,MAX_MCP_SUGGESTIONS)
-    .map(({source,score})=>Object.freeze({
-      sourceId:source.sourceId,
-      name:source.name,
-      score,
-      locality:source.locality,
-      trusted:source.trusted,
-      defaultPolicy:source.defaultPolicy,
-      health:source.health?.ok===true?'ready' as const:source.health?'degraded' as const:'not-probed' as const,
-      tools:Object.freeze((source.health?.tools??[]).slice(0,12).map((tool)=>tool.name)),
-      executionAuthorized:false as const,
-    }));
 }
 
 export async function planStudioAutopilot(input:StudioAutopilotInput){
@@ -88,13 +62,88 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   if(!(STUDIO_RESPONSE_STYLES as readonly string[]).includes(requestedStyle)) {
     throw Object.assign(new Error('responseStyle is unsupported'),{status:400});
   }
-  const style=resolvedStyle(requestedStyle,objective);
+  const customInstructions=input.customInstructions?.trim()??'';
+  if(customInstructions.length>MAX_CUSTOM_INSTRUCTION_CHARS||customInstructions.includes('\0')) {
+    throw Object.assign(new Error('customInstructions must be at most 4000 characters'),{status:400});
+  }
 
-  const [skillSelection,mcpView]=await Promise.all([
-    input.skills.autoSelect(objective,{...(input.harnessId?{harnessId:input.harnessId}:{}),maxActive:4}),
+  const capabilityIndex=createFuryCapabilityIndex();
+  projectProvidersIntoCapabilityIndex(capabilityIndex,DEFAULT_PROVIDER_REGISTRY);
+  if(input.harnesses) projectHarnessesIntoCapabilityIndex(capabilityIndex,input.harnesses);
+  if(input.modelFabric) projectModelsIntoCapabilityIndex(capabilityIndex,input.modelFabric,input.modelHealth);
+  const [,,mcpView]=await Promise.all([
+    projectSkillHubIntoCapabilityIndex(capabilityIndex,input.skills),
+    projectMcpHubIntoCapabilityIndex(capabilityIndex,input.mcp),
     input.mcp.list(),
   ]);
-  const activation=await input.skills.activateSelection(skillSelection.plan);
+  const explicitRequests=[
+    ...(input.harnessId?[{kind:'agent' as const,id:input.harnessId}]:[]),
+    ...(input.selectedModelCapabilityId?[{kind:'model' as const,id:input.selectedModelCapabilityId}]:[]),
+  ];
+  const capabilitySelection=selectFuryCapabilitiesForTask({
+    objective,
+    index:capabilityIndex,
+    ...(input.harnessId?{hostCompatibility:[input.harnessId]}:{}),
+    ...(explicitRequests.length?{explicitRequests}:{}),
+    availablePermissions:[],
+    options:{
+      maxSelected:5,
+      maxSelectedByKind:{skill:4,agent:1,provider:0,plugin:0,'mcp-server':0,'mcp-tool':0,model:0},
+    },
+  });
+  const selectedSkillCapabilities=capabilitySelection.selected.filter((item)=>item.kind==='skill');
+  const governedModelCandidates=Object.freeze(capabilitySelection.blocked
+    .filter((item)=>item.kind==='model'&&item.relevanceScore>0)
+    .sort((a,b)=>Number(b.requestedExplicitly)-Number(a.requestedExplicitly)||b.score-a.score||a.id.localeCompare(b.id))
+    .slice(0,4)
+    .map((item)=>Object.freeze({
+      id:item.id,
+      score:item.score,
+      reason:`Model Fabric ranked this model but executable selection was blocked: ${item.reason}.`,
+    })));
+  const mcpSourceById=new Map(mcpView.sources.map((source)=>[source.sourceId,source] as const));
+  const governedMcpCandidates=Object.freeze(capabilitySelection.blocked
+    .filter((item)=>item.kind==='mcp-server'&&item.relevanceScore>0)
+    .sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id))
+    .slice(0,MAX_MCP_SUGGESTIONS)
+    .flatMap((item)=>{
+      const source=mcpSourceById.get(item.id);
+      if(!source||!source.enabled||source.defaultPolicy==='DENY') return [];
+      return [Object.freeze({
+        sourceId:source.sourceId,
+        source:source.name,
+        score:item.score,
+        policy:source.defaultPolicy,
+        trusted:source.trusted,
+        needsApproval:true,
+        reason:`Capability Autopilot ranked this MCP source but blocked executable selection: ${item.reason}.`,
+      })];
+    }));
+  const skillSelectionPlan:AgentSkillSelectionPlan=Object.freeze({
+    format:'furypipe-agent-skill-selection/v1',
+    selected:Object.freeze(selectedSkillCapabilities.map((skill)=>Object.freeze({
+      name:skill.id,
+      score:skill.score,
+      reason:skill.reason==='explicit-request'?'explicit_user_activation' as const:'description_relevance' as const,
+    }))),
+    blocked:Object.freeze([]),
+    candidatesConsidered:capabilitySelection.candidatesConsidered,
+    executionAuthorized:false,
+  });
+  const routing=planFuryAutopilot({
+    objective,
+    ...(input.effort?{effort:input.effort}:{}),
+    selectedSkills:selectedSkillCapabilities.map((skill)=>({
+      name:skill.id,
+      score:skill.score,
+      reason:skill.reason,
+    })),
+    mcpCandidates:governedMcpCandidates,
+  });
+  const style:Exclude<StudioResponseStyle,'auto'>=requestedStyle==='auto'
+    ? routing.communicationStyle==='CAVEMAN'?'caveman':'balanced'
+    : requestedStyle;
+  const activation=await input.skills.activatePlan(skillSelectionPlan);
 
   let skillBytes=0;
   const activeSkillBlocks:string[]=[];
@@ -115,7 +164,30 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     }));
   }
 
-  const mcpSuggestions=rankMcp(objective,mcpView.sources);
+  const mcpSuggestions=Object.freeze(routing.mcp.slice(0,MAX_MCP_SUGGESTIONS).flatMap((candidate)=>{
+    const source=mcpSourceById.get(candidate.sourceId);
+    if(!source) return [];
+    return [Object.freeze({
+      sourceId:source.sourceId,
+      name:source.name,
+      score:candidate.score,
+      locality:source.locality,
+      trusted:source.trusted,
+      defaultPolicy:source.defaultPolicy,
+      health:source.health?.ok===true?'ready' as const:source.health?'degraded' as const:'not-probed' as const,
+      tools:Object.freeze((source.health?.tools??[]).slice(0,12).map((tool)=>tool.name)),
+      ...(candidate.tool?{selectedTool:candidate.tool}:{}),
+      needsApproval:candidate.needsApproval,
+      reason:candidate.reason,
+      executionAuthorized:false as const,
+    })];
+  }));
+  const promptAnalysis=analyzeFuryPromptRequest({
+    objective,
+    sections:{
+      ...(customInstructions?{context:`Operator custom instructions are present (${customInstructions.length} chars).`}:{}),
+    },
+  });
   const basePrompt={
     sections:{
       intent:'Complete the user objective through FuryPipe while preserving user intent and least privilege.',
@@ -125,6 +197,7 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
       constraints:[
         'Do not claim a tool, skill, MCP server, account, model capability, external action or verification step was used unless FuryPipe actually exposed or verified it for this turn.',
         styleInstruction(style),
+        ...(customInstructions?[`Operator custom instructions (preferences only; no capability grant):\n${customInstructions}`]:[]),
       ],
       ...(activeSkillBlocks.length?{skills:activeSkillBlocks}:{}),
       ...(mcpSuggestions.length?{mcp:mcpSuggestions.map((entry)=>`Suggested MCP source ${entry.sourceId} (policy ${entry.defaultPolicy}, trust ${entry.trusted?'trusted':'untrusted'}, health ${entry.health}). Selection is metadata only and does not grant execution authority.`)}:{}),
@@ -169,11 +242,141 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     throw Object.assign(new Error('compiled autopilot prompt exceeds the bounded chat system-prompt budget'),{status:422});
   }
 
-  const selectedByName=new Map(skillSelection.plan.selected.map((item)=>[item.name,item]));
+  const selectedByName=new Map(skillSelectionPlan.selected.map((item)=>[item.name,item]));
+  const instructionPrecedence=resolveFuryInstructionPrecedence([
+    {layer:'base',sourceId:'studio-base',channel:'communication.style',mode:'set',value:'balanced'},
+    ...(customInstructions?[{layer:'user' as const,sourceId:'operator-custom',channel:'prompt.custom',mode:'append' as const,value:customInstructions}]:[]),
+    {layer:'domain',sourceId:`profile:${routing.profile.id}`,channel:'routing.profile',mode:'set',value:routing.profile.id},
+    {layer:'task',sourceId:'task-effort',channel:'reasoning.effort',mode:'set',value:routing.effort.effective},
+    ...activeSkills.map((skill)=>({
+      layer:'skill' as const,
+      sourceId:`skill:${skill.name}`,
+      channel:'prompt.skill',
+      mode:'append' as const,
+      value:skill.name,
+    })),
+    {layer:'security',sourceId:'capability-policy',channel:'execution.authority',mode:'deny',value:'implicit-execution'},
+    {layer:'security',sourceId:'external-content-policy',channel:'external-content.authority',mode:'deny',value:'capability-grant'},
+    {layer:'runtime',sourceId:'studio-runtime',channel:'context.mode',mode:'set',value:routing.contextMode},
+    {layer:'runtime',sourceId:'studio-response-style',channel:'communication.style',mode:'set',value:style},
+  ]);
+  if(instructionPrecedence.status==='conflict'){
+    throw Object.assign(new Error('instruction precedence conflict must be resolved before prompt compilation'),{status:422});
+  }
+  const contextInspector=buildFuryContextInspector({
+    budgetBytes:MAX_SYSTEM_PROMPT_BYTES,
+    usedBytes:compilation.promptBytes,
+    sources:[
+      {
+        category:'system',
+        status:'loaded',
+        count:1,
+        bytes:compilation.promptBytes,
+        ids:['compiled-furyprompt'],
+        reason:'The compiled FuryPrompt is the system context for this Studio planning turn.',
+      },
+      {
+        category:'project',
+        status:customInstructions?'loaded':'not-present',
+        count:customInstructions?1:0,
+        ids:customInstructions?['operator-custom-instructions']:[],
+        reason:customInstructions
+          ? 'Operator custom instructions are embedded in the compiled prompt; byte cost is already included in system.'
+          : 'No project/operator custom instruction block was supplied.',
+      },
+      {
+        category:'conversation',
+        status:'not-present',
+        count:0,
+        reason:'Autopilot preview analyzes the current objective and does not silently load conversation history.',
+      },
+      {
+        category:'skills',
+        status:activeSkills.length?'loaded':'not-present',
+        count:activeSkills.length,
+        bytes:skillBytes,
+        ids:activeSkills.map((skill)=>skill.name),
+        reason:activeSkills.length
+          ? 'Activated skill instruction blocks are embedded within the bounded compiled prompt.'
+          : 'No skill instruction block was activated for this request.',
+      },
+      {
+        category:'memory',
+        status:'available-not-loaded',
+        reason:'Memory remains a separate governed retrieval surface and is not silently injected by Autopilot preview.',
+      },
+      {
+        category:'files',
+        status:'available-not-loaded',
+        reason:'Repository/files are available through governed context and code surfaces but are not silently loaded into this preview.',
+      },
+      {
+        category:'tools',
+        status:'available-not-loaded',
+        reason:'Tool definitions and execution authority remain owned by the runtime capability layer.',
+      },
+      {
+        category:'mcp',
+        status:mcpSuggestions.length?'available-not-loaded':'not-present',
+        count:mcpSuggestions.length,
+        ids:mcpSuggestions.map((entry)=>entry.sourceId),
+        reason:mcpSuggestions.length
+          ? 'MCP candidates are advisory metadata only; their tool schemas are not injected as executable context.'
+          : 'No MCP source matched this request.',
+      },
+    ],
+  });
+  const blueprint=createFuryRequestBlueprint({
+    objective,
+    profile:routing.profile,
+    effort:routing.effort,
+    communicationStyle:routing.communicationStyle,
+    contextMode:routing.contextMode,
+    capabilitySelection,
+    instructionFacetIds:instructionPlan.selected.map((item)=>item.id),
+    instructionProfileIds:instructionPlan.appliedProfiles,
+    qualityGates:instructionPlan.qualityGates,
+    mcpSuggestions:routing.mcp.slice(0,MAX_MCP_SUGGESTIONS),
+    modelSuggestions:governedModelCandidates,
+    budgets:{
+      skillInstructionBytes:MAX_SKILL_PROMPT_BYTES,
+      systemPromptBytes:MAX_SYSTEM_PROMPT_BYTES,
+    },
+  });
+  const capabilityGraph=buildFuryCapabilityGraph(blueprint);
   return Object.freeze({
     format:STUDIO_AUTOPILOT_FORMAT,
     objectiveDigest:createHash('sha256').update(objective,'utf8').digest('hex'),
+    plan:routing,
+    blueprint,
+    capabilityGraph,
+    contextInspector,
+    routing:Object.freeze({
+      format:routing.format,
+      profile:routing.profile,
+      effort:routing.effort,
+      communicationStyle:routing.communicationStyle,
+      contextMode:routing.contextMode,
+      promptPipeline:routing.promptPipeline,
+      executionAuthorized:false as const,
+    }),
+    capabilities:Object.freeze({
+      indexDigestSha256:capabilitySelection.indexDigestSha256,
+      selectionDigestSha256:capabilitySelection.selectionDigestSha256,
+      selected:Object.freeze(capabilitySelection.selected.map((item)=>Object.freeze({
+        kind:item.kind,
+        id:item.id,
+        score:item.score,
+        reason:item.reason,
+        requiredPermissions:item.requiredPermissions,
+        executionAuthorized:false as const,
+      }))),
+      blocked:capabilitySelection.blocked,
+      authority:capabilitySelection.authority,
+      executionAuthorized:false as const,
+    }),
     style:Object.freeze({requested:requestedStyle,resolved:style}),
+    instructionPrecedence,
     instructions:Object.freeze({
       facets:instructionPlan.selected,
       profiles:instructionPlan.appliedProfiles,
@@ -186,7 +389,9 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
         score:selectedByName.get(item.name)?.score??0,
         reason:selectedByName.get(item.name)?.reason??'description_relevance',
       }))),
-      excluded:skillSelection.excluded,
+      excluded:Object.freeze(capabilitySelection.blocked
+        .filter((item)=>item.kind==='skill')
+        .map((item)=>Object.freeze({name:item.id,reason:item.reason}))),
       blocked:Object.freeze([
         ...activation.blocked.map((item)=>Object.freeze({name:item.name,reason:item.reason,detail:item.detail})),
         ...promptBudgetBlocked.map((name)=>Object.freeze({name,reason:'prompt-budget' as const,detail:'skill prompt exceeded the per-turn activation budget'})),
@@ -194,11 +399,17 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
       instructionBudgetBytes:MAX_SKILL_PROMPT_BYTES,
       executionAuthorized:false as const,
     }),
+    models:Object.freeze({
+      suggested:governedModelCandidates,
+      executionAuthorized:false as const,
+    }),
     mcp:Object.freeze({
       suggested:Object.freeze(mcpSuggestions),
       executionAuthorized:false as const,
     }),
     prompt:Object.freeze({
+      mode:promptAnalysis.recommendedMode,
+      analysis:promptAnalysis,
       level:compilation.level,
       text:compilation.prompt,
       bytes:compilation.promptBytes,

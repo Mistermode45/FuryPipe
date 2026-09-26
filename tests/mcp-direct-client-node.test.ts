@@ -66,6 +66,33 @@ function httpConfig(options: {
   };
 }
 
+function sseConfig(options: {
+  readonly url: string;
+  readonly allowedHosts?: readonly string[];
+  readonly principalId?: string;
+  readonly authProvider?: object;
+}): McpDirectRuntimeConfig {
+  const config: McpDirectRuntimeConfig = {
+    source: {
+      sourceId: 'sse-fixture',
+      transport: 'sse',
+      endpointFingerprint: sha('0'),
+      trust: 'trusted',
+    },
+    url: options.url,
+    ...(options.allowedHosts === undefined ? {} : { allowedHosts: options.allowedHosts }),
+    ...(options.principalId === undefined ? {} : { principalId: options.principalId }),
+    ...(options.authProvider === undefined ? {} : { authProvider: options.authProvider as never }),
+  };
+  return {
+    ...config,
+    source: {
+      ...config.source,
+      endpointFingerprint: deriveMcpDirectEndpointFingerprint(config),
+    },
+  };
+}
+
 function fakeFactory(options: {
   readonly era?: 'modern' | 'legacy' | undefined;
   readonly protocolVersion?: string;
@@ -102,6 +129,10 @@ function fakeFactory(options: {
     createHttpTransport(config) {
       transportConfig = config;
       return { kind: 'http' };
+    },
+    createSseTransport(config) {
+      transportConfig = config;
+      return { kind: 'sse' };
     },
   };
 
@@ -219,6 +250,90 @@ describe('direct MCP client inventory transport', () => {
       factory: fake.factory,
     })).rejects.toThrow('offline');
     expect(fake.counters()).toEqual({ closeCalls: 1, connectCalls: 1, listCalls: 0 });
+  });
+
+  it('supports explicit legacy SSE without conflating it with Streamable HTTP identity', async () => {
+    const fake = fakeFactory({ era: 'legacy', protocolVersion: '2025-11-25' });
+    const sse = sseConfig({
+      url: 'https://mcp.example.test/sse',
+      allowedHosts: ['mcp.example.test'],
+    });
+    const http = httpConfig({
+      url: 'https://mcp.example.test/sse',
+      allowedHosts: ['mcp.example.test'],
+      sourceId: 'sse-fixture',
+      trust: 'trusted',
+    });
+
+    expect(sse.source.endpointFingerprint).not.toBe(http.source.endpointFingerprint);
+    const result = await probeMcpDirectInventoryInternal(sse, {
+      clientInfo: { name: 'furypipe-test', version: '1.0.0' },
+      factory: fake.factory,
+    });
+    expect(result.lifecycle.source.transport).toBe('sse');
+    expect(result.lifecycle.protocolEra).toBe('legacy_2025');
+    expect(fake.transportConfig()).toMatchObject({ url: expect.any(URL) });
+  });
+
+  it('requires non-secret principal binding for OAuth and keeps auth provider state out of evidence', async () => {
+    const fake = fakeFactory({});
+    const authProvider = { token: async () => 'MCP_OAUTH_SECRET_CANARY' };
+
+    expect(() => deriveMcpDirectEndpointFingerprint({
+      source: {
+        sourceId: 'oauth-http',
+        transport: 'streamable_http',
+        endpointFingerprint: sha('0'),
+        trust: 'trusted',
+      },
+      url: 'https://mcp.example.test/v1',
+      allowedHosts: ['mcp.example.test'],
+      authProvider: authProvider as never,
+    })).toThrow(/principalId/i);
+
+    const config = httpConfig({
+      url: 'https://mcp.example.test/v1',
+      allowedHosts: ['mcp.example.test'],
+      principalId: 'oauth-user-a',
+    }) as Extract<McpDirectRuntimeConfig, { source: { transport: 'streamable_http' } }>;
+    const oauthConfig: McpDirectRuntimeConfig = {
+      ...config,
+      authProvider: authProvider as never,
+      source: { ...config.source, endpointFingerprint: sha('0') },
+    };
+    const bound: McpDirectRuntimeConfig = {
+      ...oauthConfig,
+      source: {
+        ...oauthConfig.source,
+        endpointFingerprint: deriveMcpDirectEndpointFingerprint(oauthConfig),
+      },
+    };
+
+    const result = await probeMcpDirectInventoryInternal(bound, {
+      clientInfo: { name: 'furypipe-test', version: '1.0.0' },
+      factory: fake.factory,
+    });
+    expect(JSON.stringify(result)).not.toContain('MCP_OAUTH_SECRET_CANARY');
+    expect(JSON.stringify(result)).not.toContain('authProvider');
+    expect(fake.transportConfig()).toMatchObject({ authProvider });
+  });
+
+  it('rejects ambiguous Authorization-header plus OAuth-provider credentials', () => {
+    const authProvider = { token: async () => 'secret' };
+    const config: McpDirectRuntimeConfig = {
+      source: {
+        sourceId: 'oauth-conflict',
+        transport: 'streamable_http',
+        endpointFingerprint: sha('0'),
+        trust: 'trusted',
+      },
+      url: 'https://mcp.example.test/v1',
+      allowedHosts: ['mcp.example.test'],
+      headers: { Authorization: 'Bearer static' },
+      authProvider: authProvider as never,
+      principalId: 'oauth-user-a',
+    };
+    expect(() => deriveMcpDirectEndpointFingerprint(config)).toThrow(/cannot be combined/i);
   });
 
   it('requires HTTPS and an explicit host allowlist for remote HTTP', async () => {

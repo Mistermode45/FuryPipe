@@ -1,5 +1,7 @@
 # FuryPipe Product Completion Spec 2026
 
+> 2026-09-26 scope note: this file remains the closure/evidence ledger for the 2026-09-25 Studio/Foundation track. It is **not** the complete product vision after the operator's 2026-09-26 continuation specification. Future product gaps and priorities are governed by `FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md` plus `FURYPIPE_GAP_ANALYSIS_2026-09-26.md`; existing DONE evidence below remains valid only for the capability it actually proves.
+
 Single definition of done for the `claude/furypipe-studio-universal-ai-workspace` track (mission §20–§21, §119). No numbered phases are added on top of this list; a requirement leaves this file only by reaching DONE with evidence or by an explicit reclassification recorded in `MASTER_DOC_SYNC_LOG.md`.
 
 Source: master product vision 2026-09-25 (read in full from the operator's export; see `MASTER_DOC_SYNC_LOG.md`) and the operator's 2026-09-25 mission prompt. Section references (§) point to the master document.

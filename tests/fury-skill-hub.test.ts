@@ -61,6 +61,24 @@ describe('FurySkillHub', () => {
     expect((await hub.autoSelect('review the SQL migrations')).excluded).toContainEqual({ name: 'sql-review', reason: 'disabled' });
   });
 
+  it('activates selected SKILL.md instructions with receipts but no tool authority', async () => {
+    const { hub } = setup();
+    const selection = await hub.autoSelect('review the SQL migrations for locking', { harnessId: 'claude-code' });
+    const activated = await hub.activateSelection(selection.plan.selected.map((skill) => skill.name), { harnessId: 'claude-code' });
+    expect(activated).toHaveLength(1);
+    expect(activated[0]).toMatchObject({
+      name: 'sql-review',
+      executionAuthorized: false,
+      receipt: { format: 'furypipe-agent-skill-activation/v1', status: 'activated', executionAuthorized: false },
+    });
+    expect(activated[0]?.instructions).toContain('Do the thing.');
+    expect(activated[0]?.checksum).toMatch(/^[0-9a-f]{64}$/u);
+
+    await hub.setEnabled('sql-review', false);
+    await expect(hub.activateSelection(['sql-review'])).rejects.toThrow(/disabled/u);
+    await expect(hub.activateSelection(Array.from({ length: 9 }, (_, i) => `skill-${i}`))).rejects.toThrow(/at most 8/u);
+  });
+
   it('records usage stats and persists state across hub instances', async () => {
     const { hub, root, project } = setup();
     await hub.recordUse('css-audit', 'success');
@@ -70,6 +88,50 @@ describe('FurySkillHub', () => {
     expect((await again.list()).skills.find((s) => s.name === 'css-audit')).toMatchObject({ governance: 'DRAFT_ONLY', stats: { uses: 2, successes: 1, failures: 1, lastUsedAt: 1_001 } });
     await expect(hub.setGovernance('css-audit', 'YOLO' as never)).rejects.toThrow(FurySkillHubError);
     await expect(hub.pin('nope')).rejects.toThrow(/unknown skill/u);
+  });
+
+  it('creates a bounded project-local skill without granting tool authority', async () => {
+    const { hub, project } = setup();
+    const created = await hub.create({
+      name:'release-review',
+      description:'Review release changes before publishing.',
+      instructions:'Inspect the diff, verify tests, and report evidence before completion.',
+      version:'1.0.0',
+      author:'LégendeUrbaine',
+      license:'MIT',
+      harnesses:['claude-code','codex'],
+      allowedTools:['read_file','git_diff'],
+      type:'GENERATED',
+      triggers:['release review requested'],
+      examples:['Review the next FuryPipe release.'],
+      tests:['Must request no execution authority.'],
+    });
+    expect(created).toMatchObject({
+      name:'release-review',
+      version:'1.0.0',
+      author:'LégendeUrbaine',
+      license:'MIT',
+      compatibleHarnesses:['claude-code','codex'],
+      type:'GENERATED',
+      executionAuthorized:false,
+    });
+    const text=readFileSync(join(project,'.furypipe','skills','release-review','SKILL.md'),'utf8');
+    expect(text).toContain('allowed-tools: "read_file, git_diff"');
+    expect(text).toContain('## Trigger conditions');
+    const activated=await hub.activateSelection(['release-review'],{harnessId:'claude-code'});
+    expect(activated).toHaveLength(1);
+    expect(activated[0]).toMatchObject({
+      name:'release-review',
+      allowedTools:'read_file, git_diff',
+      executionAuthorized:false,
+    });
+  });
+
+  it('rejects unsafe creator input and unknown harnesses', async () => {
+    const { hub } = setup();
+    await expect(hub.create({name:'Bad Name',description:'x',instructions:'y'})).rejects.toThrow(/invalid skill name/u);
+    await expect(hub.create({name:'safe-name',description:'x',instructions:'y',harnesses:['unknown-runtime']})).rejects.toThrow(/unknown harness/u);
+    await expect(hub.create({name:'safe-name',description:'x',instructions:'x'.repeat(30*1024)})).rejects.toThrow(/per-skill activation bound/u);
   });
 
   it('installs from a local directory with snapshots, compares and rolls back', async () => {

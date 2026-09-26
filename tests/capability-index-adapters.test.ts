@@ -1,12 +1,23 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   selectFuryCapabilitiesForTask,
 } from '../src/capability-autopilot.js';
+import { createCapabilityRegistry } from '../src/ecosystem/registry.js';
+import { makeCapabilityCandidate } from './helpers/ecosystem-candidate.js';
 import {
+  projectCapabilityRegistryIntoIndex,
+  projectHarnessesIntoCapabilityIndex,
+  projectMcpHubIntoCapabilityIndex,
   projectMcpIntoCapabilityIndex,
   projectModelsIntoCapabilityIndex,
+  projectProvidersIntoCapabilityIndex,
   projectPluginsIntoCapabilityIndex,
+  projectSkillHubIntoCapabilityIndex,
   projectSkillsIntoCapabilityIndex,
   revalidateFuryCapabilitySelection,
 } from '../src/capability-index-adapters.js';
@@ -18,6 +29,7 @@ import {
   normalizeOpenAIModelsPayload,
   createModelFabricRegistry,
 } from '../src/core/model-fabric.js';
+import { createProviderRegistry } from '../src/core/provider-fabric.js';
 import type {
   FuryKernelToolBridge,
   FuryKernelToolSourceInspection,
@@ -29,8 +41,72 @@ import {
 import {
   createAgentSkillRegistry,
 } from '../src/skill-registry.js';
+import { createFurySkillHub } from '../src/fury-skill-hub.js';
+import { createFuryMcpHub } from '../src/fury-mcp-hub.js';
 
 describe('Capability Autopilot source-of-truth adapters', () => {
+  it('projects the canonical capability registry without weakening trust requirements', () => {
+    const registry = createCapabilityRegistry([
+      makeCapabilityCandidate({
+        name: 'Image Provider',
+        type: 'image-provider',
+        description: 'Generate and edit images.',
+        source: {
+          kind: 'git',
+          url: 'https://github.com/fury-example/image-provider',
+          repositoryUrl: 'https://github.com/fury-example/image-provider',
+          version: '2.0.0',
+          commitSha: 'b'.repeat(40),
+        },
+        decision: 'ADOPT',
+        health: { status: 'HEALTHY', observedAt: '2026-09-26T00:00:00Z' },
+        categories: ['media'],
+        capabilities: ['text-to-image','image-edit'],
+        domains: ['creative'],
+        supportedPlatforms: ['linux'],
+      }),
+      makeCapabilityCandidate({
+        name: 'Reference Framework',
+        type: 'framework',
+        description: 'Reference-only framework that has no routing index kind.',
+        source: {
+          kind: 'git',
+          url: 'https://github.com/fury-example/reference-framework',
+          repositoryUrl: 'https://github.com/fury-example/reference-framework',
+          version: '1.0.0',
+          commitSha: 'c'.repeat(40),
+        },
+        decision: 'ADOPT',
+      }),
+    ]);
+    const index = createFuryCapabilityIndex();
+
+    const report = projectCapabilityRegistryIntoIndex(index, registry);
+    expect(report).toMatchObject({
+      indexed: 1,
+      skipped: 1,
+      source: 'capability-registry',
+      executionAuthority: false,
+    });
+    const image = index.list('image-provider')[0];
+    expect(image).toMatchObject({
+      kind: 'image-provider',
+      trust: 'unknown',
+      license: 'verified',
+      health: 'ready',
+      executionAuthority: false,
+    });
+
+    const selection = selectFuryCapabilitiesForTask({
+      objective: 'Generate an image with the image provider.',
+      index,
+      explicitRequests: [{ kind: 'image-provider', id: image!.id }],
+      options: { maxSelectedByKind: { 'image-provider': 1 } },
+    });
+    expect(selection.selected).toHaveLength(0);
+    expect(selection.blockedCounts).toMatchObject({ 'trust-unknown': 1 });
+  });
+
   it('projects skill inspection metadata without executing or health-checking the skill', () => {
     const execute = vi.fn(async () => ({
       evidence: ['never-called'],
@@ -86,6 +162,101 @@ describe('Capability Autopilot source-of-truth adapters', () => {
       },
       executionAuthority: false,
     });
+  });
+
+  it('projects Studio Skill Hub metadata without loading skill instructions into the capability index', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-capability-skill-hub-'));
+    try {
+      const project = join(root, 'project');
+      const home = join(root, 'home');
+      mkdirSync(join(project, '.furypipe'), { recursive: true });
+      mkdirSync(join(home, '.claude', 'skills', 'repo-review'), { recursive: true });
+      writeFileSync(
+        join(home, '.claude', 'skills', 'repo-review', 'SKILL.md'),
+        '---\nname: repo-review\ndescription: Review repository code, tests and security.\n---\nPRIVATE-INSTRUCTION-BODY-MUST-NOT-BE-INDEXED\n',
+      );
+
+      const hub = createFurySkillHub({
+        projectRoot: project,
+        homeDir: home,
+        stateDir: join(root, 'skill-state'),
+      });
+      const index = createFuryCapabilityIndex();
+      const report = await projectSkillHubIntoCapabilityIndex(index, hub);
+
+      expect(report).toEqual({
+        indexed: 1,
+        skipped: 0,
+        source: 'skill-hub',
+        authority: 'projection-only',
+        executionAuthority: false,
+      });
+      expect(index.get('skill', 'repo-review')).toMatchObject({
+        kind: 'skill',
+        id: 'repo-review',
+        trust: 'verified',
+        license: 'not-applicable',
+        health: 'ready',
+        riskClass: 'none',
+        requiredPermissions: [],
+        source: {
+          system: 'skill-registry',
+          sourceId: 'repo-review',
+        },
+        executionAuthority: false,
+      });
+      expect(JSON.stringify(index.snapshot())).not.toContain('PRIVATE-INSTRUCTION-BODY-MUST-NOT-BE-INDEXED');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('projects Studio MCP Hub configuration without starting or probing the configured server', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-capability-mcp-hub-'));
+    try {
+      const project = join(root, 'project');
+      const home = join(root, 'home');
+      mkdirSync(join(project, '.furypipe'), { recursive: true });
+      mkdirSync(home, { recursive: true });
+      writeFileSync(
+        join(project, '.furypipe', 'mcp.json'),
+        JSON.stringify({ mcpServers: { github: { command: 'npx', args: ['server-github'] } } }),
+      );
+      const probe = vi.fn(async () => {
+        throw new Error('PROJECTION_MUST_NOT_PROBE');
+      });
+      const hub = createFuryMcpHub({
+        projectRoot: project,
+        homeDir: home,
+        stateDir: join(root, 'mcp-state'),
+        probe,
+      });
+      const index = createFuryCapabilityIndex();
+      const report = await projectMcpHubIntoCapabilityIndex(index, hub);
+
+      expect(probe).not.toHaveBeenCalled();
+      expect(report).toEqual({
+        indexed: 1,
+        skipped: 0,
+        source: 'mcp-hub',
+        authority: 'projection-only',
+        executionAuthority: false,
+      });
+      const source = index.list('mcp-server')[0];
+      expect(source).toMatchObject({
+        kind: 'mcp-server',
+        trust: 'unverified',
+        health: 'unknown',
+        riskClass: 'process',
+        requiredPermissions: ['process'],
+        source: { system: 'mcp-host' },
+        executionAuthority: false,
+      });
+      expect(index.list('mcp-tool')).toHaveLength(0);
+      expect(JSON.stringify(index.snapshot())).not.toContain('server-github');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('keeps reference-only skills blocked even when a host says health is ready', () => {
@@ -155,6 +326,128 @@ describe('Capability Autopilot source-of-truth adapters', () => {
     expect(serialized).not.toContain('CONTEXT7_API_KEY');
     expect(serialized).not.toContain('bearerEnv');
     expect(serialized).not.toContain('enabled":true');
+  });
+
+  it('projects harness discovery as agent capabilities without executing discovery', () => {
+    const index = createFuryCapabilityIndex();
+    const report = projectHarnessesIntoCapabilityIndex(index, {
+      format: 'furypipe-harness-discovery/v1',
+      platform: 'linux',
+      harnesses: [{
+        id: 'furypipe-native',
+        displayName: 'FuryPipe Native',
+        installed: true,
+        versionStatus: 'builtin',
+        authentication: 'not-probed',
+        definition: {
+          id: 'furypipe-native',
+          displayName: 'FuryPipe Native',
+          executables: [],
+          versionArgs: [],
+          integrations: ['native'],
+          protocols: ['mcp','acp','a2a'],
+          skillsDirectories: ['.furypipe/skills'],
+          localModel: { mechanism: 'native', note: 'native' },
+          capabilities: { streaming: true, resume: true, subagents: true },
+          evidence: 'BUILTIN',
+        },
+      },{
+        id: 'claude-code',
+        displayName: 'Claude Code',
+        installed: true,
+        executable: '/usr/bin/claude',
+        version: '2.1.282',
+        versionStatus: 'ok',
+        authentication: 'not-probed',
+        definition: {
+          id: 'claude-code',
+          displayName: 'Claude Code',
+          executables: ['claude'],
+          versionArgs: ['--version'],
+          integrations: ['official-sdk','structured-cli'],
+          protocols: ['mcp'],
+          skillsDirectories: ['.claude/skills'],
+          localModel: { mechanism: 'anthropic-compatible-base-url', note: 'local compatible' },
+          capabilities: { streaming: true, resume: true, subagents: true },
+          evidence: 'OFFICIAL_FACT',
+        },
+      }],
+    });
+
+    expect(report).toEqual({
+      indexed: 2,
+      skipped: 0,
+      source: 'harness-hub',
+      authority: 'projection-only',
+      executionAuthority: false,
+    });
+    expect(index.get('agent','furypipe-native')).toMatchObject({
+      trust: 'verified',
+      health: 'ready',
+      requiredPermissions: [],
+      executionAuthority: false,
+    });
+    expect(index.get('agent','claude-code')).toMatchObject({
+      trust: 'verified',
+      health: 'ready',
+      requiredPermissions: ['process'],
+      source: { sourceRevision: '2.1.282' },
+      executionAuthority: false,
+    });
+    expect(JSON.stringify(index.snapshot())).not.toContain('/usr/bin/claude');
+  });
+
+  it('projects Provider Fabric metadata without probing or inventing availability', () => {
+    const registry = createProviderRegistry([{
+      id: 'example',
+      protocol: 'openai',
+      aliases: ['example-ai'],
+      routePrefix: '/providers/example',
+      status: 'registered',
+      availability: 'unknown',
+      evidence: [{ kind: 'local-contract', source: 'test registration' }],
+      cache: {
+        status: 'unknown',
+        cost: { status: 'COST_UNKNOWN' },
+      },
+    }]);
+    const index = createFuryCapabilityIndex();
+
+    const report = projectProvidersIntoCapabilityIndex(index, registry);
+    expect(report).toEqual({
+      indexed: 1,
+      skipped: 0,
+      source: 'provider-fabric',
+      authority: 'projection-only',
+      executionAuthority: false,
+    });
+    expect(index.get('provider', 'example')).toMatchObject({
+      kind: 'provider',
+      trust: 'verified',
+      health: 'unknown',
+      requiredPermissions: ['provider-inference'],
+      executionAuthority: false,
+    });
+
+    const selected = selectFuryCapabilitiesForTask({
+      objective: 'Use the example provider.',
+      index,
+      explicitRequests: [{ kind: 'provider', id: 'example' }],
+      availablePermissions: ['provider-inference'],
+      options: { maxSelectedByKind: { provider: 1 } },
+    });
+    expect(selected.selected).toHaveLength(0);
+    expect(selected.blockedCounts).toMatchObject({ 'health-unknown': 1 });
+
+    const healthyIndex = createFuryCapabilityIndex();
+    projectProvidersIntoCapabilityIndex(healthyIndex, registry, { example: 'ready' });
+    expect(selectFuryCapabilitiesForTask({
+      objective: 'Use the example provider.',
+      index: healthyIndex,
+      explicitRequests: [{ kind: 'provider', id: 'example' }],
+      availablePermissions: ['provider-inference'],
+      options: { maxSelectedByKind: { provider: 1 } },
+    }).selected).toHaveLength(1);
   });
 
   it('projects Model Fabric metadata without making a provider request or claiming route health', () => {

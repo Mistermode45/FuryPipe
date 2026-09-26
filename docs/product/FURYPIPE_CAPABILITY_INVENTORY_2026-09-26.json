@@ -1,0 +1,578 @@
+{
+  "format": "furypipe-capability-inventory/v1",
+  "generatedAt": "2026-09-26",
+  "sourceOfTruth": {
+    "repository": "Mistermode45/FuryPipe",
+    "branch": "claude/furypipe-studio-autopilot-extensions",
+    "continuationSpec": "docs/product/FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md",
+    "completionSpec": "docs/product/FURYPIPE_PRODUCT_COMPLETION_SPEC_2026.md"
+  },
+  "auditState": "PARTIAL_AUDIT",
+  "honesty": "This inventory is machine-readable evidence from the existing completion spec plus direct code reads. It is not declared exhaustive until repository-wide enumeration and runtime discovery are complete.",
+  "trackedRequirements": [
+    {
+      "id": "CORE-01",
+      "requirement": "FuryProof evidence kernel: receipts (TOOL/AGENT/PATCH/TEST/BROWSER/MODEL/INTEGRATION/APPROVAL), claim states OBSERVED/DERIVED/CLAIMED/VERIFIED, agents cannot self-promote CLAIMED→VERIFIED",
+      "class": "MUST",
+      "dependsOn": "–",
+      "acceptance": "A claim without a matching verified receipt stays CLAIMED; bundle digest is deterministic; tampered receipt is rejected",
+      "testStrategy": "unit + property tests",
+      "status": "DONE — src/fury-proof.ts, tests/fury-proof.test.ts"
+    },
+    {
+      "id": "CORE-02",
+      "requirement": "FuryJudge: ACCEPT/REWORK/REJECT/ESCALATE/UNPROVEN from requirements × receipts",
+      "class": "MUST",
+      "dependsOn": "CORE-01",
+      "acceptance": "Missing evidence for a MUST predicate → UNPROVEN; failing test receipt → REWORK; policy violation → REJECT",
+      "testStrategy": "unit",
+      "status": "DONE — FuryJudge in src/fury-proof.ts"
+    },
+    {
+      "id": "CORE-03",
+      "requirement": "FuryIR / Executable Intent Contract (MUST, MUST_NOT, allowed/denied capabilities, budget, success predicates, human gates, task DAG, evidence contract), versioned and strictly validated",
+      "class": "MUST",
+      "dependsOn": "–",
+      "acceptance": "Unknown keys, cycles, oversize and unbounded budgets rejected; digest stable",
+      "testStrategy": "unit",
+      "status": "DONE — src/fury-ir.ts, tests/fury-ir.test.ts"
+    },
+    {
+      "id": "CORE-04",
+      "requirement": "Harness Hub: registry + safe discovery (installed, version) for Claude Code, Codex, Gemini CLI, OpenCode, OpenClaw, OpenHands, Goose, Kilo, FuryPipe Native, ACP/A2A generic; never reads credentials",
+      "class": "MUST",
+      "dependsOn": "–",
+      "acceptance": "Discovery uses only PATH lookup + `--version` with timeout, no shell; absent tools reported as not installed",
+      "testStrategy": "unit with fake binaries",
+      "status": "DONE (discovery) — src/fury-harness-hub.ts: 9 CLI harnesses + generic ACP and A2A protocol entries (configured endpoints, never executed by discovery); execution adapters: Claude Code (flags verified against CLI 2.1.282 help) and Codex (community-documented flags, UNVERIFIED against a local binary: not installed here); other harnesses refuse with \"no execution adapter\""
+    },
+    {
+      "id": "CORE-05",
+      "requirement": "Local model fabric: loopback discovery of Ollama, LM Studio, llama.cpp, vLLM, SGLang, LocalAI, generic OpenAI/Anthropic-compatible; capability probe; hardware discovery kept local; FITS/MAY_BE_SLOW/DOES_NOT_FIT",
+      "class": "MUST",
+      "dependsOn": "–",
+      "acceptance": "Probes only allow-listed loopback/LAN targets, bounded bodies, timeouts; classification deterministic",
+      "testStrategy": "fake HTTP servers",
+      "status": "DONE — src/fury-local-fabric.ts; SGLang/LocalAI/Jan verified only through the OpenAI-compatible path"
+    },
+    {
+      "id": "CORE-06",
+      "requirement": "FuryDispatcher: OFF/SINGLE/AUTO/MANUAL/PIPELINE/PARALLEL/COUNCIL/RACE/REVIEW_CHAIN/SPECIALISTS/LOCAL_CLOUD_HYBRID/LOCAL_ONLY/CUSTOM_GRAPH; AUTO may return DISPATCH_BENEFIT=LOW; child authority ≤ parent; privacy boundary enforced",
+      "class": "MUST",
+      "dependsOn": "CORE-03,04,05",
+      "acceptance": "Plans are deterministic for a given registry; LOCAL_ONLY never selects a cloud provider; escalated child authority rejected",
+      "testStrategy": "unit",
+      "status": "DONE — src/fury-dispatcher.ts plans; plans execute end to end through src/fury-run.ts (writers in worktrees → integrator → readers → judge), tested with a fake harness and real git"
+    },
+    {
+      "id": "CORE-07",
+      "requirement": "Worktree isolation: 1 writer agent = 1 git worktree, cleanup of orphans",
+      "class": "MUST",
+      "dependsOn": "CORE-06",
+      "acceptance": "Two writers never share a worktree; orphan worktrees detected and removed",
+      "testStrategy": "integration with real git",
+      "status": "DONE — src/fury-writer-pool.ts with real git worktrees"
+    },
+    {
+      "id": "CORE-08",
+      "requirement": "FuryPlanner: requirements → task DAG with owners, budgets, stop conditions, human gates",
+      "class": "MUST",
+      "dependsOn": "CORE-03,06",
+      "acceptance": "Planner output validates as FuryIR",
+      "testStrategy": "unit",
+      "status": "DONE — src/fury-planner.ts (intent + planned files → validated FuryIR DAG with owners, gates and budgets), tests/fury-planner.test.ts"
+    },
+    {
+      "id": "CORE-09",
+      "requirement": "FuryIntegrator: ordered patch application with conflict detection, never blind merge",
+      "class": "MUST",
+      "dependsOn": "CORE-07",
+      "acceptance": "Conflicting patches stop with a conflict report; clean patches applied in sequence with receipts",
+      "testStrategy": "integration with real git",
+      "status": "DONE — src/fury-integrator.ts (ordered merges in a dedicated worktree, conflict stop, verification receipts), tests/fury-integrator.test.ts with real git"
+    },
+    {
+      "id": "CORE-10",
+      "requirement": "FuryGraph provider interface + Graphify provider (real graph.json schema) + native codegraph fallback; blast radius",
+      "class": "MUST",
+      "dependsOn": "–",
+      "acceptance": "Graphify fixture parsed; missing Graphify falls back to native; affected set computed by reverse traversal",
+      "testStrategy": "unit with real Graphify fixture",
+      "status": "DONE — src/fury-graph.ts, real Graphify 0.9.67 fixture"
+    },
+    {
+      "id": "CORE-11",
+      "requirement": "FuryContext Compiler: task context capsule with source, reason, digest, scope, expiry; never drops MUST constraints",
+      "class": "MUST",
+      "dependsOn": "CORE-03,10",
+      "acceptance": "Over-budget capsule drops lowest-priority items only; MUST constraints always present",
+      "testStrategy": "unit + FuryBench context case",
+      "status": "DONE — src/fury-context-compiler.ts; FuryBench context case in docs/evidence/FURYBENCH_STUDIO_2026-09-25.md (mean recall of co-changed files 0.282 vs 0.201 same-folder baseline, budget matched)"
+    },
+    {
+      "id": "CORE-12",
+      "requirement": "Mission Control model: per-agent state, budget, receipts; actions PAUSE/STOP/RETRY/CHANGE_MODEL/APPROVE/DENY",
+      "class": "MUST",
+      "dependsOn": "CORE-06",
+      "acceptance": "State transitions validated; illegal transitions rejected",
+      "testStrategy": "unit",
+      "status": "DONE — src/fury-mission-control.ts (validated transitions, budgets, START/PAUSE/RESUME/STOP/REDIRECT/RETRY/CHANGE_MODEL/HANDOFF/APPROVE/DENY), tests/fury-mission-control.test.ts"
+    },
+    {
+      "id": "CORE-13",
+      "requirement": "FuryReplay: task record, fork with different runtime/model",
+      "class": "MUST",
+      "dependsOn": "CORE-01,03",
+      "acceptance": "Replay record digest stable; fork preserves inputs and changes only the declared axis",
+      "testStrategy": "unit",
+      "status": "DONE — hash-chained FuryReplay with verify/fork/explain in src/fury-mission-control.ts"
+    },
+    {
+      "id": "UX-01",
+      "requirement": "FuryPipe Studio shell: Chat/Cowork/Code/Agents/Automations + secondary nav; dashboard under Settings › Advanced › Control Plane",
+      "class": "MUST",
+      "dependsOn": "CORE-04,05",
+      "acceptance": "Served by the runtime; keyboard navigable; no console errors; Chromium/Firefox/WebKit QA",
+      "testStrategy": "browser QA + a11y",
+      "status": "PENDING_HUMAN_RETEST — human verdict 2026-09-25 was REWORK_REQUIRED (dashboard/prototype feel). Reworked as the \"Fury Lux\" black × orange workspace (docs/design/FURYPIPE_STUDIO_DESIGN_SYSTEM_2026.md, market scan docs/research/FURYPIPE_STUDIO_UI_MARKET_2026.md): new-chat hero + FuryComposer, Fury Auto with \"Why this route?\", collapsible sidebar/mobile drawer, Recent with rename/delete, command palette, custom mode menu, premium Models and Settings. Chromium QA + screenshots local; Firefox/WebKit in hosted Cross-Browser QA; human visual retest and screen-reader pass pending"
+    },
+    {
+      "id": "UX-02",
+      "requirement": "Chat: conversations, model/provider/runtime/local-cloud indicators, model switch, retry with another model",
+      "class": "MUST",
+      "dependsOn": "UX-01,CORE-05",
+      "acceptance": "Indicators always visible; switch recorded in replay",
+      "testStrategy": "browser QA",
+      "status": "DONE (local runtimes) — persisted conversations (src/studio/studio-chats.ts), branch from any answer, retry with another model as a branch, model/provider/locality recorded on every answer in the conversation record and shown in the header. Text-file and pasted-text attachments, linked-page reading (FuryWeb FETCH) and knowledge grounding are in the composer. Not in Studio yet (master §7, recorded as gaps in MASTER_DOC_SYNC_LOG): cloud models (they stay in the governed Gateway WebChat), image/audio attachments, compare/council, export/import, cost/tokens display"
+    },
+    {
+      "id": "UX-03",
+      "requirement": "Cowork: file/folder tasks with READ/WRITE/EXECUTE/NETWORK/EXTERNAL_ACTION permissions and ALLOW/ASK/DENY",
+      "class": "MUST",
+      "dependsOn": "UX-01,CORE-06",
+      "acceptance": "Denied capability never executes; ASK surfaces an approval",
+      "testStrategy": "browser QA + unit",
+      "status": "DONE — Cowork runs real agents: chosen permissions flow into the contract; DENY reaches every agent (WRITE denied → read-only review plan), ASK must be approved in the UI before start (409 approval-required otherwise), EXTERNAL_ACTION never ALLOW; tests/studio-api.test.ts + browser QA"
+    },
+    {
+      "id": "UX-04",
+      "requirement": "Code: repo explorer, diff, tests, worktrees, agents",
+      "class": "MUST",
+      "dependsOn": "UX-01,CORE-07",
+      "acceptance": "Diff and test receipts visible per worktree",
+      "testStrategy": "browser QA",
+      "status": "DONE (read-only) — Code view: graph, blast radius, project file explorer (realpath-confined), worktree list with changed-file counts, per-worktree diff and the Mission Control agents/receipts that ran there (src/studio/studio-code.ts); editing and terminal are out of this view by design (agents write in worktrees)"
+    },
+    {
+      "id": "UX-05",
+      "requirement": "Agents / Mission Control view",
+      "class": "MUST",
+      "dependsOn": "UX-01,CORE-12",
+      "acceptance": "Live state from the runtime API",
+      "testStrategy": "browser QA",
+      "status": "DONE — Mission Control view with real, confirmed, judge-gated runs (local runtimes unless cloud is allowed), live worker state and STOP; browser QA"
+    },
+    {
+      "id": "UX-06",
+      "requirement": "Automations / FuryFlow builder with deterministic vs agentic zones",
+      "class": "MUST",
+      "dependsOn": "UX-01",
+      "acceptance": "Flow validates as a DAG; zones rendered",
+      "testStrategy": "browser QA + unit",
+      "status": "DONE — src/fury-flow.ts (23 node types, deterministic/agentic zones, dry-run with checkpoints) and the Studio Automations canvas; browser QA"
+    },
+    {
+      "id": "CORE-14",
+      "requirement": "Budget governance modes FAST, BALANCED, QUALITY, BUDGET, LOCAL-FIRST, PRIVATE, CUSTOM mapped to dispatcher ranking and privacy (§28)",
+      "class": "MUST",
+      "dependsOn": "CORE-06",
+      "acceptance": "Each mode changes ranking/filters deterministically; PRIVATE = local-only",
+      "testStrategy": "unit",
+      "status": "DONE — FURY_BUDGET_PROFILES FAST/BALANCED/QUALITY/BUDGET/LOCAL_FIRST/PRIVATE/CUSTOM in src/fury-dispatcher.ts (PRIVATE = local only), tests/fury-dispatcher.test.ts"
+    },
+    {
+      "id": "CORE-15",
+      "requirement": "Predicted vs actual impact: blast radius before patch compared with the changed dependency region after patch; Judge can require tests for uncovered neighbours (§47.5)",
+      "class": "MUST",
+      "dependsOn": "CORE-10, CORE-02",
+      "acceptance": "Delta lists unexpected files and untested neighbours",
+      "testStrategy": "unit",
+      "status": "DONE — furyImpactDelta + furyImpactRequirements in src/fury-graph.ts, applied by FuryRun before judging"
+    },
+    {
+      "id": "SHOULD-04",
+      "requirement": "Graphify refresh of changed files after agent patch/merge/checkout (§47.2)",
+      "class": "SHOULD",
+      "dependsOn": "CORE-10",
+      "acceptance": "Explicit, shell-free, bounded",
+      "testStrategy": "unit",
+      "status": "PARTIAL — refreshGraphify (explicit, shell-free, bounded) exists in src/fury-graph.ts; it is not triggered automatically after merge/checkout and not exposed in Studio"
+    },
+    {
+      "id": "UX-07",
+      "requirement": "Progressive UX: Simple (chat, model, message) → Power → Engineer → Expert without exposing DAG/receipts to simple users (§37)",
+      "class": "MUST",
+      "dependsOn": "UX-01",
+      "acceptance": "Simple mode hides expert surfaces; switch persisted per viewer",
+      "testStrategy": "browser QA",
+      "status": "DONE — Simple/Power/Engineer/Expert selector in Studio, persisted per viewer; browser QA"
+    },
+    {
+      "id": "PLAT-01",
+      "requirement": "Skills Hub (discovery across .furypipe/.claude/.agents/.opencode skills, metadata, enable/disable/pin)",
+      "class": "MUST",
+      "dependsOn": "–",
+      "acceptance": "Existing skill-registry reused; discovery bounded and symlink-safe",
+      "testStrategy": "unit",
+      "status": "DONE — src/fury-skill-hub.ts (checksums, pin/enable, governance, versioned install/rollback/compare, runtime-compatible auto-select; .opencode/skills discovered) + Studio Skills view"
+    },
+    {
+      "id": "PLAT-02",
+      "requirement": "MCP Hub (installed/local/remote, health, permissions)",
+      "class": "MUST",
+      "dependsOn": "–",
+      "acceptance": "Existing MCP Direct reused",
+      "testStrategy": "unit",
+      "status": "DONE — src/fury-mcp-hub.ts (Claude/Cursor/VS Code/OpenCode/Codex/FuryPipe configs, secret redaction, per-tool ALLOW/ASK/DENY/READ_ONLY, credential-free MCP Direct health probes) + Studio MCP view"
+    },
+    {
+      "id": "PLAT-03",
+      "requirement": "Memory (scopes, why-retrieved, source, age, confidence)",
+      "class": "MUST",
+      "dependsOn": "–",
+      "acceptance": "Existing Memory VNext reused",
+      "testStrategy": "unit",
+      "status": "DONE — Studio Memory over Memory VNext (src/studio/studio-memory.ts): scope, source, age, confidence, why recalled; encrypted config required, off otherwise"
+    },
+    {
+      "id": "PLAT-04",
+      "requirement": "Knowledge/RAG (ingestion, chunking, hybrid retrieval, citations)",
+      "class": "MUST",
+      "dependsOn": "–",
+      "acceptance": "Existing knowledge index extended",
+      "testStrategy": "unit",
+      "status": "DONE — src/fury-knowledge.ts (bounded incremental ingestion, heading/line chunking, BM25 + loopback embeddings + RRF, line citations) + Studio Knowledge view"
+    },
+    {
+      "id": "PLAT-05",
+      "requirement": "FuryWeb (search/fetch/extract/crawl/browser split, adapter-first)",
+      "class": "MUST",
+      "dependsOn": "–",
+      "acceptance": "Fetch never launches a browser; SSRF defenses",
+      "testStrategy": "unit",
+      "status": "DONE — src/fury-web.ts (SEARCH adapter-only, FETCH without browser with pinned SSRF-safe sockets and revalidated redirects, EXTRACT, MAP, robots-aware CRAWL; BROWSER/INTERACT stay in the governed browser runtime) + Studio Web view"
+    },
+    {
+      "id": "PLAT-06",
+      "requirement": "Integration Fabric registry (MCP/OpenAPI/webhooks)",
+      "class": "MUST",
+      "dependsOn": "PLAT-02",
+      "acceptance": "Registry entries carry auth, permissions, trust",
+      "testStrategy": "unit",
+      "status": "DONE — src/fury-integrations.ts (MCP + OpenAPI + webhooks with auth names, capabilities, default decision, trust; manifests with secret values rejected) + Studio Integrations view"
+    },
+    {
+      "id": "QA-01",
+      "requirement": "Security regressions for new boundaries (SSRF, path traversal, symlink, injection, authority escalation, oversized payloads)",
+      "class": "MUST",
+      "dependsOn": "all CORE",
+      "acceptance": "Each new boundary has a negative test",
+      "testStrategy": "unit",
+      "status": "DONE — every boundary added on this track has a negative test, listed with its test file in docs/security/FURYPIPE_TRUST_MODEL.md"
+    },
+    {
+      "id": "QA-02",
+      "requirement": "Installed-package smoke covers new runtime surfaces",
+      "class": "MUST",
+      "dependsOn": "UX-01",
+      "acceptance": "npm pack → install → CLI → Studio route",
+      "testStrategy": "package smoke",
+      "status": "DONE — clean-room smoke (npm pack → install → CLI → runtime) checks Studio shell, Control Plane, harnesses, Skills, MCP, integrations, knowledge, memory-off default, web SSRF refusal, conversation persistence, code explorer and cross-origin POST refusal"
+    },
+    {
+      "id": "QA-03",
+      "requirement": "Cross-OS CI 9/9 green on exact head; package reproducible",
+      "class": "MUST",
+      "dependsOn": "all",
+      "acceptance": "Hosted checks",
+      "testStrategy": "CI",
+      "status": "PENDING — hosted cross-OS CI must be green on the final exact head (recorded in the PR body when it is)"
+    },
+    {
+      "id": "QA-04",
+      "requirement": "FuryBench cases for dispatcher, context compiler, local inference fit",
+      "class": "MUST",
+      "dependsOn": "CORE-06,11,05",
+      "acceptance": "Paired A/B, same fixtures, budget matched",
+      "testStrategy": "FuryBench",
+      "status": "DONE — scripts/furybench-studio.ts, docs/evidence/FURYBENCH_STUDIO_2026-09-25.md; local-fit case NOT_EXECUTED here (no local model server)"
+    },
+    {
+      "id": "SHOULD-01",
+      "requirement": "Voice/realtime adapter (LiveKit-style) reusing model fabric and permissions",
+      "class": "SHOULD",
+      "dependsOn": "–",
+      "acceptance": "Disabled by default; no kernel impact",
+      "testStrategy": "unit",
+      "status": "PARTIAL (media-realtime-voice exists)"
+    },
+    {
+      "id": "SHOULD-02",
+      "requirement": "Marketplace with signed metadata",
+      "class": "SHOULD",
+      "dependsOn": "PLAT-01,02",
+      "acceptance": "Unsigned component shown as untrusted",
+      "testStrategy": "unit",
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "SHOULD-03",
+      "requirement": "Multichannel continuation without permission widening",
+      "class": "SHOULD",
+      "dependsOn": "–",
+      "acceptance": "Channel never widens scopes",
+      "testStrategy": "unit",
+      "status": "PARTIAL (gateway channels)"
+    },
+    {
+      "id": "OPT-01",
+      "requirement": "FuryTeleport, FuryMultiverse, Shadow Twin, Epistemic Graph, Outcome Loop, Self-Science, Agent Market, Compute Mesh, Failure Genome",
+      "class": "OPTIONAL (FRONTIER_BET)",
+      "dependsOn": "CORE",
+      "acceptance": "Each needs its own benchmark before any claim",
+      "testStrategy": "–",
+      "status": "FRONTIER_BET (master §46, §48) — not release criteria. Status per item: FuryIR, FuryProof, Intent Kernel (= FuryIR contract), Context Compiler: implemented as core (CORE-01/03/11). Partial primitives only: Time Machine (FuryReplay fork), Determinism Envelope (FuryFlow zones + stochastic surface), Trust Fabric (trust model + skill/MCP trust), Zero-Trust Agent State (CLAIMED vs VERIFIED receipts). Not started: Teleport, Multiverse, Shadow Twin, Skill Compiler, Epistemic Graph, Collective Cortex, Self-Science, Outcome Loop, Failure Genome, Agent Market, Adaptive Workspace, Compute Mesh. None is a FURY_DIFFERENTIATOR until implemented, tested and benchmarked"
+    },
+    {
+      "id": "OOS-01",
+      "requirement": "Merge, tag, release, publish, deploy, paid provider calls, real external credentials",
+      "class": "OUT OF SCOPE without explicit operator authorization",
+      "dependsOn": "–",
+      "acceptance": "Never executed by this track",
+      "testStrategy": "–",
+      "status": "N/A"
+    }
+  ],
+  "architecturalDiscoveries": [
+    {
+      "id": "registry.capability-catalog",
+      "kind": "CAPABILITY_REGISTRY",
+      "state": "IMPLEMENTED_VERIFIED_BY_CODE_READ",
+      "evidence": [
+        "src/capability-catalog.ts",
+        "src/ecosystem/types.ts",
+        "src/ecosystem/registry.ts"
+      ],
+      "note": "Existing registry/catalog must be evolved; do not create a parallel registry."
+    },
+    {
+      "id": "routing.capability-router",
+      "kind": "CAPABILITY_ROUTER",
+      "state": "IMPLEMENTED_VERIFIED_BY_CODE_READ",
+      "evidence": [
+        "src/capability-router.ts"
+      ],
+      "note": "Existing universal capability analysis/routing primitive."
+    },
+    {
+      "id": "routing.autopilot",
+      "kind": "AUTOPILOT_ROUTER",
+      "state": "IMPLEMENTED_VERIFIED_BY_CODE_READ",
+      "evidence": [
+        "src/fury-autopilot.ts",
+        "src/studio/studio-autopilot.ts"
+      ],
+      "note": "New Studio routing path; convergence with capability-router is a P1 architecture task."
+    },
+    {
+      "id": "prompt.fury-prompt",
+      "kind": "PROMPT_COMPILER",
+      "state": "IMPLEMENTED_VERIFIED_BY_CODE_READ",
+      "evidence": [
+        "src/fury-prompt.ts",
+        "src/instruction-fabric.ts"
+      ],
+      "note": "Core compiler exists; master prompt adds broader modes/inspector/registry UX."
+    },
+    {
+      "id": "activation.capability",
+      "kind": "CAPABILITY_ACTIVATION",
+      "state": "IMPLEMENTED_VERIFIED_BY_CODE_READ",
+      "evidence": [
+        "src/capability-activation.ts"
+      ],
+      "note": "Selection/readiness metadata never grants execution authority."
+    },
+    {
+      "id": "extensions.catalog",
+      "kind": "EXTENSION_CATALOG",
+      "state": "IMPLEMENTED_VERIFIED_BY_CODE_READ",
+      "evidence": [
+        "src/fury-extension-catalog.ts"
+      ],
+      "note": "Curated catalog exists; signed marketplace remains NOT_STARTED in completion spec."
+    }
+  ],
+  "targetFamilies": [
+    {
+      "name": "Universal Capability Registry schema convergence",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Capability Graph / Capability Mesh",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Explainable Capability Router convergence",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Skill SDK / creator / packs",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Instruction Registry and conflict resolver",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "FuryPrompt modes and analyzer",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "FuryContext inspector/budget/compaction",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "FuryMemory graph management/time machine",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Model Hub cloud+local unified adapters",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Provider SDK and resilience UX",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "FuryImage Studio",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "FuryVideo Studio",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Audio/Voice realtime",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Workspace adaptive layout",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "FuryCode integrated editing/terminal policy",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Browser/Research agent breadth",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "MCP manager/transports/security",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "FuryPlugin SDK",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Agent graph/message bus/task DAG",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Workflow/automation expansion",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Artifact first-class graph/history",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Knowledge/RAG evolution",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Privacy/secret center",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Supply-chain security/marketplace signing",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "FuryObservability/tracing/diagnostics",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Cost/token/budget UX",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Performance/recovery/persistence",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Personalization/i18n/accessibility",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "FuryEval expanded evaluation framework",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Desktop/headless/API interoperability",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Collaboration/permission model",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    },
+    {
+      "name": "Frontier differentiators",
+      "state": "REQUIRES_GAP_RECONCILIATION",
+      "source": "FURYPIPE_ULTIMATE_MASTER_CONTINUATION_PROMPT_2026-09-26.md"
+    }
+  ]
+}

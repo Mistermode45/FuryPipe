@@ -1,8 +1,12 @@
+import { createHash } from 'node:crypto';
+
 import type {
   AgentSkillRegistry,
   SkillLicenseStatus,
   SkillSourceDecision,
 } from './skill-registry.js';
+import type { CapabilityRegistry } from './ecosystem/registry.js';
+import type { CapabilityCandidate, CapabilityPermissions, CapabilityType } from './ecosystem/types.js';
 import type {
   FuryPluginBundleRegistry,
   FuryPluginPermission,
@@ -12,11 +16,18 @@ import type {
   ModelFabricRegistry,
 } from './core/model-fabric.js';
 import type {
+  ProviderDefinition,
+  ProviderRegistry,
+} from './core/provider-fabric.js';
+import type {
   FuryKernelToolBridge,
   FuryKernelToolSourceInspection,
   FuryKernelToolSourceSummary,
 } from './fury-kernel-tool-bridge-node.js';
 import type { McpToolRiskClass } from './mcp-tool-risk.js';
+import type { FurySkillEntry, FurySkillHub } from './fury-skill-hub.js';
+import type { FuryHarnessDiscovery, FuryHarnessStatus } from './fury-harness-hub.js';
+import type { FuryMcpHub, FuryMcpSourceView } from './fury-mcp-hub.js';
 import {
   FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
   isGeneratedFuryCapabilityIndex,
@@ -40,13 +51,14 @@ export interface FuryCapabilityIndexHealthOverrides {
   readonly skills?: Readonly<Record<string, FuryCapabilityIndexHealthState>>;
   readonly plugins?: Readonly<Record<string, FuryCapabilityIndexHealthState>>;
   readonly models?: Readonly<Record<string, FuryCapabilityIndexHealthState>>;
+  readonly providers?: Readonly<Record<string, FuryCapabilityIndexHealthState>>;
   readonly mcpServers?: Readonly<Record<string, FuryCapabilityIndexHealthState>>;
 }
 
 export interface FuryCapabilityIndexProjectionReport {
   readonly indexed: number;
   readonly skipped: number;
-  readonly source: 'skill-registry' | 'plugin-registry' | 'model-fabric' | 'mcp-host';
+  readonly source: 'capability-registry' | 'skill-registry' | 'skill-hub' | 'plugin-registry' | 'model-fabric' | 'provider-fabric' | 'harness-hub' | 'mcp-host' | 'mcp-hub';
   readonly authority: 'projection-only';
   readonly executionAuthority: false;
 }
@@ -146,6 +158,10 @@ function healthOverride(
 function indexableIdentity(value: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._:/@+~-]{0,255}$/u.test(value);
 }
+function catalogRoutingId(candidate: CapabilityCandidate): string {
+  return `catalog/${createHash('sha256').update(candidate.canonicalUrl, 'utf8').digest('hex')}`;
+}
+
 
 function skillTrust(
   decision: SkillSourceDecision,
@@ -244,6 +260,171 @@ function latestModelObservedAt(entry: ModelFabricEntry): string | undefined {
   return new Date(Date.parse(selected)).toISOString();
 }
 
+function providerHealth(
+  provider: ProviderDefinition,
+  overrides: Readonly<Record<string, FuryCapabilityIndexHealthState>>,
+): FuryCapabilityIndexHealthState {
+  if (provider.status !== 'registered') return 'blocked';
+  if (provider.availability === 'available') return 'ready';
+  if (provider.availability === 'unavailable') return 'unavailable';
+  return healthOverride(overrides, provider.id);
+}
+
+function providerTrust(provider: ProviderDefinition): FuryCapabilityIndexTrustState {
+  if (provider.evidence.some((item) => item.kind === 'live-probe' || item.kind === 'transport-result')) {
+    return 'trusted';
+  }
+  if (provider.evidence.some((item) => item.kind === 'local-contract' || item.kind === 'operator-config')) {
+    return 'verified';
+  }
+  return 'unverified';
+}
+
+function harnessHealth(status: FuryHarnessStatus): FuryCapabilityIndexHealthState {
+  if (status.versionStatus === 'builtin' || status.versionStatus === 'ok') return 'ready';
+  if (status.versionStatus === 'failed' || status.versionStatus === 'timeout') return 'degraded';
+  if (status.versionStatus === 'not-installed') return 'unavailable';
+  return 'unknown';
+}
+
+function harnessTrust(status: FuryHarnessStatus): FuryCapabilityIndexTrustState {
+  if (status.definition.evidence === 'BUILTIN' || status.definition.evidence === 'OFFICIAL_FACT') {
+    return 'verified';
+  }
+  if (status.definition.evidence === 'COMMUNITY') return 'unverified';
+  return 'unknown';
+}
+
+function harnessPermissions(status: FuryHarnessStatus): readonly string[] {
+  const permissions = new Set<string>();
+  if (status.definition.integrations.includes('native')) return Object.freeze([]);
+  if (status.definition.executables.length > 0) permissions.add('process');
+  if (status.definition.integrations.includes('a2a')) permissions.add('network');
+  if (status.definition.integrations.includes('acp') && status.definition.executables.length === 0) {
+    permissions.add('process');
+  }
+  return Object.freeze([...permissions]);
+}
+
+function registryKind(type: CapabilityType): FuryCapabilityIndexKind | undefined {
+  switch (type) {
+    case 'agent': return 'agent';
+    case 'skill': return 'skill';
+    case 'skill-pack': return 'skill-pack';
+    case 'instruction': return 'instruction';
+    case 'plugin': return 'plugin';
+    case 'mcp': return 'mcp';
+    case 'mcp-server': return 'mcp-server';
+    case 'connector':
+    case 'database-connector':
+    case 'cloud-integration':
+      return 'connector';
+    case 'tool':
+    case 'cli-tool':
+    case 'browser-tool':
+      return 'tool';
+    case 'provider':
+    case 'provider-adapter':
+      return 'provider';
+    case 'model': return 'model';
+    case 'workflow': return 'workflow';
+    case 'automation': return 'automation';
+    case 'memory-backend':
+    case 'memory-provider':
+      return 'memory-provider';
+    case 'search-provider': return 'search-provider';
+    case 'browser-provider': return 'browser-provider';
+    case 'image-provider': return 'image-provider';
+    case 'video-provider': return 'video-provider';
+    case 'audio-provider': return 'audio-provider';
+    case 'voice-provider': return 'voice-provider';
+    case 'embedding-provider': return 'embedding-provider';
+    case 'reranker': return 'reranker';
+    case 'code-runtime': return 'code-runtime';
+    case 'sandbox': return 'sandbox';
+    default: return undefined;
+  }
+}
+
+function registryLicense(candidate: CapabilityCandidate): FuryCapabilityIndexLicenseState {
+  return candidate.license.status === 'VERIFIED' ? 'verified' : 'unknown';
+}
+
+function registryHealth(candidate: CapabilityCandidate): FuryCapabilityIndexHealthState {
+  if (candidate.decision === 'REJECT' || candidate.decision === 'REFERENCE_ONLY') return 'blocked';
+  if (candidate.health.status === 'HEALTHY') return 'ready';
+  if (candidate.health.status === 'DEGRADED') return 'degraded';
+  if (candidate.health.status === 'UNHEALTHY') return 'unavailable';
+  return 'unknown';
+}
+
+function registryTrust(
+  registry: CapabilityRegistry,
+  candidate: CapabilityCandidate,
+): FuryCapabilityIndexTrustState {
+  if (candidate.decision === 'REJECT' || candidate.decision === 'REFERENCE_ONLY') return 'blocked';
+  const report = registry.getTrustReport(candidate.id);
+  if (!report) return 'unknown';
+  if (report.verdict === 'TRUSTED') return 'trusted';
+  if (report.verdict === 'AUDITED') return 'verified';
+  if (report.verdict === 'RESTRICTED' || report.verdict === 'QUARANTINED' || report.verdict === 'BLOCKED') return 'blocked';
+  return 'unknown';
+}
+
+function registryRisk(permissions: CapabilityPermissions): FuryCapabilityIndexRiskClass {
+  if (
+    permissions.credentials === 'manage'
+    || permissions.database === 'admin'
+    || permissions.cloud === 'admin'
+    || permissions.filesystem === 'delete'
+    || permissions.filesystem === 'arbitrary-write'
+    || permissions.subprocess === 'arbitrary'
+    || permissions.network === 'arbitrary'
+    || permissions.externalWrites.includes('admin')
+    || permissions.externalWrites.includes('financial')
+    || permissions.externalWrites.includes('deploy')
+  ) return 'admin';
+  if (
+    permissions.filesystem === 'write'
+    || permissions.database === 'scoped-write'
+    || permissions.cloud === 'scoped-write'
+    || permissions.externalWrites.length > 0
+  ) return 'write';
+  if (
+    permissions.network !== 'none'
+    || permissions.subprocess !== 'none'
+    || permissions.provider !== 'none'
+    || permissions.browser === 'interact'
+  ) return 'process';
+  if (
+    permissions.filesystem === 'read'
+    || permissions.credentials !== 'none'
+    || permissions.database === 'read'
+    || permissions.browser === 'read'
+    || permissions.cloud === 'read'
+  ) return 'read';
+  return 'none';
+}
+
+function registryPermissions(permissions: CapabilityPermissions): readonly string[] {
+  const values = new Set<string>();
+  if (permissions.network !== 'none') values.add('network');
+  if (permissions.filesystem === 'read') values.add('filesystem-read');
+  if (permissions.filesystem === 'write' || permissions.filesystem === 'delete' || permissions.filesystem === 'arbitrary-write') values.add('filesystem-write');
+  if (permissions.subprocess !== 'none') values.add('process');
+  if (permissions.credentials !== 'none') values.add('credentials');
+  if (permissions.database === 'read') values.add('database-read');
+  if (permissions.database === 'scoped-write' || permissions.database === 'admin') values.add('database-write');
+  if (permissions.browser === 'read') values.add('browser-read');
+  if (permissions.browser === 'interact') values.add('browser-interact');
+  if (permissions.provider === 'invoke') values.add('provider-inference');
+  if (permissions.provider === 'configure') values.add('provider-management');
+  if (permissions.cloud === 'read') values.add('cloud-read');
+  if (permissions.cloud === 'scoped-write' || permissions.cloud === 'admin') values.add('cloud-write');
+  for (const write of permissions.externalWrites) values.add(`external-write:${write}`);
+  return Object.freeze([...values]);
+}
+
 function mcpRisk(risk: McpToolRiskClass): FuryCapabilityIndexRiskClass {
   switch (risk) {
     case 'trusted_read_only_closed_world':
@@ -310,6 +491,80 @@ function put(
   index.upsert(entry);
 }
 
+export function projectCapabilityRegistryIntoIndex(
+  index: FuryCapabilityIndex,
+  registry: CapabilityRegistry,
+): FuryCapabilityIndexProjectionReport {
+  requireIndex(index);
+  const candidates = registry.list();
+  let indexed = 0;
+  let skipped = 0;
+  for (const candidate of candidates) {
+    const kind = registryKind(candidate.type);
+    if (!kind) {
+      skipped += 1;
+      continue;
+    }
+    const routingId = catalogRoutingId(candidate);
+    const revision = candidate.source.contentSha256
+      ?? candidate.commitSha
+      ?? candidate.version
+      ?? candidate.source.version;
+    put(index, {
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind,
+      id: routingId,
+      name: candidate.name,
+      description: candidate.description,
+      families: uniqueMetadata([
+        candidate.type,
+        ...candidate.categories,
+        ...candidate.domains,
+        ...candidate.capabilities,
+      ]),
+      tags: uniqueMetadata([
+        `decision-${candidate.decision}`,
+        `integration-${candidate.integrationMode}`,
+        `provenance-${candidate.provenance.classification}`,
+        `pin-${candidate.source.pinStatus}`,
+      ]),
+      keywords: uniqueMetadata([
+        candidate.name,
+        candidate.publisher ?? '',
+        ...candidate.authors,
+        ...candidate.categories,
+        ...candidate.capabilities,
+        ...candidate.domains,
+      ], 160),
+      trust: registryTrust(registry, candidate),
+      license: registryLicense(candidate),
+      health: registryHealth(candidate),
+      riskClass: registryRisk(candidate.permissions),
+      requiredPermissions: registryPermissions(candidate.permissions),
+      compatibility: uniqueMetadata([
+        ...candidate.supportedPlatforms,
+        ...candidate.supportedModels,
+        ...candidate.supportedLanguages,
+        ...candidate.supportedStages,
+      ]),
+      source: {
+        system: 'other',
+        sourceId: routingId,
+        ...(revision === undefined ? {} : { sourceRevision: revision }),
+        ...(candidate.lastAuditedAt === undefined ? {} : { observedAt: candidate.lastAuditedAt }),
+      },
+    });
+    indexed += 1;
+  }
+  return Object.freeze({
+    indexed,
+    skipped,
+    source: 'capability-registry' as const,
+    authority: 'projection-only' as const,
+    executionAuthority: false as const,
+  });
+}
+
 export function projectSkillsIntoCapabilityIndex(
   index: FuryCapabilityIndex,
   registry: AgentSkillRegistry,
@@ -349,6 +604,196 @@ export function projectSkillsIntoCapabilityIndex(
     indexed: inspections.length,
     skipped: 0,
     source: 'skill-registry' as const,
+    authority: 'projection-only' as const,
+    executionAuthority: false as const,
+  });
+}
+
+
+function skillHubHealth(skill: FurySkillEntry): FuryCapabilityIndexHealthState {
+  if (!skill.enabled || skill.pinMismatch) return 'blocked';
+  return 'ready';
+}
+
+function skillHubTrust(skill: FurySkillEntry): FuryCapabilityIndexTrustState {
+  return skill.trust === 'trusted-instructions' ? 'verified' : 'unverified';
+}
+
+/**
+ * Project Studio's progressive instruction Skill Hub into the same process-local
+ * Capability Index used by Capability Autopilot.
+ *
+ * This only reads already-discovered metadata/checksums. It does not activate a
+ * skill, load its instruction body into the turn, execute allowed-tools, or
+ * grant runtime authority.
+ */
+export async function projectSkillHubIntoCapabilityIndex(
+  index: FuryCapabilityIndex,
+  hub: FurySkillHub,
+): Promise<FuryCapabilityIndexProjectionReport> {
+  requireIndex(index);
+  const view = await hub.list();
+  let indexed = 0;
+  let skipped = 0;
+  for (const skill of view.skills) {
+    if (!indexableIdentity(skill.name)) {
+      skipped += 1;
+      continue;
+    }
+    put(index, {
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind: 'skill',
+      id: skill.name,
+      name: skill.name.replace(/[._-]+/gu, ' '),
+      description: skill.description,
+      families: uniqueMetadata(['skill', skill.scope, skill.type]),
+      tags: uniqueMetadata([
+        `scope-${skill.scope}`,
+        `type-${skill.type}`,
+        `governance-${skill.governance}`,
+        skill.pinMismatch ? 'pin-mismatch' : 'pin-current',
+      ]),
+      keywords: uniqueMetadata([skill.name, skill.description], 160),
+      trust: skillHubTrust(skill),
+      // Runtime activation does not redistribute the local skill. Import/install
+      // governance remains the place that audits third-party licensing.
+      license: 'not-applicable',
+      health: skillHubHealth(skill),
+      riskClass: 'none',
+      requiredPermissions: [],
+      compatibility: uniqueMetadata(skill.compatibleHarnesses),
+      source: {
+        system: 'skill-registry',
+        sourceId: skill.name,
+        sourceRevision: skill.checksum,
+      },
+    });
+    indexed += 1;
+  }
+  return Object.freeze({
+    indexed,
+    skipped,
+    source: 'skill-hub' as const,
+    authority: 'projection-only' as const,
+    executionAuthority: false as const,
+  });
+}
+
+function mcpHubPermission(source: FuryMcpSourceView): 'process' | 'network' {
+  return source.transport === 'stdio' ? 'process' : 'network';
+}
+
+function mcpHubHealth(source: FuryMcpSourceView): FuryCapabilityIndexHealthState {
+  if (!source.enabled || source.defaultPolicy === 'DENY') return 'blocked';
+  if (source.health?.ok === true) return 'ready';
+  if (source.health?.ok === false) return 'unavailable';
+  return 'unknown';
+}
+
+function mcpHubTrust(source: FuryMcpSourceView): FuryCapabilityIndexTrustState {
+  return source.trusted ? 'verified' : 'unverified';
+}
+
+function mcpHubToolRisk(
+  tool: NonNullable<FuryMcpSourceView['health']>['tools'][number],
+): FuryCapabilityIndexRiskClass {
+  if (tool.readOnly) return 'read';
+  if (/destructive|delete|admin/iu.test(tool.riskClass)) return 'admin';
+  return /write|mutat/iu.test(tool.riskClass) ? 'write' : 'unknown';
+}
+
+/**
+ * Project Studio's MCP Hub inventory without starting a configured process or
+ * issuing a network probe. Only tools already present in stored health evidence
+ * are indexed.
+ */
+export async function projectMcpHubIntoCapabilityIndex(
+  index: FuryCapabilityIndex,
+  hub: FuryMcpHub,
+): Promise<FuryCapabilityIndexProjectionReport> {
+  requireIndex(index);
+  const view = await hub.list();
+  let indexed = 0;
+  let skipped = 0;
+  for (const source of view.sources) {
+    if (!indexableIdentity(source.sourceId)) {
+      skipped += 1;
+      continue;
+    }
+    const permission = mcpHubPermission(source);
+    put(index, {
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind: 'mcp-server',
+      id: source.sourceId,
+      name: source.name,
+      description:
+        `Configured Studio MCP source ${source.name}; transport ${source.transport}; locality ${source.locality}; live tool inventory is ${source.health?.ok === true ? 'available' : 'not-verified'}.`,
+      families: uniqueMetadata(['mcp', source.locality, source.transport]),
+      tags: uniqueMetadata([
+        `transport-${source.transport}`,
+        `locality-${source.locality}`,
+        `policy-${source.defaultPolicy}`,
+        source.trusted ? 'trusted' : 'untrusted',
+      ]),
+      keywords: uniqueMetadata([source.sourceId, source.name, 'mcp'], 160),
+      trust: mcpHubTrust(source),
+      license: 'not-applicable',
+      health: mcpHubHealth(source),
+      riskClass: source.transport === 'stdio' ? 'process' : 'read',
+      requiredPermissions: [permission],
+      compatibility: [],
+      source: {
+        system: 'mcp-host',
+        sourceId: source.sourceId,
+        ...(source.health?.at === undefined
+          ? {}
+          : { observedAt: new Date(source.health.at).toISOString() }),
+      },
+    });
+    indexed += 1;
+
+    if (source.health?.ok !== true) continue;
+    for (const tool of source.health.tools) {
+      const id = `${source.sourceId}/${tool.name}`;
+      if (!indexableIdentity(id)) {
+        skipped += 1;
+        continue;
+      }
+      put(index, {
+        format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+        kind: 'mcp-tool',
+        id,
+        name: tool.name,
+        description:
+          `Probed Studio MCP tool ${tool.name} from ${source.name}; risk ${tool.riskClass}; selection never grants execution authority.`,
+        families: uniqueMetadata(['mcp', 'tool']),
+        tags: uniqueMetadata([
+          `risk-${tool.riskClass}`,
+          tool.readOnly ? 'read-only' : 'mutation-or-unknown',
+          `policy-${source.toolPolicies[tool.name] ?? source.defaultPolicy}`,
+        ]),
+        keywords: uniqueMetadata([source.sourceId, source.name, tool.name, 'mcp tool'], 160),
+        trust: mcpHubTrust(source),
+        license: 'not-applicable',
+        health: 'ready',
+        riskClass: mcpHubToolRisk(tool),
+        requiredPermissions: [permission],
+        compatibility: [],
+        source: {
+          system: 'mcp-host',
+          sourceId: id,
+          sourceRevision: `${source.health.at}:${tool.riskClass}:${tool.readOnly ? 'ro' : 'rw'}`,
+          observedAt: new Date(source.health.at).toISOString(),
+        },
+      });
+      indexed += 1;
+    }
+  }
+
+  return Object.freeze({
+    indexed,
+    skipped,
+    source: 'mcp-hub' as const,
     authority: 'projection-only' as const,
     executionAuthority: false as const,
   });
@@ -402,6 +847,116 @@ export function projectPluginsIntoCapabilityIndex(
     indexed: inspections.length,
     skipped: 0,
     source: 'plugin-registry' as const,
+    authority: 'projection-only' as const,
+    executionAuthority: false as const,
+  });
+}
+
+export function projectHarnessesIntoCapabilityIndex(
+  index: FuryCapabilityIndex,
+  discovery: FuryHarnessDiscovery,
+): FuryCapabilityIndexProjectionReport {
+  requireIndex(index);
+  if (
+    !discovery
+    || discovery.format !== 'furypipe-harness-discovery/v1'
+    || !Array.isArray(discovery.harnesses)
+  ) {
+    throw new TypeError('harness projection requires FuryPipe discovery evidence');
+  }
+  let indexed = 0;
+  let skipped = 0;
+  for (const status of discovery.harnesses) {
+    if (!indexableIdentity(status.id)) {
+      skipped += 1;
+      continue;
+    }
+    const permissions = harnessPermissions(status);
+    put(index, {
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind: 'agent',
+      id: status.id,
+      name: status.displayName,
+      description:
+        `Agent runtime ${status.displayName}; installed ${status.installed}; version status ${status.versionStatus}; authentication not probed.`,
+      families: uniqueMetadata(['agent', 'harness', ...status.definition.integrations, ...status.definition.protocols]),
+      tags: uniqueMetadata([
+        `evidence-${status.definition.evidence}`,
+        `version-${status.versionStatus}`,
+        ...Object.entries(status.definition.capabilities)
+          .filter(([, value]) => value === true)
+          .map(([key]) => `capability-${key}`),
+      ]),
+      keywords: uniqueMetadata([status.id, status.displayName, ...status.definition.integrations, ...status.definition.protocols]),
+      trust: harnessTrust(status),
+      license: 'not-applicable',
+      health: harnessHealth(status),
+      riskClass: permissions.length === 0 ? 'none' : 'process',
+      requiredPermissions: permissions,
+      compatibility: [],
+      source: {
+        system: 'host',
+        sourceId: status.id,
+        ...(status.version === undefined ? {} : { sourceRevision: status.version }),
+      },
+    });
+    indexed += 1;
+  }
+  return Object.freeze({
+    indexed,
+    skipped,
+    source: 'harness-hub' as const,
+    authority: 'projection-only' as const,
+    executionAuthority: false as const,
+  });
+}
+
+export function projectProvidersIntoCapabilityIndex(
+  index: FuryCapabilityIndex,
+  registry: ProviderRegistry,
+  health: FuryCapabilityIndexHealthOverrides['providers'] = {},
+): FuryCapabilityIndexProjectionReport {
+  requireIndex(index);
+  const entries = registry.list();
+  const validatedHealth = validateHealthOverrides(health, 'provider health overrides');
+  let indexed = 0;
+  let skipped = 0;
+  for (const provider of entries) {
+    if (!indexableIdentity(provider.id)) {
+      skipped += 1;
+      continue;
+    }
+    put(index, {
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind: 'provider',
+      id: provider.id,
+      name: provider.id,
+      description:
+        `Registered provider ${provider.id}; protocol ${provider.protocol}; availability ${provider.availability}. No provider call is performed by capability projection.`,
+      families: uniqueMetadata(['provider', provider.protocol]),
+      tags: uniqueMetadata([
+        `status-${provider.status}`,
+        `availability-${provider.availability}`,
+        ...provider.aliases.map((alias) => `alias-${alias}`),
+      ]),
+      keywords: uniqueMetadata([provider.id, provider.protocol, ...provider.aliases]),
+      trust: providerTrust(provider),
+      license: 'not-applicable',
+      health: providerHealth(provider, validatedHealth),
+      riskClass: 'process',
+      requiredPermissions: ['provider-inference'],
+      compatibility: [],
+      source: {
+        system: 'host',
+        sourceId: provider.id,
+      },
+    });
+    indexed += 1;
+  }
+  return Object.freeze({
+    indexed,
+    skipped,
+    source: 'provider-fabric' as const,
     authority: 'projection-only' as const,
     executionAuthority: false as const,
   });

@@ -293,6 +293,59 @@ export function furyScopeCoupling(graph: FuryGraph, scopeA: readonly string[], s
   return crossing;
 }
 
+export interface FuryGraphLifecyclePlan {
+  readonly format: 'furypipe-graph-lifecycle/v1';
+  readonly provider: string;
+  readonly action: 'NONE' | 'RECOMMEND_REFRESH' | 'USE_NATIVE_FALLBACK';
+  readonly changedFiles: readonly string[];
+  readonly relevantChangedFiles: readonly string[];
+  readonly staleFiles: readonly string[];
+  readonly reason: string;
+  readonly executionAuthorized: false;
+}
+
+const GRAPH_RELEVANT_FILE_RE = /(?:^|\/)(?:[^/]+\.)?(?:ts|tsx|js|jsx|mjs|cjs|java|kt|kts|py|rs|go|cs|cpp|cc|cxx|c|h|hpp|php|rb|swift|scala|vue|svelte)$/iu;
+
+export function planGraphifyLifecycle(input: {
+  readonly graph: FuryGraph;
+  readonly detections: readonly FuryGraphDetection[];
+  readonly changedFiles?: readonly string[];
+}): FuryGraphLifecyclePlan {
+  if (!input || typeof input !== 'object' || !input.graph || !Array.isArray(input.detections)) {
+    throw new FuryGraphError('graph lifecycle input is invalid');
+  }
+  const changedFiles = Object.freeze([...new Set((input.changedFiles ?? [])
+    .map((file) => relFile(file))
+    .filter((file): file is string => Boolean(file)))].sort());
+  const relevantChangedFiles = Object.freeze(changedFiles.filter((file) => GRAPH_RELEVANT_FILE_RE.test(file)));
+  const graphify = input.detections.find((detection) => detection.provider === 'graphify');
+  const graphifyAvailable = graphify?.available === true;
+
+  let action: FuryGraphLifecyclePlan['action'] = 'NONE';
+  let reason = 'Current graph does not require a Graphify refresh.';
+  if (!graphifyAvailable) {
+    action = 'USE_NATIVE_FALLBACK';
+    reason = 'Graphify output is unavailable; keep using the native codegraph fallback.';
+  } else if (input.graph.provider === 'graphify' && input.graph.stale) {
+    action = 'RECOMMEND_REFRESH';
+    reason = 'Graphify reports stale source files; an explicit refresh is recommended.';
+  } else if (relevantChangedFiles.length > 0) {
+    action = 'RECOMMEND_REFRESH';
+    reason = 'Relevant repository source files changed after the current graph snapshot; an explicit refresh is recommended.';
+  }
+
+  return Object.freeze({
+    format: 'furypipe-graph-lifecycle/v1',
+    provider: input.graph.provider,
+    action,
+    changedFiles,
+    relevantChangedFiles,
+    staleFiles: Object.freeze([...input.graph.staleFiles]),
+    reason,
+    executionAuthorized: false,
+  });
+}
+
 /** Explicit, operator-requested refresh through the installed Graphify CLI (no LLM pass). */
 export function refreshGraphify(root: string, options: { readonly executable?: string; readonly timeoutMs?: number } = {}): Promise<void> {
   const normalized = normalize(root);

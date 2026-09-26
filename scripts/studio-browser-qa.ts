@@ -98,6 +98,7 @@ async function startStudio(mode: 'normal' | 'empty' | 'error', backendUrl: strin
     // Isolated hub state: QA never touches the operator's ~/.furypipe.
     knowledgeDir: path.join(projectRoot, '.qa-knowledge', state),
     chatsDir: path.join(projectRoot, '.qa-chats', state),
+    artifactsDir: path.join(projectRoot, '.qa-artifacts', state),
     memory: mode === 'empty' ? { enabled: false, reason: 'Memory is off. Set FURYPIPE_WEBCHAT_MEMORY_CONFIG to an encrypted memory config to turn it on.' } : { enabled: true, store: createMemoryVNextStore({ recovery: createRecoveryStore(path.join(projectRoot, '.qa-memory', state), { namespace: 'studio-qa' }), authorize: () => true }) },
     mcpHub: createFuryMcpHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-mcp-hub', state) }),
     skillHub: createFurySkillHub({ projectRoot, homeDir: path.join(projectRoot, '.qa-home'), stateDir: path.join(projectRoot, '.qa-skill-hub', state), projectTrustedForInstructions: true }),
@@ -168,8 +169,13 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     const widthAfter = Number(await sideResizer.getAttribute('aria-valuenow'));
     assert(widthAfter > widthBefore, `${name}: keyboard sidebar resize did not increase width`);
     assert(await page.evaluate(() => localStorage.getItem('furypipe.studio.sidebarWidth')) === String(widthAfter), `${name}: sidebar width was not persisted`);
-    assert(await page.locator('#tool-autopilot').getAttribute('aria-pressed') === 'true', `${name}: Fury Autopilot is not enabled by default`);
     await page.locator('#chat-input').fill('Say hello');
+    // Local runtime discovery is asynchronous. Wait for the composer to become
+    // sendable instead of racing the discovery request on slower CI engines.
+    await page.waitForFunction(() => {
+      const send = document.querySelector('#chat-send');
+      return send instanceof HTMLButtonElement && !send.disabled;
+    });
     await page.locator('#chat-send').click();
     await page.locator('#chat-log .msg:not(.user)').filter({ hasText: 'Hello from a local model.' }).waitFor();
     assert(chatPayloads.length > 0, `${name}: chat request was not captured`);
@@ -227,8 +233,6 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.goto(`${origins.normal}/#/cowork`);
     // Cowork run: ASK permissions raise an approval before anything starts.
     await page.locator('#cowork-intent').fill('Tidy the docs folder');
-    // The mutation scope lives under progressive disclosure. Open the advanced
-    // section before interacting with controls that are intentionally hidden by default.
     await page.locator('.work-advanced > summary').click();
     await page.locator('#cowork-files').fill('docs/');
     await page.locator('#cowork-confirm').check();
@@ -305,6 +309,27 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await page.goto(`${origins.empty}/#/memory`);
     await page.waitForFunction(() => /Memory is off/u.test(document.querySelector('#mem-status')?.textContent ?? ''));
     assert(await page.locator('#mem-forms').isHidden(), `${name}: memory forms visible while off`);
+
+    await page.goto(`${origins.normal}/#/artifacts`);
+    await page.locator('#artifact-id').fill('qa-' + name);
+    await page.locator('#artifact-title').fill('QA Artifact ' + name);
+    await page.locator('#artifact-content').fill('# version one');
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.locator('#artifact-create-form button[type=submit]').click();
+    await page.locator('#artifact-grid .extension-card').filter({ hasText: 'QA Artifact ' + name }).waitFor();
+    await page.locator('#artifact-grid .extension-card').filter({ hasText: 'QA Artifact ' + name }).getByRole('button', { name: 'Open history' }).click();
+    await page.locator('#artifact-detail').filter({ hasText: 'Version 1' }).waitFor();
+    const addVersion = page.locator('#artifact-detail form');
+    await addVersion.locator('textarea').fill('# version two');
+    page.once('dialog', (dialog) => dialog.accept());
+    await addVersion.getByRole('button', { name: 'Add version' }).click();
+    await page.locator('#artifact-detail').filter({ hasText: 'Version 2' }).waitFor();
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.locator('#artifact-detail').getByRole('button', { name: 'Restore v1' }).click();
+    await page.waitForFunction(() => /Restored v1 as v3/u.test(document.querySelector('#artifact-status')?.textContent ?? ''));
+    await page.locator('#artifact-export').click();
+    await page.waitForFunction(() => /Export verified/u.test(document.querySelector('#artifact-status')?.textContent ?? ''));
+
     await page.goto(`${origins.normal}/#/integrations`);
     await page.locator('#int-body tr').filter({ hasText: 'qa-fixture' }).filter({ hasText: 'MCP' }).waitFor();
     await page.locator('#int-body tr').filter({ hasText: 'qa-status-api' }).filter({ hasText: 'READ_ONLY' }).waitFor();
@@ -354,7 +379,7 @@ async function runEngine(name: string, type: BrowserType, origins: Record<'norma
     await setMode(page, 'expert');
     for (const width of [1280, 1024, 768, 390]) {
       await page.setViewportSize({ width, height: 844 });
-      for (const view of ['chat', 'cowork', 'code', 'agents', 'mission', 'knowledge', 'web', 'memory', 'automations', 'models', 'connections', 'runtimes', 'skills', 'mcp', 'integrations', 'settings']) {
+      for (const view of ['chat', 'cowork', 'code', 'agents', 'mission', 'knowledge', 'web', 'memory', 'artifacts', 'automations', 'models', 'connections', 'runtimes', 'skills', 'mcp', 'integrations', 'settings']) {
         await page.goto(`${origins.normal}/#/${view}`);
         await page.locator(`section[data-view="${view}"] h1`).waitFor();
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

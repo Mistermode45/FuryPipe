@@ -6,6 +6,7 @@ import {
   type McpDirectInventoryProbeEvidence,
   type McpDirectInventoryProbeOptions as McpDirectInventoryProbeOptionsInternal,
   type McpDirectRuntimeConfig,
+  type McpDirectSseRuntimeConfig,
   type McpDirectStdioRuntimeConfig,
 } from './mcp-direct-client-node-internal.js';
 
@@ -14,6 +15,7 @@ export type {
   McpDirectHttpRuntimeConfig,
   McpDirectInventoryProbeEvidence,
   McpDirectRuntimeConfig,
+  McpDirectSseRuntimeConfig,
   McpDirectStdioRuntimeConfig,
 };
 

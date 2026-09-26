@@ -12,6 +12,7 @@ import {
   furyBlastRadius,
   furyScopeCoupling,
   loadFuryGraph,
+  planGraphifyLifecycle,
 } from '../src/fury-graph.js';
 import { compileFuryIr } from '../src/fury-ir.js';
 
@@ -72,6 +73,32 @@ describe('FuryGraph Graphify provider (real graphify 0.9.67 output)', () => {
     expect(detections.map((d) => [d.provider, d.available])).toEqual([['graphify', false], ['native-codegraph', true]]);
     expect(graph.provider).toBe('native-codegraph');
     expect(furyBlastRadius(graph, ['src/auth/session.ts']).affected).toContain('src/auth/login.ts');
+  });
+
+  it('recommends explicit Graphify refresh after relevant code changes without granting authority', async () => {
+    const root = freshProject();
+    const loaded = await loadFuryGraph(root);
+    const plan = planGraphifyLifecycle({
+      ...loaded,
+      changedFiles: ['src/auth/login.ts', 'README.md', '../outside.ts'],
+    });
+    expect(plan).toMatchObject({
+      action: 'RECOMMEND_REFRESH',
+      relevantChangedFiles: ['src/auth/login.ts'],
+      executionAuthorized: false,
+    });
+    expect(plan.changedFiles).toEqual(['README.md', 'src/auth/login.ts']);
+  });
+
+  it('keeps native fallback explicit when Graphify output is unavailable', async () => {
+    const root = freshProject();
+    rmSync(join(root, 'graphify-out'), { recursive: true });
+    const loaded = await loadFuryGraph(root);
+    expect(planGraphifyLifecycle({ ...loaded, changedFiles: ['src/auth/login.ts'] })).toMatchObject({
+      provider: 'native-codegraph',
+      action: 'USE_NATIVE_FALLBACK',
+      executionAuthorized: false,
+    });
   });
 
   it('rejects malformed graph files', async () => {

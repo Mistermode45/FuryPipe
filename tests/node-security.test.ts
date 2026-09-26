@@ -92,7 +92,6 @@ async function startNode(
   output: () => string;
 }> {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'furypipe-node-security-'));
-  const port = await freePort();
   const upstreamPort = await freePort();
   upstream = createServer((req, res) => {
     res.setHeader('content-type', 'application/json');
@@ -117,53 +116,70 @@ async function startNode(
     fs.mkdirSync(path.dirname(configFile), { recursive: true });
     fs.writeFileSync(configFile, JSON.stringify(initialConfig));
   }
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
+  const baseChildEnv: NodeJS.ProcessEnv = { ...process.env, ...extraEnv };
   for (const [key, value] of Object.entries(extraEnv)) {
-    if (value === undefined) delete childEnv[key];
+    if (value === undefined) delete baseChildEnv[key];
   }
   if (!Object.prototype.hasOwnProperty.call(extraEnv, 'FURYPIPE_MODELS')) {
-    childEnv.FURYPIPE_MODELS = 'claude-fable-5';
+    baseChildEnv.FURYPIPE_MODELS = 'claude-fable-5';
   }
-  childEnv.FURYPIPE_PORT = String(port);
-  childEnv.FURYPIPE_HOST = '127.0.0.1';
-  childEnv.FURYPIPE_LOG = eventsFile;
-  childEnv.FURYPIPE_CONFIG = configFile;
-  childEnv.ANTHROPIC_UPSTREAM = `http://127.0.0.1:${upstreamPort}`;
-  child = spawn(process.execPath, [tsxCli, 'src/node.ts'], {
-    cwd: repoRoot,
-    env: childEnv,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const output: string[] = [];
-  child.stdout?.on('data', (b) => output.push(String(b)));
-  child.stderr?.on('data', (b) => output.push(String(b)));
-  child.stderr?.on('data', (b) => output.push(String(b)));
-  await new Promise<void>((resolve, reject) => {
-    const deadline = setTimeout(
-      () => reject(new Error(`child did not report listening within ${CHILD_START_TIMEOUT_MS}ms\n${output.join('')}`)),
-      CHILD_START_TIMEOUT_MS,
-    );
-    const poll = () => {
-      if (output.join('').includes('[furypipe] listening on')) {
-        clearTimeout(deadline);
-        resolve();
-        return;
+  baseChildEnv.FURYPIPE_HOST = '127.0.0.1';
+  baseChildEnv.FURYPIPE_LOG = eventsFile;
+  baseChildEnv.FURYPIPE_CONFIG = configFile;
+  baseChildEnv.ANTHROPIC_UPSTREAM = `http://127.0.0.1:${upstreamPort}`;
+
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const port = await freePort();
+    const childEnv: NodeJS.ProcessEnv = { ...baseChildEnv, FURYPIPE_PORT: String(port) };
+    child = spawn(process.execPath, [tsxCli, 'src/node.ts'], {
+      cwd: repoRoot,
+      env: childEnv,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const output: string[] = [];
+    child.stdout?.on('data', (b) => output.push(String(b)));
+    child.stderr?.on('data', (b) => output.push(String(b)));
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const deadline = setTimeout(
+          () => reject(new Error(`child did not report listening within ${CHILD_START_TIMEOUT_MS}ms\n${output.join('')}`)),
+          CHILD_START_TIMEOUT_MS,
+        );
+        const poll = () => {
+          if (output.join('').includes('[furypipe] listening on')) {
+            clearTimeout(deadline);
+            resolve();
+            return;
+          }
+          if (child?.exitCode !== null) {
+            clearTimeout(deadline);
+            reject(new Error(output.join('')));
+            return;
+          }
+          setTimeout(poll, 10);
+        };
+        poll();
+      });
+      return {
+        base: `http://127.0.0.1:${port}`,
+        eventsFile,
+        configFile,
+        output: () => output.join(''),
+      };
+    } catch (caught) {
+      const error = caught instanceof Error ? caught : new Error(String(caught));
+      lastError = error;
+      const addressRace = output.join('').includes(' is already in use');
+      if (!addressRace || attempt === 2) throw error;
+      if (child?.exitCode === null) {
+        child.kill('SIGTERM');
+        await new Promise<void>((resolve) => child!.once('close', () => resolve()));
       }
-      if (child?.exitCode !== null) {
-        clearTimeout(deadline);
-        reject(new Error(output.join('')));
-        return;
-      }
-      setTimeout(poll, 10);
-    };
-    poll();
-  });
-  return {
-    base: `http://127.0.0.1:${port}`,
-    eventsFile,
-    configFile,
-    output: () => output.join(''),
-  };
+      child = undefined;
+    }
+  }
+  throw lastError ?? new Error('failed to start FuryPipe node host');
 }
 
 describe('Node CLI evidence help', () => {

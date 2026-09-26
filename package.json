@@ -373,6 +373,10 @@
       "types": "./dist/capability-router.d.ts",
       "import": "./dist/capability-router.js"
     },
+    "./capability-router-autopilot": {
+      "types": "./dist/capability-router-autopilot.d.ts",
+      "import": "./dist/capability-router-autopilot.js"
+    },
     "./capability-index": {
       "types": "./dist/capability-index.d.ts",
       "import": "./dist/capability-index.js"
@@ -428,6 +432,22 @@
     "./capability-catalog": {
       "types": "./dist/capability-catalog.d.ts",
       "import": "./dist/capability-catalog.js"
+    },
+    "./fury-marketplace": {
+      "types": "./dist/fury-marketplace.d.ts",
+      "import": "./dist/fury-marketplace.js"
+    },
+    "./fury-supply-chain": {
+      "types": "./dist/fury-supply-chain.d.ts",
+      "import": "./dist/fury-supply-chain.js"
+    },
+    "./fury-eval": {
+      "types": "./dist/fury-eval.d.ts",
+      "import": "./dist/fury-eval.js"
+    },
+    "./fury-plugin-sdk": {
+      "types": "./dist/fury-plugin-sdk.d.ts",
+      "import": "./dist/fury-plugin-sdk.js"
     },
     "./benchmark-claim-gate": {
       "types": "./dist/benchmark-claim-gate.d.ts",
@@ -588,6 +608,26 @@
     "./a2a-remote-adapter-node": {
       "types": "./dist/a2a-remote-adapter-node.d.ts",
       "import": "./dist/a2a-remote-adapter-node.js"
+    },
+    "./fury-artifacts": {
+      "types": "./dist/fury-artifacts.d.ts",
+      "import": "./dist/fury-artifacts.js"
+    },
+    "./fury-plugin-runtime": {
+      "types": "./dist/fury-plugin-runtime.d.ts",
+      "import": "./dist/fury-plugin-runtime.js"
+    },
+    "./fury-artifact-repository-node": {
+      "types": "./dist/fury-artifact-repository-node.d.ts",
+      "import": "./dist/fury-artifact-repository-node.js"
+    },
+    "./fury-plugin-sandbox-node": {
+      "types": "./dist/fury-plugin-sandbox-node.d.ts",
+      "import": "./dist/fury-plugin-sandbox-node.js"
+    },
+    "./fury-plugin-ui-runtime-node": {
+      "types": "./dist/fury-plugin-ui-runtime-node.d.ts",
+      "import": "./dist/fury-plugin-ui-runtime-node.js"
     }
   },
   "files": [
@@ -704,7 +744,8 @@
     "vendor:ui": "node scripts/vendor-ui.mjs",
     "browser:webchat:qa": "tsx scripts/gateway-webchat-browser-qa.ts",
     "browser:studio:qa": "tsx scripts/studio-browser-qa.ts",
-    "bench:studio": "tsx scripts/furybench-studio.ts"
+    "bench:studio": "tsx scripts/furybench-studio.ts",
+    "validation:supply-chain": "tsx scripts/supply-chain-evidence.ts"
   },
   "keywords": [
     "furypipe",

@@ -1,4 +1,8 @@
 import type { AgentFabricPermission, AgentFabricStageId } from './agent-fabric.js';
+import {
+  FURY_CAPABILITY_INDEX_KINDS,
+  type FuryCapabilityIndexKind,
+} from './capability-index.js';
 import type {
   AgentMcpPlannedCall,
   AgentMcpServerDefinition,
@@ -61,6 +65,16 @@ export interface FuryCapabilityPack {
   readonly promptAdditions: Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>;
 }
 
+export interface FuryExplainableCapabilitySelection {
+  readonly kind: FuryCapabilityIndexKind;
+  readonly id: string;
+  readonly score: number;
+  readonly reason: 'explicit-request' | 'family-match' | 'task-relevance';
+  readonly requiredPermissions: readonly string[];
+  /** Routing metadata never grants runtime authority. */
+  readonly executionAuthorized: false;
+}
+
 export interface FuryUniversalCapabilityAnalysis {
   /** Stable short identifier chosen by the analyzer, e.g. "legal-research" or "video-production". */
   readonly domainId: string;
@@ -73,6 +87,8 @@ export interface FuryUniversalCapabilityAnalysis {
   readonly qualityGates?: readonly string[];
   readonly autoMcpCallsByStage?: Readonly<Partial<Record<AgentFabricStageId, readonly AgentMcpPlannedCall[]>>>;
   readonly promptAdditions?: Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>;
+  /** Explainable metadata shortlist emitted by a governed analyzer. */
+  readonly selectionTrace?: readonly FuryExplainableCapabilitySelection[];
 }
 
 export interface FuryUniversalCapabilitySkillInventoryItem {
@@ -163,6 +179,7 @@ export interface FuryCapabilityPlan {
   readonly pluginActivations: readonly CapabilityPluginActivation[];
   readonly qualityGates: readonly string[];
   readonly promptAdditions: Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>;
+  readonly selectionTrace: readonly FuryExplainableCapabilitySelection[];
 }
 
 export interface FuryCapabilityResolveInput {
@@ -1032,6 +1049,41 @@ function validateDynamicAnalysis(
     throw new Error('universal qualityGates must be bounded unique text');
   }
   const autoMcpCallsByStage = validateAutoMcpPlan(analysis.autoMcpCallsByStage, input);
+  const selectionTrace = analysis.selectionTrace ?? [];
+  if (!Array.isArray(selectionTrace) || selectionTrace.length > 64) {
+    throw new Error('universal selectionTrace must be a bounded list');
+  }
+  const seenTrace = new Set<string>();
+  const validatedSelectionTrace: FuryExplainableCapabilitySelection[] = [];
+  for (const entry of selectionTrace) {
+    if (!entry || typeof entry !== 'object') throw new Error('universal selectionTrace entry is invalid');
+    if (!(FURY_CAPABILITY_INDEX_KINDS as readonly unknown[]).includes(entry.kind)
+      || typeof entry.id !== 'string'
+      || entry.id.length < 1
+      || entry.id.length > 256
+      || entry.id.includes('\0')
+      || typeof entry.score !== 'number'
+      || !Number.isFinite(entry.score)
+      || entry.score < 0
+      || !['explicit-request','family-match','task-relevance'].includes(entry.reason)
+      || !Array.isArray(entry.requiredPermissions)
+      || entry.requiredPermissions.length > 32
+      || entry.requiredPermissions.some((permission: unknown) => typeof permission !== 'string' || permission.length < 1 || permission.length > 128 || permission.includes('\0'))
+      || entry.executionAuthorized !== false) {
+      throw new Error('universal selectionTrace entry is invalid');
+    }
+    const key = entry.kind + '\u0000' + entry.id;
+    if (seenTrace.has(key)) throw new Error('universal selectionTrace contains duplicate capability identities');
+    seenTrace.add(key);
+    validatedSelectionTrace.push(Object.freeze({
+      kind: entry.kind,
+      id: entry.id,
+      score: entry.score,
+      reason: entry.reason,
+      requiredPermissions: Object.freeze([...new Set(entry.requiredPermissions as readonly string[])]),
+      executionAuthorized: false,
+    }));
+  }
   const additions = analysis.promptAdditions ?? {};
   for (const [section, values] of Object.entries(additions)) {
     if (!['intent','role','objective','context','inputs','constraints','task','plan','tools','skills','mcp','subagents','outputContract','acceptanceCriteria','verification'].includes(section)
@@ -1050,6 +1102,7 @@ function validateDynamicAnalysis(
     pluginBundleIds: Object.freeze([...pluginIds]),
     qualityGates: Object.freeze([...quality]),
     autoMcpCallsByStage,
+    selectionTrace: Object.freeze(validatedSelectionTrace),
     promptAdditions: Object.freeze(Object.fromEntries(
       Object.entries(additions).map(([section, values]) => [section, Object.freeze([...(values ?? [])])]),
     )) as Readonly<Partial<Record<FuryPromptSection, readonly string[]>>>,
@@ -1220,6 +1273,7 @@ export async function resolveFuryCapabilities(input: FuryCapabilityResolveInput)
     pluginActivations,
     qualityGates,
     promptAdditions,
+    selectionTrace: dynamicAnalysis?.selectionTrace ?? Object.freeze([]),
   });
 }
 
