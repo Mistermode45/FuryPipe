@@ -5,7 +5,7 @@ import { createFuryCapabilityIndex } from '../capability-index.js';
 import { selectFuryCapabilitiesForTask } from '../capability-autopilot.js';
 import { projectHarnessesIntoCapabilityIndex, projectMcpHubIntoCapabilityIndex, projectModelsIntoCapabilityIndex, projectProvidersIntoCapabilityIndex, projectSkillHubIntoCapabilityIndex } from '../capability-index-adapters.js';
 import type { AgentSkillSelectionPlan } from '../agent-skill-selector.js';
-import { compileFuryPrompt } from '../fury-prompt.js';
+import { analyzeFuryPromptRequest, compileFuryPrompt } from '../fury-prompt.js';
 import { resolveInstructionPlan } from '../instruction-fabric.js';
 import type { FuryMcpHub, FuryMcpSourceView } from '../fury-mcp-hub.js';
 import type { FurySkillHub } from '../fury-skill-hub.js';
@@ -181,6 +181,12 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
       executionAuthorized:false as const,
     })];
   }));
+  const promptAnalysis=analyzeFuryPromptRequest({
+    objective,
+    sections:{
+      ...(customInstructions?{context:`Operator custom instructions are present (${customInstructions.length} chars).`}:{}),
+    },
+  });
   const basePrompt={
     sections:{
       intent:'Complete the user objective through FuryPipe while preserving user intent and least privilege.',
@@ -337,6 +343,8 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
       executionAuthorized:false as const,
     }),
     prompt:Object.freeze({
+      mode:promptAnalysis.recommendedMode,
+      analysis:promptAnalysis,
       level:compilation.level,
       text:compilation.prompt,
       bytes:compilation.promptBytes,
