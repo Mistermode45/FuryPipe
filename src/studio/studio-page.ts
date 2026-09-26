@@ -1961,6 +1961,37 @@ const SCRIPT = String.raw`
       if (r.excluded.length) { const ul = el('ul', { class: 'reasons' }); for (const x of r.excluded) ul.append(el('li', { text: x.name + ': ' + x.reason })); out.append(ul); }
     } catch (e) { out.append(el('p', { class: 'bad', text: e.message })); }
   });
+  const skillLines = (selector) => $(selector).value.split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+  $('#skill-create-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const status = $('#skill-create-status');
+    if (!$('#skill-create-confirm').checked) { status.textContent = 'Explicit confirmation is required before creating the skill.'; return; }
+    const payload = {
+      name: $('#skill-create-name').value.trim(),
+      description: $('#skill-create-description').value.trim(),
+      instructions: $('#skill-create-instructions').value.trim(),
+      version: $('#skill-create-version').value.trim() || undefined,
+      author: $('#skill-create-author').value.trim() || undefined,
+      license: $('#skill-create-license').value.trim() || undefined,
+      type: $('#skill-create-type').value,
+      harnesses: skillLines('#skill-create-harnesses'),
+      allowedTools: skillLines('#skill-create-tools'),
+      triggers: skillLines('#skill-create-triggers'),
+      examples: skillLines('#skill-create-examples'),
+      tests: skillLines('#skill-create-tests'),
+      confirm: true,
+    };
+    status.textContent = 'Validating and creating local SKILL.md…';
+    try {
+      const created = await post('/api/studio/skills/create', payload);
+      status.textContent = 'Created ' + created.name + ' · checksum ' + created.checksum.slice(0, 12) + '. Tool names remain metadata only; runtime policy still controls execution.';
+      $('#skill-create-confirm').checked = false;
+      await loadSkills();
+    } catch (e) {
+      status.textContent = 'Skill creation refused: ' + e.message;
+    }
+  });
+
   $('#skill-install-form').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const status = $('#skill-install-status');
@@ -2496,7 +2527,25 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
 <section data-view="runtimes" aria-labelledby="h-runtimes" hidden><h1 id="h-runtimes">Runtimes</h1><p class="lead">Agent harnesses installed on this machine. Harness, provider and model are independent choices.</p>
   <div class="card"><table><thead><tr><th scope="col">Runtime</th><th scope="col">State</th><th scope="col">Version</th><th scope="col">Integration</th><th scope="col">Local models via</th><th scope="col">Evidence</th></tr></thead><tbody id="runtimes-body"></tbody></table><p id="runtimes-status" class="status muted" role="status"></p></div></section>
 <section data-view="skills" aria-labelledby="h-skills" hidden><h1 id="h-skills">Skills</h1><p class="lead">Agent Skills found in this project and your home folder (.furypipe, .agents, .claude, .opencode, .github). Pin a skill to block it automatically if its content changes.</p>
-  <div class="card"><h2>Add a local skill</h2><form id="skill-install-form"><label for="skill-source-dir">Folder containing SKILL.md</label><input id="skill-source-dir" required autocomplete="off" placeholder="C:\\path\\to\\skill"><div class="row"><label><input id="skill-install-confirm" type="checkbox"> I reviewed this skill and want FuryPipe to import it</label><button type="submit">Import skill</button></div></form><p id="skill-install-status" class="status muted" role="status">Remote repositories are never downloaded automatically from this form.</p></div>
+  <div class="grid">
+    <div class="card"><h2>Create a skill</h2><p class="muted">Creates a validated project-local SKILL.md. Declared tools are routing metadata only and never grant execution authority.</p>
+      <form id="skill-create-form">
+        <div class="row"><div><label for="skill-create-name">Name</label><input id="skill-create-name" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="release-review"></div><div><label for="skill-create-type">Type</label><select id="skill-create-type"><option value="STATIC">Static</option><option value="GENERATED">Generated</option><option value="EVOLVING">Evolving</option></select></div></div>
+        <label for="skill-create-description">Description</label><input id="skill-create-description" required maxlength="1024" placeholder="Review release changes before publishing.">
+        <label for="skill-create-instructions">Instructions</label><textarea id="skill-create-instructions" required placeholder="Inspect the diff, verify tests, and report evidence before completion."></textarea>
+        <details class="adv"><summary>Metadata and validation</summary><div>
+          <div class="row"><div><label for="skill-create-version">Version</label><input id="skill-create-version" value="1.0.0"></div><div><label for="skill-create-author">Author</label><input id="skill-create-author" value="LégendeUrbaine"></div><div><label for="skill-create-license">License</label><input id="skill-create-license" value="UNSPECIFIED"></div></div>
+          <label for="skill-create-harnesses">Compatible runtimes (one id per line)</label><textarea id="skill-create-harnesses" placeholder="claude-code&#10;codex"></textarea>
+          <label for="skill-create-tools">Declared tools (one per line, metadata only)</label><textarea id="skill-create-tools" placeholder="read_file&#10;git_diff"></textarea>
+          <label for="skill-create-triggers">Trigger conditions (one per line)</label><textarea id="skill-create-triggers" placeholder="release review requested"></textarea>
+          <label for="skill-create-examples">Examples (one per line)</label><textarea id="skill-create-examples" placeholder="Review this FuryPipe release."></textarea>
+          <label for="skill-create-tests">Skill acceptance tests (one per line)</label><textarea id="skill-create-tests" placeholder="Must report evidence before claiming completion."></textarea>
+        </div></details>
+        <div class="row"><label><input id="skill-create-confirm" type="checkbox"> Create this local instruction skill after validation</label><button type="submit">Create skill</button></div>
+      </form><p id="skill-create-status" class="status muted" role="status">No script, shell command, network permission or secret is created by this form.</p>
+    </div>
+    <div class="card"><h2>Import a local skill</h2><form id="skill-install-form"><label for="skill-source-dir">Folder containing SKILL.md</label><input id="skill-source-dir" required autocomplete="off" placeholder="C:\\path\\to\\skill"><div class="row"><label><input id="skill-install-confirm" type="checkbox"> I reviewed this skill and want FuryPipe to import it</label><button type="submit">Import skill</button></div></form><p id="skill-install-status" class="status muted" role="status">Remote repositories are never downloaded automatically from this form.</p></div>
+  </div>
   <div class="card"><table><thead><tr><th scope="col">Skill</th><th scope="col">Scope</th><th scope="col">State</th><th scope="col">Version</th><th scope="col">Runtimes</th><th scope="col">Uses</th><th scope="col">Checksum</th><th scope="col">Governance</th><th scope="col">Actions</th></tr></thead><tbody id="skills-body"></tbody></table><p id="skills-status" class="status muted" role="status"></p></div>
   <div class="card"><h2>Which skills would a task use?</h2><form id="skill-select-form"><label for="skill-objective">Task</label><textarea id="skill-objective" required placeholder="e.g. Review the SQL migration for locking"></textarea>
   <div class="row"><div><label for="skill-harness">Runtime</label><select id="skill-harness"><option value="">Any</option>${FURY_HARNESS_REGISTRY.map((h) => `<option value="${h.id}">${escapeHtml(h.displayName)}</option>`).join('')}</select></div><button type="submit">Preview selection</button></div></form><div id="skill-select-out" aria-live="polite"></div></div></section>
