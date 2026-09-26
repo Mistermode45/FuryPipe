@@ -62,12 +62,57 @@ const post = (body: unknown, type = 'application/json') => new Request('http://1
 describe('Studio API', () => {
   it('matches only the declared routes', () => {
     expect(studioApiRoute('/api/studio/local.json')).toEqual({ route: 'local', method: 'GET' });
+    expect(studioApiRoute('/api/studio/models.json')).toEqual({ route: 'models', method: 'GET' });
     expect(studioApiRoute('/api/studio/chat')).toEqual({ route: 'chat', method: 'POST' });
     expect(studioApiRoute('/api/studio/setup/runtime')).toEqual({ route: 'runtime-setup', method: 'POST' });
     expect(studioApiRoute('/api/studio/setup/runtime/status')).toEqual({ route: 'runtime-setup-status', method: 'GET' });
     expect(studioApiRoute('/api/studio/autopilot/preview')).toEqual({ route: 'autopilot-preview', method: 'POST' });
     expect(studioApiRoute('/api/studio/connections/login')).toEqual({ route: 'connection-login', method: 'POST' });
     expect(studioApiRoute('/api/studio/../control-room.json')).toBeNull();
+  });
+
+  it('exposes a read-only model hub without treating configuration as execution authority', async () => {
+    const studio = createStudioApi({
+      projectRoot: process.cwd(),
+      discoverHarnesses: async () => harnesses,
+      discoverLocal: async () => ({ backends: local('http://127.0.0.1:11434') }),
+      discoverHardware: async () => ({ platform: 'linux', arch: 'x64', cpuModel: 't', cpuCount: 8, totalMemoryBytes: 32 * 1024 ** 3, freeMemoryBytes: 1, unifiedMemory: false, gpus: [] }),
+      discoverConnections: async () => ({
+        format: 'furypipe-ai-connections/v1',
+        connections: [{
+          id: 'openai',
+          displayName: 'OpenAI',
+          state: 'credential-configured',
+          configuredVia: ['OPENAI_API_KEY'],
+          runtimes: [],
+          accountVerification: 'not-probed',
+        }],
+        policy: {
+          browserSessions: 'not-inspected',
+          credentialStores: 'not-inspected',
+          secretValues: 'never-returned',
+          accountStatus: 'official-cli-only',
+        },
+      }),
+    });
+    const response = await studio.handle('models', new Request('http://127.0.0.1/api/studio/models.json'));
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      authority: string;
+      executionAuthorized: boolean;
+      providers: { id: string; state: string; executionAuthorized: boolean }[];
+      models: { id: string; executionAuthorized: boolean }[];
+    };
+    expect(body.authority).toBe('inspection-and-routing-only');
+    expect(body.executionAuthorized).toBe(false);
+    expect(body.providers.find((provider) => provider.id === 'openai')).toMatchObject({
+      state: 'CONFIGURED_UNVERIFIED',
+      executionAuthorized: false,
+    });
+    expect(body.models).toContainEqual(expect.objectContaining({
+      id: 'local:ollama:qwen2.5-coder:7b',
+      executionAuthorized: false,
+    }));
   });
 
   it('derives bindings from installed harnesses and reachable local models (harness x provider x model)', () => {
