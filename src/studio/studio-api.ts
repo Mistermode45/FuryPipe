@@ -53,6 +53,8 @@ import { buildFuryModelHubSnapshot } from '../fury-model-hub.js';
 import { localModelCapabilityId, observeFuryLocalModelsInModelFabric } from '../fury-local-model-fabric.js';
 import { buildFuryWorkspaceGraph } from '../fury-workspace-graph.js';
 import { evaluateFuryDataset, type FuryEvalDataset } from '../fury-eval.js';
+import { createFuryArtifactRepository, type FuryArtifactRepository } from '../fury-artifact-repository-node.js';
+import type { FuryArtifact, FuryArtifactKind, FuryArtifactRestorePlan } from '../fury-artifacts.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
@@ -66,6 +68,7 @@ export type StudioRoute =
   | 'web' | 'visual-render'
   | 'memory' | 'memory-remember' | 'memory-search' | 'memory-act'
   | 'integrations' | 'connections' | 'connection-login' | 'support'
+  | 'artifacts' | 'artifact-get' | 'artifact-create' | 'artifact-version' | 'artifact-search' | 'artifact-restore-plan' | 'artifact-restore' | 'artifact-export'
   | 'chats' | 'chat-get' | 'chat-save' | 'chat-branch' | 'chat-delete'
   | 'code-tree' | 'code-file' | 'code-worktrees' | 'code-diff';
 
@@ -86,6 +89,14 @@ const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POS
   '/api/studio/eval': { route: 'eval', method: 'POST' },
   '/api/studio/extensions.json': { route: 'extensions', method: 'GET' },
   '/api/studio/support.json': { route: 'support', method: 'GET' },
+  '/api/studio/artifacts.json': { route: 'artifacts', method: 'GET' },
+  '/api/studio/artifacts/get': { route: 'artifact-get', method: 'POST' },
+  '/api/studio/artifacts/create': { route: 'artifact-create', method: 'POST' },
+  '/api/studio/artifacts/version': { route: 'artifact-version', method: 'POST' },
+  '/api/studio/artifacts/search': { route: 'artifact-search', method: 'POST' },
+  '/api/studio/artifacts/restore/plan': { route: 'artifact-restore-plan', method: 'POST' },
+  '/api/studio/artifacts/restore': { route: 'artifact-restore', method: 'POST' },
+  '/api/studio/artifacts/export': { route: 'artifact-export', method: 'GET' },
   '/api/studio/chat': { route: 'chat', method: 'POST' },
   '/api/studio/flow-preview': { route: 'flow-preview', method: 'POST' },
   '/api/studio/runs.json': { route: 'runs', method: 'GET' },
@@ -168,6 +179,10 @@ export interface StudioApiOptions {
   readonly memory?: StudioMemory;
   /** Conversation store directory (default ~/.furypipe/studio/chats/<project>). */
   readonly chatsDir?: string;
+  /** Persistent Artifacts repository. Inject for tests/custom storage; otherwise RecoveryStore-backed local state is used. */
+  readonly artifactRepository?: FuryArtifactRepository;
+  /** Artifact RecoveryStore root (default ~/.furypipe/studio/artifacts/<project>). */
+  readonly artifactsDir?: string;
 }
 
 interface StudioRun {
@@ -295,6 +310,46 @@ export function createStudioApi(options: StudioApiOptions) {
   };
 
   const chats: StudioChats = createStudioChats({ stateDir: options.chatsDir ?? path.join(os.homedir(), '.furypipe', 'studio', 'chats', projectKey), now });
+  const artifacts = options.artifactRepository ?? createFuryArtifactRepository({
+    root: options.artifactsDir ?? path.join(os.homedir(), '.furypipe', 'studio', 'artifacts', projectKey),
+    projectId: projectKey,
+  });
+  const artifactSummary = (artifact: FuryArtifact) => {
+    const latest = artifact.versions.at(-1)!;
+    return Object.freeze({
+      id: artifact.id,
+      kind: artifact.kind,
+      title: artifact.title,
+      projectId: artifact.projectId,
+      createdAt: artifact.createdAt,
+      updatedAt: artifact.updatedAt,
+      versions: artifact.versions.length,
+      latest: Object.freeze({
+        version: latest.version,
+        createdAt: latest.createdAt,
+        mediaType: latest.mediaType,
+        byteLength: latest.byteLength,
+        contentSha256: latest.contentSha256,
+        metadata: latest.metadata,
+      }),
+    });
+  };
+  const artifactMetadata = (value: unknown): Readonly<Record<string, string>> | undefined => {
+    if (value === undefined) return undefined;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw Object.assign(new Error('artifact metadata must be an object'), { status: 400 });
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length > 32 || entries.some(([key, item]) => !key || key.length > 64 || typeof item !== 'string' || item.length > 512)) {
+      throw Object.assign(new Error('artifact metadata must contain at most 32 bounded string entries'), { status: 400 });
+    }
+    return Object.freeze(Object.fromEntries(entries as [string, string][]));
+  };
+  const artifactKind = (value: unknown): FuryArtifactKind => {
+    const kinds: readonly FuryArtifactKind[] = ['text', 'markdown', 'json', 'code', 'image', 'audio', 'video', 'binary-reference'];
+    if (typeof value !== 'string' || !kinds.includes(value as FuryArtifactKind)) {
+      throw Object.assign(new Error('artifact kind is invalid'), { status: 400 });
+    }
+    return value as FuryArtifactKind;
+  };
   const code = createStudioCode(options.projectRoot);
   let memoryState: StudioMemory | undefined = options.memory;
   const memory = () => (memoryState ??= studioMemoryFromEnv());
@@ -555,6 +610,79 @@ export function createStudioApi(options: StudioApiOptions) {
               }),
               installation: 'LOCAL_REVIEW_REQUIRED: catalog entries are never downloaded or activated automatically',
             });
+          }
+          case 'artifacts':
+            return json({ artifacts: (await artifacts.list()).map(artifactSummary), authority: 'persistent-artifact-store' });
+          case 'artifact-get': {
+            const body = await readJson(request) as { id?: unknown };
+            if (typeof body?.id !== 'string' || !body.id.trim()) return problem(400, 'invalid-input', 'artifact id is required');
+            const artifact = await artifacts.get(body.id.trim());
+            if (!artifact) return problem(404, 'artifact-not-found', 'artifact not found');
+            return json({ artifact, authority: 'persistent-artifact-store' });
+          }
+          case 'artifact-create': {
+            const body = await readJson(request) as {
+              id?: unknown; kind?: unknown; title?: unknown; content?: unknown; mediaType?: unknown; metadata?: unknown; confirm?: unknown;
+            };
+            if (body?.confirm !== true) return problem(400, 'confirmation-required', 'creating an artifact requires confirm: true');
+            if (typeof body.id !== 'string' || typeof body.title !== 'string' || typeof body.content !== 'string') {
+              return problem(400, 'invalid-input', 'artifact id, title and content are required');
+            }
+            if (body.mediaType !== undefined && typeof body.mediaType !== 'string') return problem(400, 'invalid-input', 'artifact mediaType must be text');
+            const artifact = await artifacts.create({
+              id: body.id,
+              kind: artifactKind(body.kind),
+              title: body.title,
+              content: body.content,
+              ...(typeof body.mediaType === 'string' ? { mediaType: body.mediaType } : {}),
+              ...(body.metadata === undefined ? {} : { metadata: artifactMetadata(body.metadata)! }),
+              now: new Date(now()).toISOString(),
+            });
+            return json({ artifact, summary: artifactSummary(artifact), writePerformed: true, executionAuthorized: false }, 201);
+          }
+          case 'artifact-version': {
+            const body = await readJson(request) as { artifactId?: unknown; content?: unknown; mediaType?: unknown; metadata?: unknown; confirm?: unknown };
+            if (body?.confirm !== true) return problem(400, 'confirmation-required', 'adding an artifact version requires confirm: true');
+            if (typeof body.artifactId !== 'string' || typeof body.content !== 'string') return problem(400, 'invalid-input', 'artifactId and content are required');
+            if (body.mediaType !== undefined && typeof body.mediaType !== 'string') return problem(400, 'invalid-input', 'artifact mediaType must be text');
+            const artifact = await artifacts.appendVersion({
+              artifactId: body.artifactId,
+              content: body.content,
+              ...(typeof body.mediaType === 'string' ? { mediaType: body.mediaType } : {}),
+              ...(body.metadata === undefined ? {} : { metadata: artifactMetadata(body.metadata)! }),
+              now: new Date(now()).toISOString(),
+            });
+            return json({ artifact, summary: artifactSummary(artifact), writePerformed: true, executionAuthorized: false });
+          }
+          case 'artifact-search': {
+            const body = await readJson(request) as { query?: unknown };
+            if (typeof body?.query !== 'string' || !body.query.trim() || body.query.length > 512) return problem(400, 'invalid-input', 'artifact search query is required (max 512 characters)');
+            return json({ artifacts: (await artifacts.search(body.query.trim())).map(artifactSummary), authority: 'persistent-artifact-store' });
+          }
+          case 'artifact-restore-plan': {
+            const body = await readJson(request) as { artifactId?: unknown; sourceVersion?: unknown };
+            if (typeof body?.artifactId !== 'string' || !Number.isSafeInteger(body.sourceVersion) || Number(body.sourceVersion) < 1) {
+              return problem(400, 'invalid-input', 'artifactId and positive integer sourceVersion are required');
+            }
+            return json(await artifacts.planRestore(body.artifactId, Number(body.sourceVersion)));
+          }
+          case 'artifact-restore': {
+            const body = await readJson(request) as { plan?: unknown; confirm?: unknown };
+            if (body?.confirm !== true) return problem(400, 'confirmation-required', 'artifact restore requires confirm: true');
+            if (!body.plan || typeof body.plan !== 'object' || Array.isArray(body.plan)) return problem(400, 'invalid-input', 'restore plan is required');
+            const rawPlan = body.plan as Record<string, unknown>;
+            if (typeof rawPlan.artifactId !== 'string' || !Number.isSafeInteger(rawPlan.sourceVersion)) return problem(400, 'invalid-input', 'restore plan is invalid');
+            const receipt = await artifacts.executeRestore({
+              plan: body.plan as FuryArtifactRestorePlan,
+              confirm: true,
+              now: new Date(now()).toISOString(),
+            });
+            return json(receipt);
+          }
+          case 'artifact-export': {
+            const exported = await artifacts.exportProject();
+            if (exported.bytes > 8 * 1024 * 1024) return problem(413, 'export-too-large', 'artifact export exceeds the Studio 8 MiB response bound');
+            return json(exported);
           }
           case 'support': {
             const configured = process.env.FURYPIPE_SUPPORT_URL?.trim();
@@ -925,6 +1053,7 @@ export function createStudioApi(options: StudioApiOptions) {
         if (error instanceof FuryKnowledgeError) return problem(422, 'knowledge-rejected', error.message);
         if (error instanceof FuryMcpHubError) return problem(/^unknown MCP source/u.test(error.message) ? 404 : 422, 'mcp-rejected', error.message);
         if (error instanceof FurySkillHubError) return problem(/^unknown skill/u.test(error.message) ? 404 : 422, 'skill-rejected', error.message);
+        if (route.startsWith('artifact')) return problem(/^unknown artifact/u.test((error as Error).message) ? 404 : 422, 'artifact-rejected', (error as Error).message.slice(0, 300));
         if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') return problem(404, 'not-found', 'path not found');
         if (error instanceof FuryFlowError) return problem(422, 'invalid-flow', error.message);
         if ((error as Error).name === 'FuryLocalFabricError') return problem(403, 'endpoint-denied', (error as Error).message);

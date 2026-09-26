@@ -627,3 +627,116 @@ describe('Studio Code', () => {
     }
   });
 });
+
+
+describe('Studio Artifacts', () => {
+  it('persists, versions, searches, restores and exports artifacts through explicit Studio writes', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const root = mkdtempSync(join(tmpdir(), 'furypipe-studio-artifacts-'));
+    let clock = Date.parse('2026-09-26T18:00:00.000Z');
+    const makeStudio = () => createStudioApi({
+      projectRoot: process.cwd(),
+      artifactsDir: join(root, 'store'),
+      now: () => clock,
+      discoverHarnesses: async () => harnesses,
+      discoverLocal: async () => ({ backends: [] }),
+    });
+    try {
+      expect(studioApiRoute('/api/studio/artifacts.json')).toEqual({ route: 'artifacts', method: 'GET' });
+      expect(studioApiRoute('/api/studio/artifacts/create')).toEqual({ route: 'artifact-create', method: 'POST' });
+      const studio = makeStudio();
+
+      expect((await studio.handle('artifact-create', post({
+        id: 'architecture',
+        kind: 'markdown',
+        title: 'Architecture',
+        content: '# v1',
+      }))).status).toBe(400);
+
+      const created = await studio.handle('artifact-create', post({
+        id: 'architecture',
+        kind: 'markdown',
+        title: 'Architecture',
+        content: '# v1',
+        mediaType: 'text/markdown',
+        metadata: { track: 'P2' },
+        confirm: true,
+      }));
+      expect(created.status).toBe(201);
+      const createdBody = await created.json() as { writePerformed: boolean; executionAuthorized: boolean; summary: { versions: number } };
+      expect(createdBody).toMatchObject({ writePerformed: true, executionAuthorized: false });
+      expect(createdBody.summary.versions).toBe(1);
+
+      const listed = await (await studio.handle('artifacts', new Request('http://127.0.0.1/api/studio/artifacts.json'))).json() as {
+        artifacts: { id: string; versions: number; latest: { content?: string; contentSha256: string } }[];
+      };
+      expect(listed.artifacts).toHaveLength(1);
+      expect(listed.artifacts[0]).toMatchObject({ id: 'architecture', versions: 1 });
+      expect(listed.artifacts[0]?.latest.content).toBeUndefined();
+      expect(listed.artifacts[0]?.latest.contentSha256).toMatch(/^[0-9a-f]{64}$/u);
+
+      const fetched = await (await studio.handle('artifact-get', post({ id: 'architecture' }))).json() as {
+        artifact: { versions: { content: string }[] };
+      };
+      expect(fetched.artifact.versions[0]?.content).toBe('# v1');
+
+      clock += 1_000;
+      const versioned = await studio.handle('artifact-version', post({
+        artifactId: 'architecture',
+        content: '# v2',
+        mediaType: 'text/markdown',
+        metadata: { track: 'P2' },
+        confirm: true,
+      }));
+      expect(versioned.status).toBe(200);
+
+      const search = await (await studio.handle('artifact-search', post({ query: 'architecture' }))).json() as {
+        artifacts: { id: string; versions: number }[];
+      };
+      expect(search.artifacts).toEqual([expect.objectContaining({ id: 'architecture', versions: 2 })]);
+
+      const planResponse = await studio.handle('artifact-restore-plan', post({ artifactId: 'architecture', sourceVersion: 1 }));
+      expect(planResponse.status).toBe(200);
+      const plan = await planResponse.json() as Record<string, unknown>;
+      expect(plan).toMatchObject({
+        sourceVersion: 1,
+        currentVersion: 2,
+        plannedVersion: 3,
+        requiresApproval: true,
+        writeAuthorized: false,
+        executionAuthorized: false,
+      });
+
+      expect((await studio.handle('artifact-restore', post({ plan }))).status).toBe(400);
+      clock += 1_000;
+      const restored = await studio.handle('artifact-restore', post({ plan, confirm: true }));
+      expect(restored.status).toBe(200);
+      expect(await restored.json()).toMatchObject({
+        sourceVersion: 1,
+        previousVersion: 2,
+        restoredVersion: 3,
+        operatorConfirmed: true,
+        writePerformed: true,
+        executionAuthorized: false,
+      });
+
+      const exported = await (await studio.handle('artifact-export', new Request('http://127.0.0.1/api/studio/artifacts/export'))).json() as {
+        format: string; artifacts: { id: string; versions: unknown[] }[]; exportDigestSha256: string; executionAuthorized: boolean;
+      };
+      expect(exported.format).toBe('furypipe-artifact-export/v1');
+      expect(exported.exportDigestSha256).toMatch(/^[0-9a-f]{64}$/u);
+      expect(exported.executionAuthorized).toBe(false);
+      expect(exported.artifacts[0]?.versions).toHaveLength(3);
+
+      const reopened = makeStudio();
+      const persisted = await (await reopened.handle('artifact-get', post({ id: 'architecture' }))).json() as {
+        artifact: { versions: { content: string }[] };
+      };
+      expect(persisted.artifact.versions.map((version) => version.content)).toEqual(['# v1', '# v2', '# v1']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

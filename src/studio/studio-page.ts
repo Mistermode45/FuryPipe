@@ -78,6 +78,7 @@ const ICONS: Readonly<Record<string, string>> = Object.freeze({
   skills: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
   autopilot: '<path d="M12 2l2.1 6.1L20 10l-5.9 1.9L12 18l-2.1-6.1L4 10l5.9-1.9z"/><path d="M5 18l.8 2.2L8 21l-2.2.8L5 24l-.8-2.2L2 21l2.2-.8z"/>',
   extensions: '<path d="M9 3h6v4a2 2 0 1 0 4 0V3h2v7h-4a2 2 0 1 0 0 4h4v7h-7v-4a2 2 0 1 0-4 0v4H3v-7h4a2 2 0 1 0 0-4H3V3h6z"/>',
+  artifacts: '<path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5"/><path d="M3 7V3a2 2 0 0 1 2-2h11"/>',
   support: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/>',
   mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/>',
   mcp: '<path d="M9 2v6M15 2v6"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v5"/>',
@@ -553,8 +554,8 @@ const SCRIPT = String.raw`
   const tpl = document.createElement('template');
   function ic(name, cls) { tpl.innerHTML = '<svg class="' + (cls || 'i') + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[name] || '') + '</svg>'; return tpl.content.firstChild; }
   const store = { get(k, d) { try { const v = localStorage.getItem('furypipe.studio.' + k); return v === null ? d : v; } catch { return d; } }, set(k, v) { try { localStorage.setItem('furypipe.studio.' + k, v); } catch {} } };
-  const views = ['chat','autopilot','cowork','code','agents','mission','automations','models','connections','runtimes','skills','mcp','extensions','knowledge','web','memory','integrations','support','settings'];
-  const VIEW_TITLES = { chat: 'Chat', autopilot: 'Fury Autopilot', cowork: 'Cowork', code: 'Code', agents: 'Agents', mission: 'Mission Control', automations: 'Automations', models: 'Models', connections: 'Connections', runtimes: 'Runtimes', skills: 'Skills', mcp: 'MCP servers', extensions: 'Extensions', knowledge: 'Knowledge', web: 'Web', memory: 'Memory', integrations: 'Integrations', support: 'Support FuryPipe', settings: 'Settings' };
+  const views = ['chat','autopilot','cowork','code','agents','mission','automations','models','connections','runtimes','skills','mcp','extensions','artifacts','knowledge','web','memory','integrations','support','settings'];
+  const VIEW_TITLES = { chat: 'Chat', autopilot: 'Fury Autopilot', cowork: 'Cowork', code: 'Code', agents: 'Agents', mission: 'Mission Control', automations: 'Automations', models: 'Models', connections: 'Connections', runtimes: 'Runtimes', skills: 'Skills', mcp: 'MCP servers', extensions: 'Extensions', artifacts: 'Artifacts', knowledge: 'Knowledge', web: 'Web', memory: 'Memory', integrations: 'Integrations', support: 'Support FuryPipe', settings: 'Settings' };
   const PROVIDER = { ollama: 'Ollama', lmstudio: 'LM Studio', llamacpp: 'llama.cpp', vllm: 'vLLM', sglang: 'SGLang', localai: 'LocalAI', jan: 'Jan', 'openai-compatible': 'OpenAI-compatible', 'anthropic-compatible': 'Anthropic-compatible' };
   const SETUP = { ollama: 'https://ollama.com/download', lmstudio: 'https://lmstudio.ai', llamacpp: 'https://github.com/ggml-org/llama.cpp', vllm: 'https://docs.vllm.ai', sglang: 'https://docs.sglang.ai', localai: 'https://localai.io', jan: 'https://jan.ai' };
   const state = { local: null, hw: null, modelHub: null, harnesses: null, connections: null, conv: null, pick: 'auto', lastRoute: null, autopilot: null, autopilotMessages: [], files: [], pastes: [], web: false, kb: false, busy: null, activity: new Map() };
@@ -579,6 +580,7 @@ const SCRIPT = String.raw`
     'Runtimes': 'Runtimes',
     'Skills': 'Skills',
     'MCP servers': 'Serveurs MCP',
+    'Artifacts': 'Artefacts',
     'Integrations': 'Intégrations',
     'Settings': 'Paramètres',
     'Recent': 'RÉCENT',
@@ -1060,6 +1062,7 @@ const SCRIPT = String.raw`
     if (name === 'skills') loadSkills();
     if (name === 'mcp') loadMcp();
     if (name === 'extensions') loadExtensions();
+    if (name === 'artifacts') loadArtifacts();
     if (name === 'support') loadSupport();
     if (name === 'knowledge') loadKnowledge();
     if (name === 'memory') loadMemory();
@@ -2104,6 +2107,106 @@ const SCRIPT = String.raw`
       status.textContent = r.sources.length + ' MCP server(s) across ' + r.configs.filter(c => c.status === 'found').length + ' config file(s).';
     } catch (e) { status.textContent = 'MCP discovery failed: ' + e.message; }
   }
+  function renderArtifactCards(items) {
+    const grid = $('#artifact-grid'); grid.replaceChildren();
+    for (const artifact of items) {
+      const latest = artifact.latest;
+      const open = el('button', { type: 'button', class: 'secondary', text: 'Open history' });
+      open.addEventListener('click', () => openArtifact(artifact.id));
+      grid.append(el('article', { class: 'card extension-card' },
+        el('h2', { text: artifact.title }),
+        el('p', { class: 'muted code', text: artifact.id + ' · ' + artifact.kind }),
+        el('div', { class: 'extension-meta' }, badge(artifact.versions + ' version(s)', 'muted'), badge(latest.mediaType, 'muted')),
+        el('p', { class: 'muted', text: latest.byteLength + ' bytes · sha256 ' + latest.contentSha256.slice(0, 12) + '…' }),
+        open,
+      ));
+    }
+    if (!items.length) grid.append(el('p', { class: 'empty', text: 'No artifacts yet.' }));
+  }
+  async function loadArtifacts(query) {
+    const status = $('#artifact-status');
+    try {
+      const r = query
+        ? await mcpPost('/api/studio/artifacts/search', { query })
+        : await getJson('/api/studio/artifacts.json');
+      renderArtifactCards(r.artifacts || []);
+      status.textContent = (r.artifacts || []).length + ' artifact(s). History is immutable; restore always creates a new version.';
+    } catch (e) { status.textContent = 'Artifacts unavailable: ' + e.message; }
+  }
+  async function openArtifact(id) {
+    const detail = $('#artifact-detail'); detail.replaceChildren();
+    try {
+      const r = await mcpPost('/api/studio/artifacts/get', { id });
+      const artifact = r.artifact;
+      const card = el('div', { class: 'card' }, el('h2', { text: artifact.title + ' · history' }));
+      card.append(el('p', { class: 'muted', text: artifact.id + ' · ' + artifact.kind + ' · ' + artifact.versions.length + ' version(s)' }));
+      const list = el('div');
+      for (const version of [...artifact.versions].reverse()) {
+        const controls = el('div', { class: 'row' });
+        if (version.version !== artifact.versions.length) {
+          const restore = el('button', { type: 'button', class: 'secondary', text: 'Restore v' + version.version });
+          restore.addEventListener('click', async () => {
+            try {
+              const plan = await mcpPost('/api/studio/artifacts/restore/plan', { artifactId: artifact.id, sourceVersion: version.version });
+              if (!confirm('Restore version ' + version.version + ' as new version ' + plan.plannedVersion + '? This never overwrites history.')) return;
+              const receipt = await mcpPost('/api/studio/artifacts/restore', { plan, confirm: true });
+              $('#artifact-status').textContent = 'Restored v' + receipt.sourceVersion + ' as v' + receipt.restoredVersion + ' · persisted ' + receipt.persistedDigestSha256.slice(0, 12) + '…';
+              await loadArtifacts(); await openArtifact(artifact.id);
+            } catch (e) { $('#artifact-status').textContent = 'Restore rejected: ' + e.message; }
+          });
+          controls.append(restore);
+        }
+        list.append(el('article', { class: 'card' },
+          el('h3', { text: 'Version ' + version.version }),
+          el('p', { class: 'muted', text: version.createdAt + ' · ' + version.mediaType + ' · ' + version.byteLength + ' bytes · ' + version.contentSha256.slice(0, 12) + '…' }),
+          el('pre', { class: 'code', text: version.content.length > 12000 ? version.content.slice(0, 12000) + '\n…preview truncated…' : version.content }),
+          controls,
+        ));
+      }
+      const add = el('form', {}, el('h3', { text: 'Add version' }));
+      const content = el('textarea', { required: 'required', maxlength: '240000', placeholder: 'New version content' });
+      const media = el('input', { maxlength: '128', value: artifact.versions.at(-1).mediaType, 'aria-label': 'Media type' });
+      add.append(content, el('div', { class: 'row' }, media, el('button', { type: 'submit', text: 'Add version' })));
+      add.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!confirm('Add a new immutable version to ' + artifact.id + '?')) return;
+        try {
+          await mcpPost('/api/studio/artifacts/version', { artifactId: artifact.id, content: content.value, mediaType: media.value, confirm: true });
+          $('#artifact-status').textContent = 'New version persisted.';
+          await loadArtifacts(); await openArtifact(artifact.id);
+        } catch (e) { $('#artifact-status').textContent = 'Version rejected: ' + e.message; }
+      });
+      card.append(add, list); detail.append(card);
+    } catch (e) { detail.append(el('p', { class: 'bad', text: e.message })); }
+  }
+  $('#artifact-create-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!confirm('Create this persistent artifact?')) return;
+    try {
+      await mcpPost('/api/studio/artifacts/create', {
+        id: $('#artifact-id').value.trim(),
+        kind: $('#artifact-kind').value,
+        title: $('#artifact-title').value.trim(),
+        content: $('#artifact-content').value,
+        mediaType: $('#artifact-media-type').value.trim(),
+        confirm: true,
+      });
+      $('#artifact-content').value = '';
+      $('#artifact-status').textContent = 'Artifact persisted.';
+      await loadArtifacts();
+    } catch (e) { $('#artifact-status').textContent = 'Create rejected: ' + e.message; }
+  });
+  $('#artifact-search-form').addEventListener('submit', (event) => {
+    event.preventDefault(); const query = $('#artifact-query').value.trim(); query ? loadArtifacts(query) : loadArtifacts();
+  });
+  $('#artifact-show-all').addEventListener('click', () => { $('#artifact-query').value = ''; loadArtifacts(); });
+  $('#artifact-export').addEventListener('click', async () => {
+    try {
+      const r = await getJson('/api/studio/artifacts/export');
+      $('#artifact-status').textContent = 'Export verified · ' + r.artifacts.length + ' artifact(s) · ' + r.bytes + ' bytes · sha256 ' + r.exportDigestSha256.slice(0, 16) + '…';
+    } catch (e) { $('#artifact-status').textContent = 'Export unavailable: ' + e.message; }
+  });
+
   async function loadExtensions() {
     const grid = $('#extensions-grid'); const status = $('#extensions-status');
     if (!grid || !status) return;
@@ -2409,7 +2512,7 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
     <li class="nav-more-row"><details class="nav-more" id="nav-more"><summary>${icon('more')}<span class="label">More</span>${icon('chevron','i more-chevron')}</summary><ul>
       ${nav('knowledge', 'power', 'Knowledge')}${nav('web', 'power', 'Web')}${nav('memory', 'power', 'Memory')}
       ${nav('models', 'simple', 'Models')}${nav('connections', 'simple', 'Connections')}${nav('mission', 'expert', 'Mission Control')}
-      ${nav('runtimes', 'engineer', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'power', 'MCP')}${nav('extensions', 'power', 'Extensions')}${nav('integrations', 'engineer', 'Integrations')}${nav('support', 'simple', 'Support')}
+      ${nav('runtimes', 'engineer', 'Runtimes')}${nav('skills', 'power', 'Skills')}${nav('mcp', 'power', 'MCP')}${nav('extensions', 'power', 'Extensions')}${nav('artifacts', 'power', 'Artifacts')}${nav('integrations', 'engineer', 'Integrations')}${nav('support', 'simple', 'Support')}
     </ul></details></li>
   </ul></nav>
   <div class="recent" aria-labelledby="recent-h"><h2 id="recent-h">Recent</h2><ul id="chat-list" aria-labelledby="recent-h"></ul></div>
@@ -2599,6 +2702,19 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
   <div class="row"><div><label for="mem-scope">For</label><select id="mem-scope"><option value="project">This project</option><option value="user">Me, everywhere</option></select></div><button type="submit">Save</button></div></form></div>
   <div class="card"><form id="mem-search-form"><label for="mem-query">Recall</label><input id="mem-query" required autocomplete="off"><div class="row"><button type="submit">Recall</button></div></form><div id="mem-results" aria-live="polite"></div></div>
   <div class="card"><table><thead><tr><th scope="col">ID</th><th scope="col">State</th><th scope="col">Kind</th><th scope="col">Scope</th><th scope="col">Source</th><th scope="col">Confidence</th><th scope="col">Age</th><th scope="col">Actions</th></tr></thead><tbody id="mem-body"></tbody></table></div></div></section>
+<section data-view="artifacts" aria-labelledby="h-artifacts" hidden><h1 id="h-artifacts">Artifacts</h1><p class="lead">Versioned project outputs with immutable history, SHA-256 evidence and approval-only restore.</p>
+  <div class="grid">
+    <div class="card"><h2>Create artifact</h2><form id="artifact-create-form">
+      <div class="row"><div><label for="artifact-id">ID</label><input id="artifact-id" required maxlength="128" pattern="[a-z0-9][a-z0-9._-]*" placeholder="design-report"></div><div><label for="artifact-kind">Kind</label><select id="artifact-kind"><option>markdown</option><option>text</option><option>json</option><option>code</option><option>image</option><option>audio</option><option>video</option><option>binary-reference</option></select></div></div>
+      <label for="artifact-title">Title</label><input id="artifact-title" required maxlength="256" placeholder="Design report">
+      <label for="artifact-content">Content</label><textarea id="artifact-content" required maxlength="240000" placeholder="Artifact content or a governed reference"></textarea>
+      <div class="row"><div><label for="artifact-media-type">Media type</label><input id="artifact-media-type" maxlength="128" value="text/markdown"></div><button type="submit">Create</button></div>
+    </form></div>
+    <div class="card"><h2>Find artifacts</h2><form id="artifact-search-form"><label for="artifact-query">Search</label><input id="artifact-query" maxlength="512" autocomplete="off" placeholder="architecture, release, report…"><div class="row"><button type="submit">Search</button><button id="artifact-show-all" type="button" class="secondary">Show all</button><button id="artifact-export" type="button" class="secondary">Verify export</button></div></form><p id="artifact-status" class="status muted" role="status"></p></div>
+  </div>
+  <div id="artifact-grid" class="extension-grid" aria-live="polite"></div>
+  <div id="artifact-detail" aria-live="polite"></div>
+</section>
 <section data-view="extensions" aria-labelledby="h-extensions" hidden><h1 id="h-extensions">Extensions</h1><p class="lead">Discover skills, prompt packs, model runtimes, workbenches and MCP ecosystem sources without turning popularity into trust.</p>
   <div class="card"><form id="extensions-form"><div class="row"><div><label for="extensions-query">Search</label><input id="extensions-query" type="search" autocomplete="off" placeholder="coding, video, Azure, MCP…"></div><div><label for="extensions-kind">Type</label><select id="extensions-kind"><option value="">All</option><option value="SKILL_PACK">Skill packs</option><option value="PROMPT_PACK">Prompt packs</option><option value="MODEL_RUNTIME">Model runtimes</option><option value="AI_WORKBENCH">AI workbenches</option><option value="REGISTRY">Registries</option><option value="MCP_APP">MCP Apps</option></select></div><label><input id="extensions-restricted" type="checkbox"> Show restricted</label><button type="submit">Search</button></div></form><p id="extensions-status" class="status muted" role="status"></p></div>
   <div id="extensions-grid" class="extension-grid" aria-live="polite"></div>
