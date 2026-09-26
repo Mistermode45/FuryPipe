@@ -536,7 +536,7 @@ const SCRIPT = String.raw`
   const VIEW_TITLES = { chat: 'Chat', cowork: 'Cowork', code: 'Code', agents: 'Agents', mission: 'Mission Control', automations: 'Automations', models: 'Models', connections: 'Connections', runtimes: 'Runtimes', skills: 'Skills', mcp: 'MCP servers', knowledge: 'Knowledge', web: 'Web', memory: 'Memory', integrations: 'Integrations', settings: 'Settings' };
   const PROVIDER = { ollama: 'Ollama', lmstudio: 'LM Studio', llamacpp: 'llama.cpp', vllm: 'vLLM', sglang: 'SGLang', localai: 'LocalAI', jan: 'Jan', 'openai-compatible': 'OpenAI-compatible', 'anthropic-compatible': 'Anthropic-compatible' };
   const SETUP = { ollama: 'https://ollama.com/download', lmstudio: 'https://lmstudio.ai', llamacpp: 'https://github.com/ggml-org/llama.cpp', vllm: 'https://docs.vllm.ai', sglang: 'https://docs.sglang.ai', localai: 'https://localai.io', jan: 'https://jan.ai' };
-  const state = { local: null, hw: null, harnesses: null, conv: null, pick: 'auto', lastRoute: null, files: [], pastes: [], web: false, kb: false, busy: null, activity: new Map() };
+  const state = { local: null, hw: null, harnesses: null, connections: null, conv: null, pick: 'auto', lastRoute: null, files: [], pastes: [], web: false, kb: false, busy: null, activity: new Map() };
   /* ---------- Locale / i18n ---------- */
   const SUPPORTED_LANGUAGES = Object.freeze(['en', 'fr']);
   const FR = Object.freeze({
@@ -724,7 +724,13 @@ const SCRIPT = String.raw`
     'Find the best local AI': 'Trouver la meilleure IA locale',
     'Matched to your GPU and RAM': 'Adaptée à votre GPU et votre RAM',
     'Installing local AI…': 'Installation de l’IA locale…',
-    'Installation complete. FuryPipe is checking the runtime…': 'Installation terminée. FuryPipe vérifie le runtime…'
+    'Installation complete. FuryPipe is checking the runtime…': 'Installation terminée. FuryPipe vérifie le runtime…',
+    'Connected': 'Connecté',
+    'Account verified': 'Compte vérifié',
+    'Not signed in': 'Non connecté',
+    'Sign-in state is not available for this runtime': 'L’état de connexion n’est pas disponible pour ce runtime',
+    'Account connected successfully.': 'Compte connecté avec succès.',
+    'Sign-in window finished. Use Refresh after completing authentication.': 'La fenêtre de connexion est terminée. Cliquez sur Actualiser après avoir terminé l’authentification.'
   });
   function detectedLanguage() {
     const langs = [...(Array.isArray(navigator.languages) ? navigator.languages : []), navigator.language, Intl.DateTimeFormat().resolvedOptions().locale, SERVER_LANGUAGE].filter(Boolean);
@@ -944,7 +950,15 @@ const SCRIPT = String.raw`
     if (name === 'mission') loadRuns();
     clearInterval(state.poll); if (name === 'mission') state.poll = setInterval(loadRuns, 2000);
   }
-  function route() { show((location.hash.replace(/^#\/?/, '') || 'chat').split('/')[0]); }
+  function route() {
+    const parts = (location.hash.replace(/^#\/?/, '') || 'chat').split('/').filter(Boolean);
+    const name = parts[0] || 'chat';
+    show(name);
+    if (name === 'settings' && parts[1]) {
+      const section = $('#set-' + parts[1]);
+      if (section) setTimeout(() => section.scrollIntoView({ block:'start', behavior:document.documentElement.dataset.motion === 'reduced' ? 'auto' : 'smooth' }), 0);
+    }
+  }
   addEventListener('hashchange', route);
 
   /* ---------- Local models + Fury Auto ---------- */
@@ -1382,24 +1396,31 @@ const SCRIPT = String.raw`
     status.textContent = 'Detecting AI connections…';
     try {
       const r = await getJson('/api/studio/connections.json');
+      state.connections = r;
       // Clear only after the async request resolves. Multiple route/render passes
       // can overlap; clearing before await lets both responses append duplicate cards.
       grid.replaceChildren();
       for (const c of r.connections) {
         const card = el('div', { class: 'card connection-card' });
-        const stateLabel = c.state === 'credential-configured' ? 'Credential configured' : c.state === 'runtime-detected' ? 'Runtime detected' : 'Not detected';
-        const stateClass = c.state === 'credential-configured' ? 'ok' : c.state === 'runtime-detected' ? 'warn' : 'muted';
+        const stateLabel = c.state === 'authenticated' ? 'Connected' : c.state === 'credential-configured' ? 'Credential configured' : c.state === 'runtime-detected' ? 'Runtime detected' : 'Not detected';
+        const stateClass = c.state === 'authenticated' || c.state === 'credential-configured' ? 'ok' : c.state === 'runtime-detected' ? 'warn' : 'muted';
         card.append(el('div', { class: 'connection-top' }, ic('connections'), el('b', { text: c.displayName }), badge(stateLabel, stateClass)));
         const meta = el('div', { class: 'connection-meta' });
+        if (c.accountVerification === 'authenticated') {
+          const detail = [c.account && c.account.method ? c.account.method : '', c.account && c.account.subscription ? c.account.subscription : ''].filter(Boolean).join(' · ');
+          meta.append(el('span', {}, ic('check'), el('span', { text: 'Account verified' + (detail ? ': ' + detail : '') })));
+        } else if (c.accountVerification === 'not-authenticated' && c.runtimes.length) {
+          meta.append(el('span', {}, ic('info'), el('span', { text: 'Not signed in' })));
+        }
         if (c.configuredVia.length) meta.append(el('span', {}, ic('shield'), el('span', { text: 'Credential source: ' + c.configuredVia.join(', ') })));
         if (c.runtimes.length) meta.append(el('span', {}, ic('cpu'), el('span', { text: 'Installed runtime: ' + c.runtimes.map(x => x.displayName + (x.version ? ' ' + x.version : '')).join(', ') })));
-        if (!c.configuredVia.length && c.runtimes.length) meta.append(el('span', {}, ic('info'), el('span', { text: 'Sign-in state is not inspected' })));
+        if (c.accountVerification === 'not-probed' && !c.configuredVia.length && c.runtimes.length) meta.append(el('span', {}, ic('info'), el('span', { text: 'Sign-in state is not available for this runtime' })));
         if (!c.configuredVia.length && !c.runtimes.length) meta.append(el('span', {}, ic('info'), el('span', { text: 'No runtime or credential source detected' })));
         card.append(meta);
         if (['anthropic','openai','google'].includes(c.id)) {
           const actions = el('div', { class: 'connection-actions' });
           if (c.runtimes.length) {
-            const connect = el('button', { type: 'button', class: 'btn secondary', 'data-connect-provider': c.id, text: c.state === 'credential-configured' ? 'Reconnect / switch account' : 'Connect account' });
+            const connect = el('button', { type: 'button', class: 'btn secondary', 'data-connect-provider': c.id, text: c.state === 'authenticated' || c.state === 'credential-configured' ? 'Reconnect / switch account' : 'Connect account' });
             actions.append(connect);
           } else {
             actions.append(el('a', { class: 'btn secondary', href: '#/runtimes', text: 'Set up ' + (c.id === 'anthropic' ? 'Claude Code' : c.id === 'openai' ? 'Codex' : 'Gemini CLI') }));
@@ -1410,6 +1431,25 @@ const SCRIPT = String.raw`
       }
       status.textContent = 'Automatic detection completed. Secret values and browser sessions were not inspected.';
     } catch (e) { status.textContent = 'Connection detection failed: ' + e.message; }
+  }
+  let connectionAuthPoll = null;
+  function stopConnectionAuthPoll() { if (connectionAuthPoll) clearInterval(connectionAuthPoll); connectionAuthPoll = null; }
+  function pollConnectionAuth(provider) {
+    stopConnectionAuthPoll();
+    let attempts = 0;
+    connectionAuthPoll = setInterval(async () => {
+      attempts++;
+      if (document.body.dataset.view !== 'connections') { stopConnectionAuthPoll(); return; }
+      await loadConnections();
+      const connection = state.connections && state.connections.connections && state.connections.connections.find((item) => item.id === provider);
+      if (connection && connection.accountVerification === 'authenticated') {
+        $('#connections-status').textContent = translated('Account connected successfully.');
+        stopConnectionAuthPoll();
+      } else if (attempts >= 45) {
+        $('#connections-status').textContent = translated('Sign-in window finished. Use Refresh after completing authentication.');
+        stopConnectionAuthPoll();
+      }
+    }, 2000);
   }
   $('#connections-refresh').addEventListener('click', loadConnections);
   document.addEventListener('click', async (event) => {
@@ -1427,6 +1467,7 @@ const SCRIPT = String.raw`
     try {
       const result = await post('/api/studio/connections/login', { provider, confirm: true });
       status.textContent = result.next;
+      pollConnectionAuth(provider);
     } catch (e) {
       status.textContent = (activeLanguage === 'fr' ? 'Connexion impossible : ' : 'Could not start sign-in: ') + e.message;
     } finally {
@@ -1932,7 +1973,7 @@ export function renderStudioHtml(options: StudioHtmlOptions = {}): { readonly ht
 <section data-view="integrations" aria-labelledby="h-integrations" hidden><h1 id="h-integrations">Integrations</h1><p class="lead">MCP servers, APIs (OpenAPI) and webhooks in one registry, with how each one authenticates, what it may do and whether you trust it. Declare APIs and webhooks in .furypipe/integrations.json.</p>
   <div class="card"><table><thead><tr><th scope="col">Integration</th><th scope="col">Kind</th><th scope="col">Status</th><th scope="col">Auth</th><th scope="col">Can</th><th scope="col">Default</th><th scope="col">Trust</th><th scope="col">Notes</th></tr></thead><tbody id="int-body"></tbody></table><p id="int-status" class="status muted" role="status"></p></div></section>
 <section data-view="settings" aria-labelledby="h-settings" hidden><h1 id="h-settings">Settings</h1><p class="lead">Make FuryPipe yours. Preferences are stored in this browser.</p>
-  <div class="settings"><nav class="settings-nav" aria-label="Settings sections"><a href="#set-general">General</a><a href="#set-appearance">Appearance</a><a href="#set-privacy">Privacy</a><a href="#set-advanced">Advanced</a></nav>
+  <div class="settings"><nav class="settings-nav" aria-label="Settings sections"><a href="#/settings/general">General</a><a href="#/settings/appearance">Appearance</a><a href="#/settings/privacy">Privacy</a><a href="#/settings/advanced">Advanced</a></nav>
   <div>
     <div class="card set-group" id="set-general"><h2>General</h2>
       <div class="set-row"><div class="t"><b>Language</b><span>Automatically follows your browser language. You can override it here.</span></div>${seg('language', [['auto', 'Auto'], ['en', 'English'], ['fr', 'French']])}</div>

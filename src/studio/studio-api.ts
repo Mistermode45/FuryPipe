@@ -42,6 +42,7 @@ import { discoverFuryAiConnections, type FuryAiConnections } from '../fury-ai-co
 import { inspectHuggingFaceGguf, recommendHuggingFaceGguf } from '../fury-huggingface-models.js';
 import { installFuryLocalRuntime, type FuryRuntimeSetupId, type FuryRuntimeSetupRunner } from '../fury-runtime-setup.js';
 import { launchFuryAccountLogin, type FuryAccountLoginLauncher, type FuryAccountProvider } from '../fury-account-connect.js';
+import { probeFuryAccountStatuses, type FuryAccountStatusRunner } from '../fury-account-status.js';
 
 export const STUDIO_API_PREFIX = '/api/studio/';
 const MAX_POST_BYTES = 256 * 1024;
@@ -125,6 +126,9 @@ export interface StudioApiOptions {
   /** Test hook for explicit official CLI sign-in launch. */
   readonly accountLoginLauncher?: FuryAccountLoginLauncher;
   readonly accountLoginPlatform?: NodeJS.Platform;
+  /** Test hook for official CLI auth-status probes. */
+  readonly accountStatusRunner?: FuryAccountStatusRunner;
+  readonly accountStatusPlatform?: NodeJS.Platform;
   readonly loadGraph?: (root: string) => Promise<{ readonly graph: FuryGraph }>;
   readonly now?: () => number;
   /** Task executor for real runs; defaults to the structured-CLI harness runner. */
@@ -243,7 +247,14 @@ export function createStudioApi(options: StudioApiOptions) {
   const harnesses = () => cached('harnesses', discovery(options.discoverHarnesses ?? (() => discoverFuryHarnesses())));
   const local = () => cached('local', discovery(options.discoverLocal ?? (() => discoverFuryLocalBackends())));
   const hardware = () => cached('hardware', discovery(options.discoverHardware ?? (() => discoverFuryHardware())));
-  const connections = () => cached('connections', discovery(options.discoverConnections ?? (async () => discoverFuryAiConnections(await harnesses()))));
+  const connections = discovery(options.discoverConnections ?? (async () => {
+    const discovered = await harnesses();
+    const verification = await probeFuryAccountStatuses(discovered, {
+      ...(options.accountStatusRunner ? { runner: options.accountStatusRunner } : {}),
+      ...(options.accountStatusPlatform ? { platform: options.accountStatusPlatform } : {}),
+    });
+    return discoverFuryAiConnections(discovered, process.env, verification);
+  }));
   const graph = () => cached('graph', async () => (await (options.loadGraph ?? loadFuryGraph)(options.projectRoot)).graph);
 
   const projectKey = createHash('sha256').update(path.resolve(options.projectRoot)).digest('hex').slice(0, 16);

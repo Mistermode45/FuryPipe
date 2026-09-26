@@ -83,6 +83,7 @@ describe('AI connection discovery', () => {
       browserSessions: 'not-inspected',
       credentialStores: 'not-inspected',
       secretValues: 'never-returned',
+      accountStatus: 'official-cli-only',
     });
   });
 });
