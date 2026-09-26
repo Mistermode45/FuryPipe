@@ -15,6 +15,7 @@ import { createFuryRequestBlueprint } from '../fury-request-blueprint.js';
 import { buildFuryCapabilityGraph } from '../fury-capability-graph.js';
 import type { ModelFabricRegistry } from '../core/model-fabric.js';
 import { resolveFuryInstructionPrecedence } from '../instruction-precedence.js';
+import { buildFuryContextInspector } from '../fury-context-inspector.js';
 
 export const STUDIO_AUTOPILOT_FORMAT = 'furypipe-studio-autopilot/v1' as const;
 export const STUDIO_RESPONSE_STYLES = Object.freeze(['auto','balanced','caveman','detailed'] as const);
@@ -262,6 +263,69 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   if(instructionPrecedence.status==='conflict'){
     throw Object.assign(new Error('instruction precedence conflict must be resolved before prompt compilation'),{status:422});
   }
+  const contextInspector=buildFuryContextInspector({
+    budgetBytes:MAX_SYSTEM_PROMPT_BYTES,
+    usedBytes:compilation.promptBytes,
+    sources:[
+      {
+        category:'system',
+        status:'loaded',
+        count:1,
+        bytes:compilation.promptBytes,
+        ids:['compiled-furyprompt'],
+        reason:'The compiled FuryPrompt is the system context for this Studio planning turn.',
+      },
+      {
+        category:'project',
+        status:customInstructions?'loaded':'not-present',
+        count:customInstructions?1:0,
+        ids:customInstructions?['operator-custom-instructions']:[],
+        reason:customInstructions
+          ? 'Operator custom instructions are embedded in the compiled prompt; byte cost is already included in system.'
+          : 'No project/operator custom instruction block was supplied.',
+      },
+      {
+        category:'conversation',
+        status:'not-present',
+        count:0,
+        reason:'Autopilot preview analyzes the current objective and does not silently load conversation history.',
+      },
+      {
+        category:'skills',
+        status:activeSkills.length?'loaded':'not-present',
+        count:activeSkills.length,
+        bytes:skillBytes,
+        ids:activeSkills.map((skill)=>skill.name),
+        reason:activeSkills.length
+          ? 'Activated skill instruction blocks are embedded within the bounded compiled prompt.'
+          : 'No skill instruction block was activated for this request.',
+      },
+      {
+        category:'memory',
+        status:'available-not-loaded',
+        reason:'Memory remains a separate governed retrieval surface and is not silently injected by Autopilot preview.',
+      },
+      {
+        category:'files',
+        status:'available-not-loaded',
+        reason:'Repository/files are available through governed context and code surfaces but are not silently loaded into this preview.',
+      },
+      {
+        category:'tools',
+        status:'available-not-loaded',
+        reason:'Tool definitions and execution authority remain owned by the runtime capability layer.',
+      },
+      {
+        category:'mcp',
+        status:mcpSuggestions.length?'available-not-loaded':'not-present',
+        count:mcpSuggestions.length,
+        ids:mcpSuggestions.map((entry)=>entry.sourceId),
+        reason:mcpSuggestions.length
+          ? 'MCP candidates are advisory metadata only; their tool schemas are not injected as executable context.'
+          : 'No MCP source matched this request.',
+      },
+    ],
+  });
   const blueprint=createFuryRequestBlueprint({
     objective,
     profile:routing.profile,
@@ -286,6 +350,7 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     plan:routing,
     blueprint,
     capabilityGraph,
+    contextInspector,
     routing:Object.freeze({
       format:routing.format,
       profile:routing.profile,
