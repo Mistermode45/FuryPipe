@@ -61,6 +61,24 @@ describe('FurySkillHub', () => {
     expect((await hub.autoSelect('review the SQL migrations')).excluded).toContainEqual({ name: 'sql-review', reason: 'disabled' });
   });
 
+  it('activates selected SKILL.md instructions with receipts but no tool authority', async () => {
+    const { hub } = setup();
+    const selection = await hub.autoSelect('review the SQL migrations for locking', { harnessId: 'claude-code' });
+    const activated = await hub.activateSelection(selection.plan.selected.map((skill) => skill.name), { harnessId: 'claude-code' });
+    expect(activated).toHaveLength(1);
+    expect(activated[0]).toMatchObject({
+      name: 'sql-review',
+      executionAuthorized: false,
+      receipt: { format: 'furypipe-agent-skill-activation/v1', status: 'activated', executionAuthorized: false },
+    });
+    expect(activated[0]?.instructions).toContain('Do the thing.');
+    expect(activated[0]?.checksum).toMatch(/^[0-9a-f]{64}$/u);
+
+    await hub.setEnabled('sql-review', false);
+    await expect(hub.activateSelection(['sql-review'])).rejects.toThrow(/disabled/u);
+    await expect(hub.activateSelection(Array.from({ length: 9 }, (_, i) => `skill-${i}`))).rejects.toThrow(/at most 8/u);
+  });
+
   it('records usage stats and persists state across hub instances', async () => {
     const { hub, root, project } = setup();
     await hub.recordUse('css-audit', 'success');
