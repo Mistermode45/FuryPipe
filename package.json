@@ -624,6 +624,10 @@
     "./fury-plugin-sandbox-node": {
       "types": "./dist/fury-plugin-sandbox-node.d.ts",
       "import": "./dist/fury-plugin-sandbox-node.js"
+    },
+    "./fury-plugin-ui-runtime-node": {
+      "types": "./dist/fury-plugin-ui-runtime-node.d.ts",
+      "import": "./dist/fury-plugin-ui-runtime-node.js"
     }
   },
   "files": [
