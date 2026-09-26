@@ -48,6 +48,8 @@ import { STUDIO_RESPONSE_STYLES, planStudioAutopilot, type StudioResponseStyle }
 import { FURY_EXTENSION_KINDS, listFuryExtensions, type FuryExtensionKind } from '../fury-extension-catalog.js';
 import { renderTextToImages } from '../core/library.js';
 import { createModelFabricRegistry } from '../core/model-fabric.js';
+import { DEFAULT_PROVIDER_REGISTRY } from '../core/provider-fabric.js';
+import { buildFuryModelHubSnapshot } from '../fury-model-hub.js';
 import { localModelCapabilityId, observeFuryLocalModelsInModelFabric } from '../fury-local-model-fabric.js';
 import { buildFuryWorkspaceGraph } from '../fury-workspace-graph.js';
 
@@ -56,7 +58,7 @@ const MAX_POST_BYTES = 256 * 1024;
 const CACHE_MS = 10_000;
 
 export type StudioRoute =
-  | 'harnesses' | 'local' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'autopilot-preview' | 'extensions' | 'chat' | 'flow-preview'
+  | 'harnesses' | 'local' | 'models' | 'hardware' | 'local-model-inspect' | 'local-model-recommend' | 'runtime-setup' | 'runtime-setup-status' | 'bindings' | 'graph' | 'blast-radius' | 'dispatch-preview' | 'autopilot-preview' | 'extensions' | 'chat' | 'flow-preview'
   | 'runs' | 'run-start' | 'run-act' | 'skills' | 'skill-act' | 'skill-select' | 'skill-install' | 'skill-create' | 'skill-compare'
   | 'mcp' | 'mcp-add' | 'mcp-act' | 'mcp-probe' | 'mcp-decide'
   | 'knowledge' | 'knowledge-ingest' | 'knowledge-search'
@@ -69,6 +71,7 @@ export type StudioRoute =
 const ROUTES: Readonly<Record<string, { route: StudioRoute; method: 'GET' | 'POST' }>> = Object.freeze({
   '/api/studio/harnesses.json': { route: 'harnesses', method: 'GET' },
   '/api/studio/local.json': { route: 'local', method: 'GET' },
+  '/api/studio/models.json': { route: 'models', method: 'GET' },
   '/api/studio/hardware.json': { route: 'hardware', method: 'GET' },
   '/api/studio/local-model/inspect': { route: 'local-model-inspect', method: 'POST' },
   '/api/studio/local-model/recommend': { route: 'local-model-recommend', method: 'POST' },
@@ -400,6 +403,16 @@ export function createStudioApi(options: StudioApiOptions) {
                 models: b.models.map((m) => ({ ...m, fit: classifyFuryModelFit(m, hw) })),
               })),
             });
+          }
+          case 'models': {
+            const [localState, connectionState] = await Promise.all([local(), connections()]);
+            const modelRegistry = createModelFabricRegistry();
+            observeFuryLocalModelsInModelFabric(modelRegistry, localState.backends);
+            return json(buildFuryModelHubSnapshot({
+              providers: DEFAULT_PROVIDER_REGISTRY,
+              models: modelRegistry,
+              connections: connectionState,
+            }));
           }
           case 'bindings': {
             const [h, l] = await Promise.all([harnesses(), local()]);
