@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { planFuryAutopilot, type FuryAutopilotEffort } from '../fury-autopilot.js';
 import { createFuryCapabilityIndex } from '../capability-index.js';
 import { selectFuryCapabilitiesForTask } from '../capability-autopilot.js';
-import { projectSkillHubIntoCapabilityIndex } from '../capability-index-adapters.js';
+import { projectMcpHubIntoCapabilityIndex, projectSkillHubIntoCapabilityIndex } from '../capability-index-adapters.js';
 import type { AgentSkillSelectionPlan } from '../agent-skill-selector.js';
 import { compileFuryPrompt } from '../fury-prompt.js';
 import { resolveInstructionPlan } from '../instruction-fabric.js';
@@ -58,8 +58,9 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   }
 
   const capabilityIndex=createFuryCapabilityIndex();
-  const [,mcpView]=await Promise.all([
+  const [,,mcpView]=await Promise.all([
     projectSkillHubIntoCapabilityIndex(capabilityIndex,input.skills),
+    projectMcpHubIntoCapabilityIndex(capabilityIndex,input.mcp),
     input.mcp.list(),
   ]);
   const capabilitySelection=selectFuryCapabilitiesForTask({
