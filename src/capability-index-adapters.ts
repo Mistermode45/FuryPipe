@@ -3,6 +3,8 @@ import type {
   SkillLicenseStatus,
   SkillSourceDecision,
 } from './skill-registry.js';
+import type { CapabilityRegistry } from './ecosystem/registry.js';
+import type { CapabilityCandidate, CapabilityPermissions, CapabilityType } from './ecosystem/types.js';
 import type {
   FuryPluginBundleRegistry,
   FuryPluginPermission,
@@ -54,7 +56,7 @@ export interface FuryCapabilityIndexHealthOverrides {
 export interface FuryCapabilityIndexProjectionReport {
   readonly indexed: number;
   readonly skipped: number;
-  readonly source: 'skill-registry' | 'skill-hub' | 'plugin-registry' | 'model-fabric' | 'provider-fabric' | 'harness-hub' | 'mcp-host' | 'mcp-hub';
+  readonly source: 'capability-registry' | 'skill-registry' | 'skill-hub' | 'plugin-registry' | 'model-fabric' | 'provider-fabric' | 'harness-hub' | 'mcp-host' | 'mcp-hub';
   readonly authority: 'projection-only';
   readonly executionAuthority: false;
 }
@@ -298,6 +300,125 @@ function harnessPermissions(status: FuryHarnessStatus): readonly string[] {
   return Object.freeze([...permissions]);
 }
 
+function registryKind(type: CapabilityType): FuryCapabilityIndexKind | undefined {
+  switch (type) {
+    case 'agent': return 'agent';
+    case 'skill': return 'skill';
+    case 'skill-pack': return 'skill-pack';
+    case 'instruction': return 'instruction';
+    case 'plugin': return 'plugin';
+    case 'mcp': return 'mcp';
+    case 'mcp-server': return 'mcp-server';
+    case 'connector':
+    case 'database-connector':
+    case 'cloud-integration':
+      return 'connector';
+    case 'tool':
+    case 'cli-tool':
+    case 'browser-tool':
+      return 'tool';
+    case 'provider':
+    case 'provider-adapter':
+      return 'provider';
+    case 'model': return 'model';
+    case 'workflow': return 'workflow';
+    case 'automation': return 'automation';
+    case 'memory-backend':
+    case 'memory-provider':
+      return 'memory-provider';
+    case 'search-provider': return 'search-provider';
+    case 'browser-provider': return 'browser-provider';
+    case 'image-provider': return 'image-provider';
+    case 'video-provider': return 'video-provider';
+    case 'audio-provider': return 'audio-provider';
+    case 'voice-provider': return 'voice-provider';
+    case 'embedding-provider': return 'embedding-provider';
+    case 'reranker': return 'reranker';
+    case 'code-runtime': return 'code-runtime';
+    case 'sandbox': return 'sandbox';
+    default: return undefined;
+  }
+}
+
+function registryLicense(candidate: CapabilityCandidate): FuryCapabilityIndexLicenseState {
+  return candidate.license.status === 'VERIFIED' ? 'verified' : 'unknown';
+}
+
+function registryHealth(candidate: CapabilityCandidate): FuryCapabilityIndexHealthState {
+  if (candidate.decision === 'REJECT' || candidate.decision === 'REFERENCE_ONLY') return 'blocked';
+  if (candidate.health.status === 'HEALTHY') return 'ready';
+  if (candidate.health.status === 'DEGRADED') return 'degraded';
+  if (candidate.health.status === 'UNHEALTHY') return 'unavailable';
+  return 'unknown';
+}
+
+function registryTrust(
+  registry: CapabilityRegistry,
+  candidate: CapabilityCandidate,
+): FuryCapabilityIndexTrustState {
+  if (candidate.decision === 'REJECT' || candidate.decision === 'REFERENCE_ONLY') return 'blocked';
+  const report = registry.getTrustReport(candidate.id);
+  if (!report) return 'unknown';
+  if (report.verdict === 'TRUSTED') return 'trusted';
+  if (report.verdict === 'AUDITED') return 'verified';
+  if (report.verdict === 'RESTRICTED' || report.verdict === 'QUARANTINED' || report.verdict === 'BLOCKED') return 'blocked';
+  return 'unknown';
+}
+
+function registryRisk(permissions: CapabilityPermissions): FuryCapabilityIndexRiskClass {
+  if (
+    permissions.credentials === 'manage'
+    || permissions.database === 'admin'
+    || permissions.cloud === 'admin'
+    || permissions.filesystem === 'delete'
+    || permissions.filesystem === 'arbitrary-write'
+    || permissions.subprocess === 'arbitrary'
+    || permissions.network === 'arbitrary'
+    || permissions.externalWrites.includes('admin')
+    || permissions.externalWrites.includes('financial')
+    || permissions.externalWrites.includes('deploy')
+  ) return 'admin';
+  if (
+    permissions.filesystem === 'write'
+    || permissions.database === 'scoped-write'
+    || permissions.cloud === 'scoped-write'
+    || permissions.externalWrites.length > 0
+  ) return 'write';
+  if (
+    permissions.network !== 'none'
+    || permissions.subprocess !== 'none'
+    || permissions.provider !== 'none'
+    || permissions.browser === 'interact'
+  ) return 'process';
+  if (
+    permissions.filesystem === 'read'
+    || permissions.credentials !== 'none'
+    || permissions.database === 'read'
+    || permissions.browser === 'read'
+    || permissions.cloud === 'read'
+  ) return 'read';
+  return 'none';
+}
+
+function registryPermissions(permissions: CapabilityPermissions): readonly string[] {
+  const values = new Set<string>();
+  if (permissions.network !== 'none') values.add('network');
+  if (permissions.filesystem === 'read') values.add('filesystem-read');
+  if (permissions.filesystem === 'write' || permissions.filesystem === 'delete' || permissions.filesystem === 'arbitrary-write') values.add('filesystem-write');
+  if (permissions.subprocess !== 'none') values.add('process');
+  if (permissions.credentials !== 'none') values.add('credentials');
+  if (permissions.database === 'read') values.add('database-read');
+  if (permissions.database === 'scoped-write' || permissions.database === 'admin') values.add('database-write');
+  if (permissions.browser === 'read') values.add('browser-read');
+  if (permissions.browser === 'interact') values.add('browser-interact');
+  if (permissions.provider === 'invoke') values.add('provider-inference');
+  if (permissions.provider === 'configure') values.add('provider-management');
+  if (permissions.cloud === 'read') values.add('cloud-read');
+  if (permissions.cloud === 'scoped-write' || permissions.cloud === 'admin') values.add('cloud-write');
+  for (const write of permissions.externalWrites) values.add(`external-write:${write}`);
+  return Object.freeze([...values]);
+}
+
 function mcpRisk(risk: McpToolRiskClass): FuryCapabilityIndexRiskClass {
   switch (risk) {
     case 'trusted_read_only_closed_world':
@@ -362,6 +483,79 @@ function put(
   entry: FuryCapabilityIndexEntryInput,
 ): void {
   index.upsert(entry);
+}
+
+export function projectCapabilityRegistryIntoIndex(
+  index: FuryCapabilityIndex,
+  registry: CapabilityRegistry,
+): FuryCapabilityIndexProjectionReport {
+  requireIndex(index);
+  const candidates = registry.list();
+  let indexed = 0;
+  let skipped = 0;
+  for (const candidate of candidates) {
+    const kind = registryKind(candidate.type);
+    if (!kind || !indexableIdentity(candidate.id)) {
+      skipped += 1;
+      continue;
+    }
+    const revision = candidate.source.contentSha256
+      ?? candidate.commitSha
+      ?? candidate.version
+      ?? candidate.source.version;
+    put(index, {
+      format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+      kind,
+      id: candidate.id,
+      name: candidate.name,
+      description: candidate.description,
+      families: uniqueMetadata([
+        candidate.type,
+        ...candidate.categories,
+        ...candidate.domains,
+        ...candidate.capabilities,
+      ]),
+      tags: uniqueMetadata([
+        `decision-${candidate.decision}`,
+        `integration-${candidate.integrationMode}`,
+        `provenance-${candidate.provenance.classification}`,
+        `pin-${candidate.source.pinStatus}`,
+      ]),
+      keywords: uniqueMetadata([
+        candidate.name,
+        candidate.publisher ?? '',
+        ...candidate.authors,
+        ...candidate.categories,
+        ...candidate.capabilities,
+        ...candidate.domains,
+      ], 160),
+      trust: registryTrust(registry, candidate),
+      license: registryLicense(candidate),
+      health: registryHealth(candidate),
+      riskClass: registryRisk(candidate.permissions),
+      requiredPermissions: registryPermissions(candidate.permissions),
+      compatibility: uniqueMetadata([
+        ...candidate.supportedPlatforms,
+        ...candidate.supportedModels,
+        ...candidate.supportedLanguages,
+        ...candidate.supportedStages,
+      ]),
+      source: {
+        system: 'other',
+        sourceId: candidate.id,
+        ...(revision === undefined ? {} : { sourceRevision: revision }),
+        ...(candidate.lastAuditedAt === undefined ? {} : { observedAt: candidate.lastAuditedAt }),
+      },
+    });
+    indexed += 1;
+  }
+  return Object.freeze({
+    indexed,
+    skipped,
+    source: 'capability-registry' as const,
+    authority: 'projection-only' as const,
+    executionAuthority: false as const,
+  });
 }
 
 export function projectSkillsIntoCapabilityIndex(
