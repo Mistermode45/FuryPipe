@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 
+import { planFuryAutopilot } from '../fury-autopilot.js';
 import { compileFuryPrompt } from '../fury-prompt.js';
 import { resolveInstructionPlan } from '../instruction-fabric.js';
 import type { FuryMcpHub, FuryMcpSourceView } from '../fury-mcp-hub.js';
@@ -33,55 +34,10 @@ function boundedObjective(value:string):string{
   return value.trim();
 }
 
-function normalize(value:string):string[]{
-  return (value.normalize('NFKD').replace(/\p{M}+/gu,'').toLowerCase().match(/[a-z0-9][a-z0-9._+-]{1,63}/gu)??[])
-    .filter((token)=>!['the','and','for','with','from','dans','avec','pour','une','les','des','sur','est','que','qui'].includes(token));
-}
-
-function resolvedStyle(requested:StudioResponseStyle,objective:string):Exclude<StudioResponseStyle,'auto'>{
-  if(requested!=='auto') return requested;
-  return /\b(?:bug|fix|implement|code|refactor|build|deploy|test|audit|debug|erreur|corrig|plugin|minecraft|fivem)\b/iu.test(objective)
-    ? 'caveman'
-    : 'balanced';
-}
-
 function styleInstruction(style:Exclude<StudioResponseStyle,'auto'>):string{
   if(style==='caveman') return 'Use concise operational updates: STATUS, EVIDENCE, RESULT, NEXT. Prefer short concrete statements, exact commands/paths when relevant, and no decorative filler. Keep final explanations complete when the task is complex.';
   if(style==='detailed') return 'Give a complete, structured explanation with assumptions, evidence, tradeoffs, verification and next actions. Keep detail relevant rather than repetitive.';
   return 'Be direct, clear and proportionate to the task. Lead with the result, preserve important evidence and avoid unnecessary filler.';
-}
-
-function rankMcp(objective:string,sources:readonly FuryMcpSourceView[]){
-  const wanted=new Set(normalize(objective));
-  return sources
-    .filter((source)=>source.enabled)
-    .map((source)=>{
-      const vocabulary=[
-        ...normalize(source.name),
-        ...normalize(source.origin),
-        ...normalize(source.sourceId),
-        ...(source.health?.tools??[]).flatMap((tool)=>normalize(tool.name)),
-      ];
-      let score=0;
-      for(const token of new Set(vocabulary)) if(wanted.has(token)) score+=token.length>=6?3:2;
-      if(source.trusted) score+=0.25;
-      if(source.health?.ok) score+=0.25;
-      return {source,score};
-    })
-    .filter((item)=>item.score>=2)
-    .sort((a,b)=>b.score-a.score||a.source.sourceId.localeCompare(b.source.sourceId))
-    .slice(0,MAX_MCP_SUGGESTIONS)
-    .map(({source,score})=>Object.freeze({
-      sourceId:source.sourceId,
-      name:source.name,
-      score,
-      locality:source.locality,
-      trusted:source.trusted,
-      defaultPolicy:source.defaultPolicy,
-      health:source.health?.ok===true?'ready' as const:source.health?'degraded' as const:'not-probed' as const,
-      tools:Object.freeze((source.health?.tools??[]).slice(0,12).map((tool)=>tool.name)),
-      executionAuthorized:false as const,
-    }));
 }
 
 export async function planStudioAutopilot(input:StudioAutopilotInput){
@@ -90,7 +46,6 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   if(!(STUDIO_RESPONSE_STYLES as readonly string[]).includes(requestedStyle)) {
     throw Object.assign(new Error('responseStyle is unsupported'),{status:400});
   }
-  const style=resolvedStyle(requestedStyle,objective);
   const customInstructions=input.customInstructions?.trim()??'';
   if(customInstructions.length>MAX_CUSTOM_INSTRUCTION_CHARS||customInstructions.includes('\0')) {
     throw Object.assign(new Error('customInstructions must be at most 4000 characters'),{status:400});
@@ -100,6 +55,32 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     input.skills.autoSelect(objective,{...(input.harnessId?{harnessId:input.harnessId}:{}),maxActive:4}),
     input.mcp.list(),
   ]);
+  const routing=planFuryAutopilot({
+    objective,
+    selectedSkills:skillSelection.plan.selected.map((skill)=>({
+      name:skill.name,
+      score:skill.score,
+      reason:skill.reason,
+    })),
+    mcpSources:mcpView.sources.map((source)=>({
+      sourceId:source.sourceId,
+      name:source.name,
+      enabled:source.enabled,
+      trusted:source.trusted,
+      defaultPolicy:source.defaultPolicy,
+      ...(source.health?{health:{
+        ok:source.health.ok,
+        tools:source.health.tools.map((tool)=>({
+          name:tool.name,
+          riskClass:tool.riskClass,
+          readOnly:tool.readOnly,
+        })),
+      }}:{}),
+    })),
+  });
+  const style:Exclude<StudioResponseStyle,'auto'>=requestedStyle==='auto'
+    ? routing.communicationStyle==='CAVEMAN'?'caveman':'balanced'
+    : requestedStyle;
   const activation=await input.skills.activatePlan(skillSelection.plan);
 
   let skillBytes=0;
@@ -121,7 +102,25 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
     }));
   }
 
-  const mcpSuggestions=rankMcp(objective,mcpView.sources);
+  const mcpSourceById=new Map(mcpView.sources.map((source)=>[source.sourceId,source] as const));
+  const mcpSuggestions=Object.freeze(routing.mcp.slice(0,MAX_MCP_SUGGESTIONS).flatMap((candidate)=>{
+    const source=mcpSourceById.get(candidate.sourceId);
+    if(!source) return [];
+    return [Object.freeze({
+      sourceId:source.sourceId,
+      name:source.name,
+      score:candidate.score,
+      locality:source.locality,
+      trusted:source.trusted,
+      defaultPolicy:source.defaultPolicy,
+      health:source.health?.ok===true?'ready' as const:source.health?'degraded' as const:'not-probed' as const,
+      tools:Object.freeze((source.health?.tools??[]).slice(0,12).map((tool)=>tool.name)),
+      ...(candidate.tool?{selectedTool:candidate.tool}:{}),
+      needsApproval:candidate.needsApproval,
+      reason:candidate.reason,
+      executionAuthorized:false as const,
+    })];
+  }));
   const basePrompt={
     sections:{
       intent:'Complete the user objective through FuryPipe while preserving user intent and least privilege.',
@@ -180,6 +179,15 @@ export async function planStudioAutopilot(input:StudioAutopilotInput){
   return Object.freeze({
     format:STUDIO_AUTOPILOT_FORMAT,
     objectiveDigest:createHash('sha256').update(objective,'utf8').digest('hex'),
+    routing:Object.freeze({
+      format:routing.format,
+      profile:routing.profile,
+      effort:routing.effort,
+      communicationStyle:routing.communicationStyle,
+      contextMode:routing.contextMode,
+      promptPipeline:routing.promptPipeline,
+      executionAuthorized:false as const,
+    }),
     style:Object.freeze({requested:requestedStyle,resolved:style}),
     instructions:Object.freeze({
       facets:instructionPlan.selected,
