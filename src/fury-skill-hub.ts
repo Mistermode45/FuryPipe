@@ -16,6 +16,7 @@ import { cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node
 import * as path from 'node:path';
 
 import { selectAgentSkillsForTask, type AgentSkillSelectionPlan } from './agent-skill-selector.js';
+import { activateSelectedAgentSkillsNode, type AgentSkillActivationBatch } from './agent-skill-activation-node.js';
 import { discoverAgentSkillsNode, type AgentSkillDiscoveryOptions, type DiscoveredAgentSkill } from './agent-skills-node.js';
 import { parseAgentSkillManifest } from './agent-skills-standard.js';
 import { createAgentSkillActivationReceipt, type AgentSkillActivationReceipt } from './agent-skill-activation.js';
@@ -325,6 +326,15 @@ export function createFurySkillHub(options: {
       const removed = [...x.files.keys()].filter((f) => !y.files.has(f)).sort();
       const changed = [...x.files.keys()].filter((f) => y.files.has(f) && !x.files.get(f)!.equals(y.files.get(f)!)).sort();
       return Object.freeze({ added, removed, changed });
+    },
+    /**
+     * Re-discover and activate the exact selection plan. This preserves the
+     * selector's checksum/trust decision across the selection→activation boundary.
+     * It loads instruction text only and never grants executable authority.
+     */
+    async activatePlan(plan: AgentSkillSelectionPlan): Promise<AgentSkillActivationBatch> {
+      const discovery = await discover();
+      return activateSelectedAgentSkillsNode(plan, discovery.skills);
     },
     /**
      * Load only the validated SKILL.md bodies selected for one turn.
