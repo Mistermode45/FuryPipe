@@ -35,6 +35,15 @@ describe('Studio Fury Autopilot',()=>{
       });
       expect(plan.mcp.suggested.map((x)=>x.name)).toContain('github');
       expect(plan.mcp.executionAuthorized).toBe(false);
+      expect(plan.capabilities.blocked).toContainEqual(expect.objectContaining({
+        kind:'mcp-server',
+        reason:'trust-unverified',
+      }));
+      expect(plan.blueprint.mcp.advisory).toContainEqual(expect.objectContaining({
+        source:'github',
+        needsApproval:true,
+      }));
+      expect(plan.blueprint.capabilities.executionAuthority).toBe(false);
       expect(plan.prompt.text).toContain('Check API behavior and tests before claiming done.');
       expect(plan.prompt.bytes).toBeLessThanOrEqual(plan.prompt.budgetBytes);
       expect(plan.plan.skills.map((x)=>x.name)).toContain('api-review');
