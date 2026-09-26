@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createFuryCapabilityIndex,
   FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
+  FURY_CAPABILITY_INDEX_KINDS,
   FURY_CAPABILITY_INDEX_SNAPSHOT_FORMAT,
   type FuryCapabilityIndexEntryInput,
   type FuryCapabilityIndexKind,
@@ -38,6 +39,15 @@ function entry(
 }
 
 describe('Capability Autopilot V2 local index', () => {
+  it('represents the universal 2026 capability taxonomy without granting routing by presence alone', () => {
+    expect(FURY_CAPABILITY_INDEX_KINDS).toEqual(expect.arrayContaining([
+      'model','provider','skill','skill-pack','instruction','plugin','mcp','connector','tool','agent',
+      'workflow','automation','memory-provider','search-provider','browser-provider','image-provider',
+      'video-provider','audio-provider','voice-provider','embedding-provider','reranker','code-runtime','sandbox',
+    ]));
+    expect(new Set(FURY_CAPABILITY_INDEX_KINDS).size).toBe(FURY_CAPABILITY_INDEX_KINDS.length);
+  });
+
   it('stores immutable routing metadata only and emits no execution authority', () => {
     const index = createFuryCapabilityIndex();
     const record = index.upsert(entry());
