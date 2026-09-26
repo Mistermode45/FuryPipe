@@ -708,7 +708,8 @@
     "vendor:ui": "node scripts/vendor-ui.mjs",
     "browser:webchat:qa": "tsx scripts/gateway-webchat-browser-qa.ts",
     "browser:studio:qa": "tsx scripts/studio-browser-qa.ts",
-    "bench:studio": "tsx scripts/furybench-studio.ts"
+    "bench:studio": "tsx scripts/furybench-studio.ts",
+    "validation:supply-chain": "tsx scripts/supply-chain-evidence.ts"
   },
   "keywords": [
     "furypipe",
