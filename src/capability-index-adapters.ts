@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type {
   AgentSkillRegistry,
   SkillLicenseStatus,
@@ -156,6 +158,10 @@ function healthOverride(
 function indexableIdentity(value: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9._:/@+~-]{0,255}$/u.test(value);
 }
+function catalogRoutingId(candidate: CapabilityCandidate): string {
+  return `catalog/${createHash('sha256').update(candidate.canonicalUrl, 'utf8').digest('hex')}`;
+}
+
 
 function skillTrust(
   decision: SkillSourceDecision,
@@ -495,10 +501,11 @@ export function projectCapabilityRegistryIntoIndex(
   let skipped = 0;
   for (const candidate of candidates) {
     const kind = registryKind(candidate.type);
-    if (!kind || !indexableIdentity(candidate.id)) {
+    if (!kind) {
       skipped += 1;
       continue;
     }
+    const routingId = catalogRoutingId(candidate);
     const revision = candidate.source.contentSha256
       ?? candidate.commitSha
       ?? candidate.version
@@ -506,7 +513,7 @@ export function projectCapabilityRegistryIntoIndex(
     put(index, {
       format: FURY_CAPABILITY_INDEX_ENTRY_FORMAT,
       kind,
-      id: candidate.id,
+      id: routingId,
       name: candidate.name,
       description: candidate.description,
       families: uniqueMetadata([
@@ -542,7 +549,7 @@ export function projectCapabilityRegistryIntoIndex(
       ]),
       source: {
         system: 'other',
-        sourceId: candidate.id,
+        sourceId: routingId,
         ...(revision === undefined ? {} : { sourceRevision: revision }),
         ...(candidate.lastAuditedAt === undefined ? {} : { observedAt: candidate.lastAuditedAt }),
       },
@@ -886,7 +893,7 @@ export function projectHarnessesIntoCapabilityIndex(
       health: harnessHealth(status),
       riskClass: permissions.length === 0 ? 'none' : 'process',
       requiredPermissions: permissions,
-      compatibility: uniqueMetadata([discovery.platform, ...status.definition.protocols]),
+      compatibility: [],
       source: {
         system: 'host',
         sourceId: status.id,
@@ -938,7 +945,7 @@ export function projectProvidersIntoCapabilityIndex(
       health: providerHealth(provider, validatedHealth),
       riskClass: 'process',
       requiredPermissions: ['provider-inference'],
-      compatibility: uniqueMetadata([provider.protocol]),
+      compatibility: [],
       source: {
         system: 'host',
         sourceId: provider.id,
