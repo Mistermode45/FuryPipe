@@ -44,6 +44,15 @@ export interface FuryAutopilotInput {
   readonly objective: string;
   readonly effort?: FuryAutopilotEffort;
   readonly selectedSkills?: readonly FuryAutopilotSkill[];
+  /**
+   * Pre-ranked MCP advisory candidates from Capability Autopilot. Preferred by
+   * converged callers; no execution authority is implied.
+   */
+  readonly mcpCandidates?: readonly FuryAutopilotMcpCandidate[];
+  /**
+   * Legacy advisory source matching retained for compatibility. New Studio
+   * routing should provide mcpCandidates from the governed Capability Index.
+   */
   readonly mcpSources?: readonly FuryAutopilotMcpSource[];
 }
 
@@ -227,7 +236,12 @@ export function planFuryAutopilot(input: FuryAutopilotInput): FuryAutopilotPlan 
   const recommendation = recommendedEffort(input.objective, profileId);
   const effective = requested === 'auto' ? recommendation.effort : requested;
   const skills = Object.freeze([...(input.selectedSkills ?? [])].slice(0, 8).map((skill) => Object.freeze({ ...skill })));
-  const mcp = selectMcp(input.objective, input.mcpSources ?? []);
+  const mcp = input.mcpCandidates === undefined
+    ? selectMcp(input.objective, input.mcpSources ?? [])
+    : Object.freeze([...input.mcpCandidates]
+      .slice(0, 5)
+      .map((candidate) => Object.freeze({ ...candidate }))
+      .sort((a, b) => b.score - a.score || a.source.localeCompare(b.source)));
 
   return Object.freeze({
     format: 'furypipe-autopilot/v1',
